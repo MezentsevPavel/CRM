@@ -1,0 +1,4 @@
+/* ——— права ——— */
+.matrix th:first-child,.matrix td:first-child{position:sticky;left:0;z-index:1;min-width:240px;background:var(--surface)}
+.matrix th:first-child{background:var(--surface-2)}
+.matrix input{width:18px;height:18px;accent-color:var(--primary)}

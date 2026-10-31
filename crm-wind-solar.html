@@ -1,0 +1,2094 @@
+<!-- собрано из src/, руками не править: node tools/build.js -->
+<title>CRM wind-solar</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Цвета и шрифт — из приложения PVCalc (его tokens.css и тёмная тема): тёплый светлый фон,
+   белые карточки, один зелёный акцент, солнечный янтарь — резервы и «внимание», красный — нарушения.
+   Синего и фиолетового в палитре приложения нет, поэтому «в пути» и каналы связи — нейтральный серый.
+   Раскладка: светлая панель разделов слева, справа рабочее поле с карточками.
+   Тема: оболочка ставит на <html> data-theme="light" или "dark" (светлая, тёмная или по системе — S.prefs.theme);
+   блок @media — только до запуска кода. --logo-plate — подложка логотипа: в тёмной теме светлая,
+   иначе тёмная надпись Windsolar не читается. */
+:root{
+  --bg:#F1F2EF; --surface:#FFFFFF; --surface-2:#F7F8F6; --sunken:#E8E9E6; --line:rgba(27,29,27,.10); --line-2:rgba(27,29,27,.18); --ink:#1B1D1B; --ink-2:rgba(27,29,27,.66); --ink-3:rgba(27,29,27,.64); --primary:#0C8646; --primary-2:#0A733A; --primary-ink:#FFFFFF; --primary-soft:#E7F5EE; --primary-line:rgba(14,158,82,.28); --primary-deep:#07602F; --sun:#F5A623; --on-sun:#2A1C00; --sun-soft:#FDEFD7; --sun-ink:#8A5200; --ok:#0A7A3F; --ok-soft:#E7F5EE; --warn:#8A5200; --warn-soft:#FDEFD7; --bad:#B3261E; --bad-soft:#F7E9E8; --info:#4F524F; --info-soft:#E8E9E6; --violet:#4F524F; --violet-soft:#E8E9E6; --seg-on:#FFFFFF; --bezel:#1B1D1B; --overlay:rgba(14,18,16,.45); --on-overlay:#FFFFFF; --shadow-1:0 1px 2px rgba(20,30,24,.05),0 2px 8px rgba(20,30,24,.05); --shadow:0 4px 10px rgba(20,30,24,.08),0 20px 44px rgba(20,30,24,.14);
+  --f-display:"Manrope",system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  --f-body:"Manrope",system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+  --logo-plate:transparent;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0E1210; --surface:#171C1A; --surface-2:#1D2220; --sunken:#222926; --line:rgba(255,255,255,.10); --line-2:rgba(255,255,255,.16); --ink:#ECEFEA; --ink-2:rgba(236,239,234,.66); --ink-3:rgba(236,239,234,.60); --primary:#35C77F; --primary-2:#4FCD91; --primary-ink:#0E1210; --primary-soft:#1B3026; --primary-line:rgba(53,199,127,.32); --primary-deep:#9BE8C0; --sun:#E8B23C; --on-sun:#2A1C00; --sun-soft:#38341F; --sun-ink:#EDBE5A; --ok:#35C77F; --ok-soft:#1B3026; --warn:#EDBE5A; --warn-soft:#38341F; --bad:#E0894A; --bad-soft:#332B21; --info:#B9BDB8; --info-soft:#222926; --violet:#B9BDB8; --violet-soft:#222926; --seg-on:#393E3B; --bezel:#2A302D; --overlay:rgba(0,0,0,.55); --on-overlay:#FFFFFF; --shadow-1:0 1px 2px rgba(0,0,0,.34),0 2px 8px rgba(0,0,0,.30); --shadow:0 4px 12px rgba(0,0,0,.42),0 22px 48px rgba(0,0,0,.55);
+  --logo-plate:#F1F2EF;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0E1210; --surface:#171C1A; --surface-2:#1D2220; --sunken:#222926; --line:rgba(255,255,255,.10); --line-2:rgba(255,255,255,.16); --ink:#ECEFEA; --ink-2:rgba(236,239,234,.66); --ink-3:rgba(236,239,234,.60); --primary:#35C77F; --primary-2:#4FCD91; --primary-ink:#0E1210; --primary-soft:#1B3026; --primary-line:rgba(53,199,127,.32); --primary-deep:#9BE8C0; --sun:#E8B23C; --on-sun:#2A1C00; --sun-soft:#38341F; --sun-ink:#EDBE5A; --ok:#35C77F; --ok-soft:#1B3026; --warn:#EDBE5A; --warn-soft:#38341F; --bad:#E0894A; --bad-soft:#332B21; --info:#B9BDB8; --info-soft:#222926; --violet:#B9BDB8; --violet-soft:#222926; --seg-on:#393E3B; --bezel:#2A302D; --overlay:rgba(0,0,0,.55); --on-overlay:#FFFFFF; --shadow-1:0 1px 2px rgba(0,0,0,.34),0 2px 8px rgba(0,0,0,.30); --shadow:0 4px 12px rgba(0,0,0,.42),0 22px 48px rgba(0,0,0,.55);
+  --logo-plate:#F1F2EF;
+  color-scheme:dark}
+
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
+html{height:100%;box-sizing:border-box}
+body{height:100%;margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 var(--f-body);-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.ic{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.mono{font-family:var(--f-mono);font-size:.92em;letter-spacing:-.01em}
+.muted{color:var(--ink-3)}
+.sm{font-size:12.5px}
+.m0{margin:0}
+.nowrap{white-space:nowrap}
+.grow{flex:1}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.bad-t{color:var(--bad)}.ok-t{color:var(--ok)}.warn-t{color:var(--warn)}
+.xs{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.stack{display:flex;flex-direction:column;gap:16px;min-width:0}
+.stack-s{display:flex;flex-direction:column;gap:14px;min-width:0}
+
+/* ——— каркас ——— */
+.app{display:grid;grid-template-columns:252px minmax(0,1fr);height:100%}
+.side{display:flex;flex-direction:column;overflow-y:auto;padding-block:18px 14px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:14px;background:var(--surface);border-right:1px solid var(--line);color:var(--ink)}
+.brand{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:0 0 4px}
+.logo{display:block;padding:6px 10px;border-radius:12px;background:var(--logo-plate)}
+.logo img{display:block;width:auto;height:30px}
+.brand small{display:block;padding-left:10px;font-size:11.5px;color:var(--ink-3)}
+.side-b{display:flex;flex-direction:column;flex:1 0 auto}
+.nav-g{display:flex;flex-direction:column;gap:2px;margin-top:20px}
+.nav-g h4{margin:0 10px 6px;font:700 10.5px/1 var(--f-body);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.nav-i{display:flex;align-items:center;gap:11px;width:100%;padding:9px 10px;border:0;border-radius:12px;background:transparent;color:var(--ink);font-size:13.5px;font-weight:500;text-align:left}
+.nav-i .ic{color:var(--ink-3)}
+.nav-i:hover{background:var(--surface-2)}
+.nav-i.on{background:var(--primary-soft);color:var(--primary-deep);font-weight:700}
+.nav-i.on .ic{color:var(--primary)}
+.cnt{margin-left:auto;min-width:22px;padding:1px 7px;border-radius:10px;background:var(--sunken);color:var(--ink-2);font-size:11.5px;font-weight:700;text-align:center;font-variant-numeric:tabular-nums}
+.cnt.hot{background:var(--sun);color:var(--on-sun)}
+.me{display:flex;align-items:center;gap:10px;margin-top:auto;padding:14px 6px 2px;border-top:1px solid var(--line)}
+.me b{display:block;font-size:13px}
+.me small{display:block;font-size:11.5px;color:var(--ink-3)}
+.side-scrim{display:none;position:fixed;inset:0;z-index:44;background:var(--overlay)}
+
+.main{display:flex;flex-direction:column;min-width:0;height:100%;overflow:hidden}
+.top{position:relative;z-index:20;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding-block:10px;padding-left:24px;padding-right:max(20px,env(safe-area-inset-right,0px));background:var(--surface);border-bottom:1px solid var(--line)}
+.ttl{margin:0;font:800 17px/1.2 var(--f-display);letter-spacing:-.015em;text-wrap:balance}
+/* .btn.burger: иначе .btn ниже по файлу показывает «меню» и на широком экране */
+.btn.burger{display:none}
+.search{position:relative;flex:1 1 0;min-width:160px;max-width:440px;margin-left:auto}
+.s-ic{position:absolute;left:11px;top:50%;transform:translateY(-50%);display:flex;color:var(--ink-3)}
+.search .inp{padding-left:36px;background:var(--surface-2)}
+.as{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-3)}
+.as select{width:auto;max-width:240px}
+.theme-sw{display:flex}
+.theme-seg.compact{flex-wrap:nowrap}
+.theme-seg:not(.compact){border-radius:14px}
+.theme-seg:not(.compact) button{border-radius:11px}
+.theme-seg button{display:inline-flex;align-items:center;gap:7px}
+.theme-seg .ic{width:16px;height:16px}
+.theme-seg.compact button{padding:6px 8px}
+.theme-seg.compact span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.bell-w{position:relative}
+.bn{position:absolute;top:2px;right:0;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--sun);color:var(--on-sun);font-size:10.5px;font-weight:700;line-height:1;display:grid;place-items:center}
+.pop{position:absolute;right:0;top:calc(100% + 8px);z-index:30;width:min(400px,calc(100vw - 32px));background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);overflow:hidden}
+.pop-h{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.pop-h b{font-size:13.5px}
+.pop-l{max-height:min(60vh,460px);overflow-y:auto;margin:0;padding:0;list-style:none}
+.pop-f{padding:8px;border-top:1px solid var(--line)}
+.q-res{left:0;right:auto;width:100%}
+.q-res .pop-l{padding:6px}
+
+.demo{display:flex;align-items:center;gap:10px;padding-block:7px;padding-left:24px;padding-right:max(20px,env(safe-area-inset-right,0px));background:var(--sun-soft);color:var(--sun-ink);font-size:12.5px;line-height:1.35}
+.demo .ic{width:16px;height:16px}
+.demo>span{flex:1;min-width:0}
+.demo .btn{color:var(--sun-ink)}
+.scroll{flex:1;overflow-y:auto;overflow-x:hidden}
+.view{display:flex;flex-direction:column;gap:16px;max-width:1480px;padding-block:22px 48px;padding-left:24px;padding-right:max(20px,env(safe-area-inset-right,0px))}
+
+/* ——— элементы ——— */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:0 14px;border:1px solid var(--line-2);border-radius:12px;background:var(--surface);color:var(--ink);font-size:13.5px;font-weight:500;white-space:nowrap;transition:background .15s}
+.btn:hover{background:var(--surface-2)}
+.btn.pri{background:linear-gradient(135deg,var(--primary),var(--primary-2));border-color:transparent;color:var(--primary-ink);box-shadow:var(--shadow-1)}
+.btn.pri:hover{background:var(--primary-2)}
+.btn.ghost{background:transparent;border-color:transparent}
+.btn.ghost:hover{background:var(--sunken)}
+.btn.sm{height:30px;padding:0 10px;font-size:12.5px}
+.btn.icon{width:36px;padding:0}
+.btn.big{width:100%;height:48px;font-size:15px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn .ic{width:16px;height:16px}
+.link{padding:0;border:0;background:none;color:var(--primary);font-weight:500;text-align:left}
+.link:hover{text-decoration:underline}
+.inp{width:100%;height:38px;padding:0 11px;border:1px solid var(--line-2);border-radius:12px;background:var(--surface);color:var(--ink);font-size:14px}
+.inp.sm{height:32px;padding:0 8px;font-size:13px}
+textarea.inp{height:auto;min-height:72px;padding:9px 11px;line-height:1.45;resize:vertical}
+.inp:focus{outline:2px solid var(--primary);outline-offset:-1px}
+.inp:disabled{background:var(--sunken);color:var(--ink-3)}
+.w-auto{width:auto}
+.field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.field>label,.lbl{font-size:12.5px;font-weight:500;color:var(--ink-2)}
+.field.end{justify-content:flex-end}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.span2{grid-column:1/-1}
+.check{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-2);cursor:pointer}
+.check input{width:16px;height:16px;margin:0;accent-color:var(--primary)}
+.hint{margin:0;font-size:12.5px;color:var(--ink-3);max-width:80ch}
+.err{margin:0;font-size:13px;color:var(--bad)}
+.lock{display:flex;align-items:center;gap:8px;margin:0;padding:10px 12px;border-radius:12px;background:var(--surface-2);font-size:13px;color:var(--ink-3)}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;background:var(--sunken);color:var(--ink-2);font-size:12px;font-weight:500;line-height:1.5;white-space:nowrap}
+.pill.sm{padding:1px 7px;font-size:11px}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}.pill.bad{background:var(--bad-soft);color:var(--bad)}.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.info{background:var(--info-soft);color:var(--info)}.pill.sun{background:var(--sun-soft);color:var(--sun-ink)}.pill.violet{background:var(--violet-soft);color:var(--violet)}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);color:var(--ink-2);font-size:12.5px;text-align:left}
+button.chip:hover{border-color:var(--line-2);background:var(--sunken)}
+button.chip:disabled{opacity:.5;cursor:not-allowed}
+.chip b{color:var(--ink);font-weight:600}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.fchip{padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--ink-2);font-size:13px}
+.fchip:hover{border-color:var(--line-2)}
+.fchip.on{background:var(--primary-soft);border-color:var(--primary);color:var(--primary-deep);font-weight:600}
+.seg{display:inline-flex;flex-wrap:wrap;gap:2px;padding:3px;border-radius:999px;background:var(--sunken)}
+.seg button{padding:6px 12px;border:0;border-radius:999px;background:transparent;color:var(--ink-2);font-size:13px;font-weight:500;white-space:nowrap}
+.seg button.on{background:var(--seg-on);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.1)}
+.seg button b{margin-left:5px;color:var(--ink-3);font-weight:600}
+.seg.wide{display:flex}
+.seg.wide button{flex:1}
+.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.av{display:inline-grid;place-items:center;width:30px;height:30px;flex:none;border-radius:50%;background:var(--sunken);color:var(--ink-2);font-size:11.5px;font-weight:600}
+.av.xs{width:20px;height:20px;font-size:9.5px}
+.av .ic{width:12px;height:12px}
+.who{display:inline-flex;align-items:center;gap:7px;min-width:0}
+
+.card{min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow-1)}
+.card.clip{overflow:hidden}
+.card-h{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:14px 16px 10px}
+.card-h h3{margin:0;font-size:14.5px;font-weight:600}
+.card-b{padding:0 16px 16px}
+.empty{margin:0;padding:18px 16px;color:var(--ink-3);font-size:13.5px}
+.sh{margin:0 0 8px;font-size:11.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
+/* «Нет доступа к разделу» — прямой переход туда, где у человека нет права */
+.deny{display:flex;flex-direction:column;align-items:center;gap:10px;width:100%;max-width:560px;margin:24px auto 0;padding:32px 24px;text-align:center}
+.deny h2{margin:0;font:800 18px/1.25 var(--f-display);letter-spacing:-.015em}
+.deny p{margin:0;max-width:44ch;color:var(--ink-2)}
+.deny-ic{display:grid;place-items:center;width:48px;height:48px;border-radius:14px;background:var(--sunken);color:var(--ink-3)}
+.deny-ic .ic{width:22px;height:22px}
+.deny .btn{margin-top:6px}
+
+/* ——— таблицы (общие для всех разделов) ——— */
+.tbl{width:100%;border-collapse:collapse;font-size:13.5px}
+.tbl th{padding:9px 12px;border-bottom:1px solid var(--line);background:var(--surface-2);color:var(--ink-3);font-size:12px;font-weight:500;text-align:left;white-space:nowrap}
+.tbl td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+.tbl tbody tr:last-child td{border-bottom:0}
+.tbl tr.click{cursor:pointer}
+.tbl tr.click:hover td{background:var(--surface-2)}
+.tbl .num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.tbl .c{text-align:center}
+
+/* ——— уведомления ——— */
+.notes{margin:0;padding:0;list-style:none}
+.note{display:grid;grid-template-columns:32px minmax(0,1fr);gap:11px;padding:11px 16px;border-top:1px solid var(--line)}
+.notes>.note:first-child{border-top:0}
+.note.unread{background:var(--surface-2)}
+.nic{display:grid;place-items:center;width:32px;height:32px;border-radius:9px}
+.nic .ic{width:17px;height:17px}
+.nic.info{background:var(--info-soft);color:var(--info)}.nic.ok{background:var(--ok-soft);color:var(--ok)}.nic.pri{background:var(--primary-soft);color:var(--primary)}
+.nic.sun{background:var(--sun-soft);color:var(--sun-ink)}.nic.violet{background:var(--violet-soft);color:var(--violet)}.nic.bad{background:var(--bad-soft);color:var(--bad)}
+.nt p{margin:0;font-size:13.5px}
+.nt small{display:block;margin-top:3px;font-size:12px;color:var(--ink-3)}
+.new-b{color:var(--sun-ink);font-weight:600}
+.to{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+
+/* ——— карточка справа и окна ——— */
+.scrim{position:fixed;inset:0;z-index:40;background:var(--overlay);animation:fade .2s}
+.drawer{position:fixed;top:0;right:0;bottom:0;z-index:41;display:flex;flex-direction:column;width:min(580px,100%);padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);padding-right:env(safe-area-inset-right,0px);background:var(--surface);box-shadow:var(--shadow);animation:slide .22s ease}
+.still .scrim,.still .drawer{animation:none}
+.drawer-h{display:flex;align-items:flex-start;gap:12px;padding:18px 20px 14px;border-bottom:1px solid var(--line)}
+.dh-t{flex:1;min-width:0}
+.dh-t small{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+.dh-t h2{margin:4px 0 0;font:800 18px/1.25 var(--f-display);letter-spacing:-.015em;text-wrap:balance}
+.dh-t p{margin:6px 0 0;font-size:13px;color:var(--ink-3)}
+.drawer-b{flex:1;display:flex;flex-direction:column;gap:22px;overflow-y:auto;padding:18px 20px 32px}
+.kv{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:8px 18px;margin:0;font-size:13.5px}
+.kv dt{color:var(--ink-3)}
+.kv dd{margin:0}
+.stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.st{display:flex;flex-direction:column;gap:4px;padding:10px;border-radius:12px;background:var(--surface-2)}
+.st span{font-size:11.5px;line-height:1.2;color:var(--ink-3)}
+.st b{font:800 17px/1.1 var(--f-display);letter-spacing:-.01em}
+.rform{display:flex;flex-direction:column;gap:10px;padding:14px;border:1px solid var(--line);border-radius:18px;background:var(--surface-2)}
+.rform .sh{margin:0}
+.mv{display:flex;flex-direction:column;margin:0;padding:0;list-style:none}
+.mv li{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;padding:8px 0;border-top:1px solid var(--line);font-size:13px}
+.mv li:first-child{border-top:0}
+.mv small{margin-left:auto;font-size:12px;color:var(--ink-3)}
+.prose{max-width:62ch;margin:0;font-size:14px;line-height:1.55}
+.modal-wrap{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;padding-block:calc(16px + env(safe-area-inset-top,0px)) calc(16px + env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));background:var(--overlay);animation:fade .15s}
+.modal{display:flex;flex-direction:column;width:min(560px,100%);max-height:100%;overflow-y:auto;border-radius:26px;background:var(--surface);box-shadow:var(--shadow)}
+.modal-h{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px;border-bottom:1px solid var(--line)}
+.modal-h h3{margin:0;font:800 16px/1.25 var(--f-display);letter-spacing:-.01em}
+.modal-b{display:flex;flex-direction:column;gap:14px;padding:16px 18px}
+.modal-f{display:flex;justify-content:flex-end;gap:8px;padding:12px 18px 16px;border-top:1px solid var(--line)}
+.irow{display:grid;grid-template-columns:minmax(0,1fr) 100px;gap:8px}
+.toasts{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:60;display:flex;flex-direction:column;gap:8px;width:min(400px,calc(100% - 32px));pointer-events:none}
+.toast{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:14px;background:var(--ink);color:var(--bg);box-shadow:var(--shadow);font-size:13.5px;line-height:1.4;pointer-events:auto;animation:tin .22s ease;transition:opacity .3s,transform .3s}
+.toast.out{opacity:0;transform:translateY(6px)}
+.toast .ic{width:17px;height:17px;margin-top:1px;color:var(--sun)}
+@keyframes slide{from{transform:translateX(24px);opacity:.4}}
+@keyframes fade{from{opacity:0}}
+@keyframes tin{from{transform:translateY(8px);opacity:0}}
+
+@media (max-width:900px){
+  .app{grid-template-columns:minmax(0,1fr)}
+  .side{position:fixed;top:0;bottom:0;left:0;z-index:45;width:min(290px,86vw);padding-top:calc(18px + env(safe-area-inset-top,0px));padding-bottom:calc(14px + env(safe-area-inset-bottom,0px));transform:translateX(-104%);transition:transform .22s ease}
+  .app.nav-open .side{transform:none;box-shadow:var(--shadow)}
+  .app.nav-open .side-scrim{display:block}
+  .btn.burger{display:inline-flex}
+  .top,.demo,.view{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+  .ttl{flex:1 1 0;min-width:0}
+  .search{order:9;flex-basis:100%;max-width:none;margin-left:0}
+  .as select{max-width:150px}
+  .stats{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .drawer{padding-left:env(safe-area-inset-left,0px)}
+}
+
+@media (max-width:560px){
+  .grid2{grid-template-columns:minmax(0,1fr)}
+  .top{gap:10px}
+  .ttl{font-size:15px}
+  /* телефон: 1-я строка — меню, раздел, тема, уведомления; 2-я — «Кто я»; 3-я — поиск */
+  .as{order:8;flex:1 1 100%;min-width:0}
+  .as select{flex:1;min-width:0;max-width:none}
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .demo{align-items:flex-start}
+}
+
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+
+/* ——— «Сегодня» ——— */
+.hello h2{margin:0;font:800 22px/1.2 var(--f-display);letter-spacing:-.02em;text-wrap:balance}
+.hello p{margin:6px 0 0;color:var(--ink-3)}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.kpi{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:14px 16px;border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow-1);background:var(--surface);color:var(--ink);text-align:left}
+.kpi:hover{border-color:var(--line-2)}
+.k-l{font-size:12.5px;color:var(--ink-2)}
+.k-v{font:800 30px/1 var(--f-display);letter-spacing:-.02em}
+.k-s{font-size:12.5px;color:var(--ink-3)}
+.k-s.bad{color:var(--bad)}.k-s.warn{color:var(--warn)}.k-s.ok{color:var(--ok)}
+.week{display:grid;grid-template-columns:repeat(var(--n),minmax(108px,1fr));gap:8px;min-width:calc(var(--n) * 116px)}
+.wd{display:flex;flex-direction:column;gap:6px;min-height:118px;padding:9px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2)}
+.wd.today{border-color:var(--primary);background:var(--surface);box-shadow:inset 0 0 0 1px var(--primary)}
+.wd.late{border-color:var(--bad-soft);background:var(--bad-soft)}
+.wd-h{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
+.wd-h b{display:block;margin-top:2px;font:800 14px/1.2 var(--f-display);letter-spacing:-.01em;text-transform:none;color:var(--ink)}
+.wd.late .wd-h{color:var(--bad)}
+.wchip{display:flex;flex-direction:column;gap:1px;padding:6px 8px;border:0;border-radius:7px;background:var(--info-soft);color:var(--info);font-size:11.5px;line-height:1.3;text-align:left}
+.wchip.out{background:var(--ok-soft);color:var(--ok)}
+.wchip.late{background:var(--surface);color:var(--bad)}
+.wchip b{font-size:12px}
+.home-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:16px;align-items:start}
+.list{margin:0;padding:0 8px 8px;list-style:none}
+.li{display:flex;align-items:flex-start;gap:11px;width:100%;padding:9px 8px;border:0;border-radius:12px;background:transparent;text-align:left}
+.li:hover{background:var(--surface-2)}
+.li-ic{display:grid;place-items:center;width:30px;height:30px;flex:none;border-radius:8px;background:var(--sunken);color:var(--ink-2)}
+.li-ic .ic{width:16px;height:16px}
+.li.bad .li-ic{background:var(--bad-soft);color:var(--bad)}.li.warn .li-ic{background:var(--warn-soft);color:var(--warn)}.li.info .li-ic{background:var(--info-soft);color:var(--info)}
+.li-t{flex:1;min-width:0;font-size:13.5px}
+.li-t small{display:block;margin-top:2px;font-size:12px;color:var(--ink-3)}
+.due{font-size:12.5px;color:var(--ink-3);white-space:nowrap}
+.due.bad{color:var(--bad);font-weight:500}
+.tdot{width:10px;height:10px;flex:none;margin-top:5px;border:2px solid var(--ink-3);border-radius:50%}
+.tdot.work{border-color:var(--primary);background:var(--primary-soft)}
+.tdot.review{border-color:var(--sun);background:var(--sun-soft)}
+
+@media (max-width:1100px){
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .home-grid{grid-template-columns:minmax(0,1fr)}
+}
+
+@media (max-width:560px){
+  .k-v{font-size:24px}
+}
+
+/* ——— задачи ——— */
+.kanban{display:grid;grid-template-columns:repeat(4,minmax(250px,1fr));gap:12px;min-width:1036px}
+.col{display:flex;flex-direction:column;gap:8px;min-height:260px;padding:10px;border-radius:18px;background:var(--sunken)}
+.col.drop{outline:2px dashed var(--primary);outline-offset:-2px}
+.col-h{display:flex;align-items:center;justify-content:space-between;padding:2px 4px 4px;font-size:13px;font-weight:600}
+.cnt-s{font-size:12px;font-weight:500;color:var(--ink-3)}
+.col-empty{margin:0;padding:14px 6px;text-align:center;font-size:12.5px;color:var(--ink-3)}
+.tcard{display:flex;flex-direction:column;gap:8px;padding:11px 12px;border:1px solid var(--line);border-radius:14px;background:var(--surface);cursor:grab}
+.tcard:hover{border-color:var(--line-2)}
+.tcard.dragging{opacity:.5}
+.tcard.done .tc-t{color:var(--ink-3);text-decoration:line-through}
+.tc-top{display:flex;flex-wrap:wrap;gap:6px}
+.tc-top:empty{display:none}
+.tc-t{margin:0;font-size:13.5px;font-weight:500;line-height:1.35}
+.tc-m{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:var(--ink-2)}
+
+/* ——— товары и остатки ——— */
+.pname{display:flex;flex-direction:column;gap:2px;min-width:200px}
+.pname small{font-size:11.5px;color:var(--ink-3)}
+.u{font-size:12px;color:var(--ink-3)}
+.in-t{display:block;color:var(--info);font-weight:500;white-space:nowrap}
+td small.muted{display:block;font-size:11.5px;white-space:nowrap}
+.legend{display:flex;flex-wrap:wrap;gap:16px;padding:12px 16px;border-bottom:1px solid var(--line);font-size:12px;color:var(--ink-3)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.lg{display:inline-block;width:12px;height:8px;border-radius:2px}
+.lg.f,.sbar .f{background:var(--ok)}
+.lg.r,.sbar .r{background:var(--sun)}
+.lg.w,.sbar .w{background:repeating-linear-gradient(135deg,var(--info) 0 2px,var(--info-soft) 2px 4px)}
+.sbar{display:flex;width:128px;height:8px;overflow:hidden;border-radius:4px;background:var(--sunken)}
+.sbar i{display:block;height:100%}
+.sbar.big{width:100%;height:12px;border-radius:6px}
+.search-in{position:relative;flex:1;min-width:220px;max-width:380px}
+.search-in .ic{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--ink-3)}
+.search-in .inp{padding-left:36px}
+
+/* ——— перевозки ——— */
+.ships{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,520px),1fr));gap:14px}
+.ship{display:flex;flex-direction:column;gap:12px;padding:16px}
+.ship.is-late{border-color:var(--bad)}
+.ship-h{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.ship-id{display:flex;align-items:center;flex-wrap:wrap;gap:10px}
+.ship-id>b{font-size:16px}
+.eta{display:flex;flex-direction:column;gap:1px;text-align:right}
+.eta small{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
+.eta b{font:800 17px/1.15 var(--f-display);letter-spacing:-.01em}
+.eta span{font-size:12px;color:var(--ink-3)}
+.eta.bad-t b,.eta.bad-t span{color:var(--bad)}
+.route{display:flex;align-items:center;flex-wrap:wrap;gap:8px;font-weight:500}
+.route .ic{width:16px;height:16px;color:var(--ink-3)}
+.steps{display:grid;grid-template-columns:repeat(var(--n),minmax(0,1fr));gap:4px;margin:0;padding:0;list-style:none}
+.steps li{display:flex;flex-direction:column;gap:6px;min-width:0;font-size:11px;line-height:1.25;color:var(--ink-3);overflow-wrap:anywhere}
+.steps li::before{content:"";height:5px;border-radius:3px;background:var(--sunken)}
+.steps li.done::before{background:var(--primary-line)}
+.steps li.cur::before{background:var(--primary)}
+.steps li.cur{color:var(--ink);font-weight:600}
+.lastm{display:flex;align-items:flex-start;gap:8px;padding:9px 11px;border-radius:12px;background:var(--surface-2);font-size:13px}
+.lastm .ic{margin-top:1px;color:var(--primary)}
+.lastm small{display:block;font-size:12px;color:var(--ink-3)}
+.items{display:flex;flex-wrap:wrap;gap:6px}
+.waits{display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--ink-2)}
+.waits .ic{width:16px;height:16px;margin-top:1px;color:var(--ink-3)}
+.ship-f{display:flex;flex-wrap:wrap;gap:8px;padding-top:12px;border-top:1px solid var(--line)}
+.photos-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.photos-row img,.ph-ph{width:54px;height:54px;border-radius:8px;object-fit:cover}
+.ph-ph{display:grid;place-items:center;background:var(--sunken);color:var(--ink-3)}
+.photos-row small{margin-left:4px;font-size:12px;color:var(--ink-3)}
+
+@media (max-width:560px){
+  .ship-h{flex-direction:column}
+  .eta{text-align:left}
+}
+
+/* ——— приёмка ——— */
+.rcv{display:grid;grid-template-columns:minmax(0,410px) minmax(0,1fr);gap:24px;align-items:start}
+.phone{padding:10px;border-radius:34px;background:var(--bezel);box-shadow:var(--shadow)}
+.phone-in{display:flex;flex-direction:column;overflow:hidden;border-radius:26px;background:var(--bg)}
+.ph-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 18px 10px;background:linear-gradient(135deg,var(--primary),var(--primary-2));color:var(--primary-ink);font-size:12.5px}
+.ph-bar b{font:800 13px var(--f-display)}
+.ph-sec{display:flex;flex-direction:column;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.ph-sec h3{margin:0;font-size:15px;font-weight:600}
+.ph-step{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--primary-deep)}
+.opt{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:14px;background:var(--surface);cursor:pointer;font-size:13.5px}
+.opt.on{border-color:var(--primary);box-shadow:inset 0 0 0 1px var(--primary)}
+.opt input{margin-top:3px;accent-color:var(--primary)}
+.opt small{display:block;margin-top:2px;font-size:12px;color:var(--ink-3)}
+.cnt-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px 10px;padding:10px 12px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+.cnt-name{font-size:13.5px;font-weight:500}
+.cnt-name small{display:block;font-size:12px;font-weight:400;color:var(--ink-3)}
+.qty{display:flex;align-items:center;overflow:hidden;border:1px solid var(--line-2);border-radius:12px;background:var(--surface)}
+.qty button{width:36px;height:38px;border:0;background:var(--surface-2);color:var(--ink-2);font-size:18px}
+.qty input{width:64px;height:38px;border:0;background:transparent;text-align:center;font-weight:600;font-variant-numeric:tabular-nums;-moz-appearance:textfield;appearance:textfield}
+.qty input:focus{outline:2px solid var(--primary);outline-offset:-2px}
+.qty input::-webkit-outer-spin-button,.qty input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.cnt-x{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px}
+.photos{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.ph{position:relative;max-width:100%;aspect-ratio:1;margin:0;overflow:hidden;border-radius:12px;background:var(--sunken)}
+.ph img{display:block;width:100%;height:100%;object-fit:cover}
+.ph-x{position:absolute;top:4px;right:4px;display:grid;place-items:center;width:24px;height:24px;border:0;border-radius:50%;background:var(--overlay);color:var(--on-overlay)}
+.ph-x .ic{width:14px;height:14px}
+.ph.add{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:6px;border:1.5px dashed var(--line-2);background:var(--surface);color:var(--primary);font-size:11.5px;font-weight:500;text-align:center;cursor:pointer}
+.ph-foot{padding:14px 16px 18px;background:var(--surface)}
+.done-box{display:flex;flex-direction:column;align-items:flex-start;gap:12px;padding:28px 18px}
+.done-ic{display:grid;place-items:center;width:48px;height:48px;border-radius:50%;background:var(--ok-soft);color:var(--ok)}
+.done-ic .ic{width:24px;height:24px}
+.wait{display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid var(--line);border-radius:14px}
+.wait-h{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;font-size:13px}
+.who-list{display:flex;flex-wrap:wrap;gap:6px}
+.plain{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
+.plain li{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:13.5px}
+.plain li span:first-child{flex:1;min-width:0}
+
+@media (max-width:1100px){
+  .rcv{grid-template-columns:minmax(0,1fr)}
+  .rcv .phone{width:100%;max-width:440px}
+}
+
+@media (max-width:560px){
+  .phone{padding:0;border-radius:16px;background:transparent;box-shadow:none}
+  .phone-in{border:1px solid var(--line);border-radius:14px}
+}
+
+/* ——— клиенты ——— */
+.funnel{display:grid;grid-template-columns:repeat(8,minmax(92px,1fr));gap:6px;min-width:780px}
+.fn{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+.fn b{font:800 20px/1 var(--f-display)}
+.fn span{font-size:12px;color:var(--ink-3)}
+.fn.zero b{color:var(--ink-3)}
+
+/* ——— переписка ——— */
+.chat{display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:18px;background:var(--sunken)}
+.bub{max-width:88%;padding:9px 12px;border-radius:14px 14px 14px 4px;background:var(--surface);font-size:13.5px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
+.bub.out{align-self:flex-end;border-radius:14px 14px 4px 14px;background:var(--primary-soft)}
+.bub small{display:block;margin-top:4px;font-size:11px;color:var(--ink-3)}
+.bub mark{padding:0 3px;border-radius:4px;background:var(--bad-soft);color:var(--bad)}
+.prev-h{margin:0 0 8px;font-size:12.5px;color:var(--ink-3)}
+.tpl-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px}
+.vars{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-3)}
+.compose{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.rules{margin:0;padding:0 16px 8px;list-style:none}
+.rule{display:flex;align-items:flex-start;gap:14px;padding:12px 0;border-top:1px solid var(--line)}
+.rule:first-child{border-top:0}
+.rule p{margin:0;font-size:13.5px;color:var(--ink-2)}
+.rule p+p{margin-top:2px}
+.rule b{color:var(--ink);font-weight:600}
+.sw{position:relative;flex:none;margin-top:1px}
+.sw input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
+.sw-t{position:relative;display:block;width:38px;height:22px;border-radius:11px;background:var(--line-2);transition:background .15s}
+.sw-t::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s}
+.sw input:checked+.sw-t{background:var(--ok)}
+.sw input:checked+.sw-t::after{transform:translateX(16px)}
+.sw input:focus-visible+.sw-t{outline:2px solid var(--primary);outline-offset:2px}
+.sw input:disabled+.sw-t{opacity:.5}
+
+/* таблица журнала сообщений */
+.msg-cell{min-width:280px;max-width:520px}
+
+@media (max-width:1100px){
+  .tpl-grid{grid-template-columns:minmax(0,1fr)}
+}
+
+/* ——— права ——— */
+.matrix th:first-child,.matrix td:first-child{position:sticky;left:0;z-index:1;min-width:240px;background:var(--surface)}
+.matrix th:first-child{background:var(--surface-2)}
+.matrix input{width:18px;height:18px;accent-color:var(--primary)}
+</style>
+
+<div class="app" id="app">
+  <aside class="side" aria-label="Разделы">
+    <div class="brand"><span class="logo"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABXEAAAGACAYAAADrkCGaAAABN2lDQ1BBZG9iZSBSR0IgKDE5OTgpAAAokZWPv0rDUBSHvxtFxaFWCOLgcCdRUGzVwYxJW4ogWKtDkq1JQ5ViEm6uf/oQjm4dXNx9AidHwUHxCXwDxamDQ4QMBYvf9J3fORzOAaNi152GUYbzWKt205Gu58vZF2aYAoBOmKV2q3UAECdxxBjf7wiA10277jTG+38yH6ZKAyNguxtlIYgK0L/SqQYxBMygn2oQD4CpTto1EE9AqZf7G1AKcv8ASsr1fBBfgNlzPR+MOcAMcl8BTB1da4Bakg7UWe9Uy6plWdLuJkEkjweZjs4zuR+HiUoT1dFRF8jvA2AxH2w3HblWtay99X/+PRHX82Vun0cIQCw9F1lBeKEuf1UYO5PrYsdwGQ7vYXpUZLs3cLcBC7dFtlqF8hY8Dn8AwMZP/fNTP8gAAAAJcEhZcwAAFiUAABYlAUlSJPAAAAsVaVRYdFhNTDpjb20uYWRvYmUueG1wAAAAAAA8P3hwYWNrZXQgYmVnaW49Iu+7vyIgaWQ9Ilc1TTBNcENlaGlIenJlU3pOVGN6a2M5ZCI/PiA8eDp4bXBtZXRhIHhtbG5zOng9ImFkb2JlOm5zOm1ldGEvIiB4OnhtcHRrPSJBZG9iZSBYTVAgQ29yZSA1LjYtYzE0MiA3OS4xNjA5MjQsIDIwMTcvMDcvMTMtMDE6MDY6MzkgICAgICAgICI+IDxyZGY6UkRGIHhtbG5zOnJkZj0iaHR0cDovL3d3dy53My5vcmcvMTk5OS8wMi8yMi1yZGYtc3ludGF4LW5zIyI+IDxyZGY6RGVzY3JpcHRpb24gcmRmOmFib3V0PSIiIHhtbG5zOnhtcD0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wLyIgeG1sbnM6ZGM9Imh0dHA6Ly9wdXJsLm9yZy9kYy9lbGVtZW50cy8xLjEvIiB4bWxuczpwaG90b3Nob3A9Imh0dHA6Ly9ucy5hZG9iZS5jb20vcGhvdG9zaG9wLzEuMC8iIHhtbG5zOnhtcE1NPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvbW0vIiB4bWxuczpzdEV2dD0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL3NUeXBlL1Jlc291cmNlRXZlbnQjIiB4bWxuczpzdFJlZj0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL3NUeXBlL1Jlc291cmNlUmVmIyIgeG1sbnM6dGlmZj0iaHR0cDovL25zLmFkb2JlLmNvbS90aWZmLzEuMC8iIHhtbG5zOmV4aWY9Imh0dHA6Ly9ucy5hZG9iZS5jb20vZXhpZi8xLjAvIiB4bXA6Q3JlYXRvclRvb2w9IkFkb2JlIFBob3Rvc2hvcCBDQyAyMDE4IChXaW5kb3dzKSIgeG1wOkNyZWF0ZURhdGU9IjIwMjItMTItMDdUMTE6MDI6NTgrMDg6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDIyLTEyLTA3VDExOjE4OjM5KzA4OjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDIyLTEyLTA3VDExOjE4OjM5KzA4OjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9IkFkb2JlIFJHQiAoMTk5OCkiIHhtcE1NOkluc3RhbmNlSUQ9InhtcC5paWQ6NjlkMzU2MWQtZTQ2MS0xMjQ2LWI0NDctNzg5OWY2MzkyNWZhIiB4bXBNTTpEb2N1bWVudElEPSJhZG9iZTpkb2NpZDpwaG90b3Nob3A6M2FlMzNhM2QtZmEwOC05MDQ3LTg2YjctMzc2MTRmNTBmYTQ1IiB4bXBNTTpPcmlnaW5hbERvY3VtZW50SUQ9InhtcC5kaWQ6NGJmY2QzNTktMTJmNC03MzQ5LThiNjUtMjg5MTUxYTA1NjRhIiB0aWZmOk9yaWVudGF0aW9uPSIxIiB0aWZmOlhSZXNvbHV0aW9uPSIxNDQwMDAwLzEwMDAwIiB0aWZmOllSZXNvbHV0aW9uPSIxNDQwMDAwLzEwMDAwIiB0aWZmOlJlc29sdXRpb25Vbml0PSIyIiBleGlmOkNvbG9yU3BhY2U9IjY1NTM1IiBleGlmOlBpeGVsWERpbWVuc2lvbj0iMTM5MyIgZXhpZjpQaXhlbFlEaW1lbnNpb249IjM4NCI+IDx4bXBNTTpIaXN0b3J5PiA8cmRmOlNlcT4gPHJkZjpsaSBzdEV2dDphY3Rpb249ImNyZWF0ZWQiIHN0RXZ0Omluc3RhbmNlSUQ9InhtcC5paWQ6NGJmY2QzNTktMTJmNC03MzQ5LThiNjUtMjg5MTUxYTA1NjRhIiBzdEV2dDp3aGVuPSIyMDIyLTEyLTA3VDExOjAyOjU4KzA4OjAwIiBzdEV2dDpzb2Z0d2FyZUFnZW50PSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOCAoV2luZG93cykiLz4gPHJkZjpsaSBzdEV2dDphY3Rpb249ImNvbnZlcnRlZCIgc3RFdnQ6cGFyYW1ldGVycz0iZnJvbSBpbWFnZS9wbmcgdG8gYXBwbGljYXRpb24vdm5kLmFkb2JlLnBob3Rvc2hvcCIvPiA8cmRmOmxpIHN0RXZ0OmFjdGlvbj0ic2F2ZWQiIHN0RXZ0Omluc3RhbmNlSUQ9InhtcC5paWQ6MmY1NmZhYjMtNzRjYy04NzRlLTg5NGUtZjk4MGNlNDdjZTk4IiBzdEV2dDp3aGVuPSIyMDIyLTEyLTA3VDExOjEzOjQ3KzA4OjAwIiBzdEV2dDpzb2Z0d2FyZUFnZW50PSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOCAoV2luZG93cykiIHN0RXZ0OmNoYW5nZWQ9Ii8iLz4gPHJkZjpsaSBzdEV2dDphY3Rpb249InNhdmVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOjM2ZTI3YzU4LTE0ODEtZmQ0Zi05YWJjLWUxZTE0NmM3ODgyZCIgc3RFdnQ6d2hlbj0iMjAyMi0xMi0wN1QxMToxODozOSswODowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTggKFdpbmRvd3MpIiBzdEV2dDpjaGFuZ2VkPSIvIi8+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjb252ZXJ0ZWQiIHN0RXZ0OnBhcmFtZXRlcnM9ImZyb20gYXBwbGljYXRpb24vdm5kLmFkb2JlLnBob3Rvc2hvcCB0byBpbWFnZS9wbmciLz4gPHJkZjpsaSBzdEV2dDphY3Rpb249ImRlcml2ZWQiIHN0RXZ0OnBhcmFtZXRlcnM9ImNvbnZlcnRlZCBmcm9tIGFwcGxpY2F0aW9uL3ZuZC5hZG9iZS5waG90b3Nob3AgdG8gaW1hZ2UvcG5nIi8+IDxyZGY6bGkgc3RF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" alt="wind-solar" width="1393" height="384"></span><small>CRM · прототип</small></div>
+    <div class="side-b" id="side"></div>
+  </aside>
+  <div class="side-scrim" data-act="nav-toggle"></div>
+  <div class="main">
+    <header class="top">
+      <button class="btn ghost icon burger" data-act="nav-toggle" aria-label="Меню"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      <h1 class="ttl" id="ttl">Сегодня</h1>
+      <div class="search">
+        <span class="s-ic"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg></span>
+        <input id="q" class="inp" type="search" placeholder="Товар, клиент, поставка, задача…" autocomplete="off" aria-label="Поиск">
+        <div id="q-res" class="pop q-res" hidden></div>
+      </div>
+      <label class="as" for="role"><span>Кто я</span><select id="role" class="inp sm"></select></label>
+      <div class="theme-sw" id="theme-sw"></div>
+      <div class="bell-w">
+        <button class="btn ghost icon" id="bell" data-act="bell" aria-label="Уведомления"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg><span id="bell-n" class="bn" hidden></span></button>
+        <div id="pop" class="pop" hidden></div>
+      </div>
+    </header>
+    <div class="demo">
+      <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/></svg>
+      <span><b>Прототип.</b> Товары, цены, клиенты и сотрудники — примеры для показа, не ваши данные. Сообщения клиентам не отправляются. Переключайте «Кто я» вверху — так видно, что доступно каждой роли.</span>
+      <button class="btn sm ghost" data-act="reset">Сбросить</button>
+    </div>
+    <div class="scroll" id="scroll"><main class="view" id="view"></main></div>
+  </div>
+</div>
+<div id="drawer-root"></div>
+<div id="modal-root"></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script>
+(()=>{
+'use strict';
+
+// Общие помощники: даты, числа, экранирование, иконки
+// Перенесено из прототипа v2 без изменений логики.
+
+// ——— даты и форматы ———
+const DAY=864e5;
+const T0=(()=>{const d=new Date();d.setHours(0,0,0,0);return d})();
+const day=(n,h=10,m=0)=>{const d=new Date(T0);d.setDate(d.getDate()+n);d.setHours(h,m,0,0);return d};
+const MON=['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'];
+const MONF=['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+const WD=['вс','пн','вт','ср','чт','пт','сб'];
+const WDF=['воскресенье','понедельник','вторник','среда','четверг','пятница','суббота'];
+const sod=d=>{const x=new Date(d);x.setHours(0,0,0,0);return x};
+const dd=d=>Math.round((sod(d)-T0)/DAY);
+const fD=d=>{d=new Date(d);return d.getDate()+' '+MON[d.getMonth()]};
+const fRel=d=>{const n=dd(d);return n===0?'сегодня':n===1?'завтра':n===-1?'вчера':fD(d)};
+const fT=d=>{d=new Date(d);return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')};
+const fWhen=d=>fRel(d)+', '+fT(d);
+const iso=d=>{d=new Date(d);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+const fromIso=(s,h=12)=>{const [y,m,x]=s.split('-').map(Number);return new Date(y,m-1,x,h)};
+const num=n=>Number(n).toLocaleString('ru-RU');
+const rub=n=>num(Math.round(n))+' ₽';
+const mln=n=>n>=1e6?(n/1e6).toLocaleString('ru-RU',{maximumFractionDigits:2})+' млн ₽':rub(n);
+const pl=(n,a,b,c)=>{const x=Math.abs(n)%100,y=x%10;return x>10&&x<20?c:y>1&&y<5?b:y===1?a:c};
+const days=n=>n+' '+pl(n,'день','дня','дней');
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const cap=s=>s.charAt(0).toUpperCase()+s.slice(1);
+const low=s=>/^[А-ЯЁA-Z][а-яёa-z]/.test(s)?s.charAt(0).toLowerCase()+s.slice(1):s;
+let _n=100;const uid=p=>p+(++_n);
+const $=s=>document.querySelector(s);
+const byId=id=>document.getElementById(id);
+
+// ——— иконки ———
+const IC={
+  home:'<path d="M3.5 10.5 12 4l8.5 6.5"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5h4v5"/>',
+  tasks:'<rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8.5 12 2.5 2.5 4.5-5"/>',
+  box:'<path d="M3.5 7.5 12 3.5l8.5 4-8.5 4z"/><path d="M3.5 7.5v9l8.5 4 8.5-4v-9"/><path d="M12 11.5v9"/>',
+  truck:'<path d="M2.5 6.5h11v9.5h-11z"/><path d="M13.5 9.5h4l3.5 3.5v3h-7.5"/><circle cx="6.5" cy="17.5" r="2"/><circle cx="17" cy="17.5" r="2"/>',
+  camera:'<path d="M4 8h3l1.8-2.5h6.4L17 8h3v11H4z"/><circle cx="12" cy="13.2" r="3.4"/>',
+  users:'<circle cx="9" cy="8" r="3.3"/><path d="M2.8 19.5c.8-3.4 3.2-5.2 6.2-5.2s5.4 1.8 6.2 5.2"/><path d="M15.5 4.8a3.3 3.3 0 0 1 0 6.4"/><path d="M17.8 14.6c1.8.6 3 2.3 3.4 4.9"/>',
+  chat:'<path d="M4 5h16v11H9.5L5 19.5V16H4z"/><path d="M8 9.5h8M8 12.5h5"/>',
+  bell:'<path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
+  shield:'<path d="M12 3.5 19.5 6v5.5c0 4.3-3.1 7.8-7.5 9-4.4-1.2-7.5-4.7-7.5-9V6z"/><path d="m9 12 2 2 4-4"/>',
+  search:'<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>',
+  x:'<path d="M6 6l12 12M18 6 6 18"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  photo:'<rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="m20.5 16-5-5-9 8"/>',
+  check:'<path d="m5 12.5 4.5 4.5L19 7.5"/>',
+  alert:'<path d="M12 4 21 19.5H3z"/><path d="M12 10v4.5M12 17v.4"/>',
+  arrow:'<path d="M5 12h14M13 6l6 6-6 6"/>',
+  pin:'<path d="M12 21s6.5-5.8 6.5-11.2a6.5 6.5 0 0 0-13 0C5.5 15.2 12 21 12 21z"/><circle cx="12" cy="9.8" r="2.3"/>',
+  lock:'<rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/>',
+  send:'<path d="M4 11.5 20 4l-5.5 16-3-6.5z"/><path d="m11.5 13.5 8.5-9.5"/>',
+  eye:'<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/>',
+  clock:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'
+};
+const ic=(n,c='')=>`<svg class="ic ${c}" viewBox="0 0 24 24" aria-hidden="true">${IC[n]}</svg>`;
+
+// Справочники, демо-данные seed() по схеме v3, реестр SEEDS и расчёты над состоянием S.
+// Права — Perms (31), воронки и этапы — Pipes (32), уведомления — Notify (37): здесь их только вызывают.
+// Состояние S объявлено в оболочке (50), поднимает его запуск (90): из браузера или seed().
+
+// ——— справочники ———
+const CH={telegram:'Telegram',max:'MAX',phone:'Телефон'};
+const CATS=['Панели','Инверторы','Аккумуляторы','Контроллеры','Кабель и разъёмы','Крепёж','Защита и учёт','Ветрогенераторы'];
+const CARRIERS=['Сборный груз, транспортная компания','Отдельная машина','Своя машина','Контейнер: море + железная дорога'];
+const VARS=['{имя}','{товар}','{сделка}','{менеджер}','{адрес_склада}'];
+const KIND={ship:{l:'Перевозки',ic:'truck',c:'info'},arrive:{l:'Склад',ic:'box',c:'ok'},task:{l:'Задачи',ic:'tasks',c:'pri'},reserve:{l:'Резервы',ic:'lock',c:'sun'},msg:{l:'Клиентам',ic:'chat',c:'violet'},warn:{l:'Предупреждения',ic:'alert',c:'bad'},lead:{l:'Лиды',ic:'users',c:'pri'}};
+// Специализация инженера — главного инженера и инженера (R30)
+const SPECIALTY={designer:'проектировщик',installer:'монтажник'};
+
+// ——— демо-данные (примеры, не данные фирмы) ———
+// seed() = базовое состояние + шаги SEEDS по порядку. Шаг — функция st => {…}, дописывает в st свой раздел.
+// Следующие таски кладут свой шаг в своём файле: SEEDS.push(st => { … }).
+const SEEDS=[];
+function seed(){
+  const st={
+    v:3,me:'p1',view:'home',
+    prefs:{theme:'auto',sound:{on:false,kind:'bell'},notify:{},ship:{}},
+    roles:Perms.defaultRoles(),
+    depts:[{id:'mgmt',name:'Руководство'},{id:'sales',name:'Продажи'},{id:'eng',name:'Инженерный'},{id:'stock',name:'Склад'},{id:'logistics',name:'Логистика'}],
+    // демо-команда: все семь ролей, по два менеджера B2B и B2C; имена — примеры
+    people:[
+      {id:'p1',name:'Павел М.',role:'director',dept:'mgmt',demo:true},
+      {id:'p2',name:'Анна С.',role:'managerB2c',dept:'sales',demo:true},
+      {id:'p3',name:'Максим Л.',role:'managerB2b',dept:'sales',demo:true},
+      {id:'p4',name:'Дмитрий В.',role:'chiefEngineer',dept:'eng',specialty:'designer',demo:true},
+      {id:'p5',name:'Игорь К.',role:'warehouse',dept:'stock',demo:true},
+      {id:'p6',name:'Ольга Д.',role:'logist',dept:'logistics',demo:true},
+      {id:'p7',name:'Сергей Т.',role:'engineer',dept:'eng',specialty:'installer',demo:true},
+      {id:'p8',name:'Артём Б.',role:'engineer',dept:'eng',specialty:'installer',demo:true},
+      {id:'p9',name:'Ирина П.',role:'managerB2b',dept:'sales',demo:true},
+      {id:'p10',name:'Олег Н.',role:'managerB2c',dept:'sales',demo:true},
+      {id:'p11',name:'Наталья Р.',role:'engineer',dept:'eng',specialty:'designer',demo:true}
+    ],
+    pipelines:Pipes.defaults()
+  };
+  for(const step of SEEDS) step(st);
+  return st;
+}
+
+// Шаг 1: демо-записи v2 — товары, поставки, резервы, сделки, задачи, переписка, движения, правила.
+// Этап записи — id этапа её воронки (pipeId/boardId + stageId), не номер.
+SEEDS.push(st=>{
+  // отгрузки клиентам (исходящие) — своя воронка, как ST_OUT в v2
+  st.pipelines.push({id:'shipsOut',kind:'ships',dir:'out',name:'Отгрузки клиентам',stages:[{id:'packed',name:'Собрано'},{id:'sent',name:'Отгружено'},{id:'onWay',name:'В пути'},{id:'delivered',name:'Доставлено',flag:'final'}]});
+  const T=(id,title,deal,to,from,due,stageId,prio,desc,at)=>({id,title,deal,to,from,due,boardId:'tasksCommon',stageId,prio,desc,at});
+  const D=(id,client,contact,kind,object,type,stageId,managerId,channel,amount)=>({id,client,contact,kind,object,type,pipeId:type==='b2b'?'dealsB2b':'dealsB2c',stageId,managerId,channel,amount,demo:true});
+  Object.assign(st,{
+    products:[
+      {sku:'PV-550M',name:'Солнечная панель 550 Вт, моно',cat:'Панели',unit:'шт',price:14900,stock:86},
+      {sku:'INV-H6',name:'Гибридный инвертор 6 кВт',cat:'Инверторы',unit:'шт',price:96000,stock:4},
+      {sku:'INV-G10',name:'Сетевой инвертор 10 кВт, 3 фазы',cat:'Инверторы',unit:'шт',price:128000,stock:2},
+      {sku:'BAT-LFP-100',name:'АКБ LiFePO4 51,2 В 100 А·ч',cat:'Аккумуляторы',unit:'шт',price:62000,stock:0},
+      {sku:'CTRL-60',name:'Контроллер заряда MPPT 60 А',cat:'Контроллеры',unit:'шт',price:21500,stock:1},
+      {sku:'CAB-6R',name:'Кабель солнечный 6 мм², красный',cat:'Кабель и разъёмы',unit:'м',price:95,stock:1140},
+      {sku:'CAB-6B',name:'Кабель солнечный 6 мм², чёрный',cat:'Кабель и разъёмы',unit:'м',price:95,stock:1150},
+      {sku:'MC4',name:'Разъём MC4, пара',cat:'Кабель и разъёмы',unit:'пар',price:180,stock:340},
+      {sku:'MNT-R4',name:'Крепёж на скатную кровлю, на 4 панели',cat:'Крепёж',unit:'компл.',price:7800,stock:21},
+      {sku:'BOX-DC',name:'Щит защиты DC, 2 строки',cat:'Защита и учёт',unit:'шт',price:9400,stock:3},
+      {sku:'MTR-3F',name:'Счётчик двунаправленный, 3 фазы',cat:'Защита и учёт',unit:'шт',price:18700,stock:1},
+      {sku:'WND-3K',name:'Ветрогенератор 3 кВт',cat:'Ветрогенераторы',unit:'шт',price:245000,stock:0}
+    ],
+    shipments:[
+      {id:'П-1044',dir:'in',from:'Склад дистрибьютора, Москва',to:'Наш склад',carrier:'Сборный груз, транспортная компания',doc:'ТТН 44-552018',pipeId:'ships',stageId:'arrived',eta:day(0,14),last:{place:'Терминал транспортной компании в городе',at:day(0,8,15),by:'p6'},items:[{sku:'CAB-6R',qty:500},{sku:'CAB-6B',qty:500},{sku:'MC4',qty:200},{sku:'CTRL-60',qty:6},{sku:'BOX-DC',qty:10}],demo:true},
+      {id:'П-1041',dir:'in',from:'Поставщик инверторов, Москва',to:'Наш склад',carrier:'Сборный груз, транспортная компания',doc:'ТТН 41-008352',pipeId:'ships',stageId:'toStock',eta:day(3,12),last:{place:'Трасса М-7, Владимир',at:day(0,9,40),by:'p6'},items:[{sku:'INV-H6',qty:10},{sku:'BAT-LFP-100',qty:16}],demo:true},
+      {id:'П-1042',dir:'in',from:'Поставщик ветрогенераторов, Екатеринбург',to:'Наш склад',carrier:'Отдельная машина',doc:'ТТН 42-110907',pipeId:'ships',stageId:'toStock',eta:day(-1,12),last:{place:'Казань, стоянка',at:day(-1,18,5),by:'p6'},items:[{sku:'WND-3K',qty:2},{sku:'MTR-3F',qty:5}],demo:true},
+      {id:'П-1043',dir:'in',from:'Завод панелей, Китай',to:'Наш склад',carrier:'Контейнер: море + железная дорога',doc:'Контейнер TGHU 482117 3',pipeId:'ships',stageId:'toStock',eta:day(6,12),last:{place:'Ж/д станция, Новосибирск',at:day(-1,7,20),by:'p6'},items:[{sku:'PV-550M',qty:120},{sku:'MNT-R4',qty:30}],demo:true},
+      {id:'О-207',dir:'out',deal:'Д-305',from:'Наш склад',to:'Объект Д-305 · Волкова Мария',carrier:'Своя машина',doc:'Отгрузка О-207',pipeId:'shipsOut',stageId:'onWay',eta:day(0,16),last:{place:'Выехали со склада',at:day(0,11,0),by:'p6'},items:[{sku:'PV-550M',qty:12},{sku:'MNT-R4',qty:3},{sku:'CAB-6R',qty:60}],demo:true},
+      {id:'П-1038',dir:'in',from:'Производитель крепежа',to:'Наш склад',carrier:'Своя машина',doc:'УПД 1038',pipeId:'ships',stageId:'inStock',eta:day(-2,15),last:{place:'Наш склад',at:day(-2,15,30),by:'p5'},items:[{sku:'MNT-R4',qty:24,got:24}],received:{at:day(-2,15,30),by:'p5',photos:3,urls:[],note:''},demo:true}
+    ],
+    reserves:[
+      {id:'r1',sku:'PV-550M',deal:'Д-311',qty:22,src:'stock',until:day(9)},
+      {id:'r2',sku:'PV-550M',deal:'Д-314',qty:36,src:'stock',until:day(5)},
+      {id:'r3',sku:'PV-550M',deal:'Д-320',qty:54,src:'П-1043',until:day(20)},
+      {id:'r4',sku:'INV-H6',deal:'Д-311',qty:2,src:'stock',until:day(9)},
+      {id:'r5',sku:'INV-H6',deal:'Д-318',qty:1,src:'stock',until:day(1)},
+      {id:'r6',sku:'INV-H6',deal:'Д-305',qty:1,src:'stock',until:day(4)},
+      {id:'r7',sku:'BAT-LFP-100',deal:'Д-311',qty:3,src:'П-1041',until:day(14)},
+      {id:'r8',sku:'BAT-LFP-100',deal:'Д-318',qty:2,src:'П-1041',until:day(14)},
+      {id:'r9',sku:'INV-G10',deal:'Д-314',qty:2,src:'stock',until:day(7)},
+      {id:'r10',sku:'CTRL-60',deal:'Д-318',qty:1,src:'П-1044',until:day(10)},
+      {id:'r11',sku:'CAB-6R',deal:'Д-311',qty:80,src:'stock',until:day(9)},
+      {id:'r12',sku:'MC4',deal:'Д-311',qty:20,src:'stock',until:day(9)},
+      {id:'r13',sku:'WND-3K',deal:'Д-305',qty:1,src:'П-1042',until:day(10)},
+      {id:'r14',sku:'WND-3K',deal:'Д-314',qty:2,src:'П-1042',until:day(12)},
+      {id:'r15',sku:'BOX-DC',deal:'Д-311',qty:1,src:'П-1044',until:day(10)}
+    ],
+    deals:[
+      D('Д-311','Иванов Сергей','Сергей','Частный дом','Гибридная СЭС 12 кВт, АКБ 15 кВт·ч','b2c','delivery','p2','telegram',1180000),
+      D('Д-314','КФХ Петровых','Николай','Фермерское хозяйство','Сетевая СЭС 20 кВт и два ветрогенератора по 3 кВт','b2b','payment','p3','max',2350000),
+      D('Д-318','Смирнова Елена','Елена','Дача','Автономная СЭС 5 кВт','b2c','delivery','p2','max',640000),
+      D('Д-320','ИП Кузнецов, автосервис','Андрей','Бизнес','Сетевая СЭС 30 кВт на кровле','b2b','offer','p3','telegram',2900000),
+      D('Д-305','Волкова Мария','Мария','Частный дом','Ветро-солнечная станция 6 кВт','b2c','install','p2','max',910000),
+      D('Д-322','Орлов Пётр','Пётр','Частный дом','СЭС около 15 кВт, нужен замер','b2c','calc','p10','phone',0)
+    ],
+    tasks:[
+      T('t1','Подготовить КП на СЭС 30 кВт','Д-320',{t:'p',id:'p4'},'p3',day(2,18),'work','high','Кровля около 420 м², счётчик трёхфазный. Нужны два варианта по панелям.',day(-1,11,20)),
+      T('t2','Однолинейная схема для автономной СЭС','Д-318',{t:'p',id:'p4'},'p2',day(4,18),'new','normal','',day(-1,9,0)),
+      T('t3','Обзвонить клиентов с резервом под контейнер П-1043','',{t:'p',id:'p3'},'p1',day(-1,18),'work','high','Предупредить о сроках прихода панелей.',day(-3,10,0)),
+      T('t4','Заказать доставку АКБ на объект после прихода П-1041','Д-311',{t:'d',id:'logistics'},'p2',day(4,18),'new','normal','',day(-1,15,0)),
+      T('t5','Проверить комплектность крепежа из П-1038','',{t:'d',id:'stock'},'p6',day(0,18),'review','normal','',day(-2,16,0)),
+      T('t6','Согласовать с клиентом дату пуска станции','Д-305',{t:'d',id:'eng'},'p2',day(1,18),'work','normal','',day(-1,16,0)),
+      T('t7','Фото щита и инвертора после монтажа','Д-305',{t:'p',id:'p7'},'p2',day(2,18),'new','normal','Фото нужны для отчёта клиенту и в архив сделки.',day(-1,16,5)),
+      T('t8','Выяснить у поставщика, когда будет третий ветрогенератор','Д-314',{t:'p',id:'p6'},'p1',day(0,18),'new','high','',day(-1,12,10)),
+      T('t9','Выставить счёт на вторую часть оплаты','Д-314',{t:'p',id:'p3'},'p1',day(-3,18),'done','normal','',day(-5,10,0)),
+      T('t10','Выезд на замер кровли','Д-322',{t:'d',id:'eng'},'p10',day(3,18),'new','normal','Клиент на связи только по телефону.',day(0,9,15))
+    ],
+    msgs:[
+      {id:'m1',at:day(-4,12,10),deal:'Д-311',channel:'telegram',by:'p2',text:`Сергей, добрый день! Панели и инверторы зарезервировали за вами. Аккумуляторы едут, ориентир — ${fD(day(3))}.`},
+      {id:'m2',at:day(-4,13,2),deal:'Д-311',channel:'telegram',inbound:true,text:'Спасибо, жду. Сообщите, когда можно будет забрать.'},
+      {id:'m4',at:day(-3,17,45),deal:'Д-318',channel:'max',by:'p2',text:'Елена, контроллер и аккумуляторы уже в пути. Как придут на склад — напишем сюда же.'},
+      {id:'m3',at:day(-2,15,32),deal:'Д-305',channel:'max',auto:true,text:'Мария, здравствуйте! Крепёж для вашей станции пришёл на склад. Отгрузку на объект согласуем с вами отдельно. Ваш менеджер — Анна С.'}
+    ],
+    moves:[
+      {at:day(0,11,0),sku:'PV-550M',kind:'Отгрузка',qty:12,doc:'О-207',by:'p5'},
+      {at:day(0,11,0),sku:'MNT-R4',kind:'Отгрузка',qty:3,doc:'О-207',by:'p5'},
+      {at:day(0,11,0),sku:'CAB-6R',kind:'Отгрузка',qty:60,doc:'О-207',by:'p5'},
+      {at:day(-1,10,5),sku:'PV-550M',kind:'Резерв',qty:22,doc:'Д-311',by:'p2'},
+      {at:day(-2,15,30),sku:'MNT-R4',kind:'Приход',qty:24,doc:'П-1038',by:'p5'},
+      {at:day(-3,12,40),sku:'PV-550M',kind:'Резерв',qty:36,doc:'Д-314',by:'p3'},
+      {at:day(-5,9,30),sku:'INV-H6',kind:'Приход',qty:6,doc:'П-1035',by:'p5'},
+      {at:day(-5,9,30),sku:'PV-550M',kind:'Приход',qty:60,doc:'П-1035',by:'p5'}
+    ],
+    rules:[
+      {id:'arrive',on:true,when:'Товар клиента принят на склад',then:'Пишем клиенту в его мессенджер по шаблону ниже, менеджеру — уведомление'},
+      {id:'late',on:true,when:'Поставка опаздывает больше чем на 1 день',then:'Уведомляем менеджеров сделок, которые ждут товар, и директора'},
+      {id:'shipped',on:false,when:'Товар отгружен на объект клиента',then:'Пишем клиенту номер отгрузки и дату доставки'},
+      {id:'resexp',on:true,when:'Резерв истекает через 2 дня',then:'Напоминаем менеджеру продлить или снять резерв'},
+      {id:'overdue',on:true,when:'Задача просрочена',then:'Уведомляем исполнителя и того, кто поставил задачу'}
+    ],
+    tpl:'{имя}, здравствуйте! Ваш заказ пришёл на склад: {товар}. Можно забирать или договоримся о доставке. Адрес склада: {адрес_склада}. Ваш менеджер — {менеджер}, сделка {сделка}.',
+    address:'',
+    rcv:null
+  });
+});
+
+// Шаг 2: демо-уведомления. Кому — решает Notify (карта RECIPIENTS + адресаты события).
+// От старых к новым: push кладёт новое в начало. Вчерашнее и раньше — уже прочитано всеми адресатами.
+SEEDS.push(st=>{
+  st.notes=[];
+  const N=(kind,by,at,text,extra)=>{const n=Notify.push(st,kind,by,text,at,extra);if(dd(at)<0) n.read=n.to.slice()};
+  const dept=id=>st.people.filter(p=>p.dept===id).map(p=>p.id);
+  N('arrive','p5',day(-2,15,30),'П-1038 принята на склад: крепёж на скатную кровлю, 24 компл. Фото: 3.');
+  N('msg',null,day(-2,15,32),'Авто-сообщение в MAX: Волкова Мария (Д-305) — крепёж пришёл на склад.',['p2']);
+  N('reserve','p2',day(-1,10,5),`Резерв: солнечная панель 550 Вт — 22 шт со склада для Д-311 (Иванов Сергей) до ${fD(day(9))}.`);
+  N('task','p3',day(-1,11,20),`Новая задача: «Подготовить КП на СЭС 30 кВт» (Д-320), срок ${fD(day(2))}. От: Максим Л.`,['p4']);
+  N('warn','p6',day(-1,12,0),'Поставщик сократил П-1042: ветрогенераторов 2 шт вместо 3. Под резервы не хватает 1 шт.');
+  N('task','p2',day(-1,16,0),'Новая задача отделу «Инженерный»: согласовать с клиентом дату пуска станции (Д-305). От: Анна С.',dept('eng'));
+  N('warn',null,day(-1,18,5),'П-1042 задерживается: машина стоит в Казани. Ветрогенераторы ждут сделки Д-305 и Д-314.');
+  N('ship','p6',day(0,8,15),'П-1044 прибыла на терминал транспортной компании в городе: кабель, разъёмы MC4, контроллеры, щиты DC. На склад — сегодня.');
+  N('ship','p6',day(0,9,40),`П-1041 (инверторы, АКБ) прошла Владимир. На складе ожидается ${fD(day(3))}.`);
+  N('ship','p6',day(0,11,0),'Отгрузка О-207 выехала на объект Д-305 (Волкова Мария). Привезём к 16:00.');
+});
+
+const defaultUi=()=>({taskF:'all',taskDept:'all',cat:'Все',sq:'',deficit:false,logTab:'in',noteK:'all',noteScope:'all',tplCh:'telegram',drawer:null,modal:null,navOpen:false});
+
+// ——— доступ и связи ———
+// «Я» — человек S.me; права — только через Perms.can.
+const can=p=>Perms.can(S,S.me,p);
+const person=id=>S.people.find(p=>p.id===id);
+const me=()=>person(S.me)||S.people[0]||{id:'',name:'нет данных: сотрудник',role:'',dept:''};
+const roleName=p=>(p&&Perms.roleOf(S,p.id)?.name)||'нет данных: роль';
+const deptName=id=>S.depts.find(d=>d.id===id)?.name||'нет данных: отдел';
+const product=sku=>S.products.find(p=>p.sku===sku);
+const deal=id=>S.deals.find(d=>d.id===id);
+const ship=id=>S.shipments.find(s=>s.id===id);
+const rule=id=>S.rules.find(r=>r.id===id);
+const initials=n=>n.split(/\s+/).map(w=>w[0]||'').join('').slice(0,2).toUpperCase();
+const av=(p,c='')=>`<span class="av ${c}" aria-hidden="true">${esc(initials(p?.name||'?'))}</span>`;
+
+// ——— этапы: по id и флагам воронки, без номеров ———
+const pipeIdOf=x=>x.boardId||x.pipeId;
+const pipeById=id=>S.pipelines.find(p=>p.id===id)||null;
+const stagesFor=x=>pipeById(pipeIdOf(x))?.stages||[];
+const stageOf=x=>Pipes.stage(S,pipeIdOf(x),x.stageId);
+const stageName=x=>stageOf(x)?.name||'нет данных: этап';
+const stagePos=x=>stagesFor(x).findIndex(s=>s.id===x.stageId);
+// «Готово / закрыто / на складе» — этап с флагом final. Единственное определение.
+const isDone=x=>Pipes.isFinal(S,pipeIdOf(x),x.stageId);
+// С чего запись начинает путь: первый этап воронки без флага
+const startStage=pipeId=>(pipeById(pipeId)?.stages||[]).find(s=>!s.flag)||null;
+const finalStage=x=>stagesFor(x).find(s=>s.flag==='final')||null;
+// Цвет метки этапа: закрыт — ok, прошёл заметную часть пути — info
+const stageTone=x=>{if(isDone(x)) return 'ok';const n=stagesFor(x).length,i=stagePos(x);return n>1&&i/(n-1)>=.4?'info':''};
+// «Прибыло, ждёт приёмки» — единственное определение: входящая поставка на этапе с флагом arrived
+const awaitsReceipt=s=>s.dir==='in'&&stageOf(s)?.flag==='arrived';
+// Отгрузка клиенту ушла со склада — сошла с начального этапа своей воронки
+const leftStart=s=>s.stageId!==startStage(s.pipeId)?.id;
+// Воронки по виду: поставки к нам / отгрузки клиентам, сделки по типу, доска задач
+const shipPipe=dir=>Pipes.of(S,'ships').find(p=>(p.dir||'in')===dir)||null;
+const dealPipe=type=>Pipes.of(S,'deals',type).find(p=>p.scope===type)||Pipes.of(S,'deals')[0]||null;
+const taskBoard=()=>Pipes.of(S,'tasks')[0]||null;
+
+// ——— расчёты остатков: одно место для всех экранов ———
+const isLate=s=>!isDone(s)&&dd(s.eta)<0;
+const resOf=sku=>S.reserves.filter(r=>r.sku===sku);
+const sum=(a,f)=>a.reduce((x,y)=>x+f(y),0);
+const resStock=sku=>sum(resOf(sku).filter(r=>r.src==='stock'),r=>r.qty);
+const resAll=sku=>sum(resOf(sku),r=>r.qty);
+const openIn=()=>S.shipments.filter(s=>s.dir==='in'&&!isDone(s));
+const incomingOf=sku=>openIn().flatMap(s=>s.items.filter(i=>i.sku===sku).map(i=>({ship:s,qty:i.qty}))).sort((a,b)=>a.ship.eta-b.ship.eta);
+const incomingQty=sku=>sum(incomingOf(sku),x=>x.qty);
+const freeNow=p=>p.stock-resStock(p.sku);
+const freeAfter=p=>p.stock+incomingQty(p.sku)-resAll(p.sku);
+const shipFree=(sid,sku)=>{const s=ship(sid);const q=s?.items.find(i=>i.sku===sku)?.qty||0;return q-sum(S.reserves.filter(r=>r.src===sid&&r.sku===sku),r=>r.qty)};
+const byDeal=rs=>{const m=new Map();rs.forEach(r=>{if(!m.has(r.deal)) m.set(r.deal,[]);m.get(r.deal).push(r)});return m};
+const itemsText=list=>list.map(r=>{const p=product(r.sku);return `${low(p.name)} — ${num(r.qty)} ${p.unit}`}).join('; ');
+function shortItems(s){const c=[...new Set(s.items.map(i=>product(i.sku)?.cat).filter(Boolean))].map(low);return c.length>2?c.slice(0,2).join(', ')+` и ещё ${c.length-2}`:c.join(', ')}
+
+// ——— задачи ———
+const taskMine=t=>{const m=me();return (t.to.t==='p'&&t.to.id===m.id)||(t.to.t==='d'&&t.to.id===m.dept)};
+const taskVisible=t=>can('tasksAll')||taskMine(t)||t.from===me().id;
+// «Просрочена» — единственное определение
+const taskOverdue=t=>!isDone(t)&&dd(t.due)<0;
+const targetName=t=>t.to.t==='p'?(person(t.to.id)?.name||'нет данных: сотрудник'):`Отдел «${deptName(t.to.id)}»`;
+const tDept=t=>t.to.t==='d'?t.to.id:person(t.to.id)?.dept;
+// Кому адресована задача — люди: исполнитель или весь отдел
+const targetPeople=to=>to.t==='p'?[to.id]:S.people.filter(p=>p.dept===to.id).map(p=>p.id);
+
+// ——— уведомления: создаёт только Notify.push ———
+const unread=()=>Notify.unread(S,S.me);
+function noteRow(n,hl,showTo){
+  const k=KIND[n.kind]||KIND.warn,by=n.by?person(n.by):null;
+  const everyone=n.to.length>1&&n.to.length>=S.people.length;
+  const to=showTo?`<div class="to">${everyone?'<span class="pill sm">все сотрудники</span>':n.to.map(id=>`<span class="pill sm">${esc(person(id)?.name||'нет данных: сотрудник')}</span>`).join('')}</div>`:'';
+  return `<li class="note ${hl?'unread':''}"><span class="nic ${k.c}">${ic(k.ic)}</span><div class="nt"><p>${esc(n.text)}</p><small>${by?esc(by.name):'Система'} · ${fWhen(n.at)}${hl?' · <b class="new-b">новое</b>':''}</small>${to}</div></li>`;
+}
+
+// ——— шаблон сообщения клиенту ———
+function fillTpl(d,items,html){
+  const A='\u0001';
+  const t=S.tpl.split('{имя}').join(d.contact).split('{товар}').join(items).split('{сделка}').join(d.id).split('{менеджер}').join(person(d.managerId)?.name||'').split('{адрес_склада}').join(A);
+  const addr=S.address.trim();
+  if(!html) return t.split(A).join(addr||'[адрес склада не заполнен]');
+  return esc(t).split(A).join(addr?esc(addr):'<mark>адрес склада не заполнен</mark>');
+}
+const chPill=c=>`<span class="pill sm ${c==='max'?'violet':c==='telegram'?'info':''}">${CH[c]}</span>`;
+
+// Ядро: сохранение состояния в браузере. Чистые функции, без DOM и localStorage —
+// строку для localStorage отдаёт dump(), разбирает load(); писать и читать будет запуск.
+
+const Store = (() => {
+  const KEY = 'ws-crm-v3';
+  const VERSION = 3;
+  // Браузер даёт сайту около 5 млн символов на всё; берём с запасом.
+  const LIMIT = 4500000;
+  const NO_SPACE = 'не сохранено — мало места в браузере';
+  // Фото в состоянии — строки data:image/… (снимки с телефона при приёмке).
+  const PHOTO = /^data:image\//;
+
+  // Date из любого «мира» (страница, node:vm в тестах) — не через instanceof.
+  const isDate = v => Object.prototype.toString.call(v) === '[object Date]';
+  const isPhoto = v => typeof v === 'string' && PHOTO.test(v);
+
+  // Копия состояния, пригодная для JSON: даты → {$date: ISO}, ui не сохраняется.
+  function plain(v, top) {
+    if (isDate(v)) return { $date: isNaN(v.getTime()) ? null : v.toISOString() };
+    if (Array.isArray(v)) return v.map(x => plain(x, false));
+    if (v && typeof v === 'object') {
+      const o = {};
+      for (const k of Object.keys(v)) {
+        if (top && k === 'ui') continue;
+        const x = v[k];
+        if (x === undefined || typeof x === 'function') continue;
+        o[k] = plain(x, false);
+      }
+      return o;
+    }
+    return v;
+  }
+
+  // Выкидывает фото из копии; запись, где они были, помечается. Возвращает, сколько фото выкинуто.
+  function dropPhotos(node) {
+    let total = 0;
+    const walk = (v, owner) => {
+      if (Array.isArray(v)) { v.forEach(x => walk(x, owner)); return; }
+      if (!v || typeof v !== 'object') return;
+      let here = 0;
+      for (const k of Object.keys(v)) {
+        const x = v[k];
+        if (isPhoto(x)) { v[k] = null; here++; continue; }
+        if (Array.isArray(x)) {
+          const keep = x.filter(y => !isPhoto(y));
+          here += x.length - keep.length;
+          v[k] = keep;
+          keep.forEach(y => walk(y, v));
+          continue;
+        }
+        walk(x, v);
+      }
+      if (here) {
+        const prev = v.unsaved && v.unsaved.photos || 0;
+        v.unsaved = { photos: prev + here, text: NO_SPACE };
+        total += here;
+      }
+    };
+    walk(node, null);
+    return total;
+  }
+
+  // Состояние → {text, droppedPhotos, fits}. Не влезает в limit — фото выкидываются
+  // (droppedPhotos — сколько), их записи помечаются «не сохранено — мало места в браузере».
+  // Само состояние не меняется.
+  function dump(state, limit = LIMIT) {
+    const copy = plain(state, true);
+    let text = JSON.stringify(copy);
+    let droppedPhotos = 0;
+    if (text.length > limit) {
+      droppedPhotos = dropPhotos(copy);
+      if (droppedPhotos) text = JSON.stringify(copy);
+    }
+    return { text, droppedPhotos, fits: text.length <= limit };
+  }
+
+  // Строка из localStorage → состояние с живыми датами; пусто, мусор или чужая версия схемы → null
+  // (тогда запуск берёт seed()).
+  function load(raw) {
+    if (typeof raw !== 'string' || !raw) return null;
+    let st;
+    try {
+      st = JSON.parse(raw, (k, v) => {
+        if (v && typeof v === 'object' && !Array.isArray(v)) {
+          const keys = Object.keys(v);
+          if (keys.length === 1 && keys[0] === '$date') return new Date(v.$date === null ? NaN : v.$date);
+        }
+        return v;
+      });
+    } catch (_) { return null; }
+    if (!st || typeof st !== 'object' || Array.isArray(st) || st.v !== VERSION) return null;
+    return st;
+  }
+
+  // Свободный id для новой записи списка: не совпадёт ни с одним сохранённым (общий для ядра).
+  function freeId(list, prefix) {
+    const used = new Set((list || []).map(x => x && x.id));
+    let n = (list || []).length + 1;
+    while (used.has(prefix + n)) n++;
+    return prefix + n;
+  }
+
+  return { KEY, VERSION, LIMIT, NO_SPACE, load, dump, freeId };
+})();
+
+// Ядро: роли и права. Роли — данные (st.roles), проверки спрашивают право, а не название роли.
+// Встроенные роли не удаляются; у директора все права, и снять их нельзя.
+
+const Perms = (() => {
+  // Права: ключ и подпись. Первые тринадцать — как в v2, дальше новые.
+  const LIST = [
+    ['firm', 'Видеть сводку по всей фирме'],
+    ['tasksAll', 'Видеть задачи всех отделов'],
+    ['tasksAssign', 'Ставить задачи другим отделам'],
+    ['stock', 'Видеть остатки, резервы и поставки'],
+    ['prices', 'Видеть цены и суммы'],
+    ['reserve', 'Ставить и снимать резервы'],
+    ['catalog', 'Добавлять товары в номенклатуру'],
+    ['logistics', 'Отмечать этапы перевозки'],
+    ['receive', 'Принимать товар на склад'],
+    ['clients', 'Видеть клиентов и сделки'],
+    ['write', 'Писать клиентам в Telegram и MAX'],
+    ['auto', 'Настраивать авто-сообщения'],
+    ['admin', 'Управлять сотрудниками и правами'],
+    ['mail', 'Работать с почтой своих ящиков'],
+    ['leads', 'Видеть и вести лиды'],
+    ['dealsAll', 'Видеть сделки всех типов'],
+    ['settings', 'Менять настройки фирмы'],
+  ];
+  const KEYS = LIST.map(p => p[0]);
+
+  // Права по умолчанию — «Решения по реализации» спецификации.
+  // Менеджер видит лиды и сделки своего типа (scope), dealsAll у него нет.
+  const ENGINEER = ['tasksAssign', 'stock', 'clients', 'dealsAll'];
+  const DEFAULTS = [
+    { id: 'director', name: 'Директор', all: true, on: KEYS },
+    { id: 'managerB2b', name: 'Менеджер B2B', scope: 'b2b', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'write', 'mail'] },
+    { id: 'managerB2c', name: 'Менеджер B2C', scope: 'b2c', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'write', 'mail'] },
+    { id: 'logist', name: 'Логист', on: ['stock', 'logistics', 'mail', 'tasksAssign'] },
+    { id: 'warehouse', name: 'Кладовщик', on: ['stock', 'receive'] },
+    // Главный инженер и инженер — одна матрица (R30).
+    { id: 'chiefEngineer', name: 'Главный инженер', on: ENGINEER },
+    { id: 'engineer', name: 'Инженер', on: ENGINEER },
+  ];
+
+  // Полная матрица {право: да/нет} из списка включённых прав или из готовой матрицы.
+  function matrix(perms) {
+    const on = Array.isArray(perms) ? perms : Object.keys(perms || {}).filter(k => perms[k] === true);
+    const m = {};
+    for (const k of KEYS) m[k] = on.includes(k);
+    return m;
+  }
+
+  // Встроенные роли — новая копия на каждый вызов (для seed()).
+  function defaultRoles() {
+    return DEFAULTS.map(r => {
+      const role = { id: r.id, name: r.name, builtin: true, perms: matrix(r.on) };
+      if (r.all) role.all = true;
+      if (r.scope) role.scope = r.scope;
+      return role;
+    });
+  }
+
+  const person = (st, personId) => (st.people || []).find(p => p.id === personId) || null;
+
+  function roleOf(st, personId) {
+    const p = person(st, personId);
+    if (!p) return null;
+    return (st.roles || []).find(r => r.id === p.role) || null;
+  }
+
+  // Может ли человек это. Неизвестное право — нет ни у кого (опечатка не открывает доступ).
+  function can(st, personId, perm) {
+    if (!KEYS.includes(perm)) return false;
+    const role = roleOf(st, personId);
+    if (!role) return false;
+    if (role.all) return true;
+    return !!(role.perms && role.perms[perm] === true);
+  }
+
+  // Своя роль директора: имя и права. Пустое или занятое имя → null.
+  function addRole(st, name, perms) {
+    const n = String(name || '').trim();
+    if (!n) return null;
+    st.roles = st.roles || [];
+    if (st.roles.some(r => r.name.trim().toLowerCase() === n.toLowerCase())) return null;
+    const role = { id: Store.freeId(st.roles, 'role'), name: n, builtin: false, perms: matrix(perms) };
+    st.roles.push(role);
+    return role;
+  }
+
+  const staff = n => n % 10 === 1 && n % 100 !== 11 ? 'сотрудник'
+    : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'сотрудника' : 'сотрудников';
+
+  // Удалить роль: встроенную нельзя, роль с людьми нельзя, пока их не переназначат.
+  function removeRole(st, roleId) {
+    const roles = st.roles || [];
+    const role = roles.find(r => r.id === roleId);
+    if (!role) return { ok: false, reason: 'Роль не найдена' };
+    if (role.builtin) return { ok: false, reason: `Роль «${role.name}» встроенная — её нельзя удалить` };
+    const n = (st.people || []).filter(p => p.role === roleId).length;
+    if (n) return { ok: false, reason: `На роли «${role.name}» ${n} ${staff(n)} — сначала назначьте им другую роль` };
+    st.roles = roles.filter(r => r.id !== roleId);
+    return { ok: true, reason: '' };
+  }
+
+  return { LIST, defaultRoles, roleOf, can, addRole, removeRole };
+})();
+
+// Ядро: воронки всех видов — доски задач, сделки B2B и B2C, лиды, поставки.
+// Одна модель «воронка с этапами»; запись хранит id этапа, не номер, поэтому
+// переименование, вставка и удаление этапа данные не ломают.
+// «Сделано/закрыто» — флаг final у этапа, «прибыло, ждёт приёмки» — флаг arrived.
+
+const Pipes = (() => {
+  const KINDS = ['tasks', 'deals', 'leads', 'ships'];
+  // Где лежат записи вида и в каком поле id воронки.
+  const STORE = {
+    tasks: { list: 'tasks', field: 'boardId' },
+    deals: { list: 'deals', field: 'pipeId' },
+    leads: { list: 'leads', field: 'pipeId' },
+    ships: { list: 'shipments', field: 'pipeId' },
+  };
+
+  const S_ = (id, name, flag) => (flag ? { id, name, flag } : { id, name });
+  const DEAL_STAGES = () => [
+    S_('request', 'Заявка'), S_('calc', 'Расчёт'), S_('offer', 'КП'), S_('contract', 'Договор'),
+    S_('payment', 'Оплата'), S_('delivery', 'Поставка'), S_('install', 'Монтаж'), S_('done', 'Сдана', 'final'),
+  ];
+  // Воронки по умолчанию — ровно как в interfaces.md. Новая копия на каждый вызов (для seed()).
+  function defaults() {
+    return [
+      { id: 'tasksCommon', kind: 'tasks', name: 'Общие', stages: [
+        S_('new', 'Новые'), S_('work', 'В работе'), S_('review', 'На проверке'), S_('done', 'Готово', 'final'),
+      ] },
+      { id: 'dealsB2b', kind: 'deals', name: 'Сделки B2B', scope: 'b2b', stages: DEAL_STAGES() },
+      { id: 'dealsB2c', kind: 'deals', name: 'Сделки B2C', scope: 'b2c', stages: DEAL_STAGES() },
+      { id: 'leads', kind: 'leads', name: 'Лиды', stages: [
+        S_('new', 'Новый'), S_('contacted', 'Связались'), S_('qualified', 'Квалифицирован'),
+        S_('deal', 'Сделка создана', 'final'), S_('lost', 'Отказ', 'final'),
+      ] },
+      { id: 'ships', kind: 'ships', name: 'Поставки', stages: [
+        S_('ordered', 'Заказано'), S_('shipped', 'Отгружено поставщиком'), S_('toBorder', 'В пути до границы'),
+        S_('customs', 'Таможня'), S_('transship', 'Перевалка в Чите'), S_('toStock', 'В пути до склада'),
+        S_('arrived', 'Прибыло в город', 'arrived'), S_('inStock', 'На складе', 'final'),
+      ] },
+    ];
+  }
+
+  const pipes = st => st.pipelines || [];
+  const pipe = (st, pipeId) => pipes(st).find(p => p.id === pipeId) || null;
+  const clean = name => String(name || '').trim();
+
+  // Воронки вида; со scope — этого типа и общие (без scope).
+  function of(st, kind, scope) {
+    return pipes(st).filter(p => p.kind === kind && (!scope || !p.scope || p.scope === scope));
+  }
+
+  function stage(st, pipeId, stageId) {
+    const p = pipe(st, pipeId);
+    return (p && p.stages.find(s => s.id === stageId)) || null;
+  }
+
+  function isFinal(st, pipeId, stageId) {
+    const s = stage(st, pipeId, stageId);
+    return !!s && s.flag === 'final';
+  }
+
+  // Записи воронки (задачи доски, сделки, лиды, поставки).
+  function items(st, pipeId) {
+    const p = pipe(st, pipeId);
+    if (!p) return [];
+    const { list, field } = STORE[p.kind];
+    return (st[list] || []).filter(x => x[field] === pipeId);
+  }
+
+  function rename(st, pipeId, name) {
+    const p = pipe(st, pipeId), n = clean(name);
+    if (!p) return { ok: false, reason: 'Воронка не найдена' };
+    if (!n) return { ok: false, reason: 'Название не может быть пустым' };
+    p.name = n;
+    return { ok: true, reason: '' };
+  }
+
+  function renameStage(st, pipeId, stageId, name) {
+    const s = stage(st, pipeId, stageId), n = clean(name);
+    if (!s) return { ok: false, reason: 'Этап не найден' };
+    if (!n) return { ok: false, reason: 'Название не может быть пустым' };
+    s.name = n;
+    return { ok: true, reason: '' };
+  }
+
+  // Новый этап после afterId, без него — в конец. Возвращает этап или null.
+  function addStage(st, pipeId, name, afterId) {
+    const p = pipe(st, pipeId), n = clean(name);
+    if (!p || !n) return null;
+    const s = { id: Store.freeId(p.stages, 's'), name: n };
+    const i = afterId ? p.stages.findIndex(x => x.id === afterId) : -1;
+    if (i < 0) p.stages.push(s); else p.stages.splice(i + 1, 0, s);
+    return s;
+  }
+
+  const FLAG = { final: 'завершающий', arrived: '«прибыло, ждёт приёмки»' };
+
+  // Удалить этап: его записи переезжают на этап moveToId той же воронки, ни одна не теряется.
+  function removeStage(st, pipeId, stageId, moveToId) {
+    const p = pipe(st, pipeId);
+    if (!p) return { ok: false, moved: 0, reason: 'Воронка не найдена' };
+    const s = p.stages.find(x => x.id === stageId);
+    if (!s) return { ok: false, moved: 0, reason: 'Этап не найден' };
+    if (p.stages.length < 2) return { ok: false, moved: 0, reason: 'Последний этап воронки удалить нельзя' };
+    if (s.flag && !p.stages.some(x => x !== s && x.flag === s.flag)) {
+      return { ok: false, moved: 0, reason: `Этап «${s.name}» — единственный ${FLAG[s.flag] || s.flag} в воронке «${p.name}»` };
+    }
+    const here = items(st, pipeId).filter(x => x.stageId === stageId);
+    const to = p.stages.find(x => x.id === moveToId && x.id !== stageId);
+    if (here.length && !to) return { ok: false, moved: 0, reason: `На этапе «${s.name}» ${here.length} зап. — выберите, куда их перенести` };
+    here.forEach(x => { x.stageId = to.id; });
+    p.stages = p.stages.filter(x => x !== s);
+    return { ok: true, moved: here.length, reason: '' };
+  }
+
+  // Новая воронка вида: этапы — копия воронки по умолчанию этого вида.
+  function addPipe(st, kind, name, scope) {
+    const n = clean(name);
+    if (!KINDS.includes(kind) || !n) return null;
+    const base = defaults().find(p => p.kind === kind);
+    st.pipelines = pipes(st);
+    const p = { id: Store.freeId(st.pipelines, kind), kind, name: n, stages: base.stages };
+    if (scope) p.scope = scope;
+    st.pipelines.push(p);
+    return p;
+  }
+
+  // Этап в другой воронке для переезжающей записи: тот же id → то же название → тот же флаг → первый.
+  function matchStage(from, to, stageId) {
+    const s = from.stages.find(x => x.id === stageId);
+    return to.stages.find(x => x.id === stageId)
+      || (s && to.stages.find(x => x.name === s.name))
+      || (s && s.flag && to.stages.find(x => x.flag === s.flag))
+      || to.stages[0];
+  }
+
+  // Удалить воронку: последнюю своего вида нельзя; записи переезжают в moveToPipeId того же вида.
+  function removePipe(st, pipeId, moveToPipeId) {
+    const p = pipe(st, pipeId);
+    if (!p) return { ok: false, moved: 0, reason: 'Воронка не найдена' };
+    if (of(st, p.kind).length < 2) return { ok: false, moved: 0, reason: `«${p.name}» — последняя воронка этого вида, её нельзя удалить` };
+    const here = items(st, pipeId);
+    const to = moveToPipeId !== pipeId ? pipe(st, moveToPipeId) : null;
+    if (here.length && (!to || to.kind !== p.kind)) {
+      return { ok: false, moved: 0, reason: `В воронке «${p.name}» ${here.length} зап. — выберите воронку того же вида, куда их перенести` };
+    }
+    const { field } = STORE[p.kind];
+    here.forEach(x => { x.stageId = matchStage(p, to, x.stageId).id; x[field] = to.id; });
+    st.pipelines = pipes(st).filter(x => x !== p);
+    return { ok: true, moved: here.length, reason: '' };
+  }
+
+  return { KINDS, defaults, of, stage, isFinal, items, rename, renameStage, addStage, removeStage, addPipe, removePipe };
+})();
+
+// Ядро: уведомления. Адресаты — люди (to:[personId]), прочитанность — у каждого своя (read:[personId]).
+// Кому что приходит — только карта RECIPIENTS; человек может выключить вид у себя:
+// prefs.notify[personId][kind] === false — этот вид ему не приходит.
+
+const Notify = (() => {
+  // Событие → кому: 'all' — все сотрудники, иначе id встроенных ролей (их нельзя удалить, id не меняются).
+  // Адресатов конкретного события (исполнитель задачи, люди отдела, менеджер сделки или лида)
+  // добавляет вызывающий через extraPersons.
+  const RECIPIENTS = {
+    ship: 'all',                                               // поставки: этап, точка, срок — все сотрудники (R10)
+    arrive: ['director', 'managerB2b', 'managerB2c'],          // приёмка «товар на складе» — менеджеры и директор (R15)
+    reserve: ['director', 'managerB2b', 'managerB2c', 'warehouse'], // резервы — как в v2
+    warn: ['director', 'logist', 'managerB2b', 'managerB2c'],  // приёмка с замечаниями — как в v2
+    task: [],                                                  // задачи — исполнитель, отдел и автор (extraPersons)
+    msg: ['director'],                                         // сообщения клиентам — плюс менеджер сделки (extraPersons)
+    lead: ['director'],                                        // новый лид — плюс менеджер, кому он ушёл (extraPersons)
+  };
+
+  const wants = (st, personId, kind) => {
+    const p = st.prefs && st.prefs.notify && st.prefs.notify[personId];
+    return !(p && p[kind] === false);
+  };
+
+  // Кому придёт уведомление этого вида: по карте, плюс extraPersons, без тех, кто выключил вид.
+  function recipients(st, kind, extraPersons) {
+    const rule = RECIPIENTS[kind];
+    if (rule === undefined) throw new Error(`Неизвестный вид уведомления: ${kind}`);
+    const people = st.people || [];
+    const byRule = rule === 'all' ? people : people.filter(p => rule.includes(p.role));
+    const ids = [...byRule.map(p => p.id), ...(extraPersons || [])];
+    const known = new Set(people.map(p => p.id));
+    return [...new Set(ids)].filter(id => known.has(id) && wants(st, id, kind));
+  }
+
+  // Новое уведомление — в начало списка. Автор, если он среди адресатов, своё уже прочитал.
+  function push(st, kind, by, text, now, extraPersons) {
+    const to = recipients(st, kind, extraPersons);
+    st.notes = st.notes || [];
+    const note = { id: Store.freeId(st.notes, 'n'), kind, by: by || null, at: now, text, to, read: by && to.includes(by) ? [by] : [] };
+    st.notes.unshift(note);
+    return note;
+  }
+
+  // Непрочитанные этим человеком.
+  function unread(st, personId) {
+    return (st.notes || []).filter(n => n.to.includes(personId) && !n.read.includes(personId));
+  }
+
+  // Отметить прочитанным для этого человека: одно уведомление или все его. Возвращает, сколько отмечено.
+  function markRead(st, personId, noteId) {
+    const list = unread(st, personId).filter(n => !noteId || n.id === noteId);
+    list.forEach(n => n.read.push(personId));
+    return list.length;
+  }
+
+  return { RECIPIENTS, recipients, push, unread, markRead };
+})();
+
+// Оболочка: состояние S и его сохранение, тема, разделы NAV, боковая панель, «Кто я», уведомления, окна,
+// карточка справа, поиск, переходы, render(), действия A, формы FORMS, обработчики событий.
+// Права — Perms.can(S, S.me, …), этапы — по id и флагам Pipes, уведомления — только Notify.push.
+
+// ——— состояние и сохранение в браузере ———
+// S поднимает запуск (90-boot.js): startState(). До запуска — null.
+let S=null;
+// Чистое демо-состояние: seed() + то, что не сохраняется (ui).
+const freshState=()=>Object.assign(seed(),{ui:defaultUi()});
+// Сохранённое в браузере состояние или null (нет, битое, чужая версия схемы).
+function savedState(){
+  let raw=null;
+  try{raw=localStorage.getItem(Store.KEY)}catch(_){return null}
+  const st=Store.load(raw);
+  if(!st) return null;
+  // чего нет в сохранённом (раздел добавлен позже) — берём из демо
+  const base=seed();
+  for(const k of Object.keys(base)) if(!(k in st)) st[k]=base[k];
+  if(!st.people.some(p=>p.id===st.me)) st.me=st.people[0]?.id||'';
+  st.ui=defaultUi();
+  return st;
+}
+// Раздел из адреса страницы (#team) или ''.
+function hashView(){try{return /^#[a-z]+$/.test(location.hash)?location.hash.slice(1):''}catch(_){return ''}}
+function startState(){
+  const st=savedState()||freshState();
+  const v=hashView();if(v) st.view=v;
+  return st;
+}
+// Записать S в браузер. Не влезает — без фото и короткое сообщение; совсем не влезает — сообщение.
+let _photoWarn=0,_saveT=0;
+function save(){
+  if(!S) return null;
+  let r=Store.dump(S),ok=true;
+  try{localStorage.setItem(Store.KEY,r.text)}catch(_){
+    // браузер дал меньше места, чем рассчитывает Store, — сохраняем без фото
+    r=Store.dump(S,0);
+    try{localStorage.setItem(Store.KEY,r.text)}catch(_){ok=false}
+  }
+  if(!ok) toast('Изменения не сохранены — мало места в браузере','warn');
+  else if(r.droppedPhotos&&r.droppedPhotos!==_photoWarn) toast('Фото не сохранены — мало места в браузере','warn');
+  _photoWarn=r.droppedPhotos;
+  return {ok,droppedPhotos:r.droppedPhotos,fits:r.fits&&ok};
+}
+// Для ввода с клавиатуры — не на каждую букву
+const saveSoon=()=>{clearTimeout(_saveT);_saveT=setTimeout(save,400)};
+// Сброс к демо: человек, раздел и тема остаются, данные — как в seed()
+function resetData(){
+  const m=S?.me,v=S?.view,th=S?.prefs?.theme;
+  S=freshState();
+  if(S.people.some(p=>p.id===m)) S.me=m;
+  if(v) S.view=v;
+  if(th) S.prefs.theme=th;
+  closeModal();render();
+  toast('Данные прототипа сброшены к исходным');
+}
+
+// ——— тема ———
+// Выбор человека — S.prefs.theme: 'light', 'dark' или 'auto' (как в системе). На <html> ставится
+// data-theme="light|dark": для «как в системе» — по prefers-color-scheme устройства. Цвета тем — 00-tokens.css.
+const THEMES=[['light','Светлая','sun'],['dark','Тёмная','moon'],['auto','Как в системе','monitor']];
+Object.assign(IC,{
+  sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/>',
+  moon:'<path d="M19.5 14.6A7.8 7.8 0 0 1 9.4 4.5a7.8 7.8 0 1 0 10.1 10.1z"/>',
+  monitor:'<rect x="3" y="4.5" width="18" height="12" rx="2"/><path d="M8.5 20h7M12 16.5V20"/>',
+  sliders:'<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>'
+});
+const themePref=()=>THEMES.some(t=>t[0]===S?.prefs?.theme)?S.prefs.theme:'auto';
+const systemDark=()=>{try{return typeof matchMedia==='function'&&matchMedia('(prefers-color-scheme: dark)').matches}catch(_){return false}};
+// Какая тема на экране при выборе pref: 'light' или 'dark'
+const themeOf=pref=>pref==='dark'||(pref==='auto'&&systemDark())?'dark':'light';
+function applyTheme(){document.documentElement.dataset.theme=themeOf(themePref())}
+function setTheme(t){
+  if(!THEMES.some(x=>x[0]===t)) return;
+  S.prefs.theme=t;render();
+}
+// Переключатель темы — один для шапки (compact: только значки) и для «Настройки → Внешний вид»
+const themeSwitch=compact=>`<div class="seg theme-seg${compact?' compact':''}" role="group" aria-label="Тема">${THEMES.map(([k,l,i])=>{const on=themePref()===k;return `<button type="button" class="${on?'on':''}" data-act="theme" data-theme="${k}" aria-pressed="${on}" title="${l}">${ic(i)}<span>${l}</span></button>`}).join('')}</div>`;
+
+// ——— разделы ———
+// Раздел: {id, label, icon, group, order, ok:()=>bool, badge?:()=>n}. Группа — одна из GROUPS (по порядку
+// сверху вниз), внутри группы — по order. Следующие таски добавляют раздел в своём файле: NAV.push({…}).
+const NAV=[
+  {id:'home',label:'Сегодня',icon:'home',group:'Работа',order:10,ok:()=>true},
+  {id:'tasks',label:'Задачи',icon:'tasks',group:'Работа',order:20,ok:()=>true,badge:()=>S.tasks.filter(t=>!isDone(t)&&taskMine(t)).length},
+  {id:'notifications',label:'Уведомления',icon:'bell',group:'Работа',order:30,ok:()=>true,badge:()=>unread().length,hot:true},
+  {id:'stock',label:'Товары и остатки',icon:'box',group:'Товар',order:10,ok:()=>can('stock')},
+  {id:'logistics',label:'Поставки и перевозки',icon:'truck',group:'Товар',order:20,ok:()=>can('stock')||can('logistics'),badge:()=>S.shipments.filter(s=>!isDone(s)).length},
+  {id:'receiving',label:'Приёмка на складе',icon:'camera',group:'Товар',order:30,ok:()=>can('receive'),badge:()=>S.shipments.filter(awaitsReceipt).length,hot:true},
+  {id:'clients',label:'Клиенты и сделки',icon:'users',group:'Продажи',order:10,ok:()=>can('clients')},
+  {id:'messages',label:'Сообщения клиентам',icon:'chat',group:'Продажи',order:20,ok:()=>can('write')||can('auto')},
+  {id:'team',label:'Сотрудники и права',icon:'shield',group:'Управление',order:10,ok:()=>can('admin')}
+];
+// Разделы, открытые текущему человеку: только они попадают в меню
+const navItems=()=>NAV.filter(n=>n.ok());
+const GROUPS=['Работа','Товар','Продажи','Управление','Настройки'];
+
+function renderSide(){
+  const vis=navItems(),m=me();
+  let h='';
+  for(const g of GROUPS){
+    const items=vis.filter(n=>n.group===g).sort((a,b)=>(a.order||0)-(b.order||0));
+    if(!items.length) continue;
+    h+=`<div class="nav-g"><h4>${g}</h4>${items.map(n=>{const b=n.badge?n.badge():0;return `<button class="nav-i ${S.view===n.id?'on':''}" data-act="go" data-view="${n.id}">${ic(n.icon)}<span>${n.label}</span>${b?`<span class="cnt ${n.hot?'hot':''}">${b}</span>`:''}</button>`}).join('')}</div>`;
+  }
+  h+=`<div class="me">${av(m)}<div><b>${esc(m.name)}</b><small>${esc(roleName(m))}</small></div></div>`;
+  byId('side').innerHTML=h;
+}
+function updBell(){const n=unread().length,b=byId('bell-n');b.hidden=!n;b.textContent=n>99?'99+':n}
+// «Кто я»: каждый человек с ролью — «Имя — Роль»
+const whoOptions=()=>S.people.map(p=>`<option value="${esc(p.id)}" ${p.id===S.me?'selected':''}>${esc(p.name)} — ${esc(roleName(p))}</option>`).join('');
+
+// ——— уведомления ———
+// Вид не меняет состояние: прочитанным раздел помечает render() после отрисовки.
+function vNotes(){
+  const firm=can('firm'),all=firm&&S.ui.noteScope==='all';
+  let list=S.notes.filter(n=>all||n.to.includes(S.me));
+  if(S.ui.noteK!=='all') list=list.filter(n=>n.kind===S.ui.noteK);
+  const un=new Set(unread().map(n=>n.id));
+  let h=`<div class="bar"><div class="seg">${[['all','Все'],...Object.entries(KIND).map(([k,v])=>[k,v.l])].map(([k,l])=>`<button class="${S.ui.noteK===k?'on':''}" data-act="note-k" data-k="${k}">${l}</button>`).join('')}</div>${firm?`<div class="seg">${[['mine','Мне'],['all','Вся фирма']].map(([k,l])=>`<button class="${S.ui.noteScope===k?'on':''}" data-act="note-scope" data-k="${k}">${l}</button>`).join('')}</div>`:''}</div>`;
+  h+=`<p class="hint">Под каждым уведомлением — кто его получил. ${firm?'Директор видит поток всей фирмы, остальные — только своё.':''}</p>`;
+  h+=`<section class="card">${list.length?`<ul class="notes">${list.map(n=>noteRow(n,un.has(n.id),true)).join('')}</ul>`:'<p class="empty">Под этот фильтр ничего нет.</p>'}</section>`;
+  return h;
+}
+
+// ——— окна ———
+const mHead=t=>`<div class="modal-h"><h3>${t}</h3><button type="button" class="btn ghost icon" data-act="close-modal" aria-label="Закрыть">${ic('x')}</button></div>`;
+const mFoot=b=>`<div class="modal-f"><button type="button" class="btn" data-act="close-modal">Отмена</button><button type="submit" class="btn pri">${b}</button></div>`;
+function mTask(){
+  const m=me(),all=can('tasksAssign');
+  const ppl=S.people.filter(p=>all||p.dept===m.dept),dps=S.depts.filter(d=>all||d.id===m.dept);
+  return `<form data-form="task" novalidate>${mHead('Новая задача')}<div class="modal-b">
+    <div class="field"><label for="t-title">Что нужно сделать</label><input id="t-title" class="inp" placeholder="Например: подготовить КП на СЭС 15 кВт" autocomplete="off"></div>
+    <div class="field"><label for="t-to">Кому</label><select id="t-to" class="inp"><optgroup label="Отдел целиком">${dps.map(d=>`<option value="d:${esc(d.id)}">Отдел «${esc(d.name)}»</option>`).join('')}</optgroup><optgroup label="Сотрудник">${ppl.map(p=>`<option value="p:${esc(p.id)}">${esc(p.name)} — ${esc(roleName(p).toLowerCase())}</option>`).join('')}</optgroup></select></div>
+    <div class="grid2"><div class="field"><label for="t-due">Срок</label><input id="t-due" type="date" class="inp" value="${iso(day(2))}"></div><div class="field"><label for="t-prio">Важность</label><select id="t-prio" class="inp"><option value="normal">Обычная</option><option value="high">Срочно</option></select></div></div>
+    ${can('clients')?`<div class="field"><label for="t-deal">Сделка</label><select id="t-deal" class="inp"><option value="">Без сделки</option>${S.deals.map(d=>`<option value="${d.id}">${d.id} · ${esc(d.client)}</option>`).join('')}</select></div>`:''}
+    <div class="field"><label for="t-desc">Подробности</label><textarea id="t-desc" class="inp" rows="3" placeholder="Что важно знать исполнителю"></textarea></div>
+    ${all?'':'<p class="hint">У вашей роли нет права ставить задачи другим отделам — в списке только ваш отдел.</p>'}
+    <p class="err" id="t-err" hidden></p></div>${mFoot('Поставить и уведомить')}</form>`;
+}
+function mStage(s){
+  // входящую поставку на завершающий этап ставит склад при приёмке
+  const stg=stagesFor(s),locked=x=>s.dir==='in'&&x.flag==='final';
+  const def=stg.slice(stagePos(s)+1).find(x=>!locked(x))?.id||s.stageId;
+  return `<form data-form="stage" data-id="${s.id}" novalidate>${mHead('Отметка по перевозке '+s.id)}<div class="modal-b">
+    <div class="field"><label for="st-stage">Этап</label><select id="st-stage" class="inp">${stg.map(x=>`<option value="${esc(x.id)}" ${x.id===def?'selected':''} ${locked(x)?'disabled':''}>${esc(x.name)}${locked(x)?' — ставит склад при приёмке':''}</option>`).join('')}</select></div>
+    <div class="field"><label for="st-place">Где груз сейчас</label><input id="st-place" class="inp" value="${esc(s.last.place)}"></div>
+    <div class="field"><label for="st-eta">${s.dir==='in'?'Ожидается на складе':'Доставка клиенту'}</label><input id="st-eta" type="date" class="inp" value="${iso(s.eta)}"></div>
+    <div class="field"><label for="st-note">Комментарий</label><input id="st-note" class="inp" placeholder="Например: водитель звонил, будет к обеду"></div>
+    <label class="check"><input type="checkbox" id="st-notify" checked> Уведомить сотрудников об отметке</label>
+  </div>${mFoot('Отметить и уведомить')}</form>`;
+}
+let _ir=0;
+const irow=()=>{_ir++;return `<div class="irow"><select class="inp" id="ns-sku-${_ir}" aria-label="Товар">${S.products.map(p=>`<option value="${esc(p.sku)}">${esc(p.name)}</option>`).join('')}</select><input class="inp" id="ns-qty-${_ir}" type="number" min="1" value="1" aria-label="Количество"></div>`};
+function mShip(){
+  // этап новой поставки — любой до «прибыло» (этапы с флагами ставит приёмка)
+  const stg=shipPipe('in')?.stages||[],stop=stg.findIndex(x=>x.flag),open=stop<0?stg:stg.slice(0,stop);
+  return `<form data-form="ship" novalidate>${mHead('Новая поставка')}<div class="modal-b">
+    <div class="field"><label for="ns-from">Откуда</label><input id="ns-from" class="inp" placeholder="Поставщик и город"></div>
+    <div class="grid2"><div class="field"><label for="ns-car">Как едет</label><select id="ns-car" class="inp">${CARRIERS.map(c=>`<option>${c}</option>`).join('')}</select></div><div class="field"><label for="ns-doc">Номер накладной</label><input id="ns-doc" class="inp" placeholder="Если уже известен"></div>
+    <div class="field"><label for="ns-stage">Этап сейчас</label><select id="ns-stage" class="inp">${open.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select></div><div class="field"><label for="ns-eta">Ожидается на складе</label><input id="ns-eta" type="date" class="inp" value="${iso(day(7))}"></div></div>
+    <div class="field"><span class="lbl">Что едет</span><div id="ns-items" class="stack-s" style="gap:8px">${irow()}</div><div><button type="button" class="btn sm ghost" data-act="add-irow">${ic('plus')}Ещё позиция</button></div></div>
+    <p class="err" id="ns-err" hidden></p></div>${mFoot('Создать и уведомить')}</form>`;
+}
+function mProduct(){
+  return `<form data-form="product" novalidate>${mHead('Новый товар')}<div class="modal-b">
+    <div class="grid2"><div class="field"><label for="np-sku">Артикул</label><input id="np-sku" class="inp mono" placeholder="Например, PV-600M"></div><div class="field"><label for="np-unit">Единица</label><select id="np-unit" class="inp"><option>шт</option><option>м</option><option>пар</option><option>компл.</option></select></div></div>
+    <div class="field"><label for="np-name">Наименование</label><input id="np-name" class="inp" placeholder="Как товар называется в документах"></div>
+    <div class="grid2"><div class="field"><label for="np-cat">Категория</label><select id="np-cat" class="inp">${CATS.map(c=>`<option>${c}</option>`).join('')}</select></div>${can('prices')?'<div class="field"><label for="np-price">Цена, ₽</label><input id="np-price" class="inp" type="number" min="0" placeholder="Пусто — «нет данных»"></div>':''}</div>
+    <p class="err" id="np-err" hidden></p></div>${mFoot('Добавить')}</form>`;
+}
+const mReset=()=>`<form data-form="reset" novalidate>${mHead('Сбросить данные прототипа?')}<div class="modal-b">
+    <p class="m0">Задачи, поставки, резервы, сделки, уведомления и остальные данные прототипа вернутся к исходным примерам. Всё, что вы меняли, пропадёт — отменить сброс нельзя.</p>
+    <p class="hint">Останутся: кто вы в «Кто я», открытый раздел и тема.</p>
+  </div>${mFoot('Сбросить')}</form>`;
+const MODALS={task:()=>mTask(),stage:id=>mStage(ship(id)),ship:()=>mShip(),product:()=>mProduct(),reset:()=>mReset()};
+function openModal(type,id){S.ui.modal={type,id};const r=byId('modal-root');r.innerHTML=`<div class="modal-wrap"><div class="modal" role="dialog" aria-modal="true">${MODALS[type](id)}</div></div>`;setTimeout(()=>r.querySelector('input:not([type=checkbox]),select')?.focus(),30)}
+function closeModal(){if(S) S.ui.modal=null;byId('modal-root').innerHTML=''}
+const showErr=(id,t)=>{const e=byId(id);e.textContent=t;e.hidden=false};
+
+// ——— карточка справа ———
+function openDrawer(type,id){S.ui.drawer={type,id};renderDrawer()}
+function closeDrawer(){S.ui.drawer=null;renderDrawer()}
+function renderDrawer(){
+  const root=byId('drawer-root'),d=S.ui.drawer;
+  if(!d){root.innerHTML='';root.dataset.k='';return}
+  let c=null;
+  if(d.type==='product'&&can('stock')){const p=product(d.id);if(p) c=dProduct(p)}
+  else if(d.type==='deal'&&can('clients')){const x=deal(d.id);if(x) c=dDeal(x)}
+  else if(d.type==='task'){const t=S.tasks.find(t=>t.id===d.id);if(t&&taskVisible(t)) c=dTask(t)}
+  if(!c){S.ui.drawer=null;root.innerHTML='';root.dataset.k='';return}
+  const k=d.type+':'+d.id,same=root.dataset.k===k,sc=same?(root.querySelector('.drawer-b')?.scrollTop||0):0;
+  root.classList.toggle('still',same);
+  root.innerHTML=`<div class="scrim" data-act="close-drawer"></div><aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="dr-t"><div class="drawer-h"><div class="dh-t"><small>${esc(c.kind)}</small><h2 id="dr-t">${c.title}</h2>${c.sub?`<p>${c.sub}</p>`:''}</div><button class="btn ghost icon" data-act="close-drawer" aria-label="Закрыть">${ic('x')}</button></div><div class="drawer-b">${c.body}</div></aside>`;
+  if(same){const b=root.querySelector('.drawer-b');if(b) b.scrollTop=sc}
+  root.dataset.k=k;
+}
+
+// ——— всплывающие подсказки ———
+function toast(msg,kind){
+  const el=document.createElement('div');el.className='toast';
+  el.innerHTML=`${ic(kind==='warn'?'alert':'check')}<span>${esc(msg)}</span>`;
+  byId('toasts').appendChild(el);
+  setTimeout(()=>{el.classList.add('out');setTimeout(()=>el.remove(),320)},4800);
+}
+
+// ——— поиск ———
+function searchRes(q){
+  q=q.trim().toLowerCase();if(q.length<2) return [];
+  const r=[],has=s=>s.toLowerCase().includes(q);
+  if(can('stock')) S.products.forEach(p=>{if(has(p.name+' '+p.sku)) r.push({type:'Товар',label:p.name,sub:`${p.sku} · свободно ${num(freeNow(p))} ${p.unit}`,act:`data-act="open-product" data-sku="${esc(p.sku)}"`})});
+  if(can('clients')) S.deals.forEach(d=>{if(has(d.client+' '+d.id+' '+d.object)) r.push({type:'Сделка',label:d.client,sub:`${d.id} · ${d.object}`,act:`data-act="open-deal" data-id="${d.id}"`})});
+  if(can('stock')||can('logistics')) S.shipments.forEach(s=>{if(has(s.id+' '+s.from+' '+s.to+' '+s.doc)) r.push({type:'Перевозка',label:`${s.id} · ${s.from}`,sub:`${stageName(s)} · ${fD(s.eta)}`,act:`data-act="go" data-view="logistics" data-tab="${isDone(s)?'done':s.dir}"`})});
+  S.tasks.filter(taskVisible).forEach(t=>{if(has(t.title)) r.push({type:'Задача',label:t.title,sub:`${targetName(t)} · ${fRel(t.due)}`,act:`data-act="open-task" data-id="${t.id}"`})});
+  return r.slice(0,9);
+}
+
+// ——— переходы ———
+function go(v,tab){
+  const n=NAV.find(x=>x.id===v);
+  if(!n||!n.ok()){toast('У вас нет доступа к этому разделу','warn');return}
+  S.view=v;if(tab) S.ui.logTab=tab;
+  setNav(false);render();byId('scroll').scrollTop=0;
+}
+function setNav(open){S.ui.navOpen=open;byId('app').classList.toggle('nav-open',open)}
+// «Кто я»: смотреть CRM глазами этого человека — его права, задачи, уведомления
+function setMe(pid){
+  if(!person(pid)) return;
+  S.me=pid;S.ui.drawer=null;S.ui.taskF='all';closeModal();
+  const vis=navItems(),hidden=NAV.filter(n=>!vis.includes(n)).map(n=>n.label),m=me();
+  if(!vis.some(n=>n.id===S.view)) S.view='home';
+  render();
+  toast(`Теперь вы — ${m.name} (${roleName(m)}). ${hidden.length?'Недоступно: '+hidden.join(', ')+'.':'Доступно всё.'}`);
+}
+function setTaskStatus(id,stageId){
+  const t=S.tasks.find(x=>x.id===id);if(!t||t.stageId===stageId) return;
+  const stg=Pipes.stage(S,t.boardId,stageId);if(!stg) return;
+  const m=me();t.stageId=stageId;
+  Notify.push(S,'task',m.id,`Задача «${t.title}» — теперь «${stg.name}». Отметка: ${m.name}.`,new Date(),[t.from,...targetPeople(t.to)]);
+  render();toast(`Статус «${stg.name}». Уведомление ушло тому, кто поставил задачу.`);
+}
+
+// ——— главный вывод ———
+const VIEWS={home:vHome,tasks:vTasks,notifications:vNotes,stock:vStock,logistics:vLogistics,receiving:vReceiving,clients:vClients,messages:vMessages,team:vTeam};
+// Прямой переход (адрес, сохранённый раздел) туда, где у человека нет права: в меню раздела нет, на экране — это.
+const vNoAccess=n=>`<section class="card deny"><span class="deny-ic">${ic('lock')}</span><h2>Нет доступа к разделу</h2><p>«${esc(n.label)}» закрыт для роли «${esc(roleName(me()))}». Права ролей меняют в разделе «Сотрудники и права».</p><button type="button" class="btn pri" data-act="go" data-view="home">${ic('home')}На главный экран</button></section>`;
+function render(){
+  applyTheme();
+  // неизвестный раздел — «Сегодня»; известный, но без права — экран «Нет доступа»
+  if(!NAV.some(n=>n.id===S.view&&VIEWS[n.id])) S.view='home';
+  const n=NAV.find(x=>x.id===S.view),ok=n.ok();
+  if(ok&&S.view==='receiving') syncRcv();
+  byId('view').innerHTML=ok?VIEWS[S.view]():vNoAccess(n);
+  // открыли по адресу (#…) — адрес следует за разделом, иначе перезагрузка вернёт старый
+  try{const h=hashView();if(h&&h!==S.view) history.replaceState(null,'','#'+S.view)}catch(_){}
+  // открыл раздел «Уведомления» — свои прочитаны (подсвечены один раз, при этой отрисовке)
+  if(ok&&S.view==='notifications') Notify.markRead(S,S.me);
+  renderSide();
+  byId('ttl').textContent=n.label;
+  byId('role').innerHTML=whoOptions();
+  byId('theme-sw').innerHTML=themeSwitch(true);
+  updBell();renderDrawer();save();
+}
+
+// ——— действия по клику ———
+const A={
+  go:el=>go(el.dataset.view,el.dataset.tab),
+  'nav-toggle':()=>setNav(!S.ui.navOpen),
+  // сброс — только после подтверждения в окне (и из полосы «Прототип», и из «Настройки → Данные»)
+  reset:()=>openModal('reset'),
+  theme:el=>setTheme(el.dataset.theme),
+  bell:()=>{
+    const pop=byId('pop');if(!pop.hidden){pop.hidden=true;return}
+    const m=me(),list=S.notes.filter(n=>n.to.includes(S.me)).slice(0,10),un=new Set(unread().map(n=>n.id));
+    pop.innerHTML=`<div class="pop-h"><b>Уведомления · ${esc(m.name)}</b><span class="muted sm">${un.size?'новых: '+un.size:'новых нет'}</span></div><ul class="pop-l notes">${list.map(n=>noteRow(n,un.has(n.id))).join('')||'<li class="empty">Пока пусто</li>'}</ul><div class="pop-f"><button class="btn sm ghost" data-act="go" data-view="notifications">Все уведомления ${ic('arrow')}</button></div>`;
+    pop.hidden=false;list.forEach(n=>Notify.markRead(S,S.me,n.id));updBell();renderSide();save();
+  },
+  'open-product':el=>openDrawer('product',el.dataset.sku),
+  'open-deal':el=>openDrawer('deal',el.dataset.id),
+  'open-task':el=>openDrawer('task',el.dataset.id),
+  'close-drawer':()=>closeDrawer(),
+  'close-modal':()=>closeModal(),
+  'new-task':()=>openModal('task'),
+  'new-ship':()=>openModal('ship'),
+  'new-product':()=>openModal('product'),
+  stage:el=>openModal('stage',el.dataset.id),
+  'add-irow':()=>byId('ns-items').insertAdjacentHTML('beforeend',irow()),
+  'task-f':el=>{S.ui.taskF=el.dataset.f;render()},
+  'task-st':el=>setTaskStatus(el.dataset.id,el.dataset.st),
+  cat:el=>{S.ui.cat=el.dataset.cat;render()},
+  'log-tab':el=>{S.ui.logTab=el.dataset.tab;render()},
+  'note-k':el=>{S.ui.noteK=el.dataset.k;render()},
+  'note-scope':el=>{S.ui.noteScope=el.dataset.k;render()},
+  'view-as':el=>setMe(el.dataset.id),
+  unreserve:el=>{
+    const r=S.reserves.find(x=>x.id===el.dataset.id);if(!r) return;
+    const p=product(r.sku),d=deal(r.deal),m=me(),now=new Date();
+    S.reserves=S.reserves.filter(x=>x!==r);
+    S.moves.unshift({at:now,sku:r.sku,kind:'Снят резерв',qty:r.qty,doc:r.deal,by:m.id});
+    Notify.push(S,'reserve',m.id,`Снят резерв: ${p.name} — ${num(r.qty)} ${p.unit} (${r.deal}, ${d?.client||''}).`,now);
+    render();toast('Резерв снят, товар снова свободен.');
+  },
+  'rcv-start':el=>{initRcv(el.dataset.id);go('receiving')},
+  'rcv-step':el=>{
+    const sku=el.dataset.sku,inp=byId('rcv-q-'+sku),v=Math.max(0,(parseInt(inp.value,10)||0)+parseInt(el.dataset.d,10));
+    inp.value=v;S.rcv.qty[sku]=v;byId('rcv-diff-'+sku).innerHTML=diffHtml(ship(S.rcv.shipId).items.find(i=>i.sku===sku));updRcvPrev();saveSoon();
+  },
+  'rcv-photo-del':el=>{S.rcv.photos.splice(+el.dataset.i,1);byId('rcv-photos').innerHTML=photosHtml();saveSoon()},
+  'rcv-confirm':()=>rcvConfirm(),
+  'rcv-again':()=>{S.rcv=null;render()},
+  'tpl-ch':el=>{S.ui.tplCh=el.dataset.ch;el.parentElement.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b===el));updTpl()},
+  'ins-var':el=>{
+    const ta=byId('tpl');if(!ta) return;
+    const a=ta.selectionStart??ta.value.length,b=ta.selectionEnd??a;
+    ta.value=ta.value.slice(0,a)+el.dataset.v+ta.value.slice(b);S.tpl=ta.value;ta.focus();ta.selectionStart=ta.selectionEnd=a+el.dataset.v.length;updTpl();saveSoon();
+  }
+};
+
+// ——— формы ———
+const FORMS={
+  reset:()=>resetData(),
+  reserve:f=>{
+    const p=product(f.dataset.sku),did=byId('rs-deal').value,qty=parseInt(byId('rs-qty').value,10),src=byId('rs-src').value,until=byId('rs-until').value;
+    if(!did) return showErr('rs-err','Нет открытых сделок, под которые можно поставить резерв.');
+    if(!qty||qty<1) return showErr('rs-err','Укажите количество — целое число больше нуля.');
+    const avail=src==='stock'?freeNow(p):shipFree(src,p.sku);
+    if(qty>avail) return showErr('rs-err',`Свободно только ${num(Math.max(0,avail))} ${p.unit}. Уменьшите количество или выберите другой источник.`);
+    if(!until||dd(fromIso(until))<0) return showErr('rs-err','Дата окончания резерва не может быть в прошлом.');
+    const d=deal(did),m=me(),u=fromIso(until),now=new Date();
+    S.reserves.push({id:Store.freeId(S.reserves,'r'),sku:p.sku,deal:did,qty,src,until:u});
+    S.moves.unshift({at:now,sku:p.sku,kind:'Резерв',qty,doc:did,by:m.id});
+    Notify.push(S,'reserve',m.id,`Резерв: ${low(p.name)} — ${num(qty)} ${p.unit} ${src==='stock'?'со склада':'из поставки '+src} для ${did} (${d.client}) до ${fD(u)}.`,now);
+    render();toast(`Резерв поставлен: ${num(qty)} ${p.unit} для ${did}. Склад и директор получили уведомление.`);
+  },
+  stage:f=>{
+    const s=ship(f.dataset.id),m=me(),now=new Date();
+    const stg=Pipes.stage(S,s.pipeId,byId('st-stage').value);
+    if(!stg||(s.dir==='in'&&stg.flag==='final')){closeModal();return}
+    const place=byId('st-place').value.trim()||s.last.place,eta=byId('st-eta').value,note=byId('st-note').value.trim(),notify=byId('st-notify').checked;
+    const old=s.eta,ne=eta?fromIso(eta,s.eta.getHours()||12):s.eta,moved=dd(ne)!==dd(old),wasOut=s.dir==='out'&&leftStart(s);
+    s.stageId=stg.id;s.last={place,at:now,by:m.id};s.eta=ne;
+    let sent=0;
+    if(notify) sent=Notify.push(S,'ship',m.id,`${s.id}: ${stg.name.toLowerCase()} — ${place}. ${s.dir==='in'?'На складе ожидается':'Доставка'} ${fD(ne)}${moved?` (было ${fD(old)})`:''}.${note?' '+note:''}`,now).to.filter(id=>id!==m.id).length;
+    if(s.dir==='out'&&!wasOut&&leftStart(s)&&rule('shipped').on&&s.deal){const d=deal(s.deal);if(d&&d.channel!=='phone') S.msgs.push({id:Store.freeId(S.msgs,'m'),at:now,deal:d.id,channel:d.channel,auto:true,text:`${d.contact}, здравствуйте! Ваш заказ отгружен: ${s.doc}. Привезём ${fD(ne)}. Ваш менеджер — ${person(d.managerId)?.name||''}.`})}
+    closeModal();render();toast(notify?`Отмечено. Уведомление получили ${sent} ${pl(sent,'сотрудник','сотрудника','сотрудников')}.`:'Отмечено без уведомления.');
+  },
+  task:()=>{
+    const title=byId('t-title').value.trim();
+    if(!title){showErr('t-err','Напишите, что нужно сделать.');byId('t-title').focus();return}
+    const [tt,id]=byId('t-to').value.split(':'),due=byId('t-due').value,m=me(),now=new Date(),board=taskBoard();
+    const t={id:Store.freeId(S.tasks,'t'),title,desc:byId('t-desc').value.trim(),to:{t:tt,id},from:m.id,due:due?fromIso(due,18):day(2,18),boardId:board.id,stageId:startStage(board.id).id,prio:byId('t-prio').value,deal:byId('t-deal')?.value||'',at:now};
+    S.tasks.push(t);
+    Notify.push(S,'task',m.id,`Новая задача: «${title}», срок ${fD(t.due)}.${t.deal?' Сделка '+t.deal+'.':''} От: ${m.name}.`,now,targetPeople(t.to));
+    closeModal();render();toast(`Задача поставлена. ${targetName(t)} — уведомление отправлено.`);
+  },
+  ship:f=>{
+    const from=byId('ns-from').value.trim(),m=me(),now=new Date(),items=[],pipe=shipPipe('in');
+    f.querySelectorAll('.irow').forEach(r=>{const sku=r.querySelector('select').value,q=parseInt(r.querySelector('input').value,10)||0;if(q<1) return;const e=items.find(i=>i.sku===sku);if(e) e.qty+=q;else items.push({sku,qty:q})});
+    if(!from||!items.length) return showErr('ns-err','Укажите, откуда едет груз, и хотя бы одну позицию с количеством.');
+    const id='П-'+(Math.max(0,...S.shipments.filter(s=>s.dir==='in').map(s=>parseInt(s.id.replace(/\D/g,''),10)||0))+1);
+    const eta=byId('ns-eta').value?fromIso(byId('ns-eta').value):day(7,12);
+    const stageId=Pipes.stage(S,pipe.id,byId('ns-stage').value)?.id||startStage(pipe.id).id;
+    S.shipments.push({id,dir:'in',from,to:'Наш склад',carrier:byId('ns-car').value,doc:byId('ns-doc').value.trim()||'нет данных: номер накладной',pipeId:pipe.id,stageId,eta,last:{place:from,at:now,by:m.id},items});
+    Notify.push(S,'ship',m.id,`Новая поставка ${id} из «${from}»: ${items.map(i=>`${low(product(i.sku).name)} ${num(i.qty)} ${product(i.sku).unit}`).join(', ')}. На складе ожидается ${fD(eta)}.`,now);
+    closeModal();S.ui.logTab='in';render();toast(`Поставка ${id} создана. Менеджеры уже видят её в остатках как «едет к нам».`);
+  },
+  product:()=>{
+    const sku=byId('np-sku').value.trim().toUpperCase(),name=byId('np-name').value.trim(),pr=byId('np-price'),m=me();
+    if(!sku||!name) return showErr('np-err','Нужны артикул и наименование.');
+    if(product(sku)) return showErr('np-err',`Артикул ${sku} уже есть в номенклатуре.`);
+    const price=pr&&pr.value!==''?Math.max(0,Number(pr.value)):null;
+    S.products.push({sku,name,cat:byId('np-cat').value,unit:byId('np-unit').value,price,stock:0});
+    Notify.push(S,'arrive',m.id,`В номенклатуру добавлен товар: ${name} (${sku}).`,new Date());
+    closeModal();S.ui.cat='Все';S.ui.sq='';render();toast(`Товар ${sku} добавлен. Остаток 0 — появится после первой приёмки.`);
+  },
+  msg:f=>{
+    const d=deal(f.dataset.id),ta=byId('msg-text'),txt=ta.value.trim();
+    if(!txt){ta.focus();return}
+    S.msgs.push({id:Store.freeId(S.msgs,'m'),at:new Date(),deal:d.id,channel:d.channel,by:me().id,text:txt});
+    render();toast(`Сообщение записано в переписку. В прототипе в ${CH[d.channel]} оно не уходит.`);
+  }
+};
+
+// ——— события ———
+document.addEventListener('click',e=>{
+  if(!e.target.closest('.bell-w')) byId('pop').hidden=true;
+  const inSearch=e.target.closest('.search');
+  if(!inSearch) byId('q-res').hidden=true;
+  if(e.target.classList?.contains('modal-wrap')){closeModal();return}
+  const el=e.target.closest('[data-act]');if(!el) return;
+  const f=A[el.dataset.act];if(!f) return;
+  if(el.closest('#q-res')){byId('q-res').hidden=true;byId('q').value=''}
+  if(el.closest('#pop')) byId('pop').hidden=true;
+  f(el,e);
+});
+document.addEventListener('submit',e=>{const f=e.target,k=f.dataset.form;if(!k||!FORMS[k]) return;e.preventDefault();FORMS[k](f)});
+document.addEventListener('input',e=>{
+  const t=e.target,on=t.dataset?.on;if(!on) return;
+  if(on==='rcv-qty'){S.rcv.qty[t.dataset.sku]=t.value;byId('rcv-diff-'+t.dataset.sku).innerHTML=diffHtml(ship(S.rcv.shipId).items.find(i=>i.sku===t.dataset.sku));updRcvPrev()}
+  else if(on==='rcv-note') S.rcv.note=t.value;
+  else if(on==='sq'){S.ui.sq=t.value;byId('stock-tbl').innerHTML=stockTable()}
+  else if(on==='tpl'){S.tpl=t.value;updTpl()}
+  else if(on==='addr'){S.address=t.value;updTpl()}
+  saveSoon();
+});
+document.addEventListener('change',e=>{
+  const t=e.target,on=t.dataset?.on;if(!on) return;
+  if(on==='rcv-ship'){initRcv(t.value);render()}
+  else if(on==='rcv-dmg'){S.rcv.dmg[t.dataset.sku]=t.checked;updRcvPrev()}
+  else if(on==='rcv-photo'){addPhotos(t.files);t.value=''}
+  else if(on==='task-dept'){S.ui.taskDept=t.value;render()}
+  else if(on==='deficit'){S.ui.deficit=t.checked;byId('stock-tbl').innerHTML=stockTable()}
+  else if(on==='rule'){const r=rule(t.dataset.id);r.on=t.checked;toast(`Правило «${r.when}» ${r.on?'включено':'выключено'}.`)}
+  else if(on==='perm'){const r=S.roles.find(x=>x.id===t.dataset.role);if(!r||r.all) return;r.perms[t.dataset.perm]=t.checked;const l=Perms.LIST.find(p=>p[0]===t.dataset.perm)?.[1]||t.dataset.perm;toast(`${r.name}: «${l}» — ${t.checked?'разрешено':'запрещено'}.`)}
+  else if(on==='person-role'){const p=person(t.dataset.id);p.role=t.value;render();toast(`${p.name} теперь ${roleName(p).toLowerCase()}.`)}
+  else if(on==='person-spec'){const p=person(t.dataset.id);p.specialty=t.value;toast(`${p.name}: специализация — ${SPECIALTY[p.specialty]||'нет данных'}.`)}
+  saveSoon();
+});
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){
+    if(S.ui.modal) closeModal();else if(S.ui.drawer) closeDrawer();else{byId('pop').hidden=true;byId('q-res').hidden=true;if(S.ui.navOpen) setNav(false)}
+    return;
+  }
+  if((e.key==='Enter'||e.key===' ')&&e.target.matches?.('[data-act]:not(button):not(input):not(select):not(textarea):not(label)')){e.preventDefault();e.target.click()}
+});
+document.addEventListener('dragstart',e=>{const c=e.target.closest?.('[data-drag]');if(!c) return;e.dataTransfer.setData('text/plain',c.dataset.drag);e.dataTransfer.effectAllowed='move';c.classList.add('dragging')});
+document.addEventListener('dragend',()=>{document.querySelectorAll('.dragging,.col.drop').forEach(x=>x.classList.remove('dragging','drop'))});
+document.addEventListener('dragover',e=>{const col=e.target.closest?.('[data-col]');if(!col) return;e.preventDefault();document.querySelectorAll('.col.drop').forEach(x=>{if(x!==col) x.classList.remove('drop')});col.classList.add('drop')});
+document.addEventListener('drop',e=>{const col=e.target.closest?.('[data-col]');if(!col) return;e.preventDefault();const id=e.dataTransfer.getData('text/plain');col.classList.remove('drop');if(id) setTaskStatus(id,col.dataset.col)});
+byId('role').addEventListener('change',e=>setMe(e.target.value));
+// адрес поменяли руками (#team) — показать этот раздел (или «Нет доступа»)
+if(typeof window!=='undefined') window.addEventListener('hashchange',()=>{const v=hashView();if(v&&S&&v!==S.view){S.view=v;S.ui.drawer=null;render()}});
+// «как в системе»: устройство переключило светлую/тёмную — тема следом
+try{if(typeof matchMedia==='function') matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{if(S) applyTheme()})}catch(_){}
+byId('q').addEventListener('input',e=>{
+  const v=e.target.value,box=byId('q-res');
+  if(!v.trim()){box.hidden=true;return}
+  const r=searchRes(v);
+  box.innerHTML=r.length?`<ul class="pop-l">${r.map(x=>`<li><button class="li" ${x.act}><span class="pill sm">${x.type}</span><span class="li-t">${esc(x.label)}<small>${esc(x.sub)}</small></span></button></li>`).join('')}</ul>`:'<p class="empty">Ничего не нашлось</p>';
+  box.hidden=false;
+});
+
+// Раздел «Сегодня»
+// Перенесено из прототипа v2; «я» — человек S.me, «готово/закрыто» — флаг final этапа.
+
+// ——— «Сегодня» ———
+function vHome(){
+  const m=me(),hr=new Date().getHours();
+  const g=hr<5?'Доброй ночи':hr<12?'Доброе утро':hr<18?'Добрый день':'Добрый вечер';
+  let h=`<div class="hello"><h2>${g}, ${esc(m.name.split(' ')[0])}</h2><p>${cap(WDF[T0.getDay()])}, ${T0.getDate()} ${MONF[T0.getMonth()]} · ${esc(roleName(m))}</p></div>`;
+  if(can('firm')) h+=kpiHtml();
+  if(can('stock')) h+=weekHtml();
+  const L=[];
+  if(can('stock')||can('firm')) L.push(attnHtml());
+  L.push(myTasksHtml());
+  h+=`<div class="home-grid"><div class="stack">${L.join('')}</div><div class="stack">${eventsHtml()}</div></div>`;
+  return h;
+}
+function kpiHtml(){
+  const open=S.tasks.filter(t=>!isDone(t)),over=open.filter(taskOverdue);
+  const inT=openIn(),late=S.shipments.filter(isLate);
+  const rd=new Set(S.reserves.map(r=>r.deal));
+  const act=S.deals.filter(d=>!isDone(d)),total=sum(act,d=>d.amount||0);
+  const tile=(l,v,s,c,view)=>`<button class="kpi" data-act="go" data-view="${view}"><span class="k-l">${l}</span><b class="k-v">${v}</b><span class="k-s ${c}">${s}</span></button>`;
+  return `<div class="kpis">${[
+    tile('Задачи в работе',open.length,over.length?`${over.length} ${pl(over.length,'просрочена','просрочены','просрочено')}`:'просроченных нет',over.length?'bad':'ok','tasks'),
+    tile('Поставок в пути',inT.length,late.length?`${late.length} ${pl(late.length,'задерживается','задерживаются','задерживаются')}`:'все по графику',late.length?'warn':'ok','logistics'),
+    tile('Позиций в резерве',S.reserves.length,`по ${rd.size} ${pl(rd.size,'сделке','сделкам','сделкам')}`,'','stock'),
+    tile('Сделок в работе',act.length,can('prices')?`на ${mln(total)}`:'суммы скрыты для роли','','clients')
+  ].join('')}</div>`;
+}
+function weekHtml(){
+  const act=S.shipments.filter(s=>!isDone(s)),late=act.filter(isLate);
+  const chip=s=>`<button class="wchip ${s.dir} ${isLate(s)?'late':''}" data-act="go" data-view="logistics" data-tab="${s.dir}"><b class="mono">${s.id}</b><span>${s.dir==='in'?'приход':'отгрузка'} · ${esc(shortItems(s))}</span></button>`;
+  let cols='';
+  if(late.length) cols+=`<div class="wd late"><div class="wd-h">Опаздывают<b>${late.length} ${pl(late.length,'поставка','поставки','поставок')}</b></div>${late.map(chip).join('')}</div>`;
+  for(let i=0;i<7;i++){
+    const d=day(i),list=act.filter(s=>!isLate(s)&&dd(s.eta)===i);
+    cols+=`<div class="wd ${i===0?'today':''}"><div class="wd-h">${i===0?'Сегодня':i===1?'Завтра':WDF[d.getDay()]}<b>${d.getDate()} ${MON[d.getMonth()]}</b></div>${list.map(chip).join('')}</div>`;
+  }
+  return `<section class="card"><div class="card-h"><h3>Неделя: что приходит и что уезжает</h3><button class="btn sm ghost" data-act="go" data-view="logistics">Все перевозки ${ic('arrow')}</button></div><div class="card-b"><div class="xs"><div class="week" style="--n:${late.length?8:7}">${cols}</div></div></div></section>`;
+}
+function attention(){
+  const a=[];
+  S.tasks.filter(t=>taskOverdue(t)&&taskVisible(t)).forEach(t=>a.push({lvl:'bad',icon:'tasks',text:`Просрочена задача «${t.title}»`,sub:`${targetName(t)} · срок был ${fD(t.due)}`,act:`data-act="open-task" data-id="${t.id}"`}));
+  if(can('stock')){
+    S.shipments.filter(isLate).forEach(s=>a.push({lvl:'warn',icon:'truck',text:`${s.id} задерживается на ${days(-dd(s.eta))}`,sub:`Последняя отметка: ${s.last.place}`,act:'data-act="go" data-view="logistics"'}));
+    S.products.forEach(p=>{
+      const fa=freeAfter(p);
+      if(fa<0) a.push({lvl:'bad',icon:'box',text:`${p.name}: под резервы не хватает ${num(-fa)} ${p.unit}`,sub:'Даже с учётом всех поставок в пути',act:`data-act="open-product" data-sku="${p.sku}"`});
+      else if(p.stock>0&&freeNow(p)<=0&&!incomingQty(p.sku)) a.push({lvl:'warn',icon:'box',text:`${p.name}: свободный остаток закончился`,sub:'Всё, что на складе, в резерве. Поставок нет',act:`data-act="open-product" data-sku="${p.sku}"`});
+    });
+    S.reserves.filter(r=>{const n=dd(r.until);return n>=0&&n<=2}).forEach(r=>{const p=product(r.sku),d=deal(r.deal);a.push({lvl:'info',icon:'clock',text:`Резерв истекает ${fRel(r.until)}: ${p.name} — ${num(r.qty)} ${p.unit}`,sub:`${r.deal} · ${d?.client||''}`,act:`data-act="open-product" data-sku="${p.sku}"`})});
+  }
+  return a;
+}
+function attnHtml(){
+  const a=attention();
+  return `<section class="card"><div class="card-h"><h3>Требует внимания</h3>${a.length?`<span class="pill bad">${a.length}</span>`:''}</div>${a.length?`<ul class="list">${a.map(x=>`<li><button class="li ${x.lvl}" ${x.act}><span class="li-ic">${ic(x.icon)}</span><span class="li-t">${esc(x.text)}<small>${esc(x.sub)}</small></span></button></li>`).join('')}</ul>`:'<p class="empty">Всё спокойно: просрочек, задержек и нехватки товара нет.</p>'}</section>`;
+}
+function myTasksHtml(){
+  const m=me();
+  const list=S.tasks.filter(t=>!isDone(t)&&(taskMine(t)||t.from===m.id)).sort((a,b)=>a.due-b.due).slice(0,7);
+  return `<section class="card"><div class="card-h"><h3>Мои задачи</h3><button class="btn sm" data-act="new-task">${ic('plus')}Поставить задачу</button></div>${list.length?`<ul class="list">${list.map(t=>`<li><button class="li" data-act="open-task" data-id="${t.id}"><span class="tdot ${esc(t.stageId)}"></span><span class="li-t">${esc(t.title)}<small>${taskMine(t)?'Мне':'От меня → '+esc(targetName(t))} · ${esc(stageName(t))}</small></span><span class="due ${dd(t.due)<0?'bad':''}">${fRel(t.due)}</span></button></li>`).join('')}</ul>`:'<p class="empty">Открытых задач нет.</p>'}</section>`;
+}
+function eventsHtml(){
+  const all=can('firm');
+  const list=S.notes.filter(n=>all||n.to.includes(S.me)).slice(0,7);
+  const un=new Set(unread().map(n=>n.id));
+  return `<section class="card"><div class="card-h"><h3>${all?'События по фирме':'Мои уведомления'}</h3><button class="btn sm ghost" data-act="go" data-view="notifications">Все ${ic('arrow')}</button></div>${list.length?`<ul class="notes">${list.map(n=>noteRow(n,un.has(n.id))).join('')}</ul>`:'<p class="empty">Пока ничего нет.</p>'}</section>`;
+}
+
+// Раздел «Задачи»
+// Перенесено из прототипа v2; колонки — этапы доски задач (Pipes), «готово» — флаг final.
+
+// ——— задачи ———
+function vTasks(){
+  const m=me(),F=S.ui.taskF,board=taskBoard(),cols=board?.stages||[];
+  let list=S.tasks.filter(t=>taskVisible(t)&&t.boardId===board?.id);
+  if(F==='mine') list=list.filter(taskMine);
+  else if(F==='byme') list=list.filter(t=>t.from===m.id);
+  else if(F==='over') list=list.filter(taskOverdue);
+  if(can('tasksAll')&&S.ui.taskDept!=='all') list=list.filter(t=>tDept(t)===S.ui.taskDept);
+  const seg=[['all',can('tasksAll')?'Все':'Мои и отдела'],['mine','Мне'],['byme','Поставил я'],['over','Просроченные']];
+  let h=`<div class="bar"><div class="seg">${seg.map(([k,l])=>`<button class="${F===k?'on':''}" data-act="task-f" data-f="${k}">${l}</button>`).join('')}</div>`;
+  if(can('tasksAll')) h+=`<select class="inp sm w-auto" id="task-dept" data-on="task-dept" aria-label="Отдел"><option value="all">Все отделы</option>${S.depts.map(d=>`<option value="${esc(d.id)}" ${S.ui.taskDept===d.id?'selected':''}>${esc(d.name)}</option>`).join('')}</select>`;
+  h+=`<span class="grow"></span><button class="btn pri" data-act="new-task">${ic('plus')}Поставить задачу</button></div>`;
+  h+=`<p class="hint">Перетаскивайте карточки между колонками или откройте задачу и смените статус. Тот, кто поставил задачу, получит уведомление.</p>`;
+  h+=`<div class="xs"><div class="kanban" style="grid-template-columns:repeat(${cols.length},minmax(250px,1fr))">${cols.map(st=>{const c=list.filter(t=>t.stageId===st.id).sort((a,b)=>a.due-b.due);return `<div class="col" data-col="${esc(st.id)}"><div class="col-h"><span>${esc(st.name)}</span><span class="cnt-s">${c.length}</span></div>${c.map(tCard).join('')||'<p class="col-empty">Пусто</p>'}</div>`}).join('')}</div></div>`;
+  return h;
+}
+function tCard(t){
+  const over=taskOverdue(t);
+  return `<article class="tcard ${isDone(t)?'done':''}" draggable="true" data-drag="${t.id}" data-act="open-task" data-id="${t.id}" tabindex="0"><div class="tc-top">${t.prio==='high'?'<span class="pill bad sm">Срочно</span>':''}${t.deal?`<span class="chip mono">${t.deal}</span>`:''}</div><p class="tc-t">${esc(t.title)}</p><div class="tc-m"><span class="who">${t.to.t==='p'?av(person(t.to.id),'xs'):`<span class="av xs">${ic('users')}</span>`}${esc(targetName(t))}</span><span class="due ${over?'bad':''}">${over?'просрочена · ':''}${fRel(t.due)}</span></div></article>`;
+}
+function dTask(t){
+  const from=person(t.from),d=t.deal?deal(t.deal):null,over=taskOverdue(t);
+  return {kind:'Задача',title:esc(t.title),sub:`Поставил(а): ${esc(from?.name||'')} · ${fWhen(t.at)}`,body:`
+    <div class="seg wide">${stagesFor(t).map(st=>`<button class="${t.stageId===st.id?'on':''}" data-act="task-st" data-id="${t.id}" data-st="${esc(st.id)}">${esc(st.name)}</button>`).join('')}</div>
+    <dl class="kv"><dt>Кому</dt><dd>${esc(targetName(t))}</dd><dt>Срок</dt><dd class="${over?'bad-t':''}">${fD(t.due)}, ${WD[new Date(t.due).getDay()]}${over?' · просрочена':''}</dd><dt>Важность</dt><dd>${t.prio==='high'?'Срочно':'Обычная'}</dd>${d?`<dt>Сделка</dt><dd>${can('clients')?`<button class="link" data-act="open-deal" data-id="${d.id}">${d.id} · ${esc(d.client)}</button>`:d.id}</dd>`:''}</dl>
+    ${t.desc?`<div><h4 class="sh">Подробности</h4><p class="prose">${esc(t.desc)}</p></div>`:''}`};
+}
+
+// Раздел «Товары и остатки»
+// Перенесено из прототипа v2; этап поставки — по id, «закрыта» — флаг final.
+
+// ——— товары и остатки ———
+function vStock(){
+  return `<div class="bar"><div class="search-in">${ic('search')}<input id="sq" class="inp" type="search" placeholder="Название или артикул" value="${esc(S.ui.sq)}" data-on="sq" aria-label="Поиск товара"></div>
+  <label class="check"><input type="checkbox" id="deficit" data-on="deficit" ${S.ui.deficit?'checked':''}> Только где не хватает</label><span class="grow"></span>${can('catalog')?`<button class="btn" data-act="new-product">${ic('plus')}Новый товар</button>`:''}</div>
+  <div class="chips">${['Все',...CATS].map(c=>`<button class="fchip ${S.ui.cat===c?'on':''}" data-act="cat" data-cat="${c}">${c}</button>`).join('')}</div>
+  <section class="card clip"><div class="legend"><span><i class="lg f"></i>Свободно на складе</span><span><i class="lg r"></i>На складе в резерве</span><span><i class="lg w"></i>Едет к нам</span><span>«Будет свободно» = склад + в пути − все резервы</span></div><div id="stock-tbl">${stockTable()}</div></section>`;
+}
+function sbar(p,big){
+  const fn=Math.max(0,freeNow(p)),rs=Math.min(p.stock,resStock(p.sku)),iq=incomingQty(p.sku),tot=Math.max(1,fn+rs+iq),w=x=>(x/tot*100).toFixed(1)+'%';
+  return `<div class="sbar ${big?'big':''}" title="Свободно ${num(fn)}, в резерве ${num(rs)}, в пути ${num(iq)}"><i class="f" style="width:${w(fn)}"></i><i class="r" style="width:${w(rs)}"></i><i class="w" style="width:${w(iq)}"></i></div>`;
+}
+const priceTxt=p=>p.price==null?'<span class="muted">нет данных</span>':rub(p.price);
+function stockTable(){
+  const q=S.ui.sq.trim().toLowerCase();
+  let list=S.products.filter(p=>(S.ui.cat==='Все'||p.cat===S.ui.cat)&&(!q||(p.name+' '+p.sku).toLowerCase().includes(q)));
+  if(S.ui.deficit) list=list.filter(p=>freeAfter(p)<0||freeNow(p)<=0);
+  if(!list.length) return '<p class="empty">Ничего не нашлось. Проверьте фильтр или строку поиска.</p>';
+  const pr=can('prices');
+  return `<div class="xs"><table class="tbl"><thead><tr><th>Товар</th><th class="num">На складе</th><th class="num">В резерве</th><th class="num">Свободно</th><th>Едет к нам</th><th class="num">Будет свободно</th>${pr?'<th class="num">Цена</th>':''}<th>Картина</th></tr></thead><tbody>${list.map(p=>{
+    const ra=resAll(p.sku),rsh=ra-resStock(p.sku),fn=freeNow(p),inc=incomingOf(p.sku),iq=incomingQty(p.sku),fa=freeAfter(p);
+    return `<tr class="click" data-act="open-product" data-sku="${p.sku}" tabindex="0"><td><div class="pname"><span>${esc(p.name)}</span><small class="mono">${esc(p.sku)}</small></div></td><td class="num">${num(p.stock)} <span class="u">${p.unit}</span></td><td class="num">${num(ra)}${rsh?`<small class="muted">${num(rsh)} под поставку</small>`:''}</td><td class="num"><b class="${fn<=0?'bad-t':''}">${num(fn)}</b></td><td>${iq?`<span class="in-t">${num(iq)} ${p.unit}</span><small class="muted">ближайшая ${fD(inc[0].ship.eta)}${inc.length>1?` · ${inc.length} поставки`:''}</small>`:'<span class="muted">не ждём</span>'}</td><td class="num">${fa<0?`<span class="pill bad sm">не хватает ${num(-fa)}</span>`:num(fa)}</td>${pr?`<td class="num">${priceTxt(p)}</td>`:''}<td>${sbar(p)}</td></tr>`;
+  }).join('')}</tbody></table></div>`;
+}
+function srcPill(r){
+  if(r.src==='stock') return '<span class="pill ok sm">на складе</span>';
+  const s=ship(r.src),bad=freeAfter(product(r.sku))<0;
+  return `<span class="pill ${bad?'bad':'info'} sm">едет: ${s?.id||r.src}${s?' · '+fD(s.eta):''}${bad?' · не хватает':''}</span>`;
+}
+function dProduct(p){
+  const rs=resOf(p.sku),inc=incomingOf(p.sku),mv=S.moves.filter(m=>m.sku===p.sku).slice(0,8),fn=freeNow(p),fa=freeAfter(p);
+  const st=(l,v,c='')=>`<div class="st"><span>${l}</span><b class="${c}">${v}</b></div>`;
+  let form='';
+  if(can('reserve')){
+    const deals=S.deals.filter(d=>!isDone(d));
+    const src=[`<option value="stock">Со склада — свободно ${num(Math.max(0,fn))} ${p.unit}</option>`,...inc.map(x=>`<option value="${x.ship.id}">Из поставки ${x.ship.id}, ${fD(x.ship.eta)} — свободно ${num(Math.max(0,shipFree(x.ship.id,p.sku)))} ${p.unit}</option>`)].join('');
+    form=`<form class="rform" data-form="reserve" data-sku="${esc(p.sku)}" novalidate><h4 class="sh">Поставить резерв</h4><div class="grid2"><div class="field"><label for="rs-deal">Сделка</label><select id="rs-deal" class="inp">${deals.map(d=>`<option value="${d.id}">${d.id} · ${esc(d.client)}</option>`).join('')}</select></div><div class="field"><label for="rs-qty">Количество, ${p.unit}</label><input id="rs-qty" class="inp" type="number" min="1" value="1" inputmode="numeric"></div><div class="field span2"><label for="rs-src">Откуда</label><select id="rs-src" class="inp">${src}</select></div><div class="field"><label for="rs-until">Резерв до</label><input id="rs-until" class="inp" type="date" value="${iso(day(7))}"></div><div class="field end"><button class="btn pri" type="submit">${ic('lock')}Зарезервировать</button></div></div><p class="err" id="rs-err" hidden></p></form>`;
+  } else form=`<p class="lock">${ic('lock')}Резервы ставит менеджер или директор. Вам придёт уведомление, когда резерв появится.</p>`;
+  const rTbl=rs.length?`<div class="xs"><table class="tbl"><thead><tr><th>Сделка</th><th class="num">Кол-во</th><th>Где товар</th><th>До</th>${can('reserve')?'<th></th>':''}</tr></thead><tbody>${rs.map(r=>{const d=deal(r.deal),n=dd(r.until);return `<tr><td>${can('clients')?`<button class="link" data-act="open-deal" data-id="${r.deal}">${r.deal}</button>`:r.deal}<small class="muted">${esc(d?.client||'')}</small></td><td class="num">${num(r.qty)}</td><td>${srcPill(r)}</td><td class="nowrap ${n<=2?'warn-t':''}">${fD(r.until)}</td>${can('reserve')?`<td class="num"><button class="btn sm ghost" data-act="unreserve" data-id="${r.id}">Снять</button></td>`:''}</tr>`}).join('')}</tbody></table></div>`:'<p class="muted m0">Резервов нет.</p>';
+  const iList=inc.length?`<ul class="mv">${inc.map(x=>`<li><b class="mono">${x.ship.id}</b><span>${num(x.qty)} ${p.unit}</span><span class="pill sm ${isLate(x.ship)?'bad':'info'}">${isLate(x.ship)?'задерживается':esc(stageName(x.ship).toLowerCase())}</span><small>ожидается ${fD(x.ship.eta)}</small></li>`).join('')}</ul>`:'<p class="muted m0">Поставок с этим товаром нет.</p>';
+  const sign=m=>m.kind==='Приход'?'+':m.kind==='Отгрузка'?'−':'';
+  const mList=mv.length?`<ul class="mv">${mv.map(m=>`<li><span class="pill sm ${m.kind==='Приход'?'ok':m.kind==='Отгрузка'?'info':'sun'}">${m.kind}</span><b>${sign(m)}${num(m.qty)} ${p.unit}</b><span class="mono muted">${esc(m.doc)}</span><small>${fWhen(m.at)} · ${esc(person(m.by)?.name||'')}</small></li>`).join('')}</ul>`:'<p class="muted m0">Движений пока нет.</p>';
+  return {kind:p.cat,title:esc(p.name),sub:`<span class="mono">${esc(p.sku)}</span>${can('prices')?' · цена '+priceTxt(p)+' за '+p.unit:''}`,body:`
+    <div class="stats">${st('На складе',num(p.stock)+' '+p.unit)}${st('В резерве',num(resAll(p.sku)))}${st('Свободно сейчас',num(fn),fn<=0?'bad-t':'ok-t')}${st('Едет к нам',num(incomingQty(p.sku)))}${st('Будет свободно',num(fa),fa<0?'bad-t':'')}</div>
+    ${sbar(p,true)}${form}
+    <div><h4 class="sh">Резервы</h4>${rTbl}</div>
+    <div><h4 class="sh">Едет к нам</h4>${iList}</div>
+    <div><h4 class="sh">Движение товара</h4>${mList}</div>`};
+}
+
+// Раздел «Поставки и перевозки»
+// Перенесено из прототипа v2; этапы — воронка поставки (Pipes), «закрыта» — флаг final, «ждёт приёмки» — awaitsReceipt.
+
+// ——— поставки и перевозки ———
+function vLogistics(){
+  const byEta=(a,b)=>a.eta-b.eta;
+  const ins=S.shipments.filter(s=>s.dir==='in'&&!isDone(s)).sort(byEta),outs=S.shipments.filter(s=>s.dir==='out'&&!isDone(s)).sort(byEta);
+  const done=S.shipments.filter(isDone).sort((a,b)=>b.last.at-a.last.at);
+  const tab=S.ui.logTab,list=tab==='in'?ins:tab==='out'?outs:done;
+  let h=`<div class="bar"><div class="seg">${[['in','Едут к нам',ins.length],['out','Отгрузки клиентам',outs.length],['done','Завершённые',done.length]].map(([k,l,c])=>`<button class="${tab===k?'on':''}" data-act="log-tab" data-tab="${k}">${l}<b>${c}</b></button>`).join('')}</div><span class="grow"></span>${can('logistics')?`<button class="btn pri" data-act="new-ship">${ic('plus')}Новая поставка</button>`:''}</div>`;
+  if(!can('logistics')) h+=`<p class="hint">Этапы перевозки отмечает логист. Каждая отметка приходит вам уведомлением.</p>`;
+  h+=list.length?`<div class="ships">${list.map(shipCard).join('')}</div>`:'<section class="card"><p class="empty">Здесь пока пусто.</p></section>';
+  return h;
+}
+function shipCard(s){
+  const stg=stagesFor(s),pos=stagePos(s),done=isDone(s),late=isLate(s),n=dd(s.eta),nm=esc(stageName(s));
+  const pill=done?`<span class="pill ok">${nm}</span>`:late?'<span class="pill bad">Задерживается</span>':awaitsReceipt(s)?`<span class="pill sun">${nm}</span>`:`<span class="pill info">${nm}</span>`;
+  const when=done?s.last.at:s.eta;
+  const etaTxt=done?(s.received?'принято '+fT(s.received.at):'доставлено '+fT(s.last.at)):n>0?'через '+days(n):n===0?'сегодня'+(s.eta.getHours()?', к '+fT(s.eta):''):'опаздывает на '+days(-n);
+  const waits=s.dir==='in'?[...byDeal(S.reserves.filter(r=>r.src===s.id)).keys()]:(s.deal?[s.deal]:[]);
+  const items=s.items.map(it=>{const p=product(it.sku);const t=`${esc(p.name)} <b>× ${num(it.got??it.qty)} ${p.unit}</b>`;return can('stock')?`<button class="chip" data-act="open-product" data-sku="${it.sku}">${t}</button>`:`<span class="chip">${t}</span>`}).join('');
+  let w='';
+  if(waits.length) w=`<div class="waits">${ic('users')}<span>${s.dir==='in'?'Ждут этот товар':'Для сделки'}: ${can('clients')?waits.map(id=>`<button class="link" data-act="open-deal" data-id="${id}">${id} · ${esc(deal(id)?.client||'')}</button>`).join(', '):waits.length+' '+pl(waits.length,'сделка','сделки','сделок')}</span></div>`;
+  let ph='';
+  if(s.received){const r=s.received;ph=`<div class="photos-row">${(r.urls.length?r.urls.map(u=>`<img src="${u}" alt="Фото приёмки">`):Array.from({length:r.photos},()=>`<span class="ph-ph">${ic('photo')}</span>`)).join('')}<small>${r.photos} фото · принял(а) ${esc(person(r.by)?.name||'')}${r.note?' · '+esc(r.note):''}</small></div>`;}
+  let f='';
+  if(!done){
+    const b=[];
+    if(can('logistics')) b.push(`<button class="btn sm" data-act="stage" data-id="${s.id}">${ic('pin')}Отметить этап</button>`);
+    if(can('receive')&&awaitsReceipt(s)) b.push(`<button class="btn sm pri" data-act="rcv-start" data-id="${s.id}">${ic('camera')}Принять на складе</button>`);
+    if(b.length) f=`<div class="ship-f">${b.join('')}</div>`;
+  }
+  return `<article class="card ship ${late?'is-late':''}"><div class="ship-h"><div class="ship-id"><b class="mono">${s.id}</b>${pill}</div><div class="eta ${late?'bad-t':''}"><small>${done?'Закрыто':s.dir==='in'?'Ожидается на складе':'Доставка'}</small><b>${fD(when)}</b><span>${etaTxt}</span></div></div>
+    <div class="route"><span>${esc(s.from)}</span>${ic('arrow')}<span>${esc(s.to)}</span></div>
+    <div class="muted sm">${esc(s.carrier)} · <span class="mono">${esc(s.doc)}</span></div>
+    <ol class="steps" style="--n:${stg.length}">${stg.map((x,i)=>`<li class="${i<pos||done?'done':i===pos?'cur':''}"><span>${esc(x.name)}</span></li>`).join('')}</ol>
+    <div class="lastm">${ic('pin')}<span>${esc(s.last.place)}<small>${fWhen(s.last.at)} · отметка: ${esc(person(s.last.by)?.name||'')}</small></span></div>
+    <div class="items">${items}</div>${w}${ph}${f}</article>`;
+}
+
+// Раздел «Приёмка на складе»
+// Перенесено из прототипа v2. Что ждёт приёмки — awaitsReceipt (флаг arrived); кому уведомления — Notify;
+// предпросмотр и подтверждение считают по одному плану rcvPlan().
+
+// ——— приёмка ———
+const newRcv=id=>{const s=ship(id);return {shipId:id,qty:Object.fromEntries(s.items.map(i=>[i.sku,i.qty])),dmg:{},note:'',photos:[],done:null}};
+function initRcv(id){S.rcv=newRcv(id)}
+const pendingRcv=()=>S.shipments.filter(awaitsReceipt).sort((a,b)=>a.eta-b.eta);
+// Текущая приёмка: начатая или первая из ждущих (без записи в S — вид не меняет состояние)
+function curRcv(){
+  if(S.rcv&&S.rcv.done) return S.rcv;
+  const pend=pendingRcv();
+  if(S.rcv&&pend.some(s=>s.id===S.rcv.shipId)) return S.rcv;
+  return pend.length?newRcv(pend[0].id):null;
+}
+// Перед отрисовкой раздела: начатая приёмка или первая из ждущих становится текущей
+function syncRcv(){const r=curRcv();if(r!==S.rcv) S.rcv=r}
+const qv=(sku,r=S.rcv)=>Math.max(0,parseInt(r.qty[sku],10)||0);
+function diffHtml(it,r=S.rcv){const d=qv(it.sku,r)-it.qty;return d<0?`<span class="pill bad sm">недостача ${num(-d)}</span>`:d>0?`<span class="pill warn sm">излишек ${num(d)}</span>`:'<span class="pill ok sm">сходится</span>'}
+// План приёмки — один на предпросмотр и подтверждение: расхождения, сделки-ждуны и что с каждой, кому уведомления
+function rcvPlan(r=S.rcv){
+  const s=ship(r.shipId),auto=rule('arrive').on,issues=[],dmg=[];
+  s.items.forEach(it=>{
+    const p=product(it.sku),q=qv(it.sku,r);
+    if(q<it.qty) issues.push(`${p.name}: принято ${num(q)} из ${num(it.qty)} ${p.unit}`);
+    else if(q>it.qty) issues.push(`${p.name}: принято ${num(q)} вместо ${num(it.qty)} ${p.unit}`);
+    if(r.dmg[it.sku]) dmg.push(p.name);
+  });
+  const res=S.reserves.filter(x=>x.src===s.id);
+  // как сообщить клиенту: телефон → задача менеджеру; иначе авто-сообщение, если правило включено; иначе напоминание
+  const waits=[...byDeal(res)].map(([did,list])=>{const d=deal(did);return {d,list,items:itemsText(list),how:d.channel==='phone'?'call':auto?'auto':'remind'}});
+  const ids=new Set([...Notify.recipients(S,'arrive'),...waits.flatMap(w=>Notify.recipients(S,'msg',[w.d.managerId])),...(issues.length||dmg.length?Notify.recipients(S,'warn'):[])]);
+  return {s,issues,dmg,res,waits,warnTo:Notify.recipients(S,'warn'),to:[...ids]};
+}
+function vReceiving(){
+  const r=curRcv();
+  if(r&&r.done) return rcvLayout(rcvDoneHtml(r),rcvAfterHtml(r));
+  if(!r) return '<section class="card"><p class="empty">Сейчас нечего принимать: нет поставок на этапе «прибыло, ждёт приёмки». Как только логист отметит прибытие, поставка появится здесь.</p></section>';
+  return rcvLayout(rcvPhoneHtml(r,pendingRcv()),`<div id="rcv-prev">${rcvPreview(r)}</div>`);
+}
+function rcvLayout(phone,side){
+  return `<p class="hint">Так приёмку видит кладовщик с телефона: выбрал поставку, пересчитал, сфотографировал — и все, кого это касается, сразу получили уведомления. Справа видно, что произойдёт.</p><div class="rcv"><section class="phone" aria-label="Экран кладовщика"><div class="phone-in"><div class="ph-bar"><b>Приёмка</b><span>${esc(me().name)} · ${fT(new Date())}</span></div>${phone}</div></section><div class="stack">${side}</div></div>`;
+}
+function photosHtml(r=S.rcv){
+  return r.photos.map((u,i)=>`<figure class="ph"><img src="${u}" alt="Фото ${i+1}"><button class="ph-x" data-act="rcv-photo-del" data-i="${i}" aria-label="Удалить фото">${ic('x')}</button></figure>`).join('')+`<label class="ph add" for="rcv-file">${ic('camera')}<span>Снять или добавить фото</span><input id="rcv-file" class="sr" type="file" accept="image/*" capture="environment" multiple data-on="rcv-photo"></label>`;
+}
+function rcvPhoneHtml(r,pend){
+  const s=ship(r.shipId);
+  const opts=pend.map(x=>{const on=x.id===s.id;return `<label class="opt ${on?'on':''}"><input type="radio" name="rcv-ship" id="rcv-s-${x.id}" value="${x.id}" ${on?'checked':''} data-on="rcv-ship"><span><b class="mono">${x.id}</b> · ${esc(x.from)}<small>${isLate(x)?'задерживается':esc(stageName(x).toLowerCase())} · ${x.items.length} ${pl(x.items.length,'позиция','позиции','позиций')} · ожидается ${fRel(x.eta)}</small></span></label>`}).join('');
+  const rows=s.items.map(it=>{const p=product(it.sku);return `<div class="cnt-row"><div class="cnt-name">${esc(p.name)}<small>Ожидалось: ${num(it.qty)} ${p.unit}</small></div><div class="qty"><button type="button" data-act="rcv-step" data-sku="${it.sku}" data-d="-1" aria-label="Меньше">−</button><input id="rcv-q-${it.sku}" type="number" inputmode="numeric" min="0" value="${esc(r.qty[it.sku])}" data-on="rcv-qty" data-sku="${it.sku}" aria-label="Принято, ${p.unit}"><button type="button" data-act="rcv-step" data-sku="${it.sku}" data-d="1" aria-label="Больше">+</button></div><div class="cnt-x"><label class="check"><input type="checkbox" id="rcv-d-${it.sku}" data-on="rcv-dmg" data-sku="${it.sku}" ${r.dmg[it.sku]?'checked':''}> Есть повреждения</label><span id="rcv-diff-${it.sku}">${diffHtml(it,r)}</span></div></div>`}).join('');
+  return `<div class="ph-sec"><span class="ph-step">Шаг 1</span><h3>Какая поставка пришла</h3>${opts}</div>
+    <div class="ph-sec"><span class="ph-step">Шаг 2</span><h3>Пересчитайте товар</h3>${rows}</div>
+    <div class="ph-sec"><span class="ph-step">Шаг 3</span><h3>Фото груза и накладной</h3><div class="photos" id="rcv-photos">${photosHtml(r)}</div><div class="field"><label for="rcv-note">Комментарий</label><textarea id="rcv-note" class="inp" rows="2" data-on="rcv-note" placeholder="Например: одна коробка надорвана, содержимое целое">${esc(r.note)}</textarea></div></div>
+    <div class="ph-foot"><button class="btn pri big" data-act="rcv-confirm">${ic('check')}Принять на склад и уведомить</button></div>`;
+}
+function rcvPreview(r=S.rcv){
+  const P=rcvPlan(r),s=P.s,m=me();
+  const ppl=P.to.filter(id=>id!==m.id).map(person).filter(Boolean);
+  const add=s.items.map(it=>{const p=product(it.sku);return `<li><span>${esc(p.name)}</span><b class="num">+${num(qv(it.sku,r))} ${p.unit}</b></li>`}).join('');
+  const warnNames=P.warnTo.map(id=>person(id)?.name).filter(Boolean).map(esc).join(', ');
+  const waits=P.waits.map(({d,items,how})=>{
+    const mg=person(d.managerId);
+    const msg=how==='call'?'<p class="muted sm m0">Клиент на связи по телефону — менеджеру придёт задача позвонить.</p>':how==='auto'?`<div class="chat"><div class="bub out">${fillTpl(d,items,true)}<small>${CH[d.channel]} · уйдёт автоматически сразу после приёмки</small></div></div>`:`<p class="muted sm m0">Авто-сообщения выключены — ${esc(mg?.name||'менеджер')} получит напоминание написать клиенту.</p>`;
+    return `<div class="wait"><div class="wait-h"><b>${esc(d.client)}</b><span class="mono muted">${d.id}</span>${chPill(d.channel)}<span class="muted sm">менеджер ${esc(mg?.name||'нет данных')}</span></div><p class="sm m0">Ждёт: ${esc(items)}</p>${msg}</div>`;
+  }).join('');
+  return `<section class="card"><div class="card-h"><h3>Что произойдёт после приёмки ${s.id}</h3></div><div class="card-b stack-s">
+    <div><h4 class="sh">Добавится на склад</h4><ul class="plain">${add}</ul></div>
+    <div><h4 class="sh">Уведомление получат</h4><div class="who-list">${ppl.map(p=>`<span class="chip">${av(p,'xs')}${esc(p.name)} · ${esc(roleName(p).toLowerCase())}</span>`).join('')}</div>${P.issues.length||P.dmg.length?`<p class="warn-t sm" style="margin:8px 0 0">Есть расхождение или повреждение — отдельное предупреждение получат: ${warnNames}.</p>`:''}</div>
+    <div><h4 class="sh">Клиенты, которые ждут этот товар</h4><div class="stack-s">${waits||'<p class="muted sm m0">Резервов под эту поставку нет — весь товар станет свободным для продажи.</p>'}</div></div>
+  </div></section>`;
+}
+function updRcvPrev(){const b=byId('rcv-prev');if(b) b.innerHTML=rcvPreview()}
+// Принять поставку S.rcv: остаток растёт, резервы «из поставки» становятся резервами со склада,
+// поставка — на завершающий этап, уведомления через Notify, клиентам — сообщение или задача менеджеру.
+function receiveShip(by,now){
+  const r=S.rcv,P=rcvPlan(r),s=P.s,who=person(by);
+  s.items.forEach(it=>{
+    const p=product(it.sku),q=qv(it.sku,r);
+    p.stock+=q;it.got=q;
+    if(q) S.moves.unshift({at:now,sku:it.sku,kind:'Приход',qty:q,doc:s.id,by});
+  });
+  P.res.forEach(x=>{x.src='stock'});
+  s.stageId=finalStage(s)?.id||s.stageId;s.last={place:'Наш склад',at:now,by};
+  s.received={at:now,by,photos:r.photos.length,urls:r.photos.slice(),note:r.note.trim()};
+  const notes=[],msgIds=[];
+  notes.push(Notify.push(S,'arrive',by,`${s.id} принята на склад: ${s.items.map(it=>`${low(product(it.sku).name)} ${num(it.got)} ${product(it.sku).unit}`).join(', ')}. Фото: ${r.photos.length}.${s.received.note?' Комментарий: '+s.received.note:''}`,now));
+  if(P.issues.length||P.dmg.length) notes.push(Notify.push(S,'warn',by,`Приёмка ${s.id} с замечаниями. ${[P.issues.join('; '),P.dmg.length?'Повреждено: '+P.dmg.join(', '):''].filter(Boolean).join('. ')}. Фото в карточке поставки.`,now));
+  P.waits.forEach(({d,items,how})=>{
+    const mg=person(d.managerId);let tail;
+    if(how==='call'){const board=taskBoard();S.tasks.push({id:Store.freeId(S.tasks,'t'),title:`Позвонить клиенту: товар по ${d.id} на складе`,desc:items,to:{t:'p',id:d.managerId},from:by,due:day(0,18),boardId:board.id,stageId:startStage(board.id).id,prio:'high',deal:d.id,at:now});tail='Менеджеру поставлена задача позвонить клиенту.'}
+    else if(how==='auto'){const x={id:Store.freeId(S.msgs,'m'),at:now,deal:d.id,channel:d.channel,auto:true,text:fillTpl(d,items,false)};S.msgs.push(x);msgIds.push(x.id);tail=`Клиенту ушло авто-сообщение в ${CH[d.channel]} (имитация, не отправлено).`}
+    else tail='Авто-сообщения выключены — напишите клиенту.';
+    // менеджеру сделки — отдельно: уведомите клиента (R15)
+    notes.push(Notify.push(S,'msg',null,`Уведомите клиента: ${d.client} (${d.id}) — товар на складе: ${items}. ${tail} Менеджер: ${mg?.name||'нет данных'}.`,now,[d.managerId]));
+  });
+  const notified=new Set(notes.flatMap(n=>n.to).filter(id=>id!==by)).size;
+  r.done={shipId:s.id,noteIds:notes.map(n=>n.id),msgIds,notified,issues:P.issues.length+P.dmg.length,by:who?.id||by};
+  return r.done;
+}
+function rcvConfirm(){
+  const r=receiveShip(me().id,new Date());
+  render();byId('scroll').scrollTop=0;
+  toast(`${r.shipId} принята. Уведомления получили ${r.notified} ${pl(r.notified,'сотрудник','сотрудника','сотрудников')}${r.msgIds.length?`, клиентам подготовлено ${r.msgIds.length} ${pl(r.msgIds.length,'сообщение','сообщения','сообщений')}`:''}.`);
+}
+function rcvDoneHtml(rc=S.rcv){
+  const r=rc.done,s=ship(r.shipId);
+  return `<div class="done-box"><span class="done-ic">${ic('check')}</span><h3 class="m0">${s.id} на складе</h3><p class="m0 muted">Остатки обновлены, резервы под эту поставку стали резервами со склада. Уведомили ${r.notified} ${pl(r.notified,'сотрудника','сотрудников','сотрудников')}.${r.msgIds.length?` Клиентам подготовлено сообщений: ${r.msgIds.length} — в прототипе они не уходят.`:''}</p>${r.issues?'<p class="m0 warn-t">Расхождения и повреждения отправлены отдельным предупреждением.</p>':''}<div class="bar"><button class="btn pri" data-act="rcv-again">Принять другую поставку</button><button class="btn" data-act="go" data-view="notifications">Уведомления</button></div></div>`;
+}
+function rcvAfterHtml(rc=S.rcv){
+  const r=rc.done,notes=S.notes.filter(n=>r.noteIds.includes(n.id)),msgs=S.msgs.filter(x=>r.msgIds.includes(x.id));
+  let h=`<section class="card"><div class="card-h"><h3>Кому что ушло</h3></div><ul class="notes">${notes.map(n=>noteRow(n,false,true)).join('')}</ul></section>`;
+  if(msgs.length) h+=`<section class="card"><div class="card-h"><h3>Сообщения клиентам</h3><span class="pill sun sm">имитация: не отправлены</span></div><div class="card-b stack-s">${msgs.map(x=>{const d=deal(x.deal);return `<div class="stack-s" style="gap:6px"><p class="sm m0"><b>${esc(d.client)}</b> · ${CH[x.channel]}</p><div class="chat"><div class="bub out">${esc(x.text)}<small>${fT(x.at)} · авто</small></div></div></div>`}).join('')}</div></section>`;
+  return h;
+}
+function addPhotos(files){
+  const push=u=>{if(!S.rcv||S.rcv.done) return;S.rcv.photos.push(u);const b=byId('rcv-photos');if(b) b.innerHTML=photosHtml();saveSoon()};
+  [...files].slice(0,9).forEach(f=>{
+    if(!/^image\//.test(f.type)) return;
+    const fr=new FileReader();
+    fr.onload=()=>{const img=new Image();img.onload=()=>{const k=Math.min(1,720/Math.max(img.width,img.height)),c=document.createElement('canvas');c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);c.getContext('2d').drawImage(img,0,0,c.width,c.height);let u;try{u=c.toDataURL('image/jpeg',.82)}catch(_){u=fr.result}push(u)};img.onerror=()=>push(fr.result);img.src=fr.result};
+    fr.readAsDataURL(f);
+  });
+}
+
+// Раздел «Клиенты и сделки»
+// Перенесено из прототипа v2; этапы — воронки сделок B2B и B2C (Pipes), «сдана» — флаг final.
+
+// ——— клиенты и сделки ———
+function dealGoods(d){
+  const rs=S.reserves.filter(r=>r.deal===d.id);
+  if(!rs.length) return {lvl:'',text:'не зарезервирован'};
+  const wait=rs.filter(r=>r.src!=='stock');
+  if(wait.some(r=>freeAfter(product(r.sku))<0)) return {lvl:'bad',text:'не хватает товара'};
+  if(!wait.length) return {lvl:'ok',text:'всё на складе'};
+  const ss=[...new Set(wait.map(r=>r.src))].map(ship).filter(Boolean);
+  const last=ss.reduce((a,s)=>s.eta>a?s.eta:a,ss[0].eta);
+  return {lvl:'info',text:`едет ${ss.map(s=>s.id).join(', ')} · до ${fD(last)}`};
+}
+function vClients(){
+  const pr=can('prices');
+  // воронка на каждую воронку сделок, в которой есть сделки или которая единственная
+  const pipes=Pipes.of(S,'deals'),fun=pipes.filter(p=>pipes.length<2||Pipes.items(S,p.id).length).map(p=>{const ds=Pipes.items(S,p.id);return `${pipes.length>1?`<h4 class="sh">${esc(p.name)}</h4>`:''}<div class="xs"><div class="funnel" style="grid-template-columns:repeat(${p.stages.length},minmax(92px,1fr))">${p.stages.map(st=>{const c=ds.filter(d=>d.stageId===st.id).length;return `<div class="fn ${c?'':'zero'}"><b>${c}</b><span>${esc(st.name)}</span></div>`}).join('')}</div></div>`}).join('');
+  const rows=S.deals.slice().sort((a,b)=>stagePos(b)-stagePos(a)).map(d=>{const g=dealGoods(d);return `<tr class="click" data-act="open-deal" data-id="${d.id}" tabindex="0"><td><div class="pname"><span>${esc(d.client)}</span><small class="mono">${d.id} · ${esc(d.kind)}</small></div></td><td>${esc(d.object)}</td><td><span class="pill ${stageTone(d)}">${esc(stageName(d))}</span></td><td><span class="pill sm ${g.lvl}">${esc(g.text)}</span></td><td class="nowrap">${esc(person(d.managerId)?.name||'нет данных: менеджер')}</td><td>${chPill(d.channel)}</td>${pr?`<td class="num">${d.amount?rub(d.amount):'<span class="muted">не рассчитана</span>'}</td>`:''}</tr>`}).join('');
+  return `${fun}<section class="card clip"><div class="xs"><table class="tbl"><thead><tr><th>Клиент</th><th>Объект</th><th>Этап</th><th>Товар</th><th>Менеджер</th><th>Связь</th>${pr?'<th class="num">Сумма</th>':''}</tr></thead><tbody>${rows}</tbody></table></div></section>`;
+}
+function dDeal(d){
+  const rs=S.reserves.filter(r=>r.deal===d.id),ts=S.tasks.filter(t=>t.deal===d.id&&taskVisible(t)),ms=S.msgs.filter(x=>x.deal===d.id).slice().sort((a,b)=>a.at-b.at);
+  const goods=rs.length?`<div class="xs"><table class="tbl"><thead><tr><th>Товар</th><th class="num">Кол-во</th><th>Где</th></tr></thead><tbody>${rs.map(r=>{const p=product(r.sku);return `<tr ${can('stock')?`class="click" data-act="open-product" data-sku="${p.sku}"`:''}><td>${esc(p.name)}</td><td class="num">${num(r.qty)} ${p.unit}</td><td>${srcPill(r)}</td></tr>`}).join('')}</tbody></table></div>`:'<p class="muted m0">Под сделку ничего не зарезервировано.</p>';
+  const tasks=ts.length?`<ul class="list" style="padding:0">${ts.map(t=>`<li><button class="li" data-act="open-task" data-id="${t.id}"><span class="tdot ${esc(t.stageId)}"></span><span class="li-t">${esc(t.title)}<small>${esc(targetName(t))} · ${esc(stageName(t))}</small></span><span class="due ${taskOverdue(t)?'bad':''}">${fRel(t.due)}</span></button></li>`).join('')}</ul>`:'<p class="muted m0">Задач по сделке нет.</p>';
+  const chat=ms.length?`<div class="chat">${ms.map(x=>`<div class="bub ${x.inbound?'':'out'}">${esc(x.text)}<small>${x.inbound?esc(d.contact):x.auto?'Авто-сообщение':esc(person(x.by)?.name||'')} · ${CH[x.channel]} · ${fWhen(x.at)}</small></div>`).join('')}</div>`:'<p class="muted m0">Переписки пока нет.</p>';
+  const compose=d.channel==='phone'?'<p class="lock">Клиент на связи только по телефону.</p>':can('write')?`<form class="compose" data-form="msg" data-id="${d.id}"><textarea id="msg-text" class="inp" rows="3" placeholder="Сообщение клиенту в ${CH[d.channel]}" aria-label="Сообщение клиенту"></textarea><button class="btn pri" type="submit">${ic('send')}Отправить в ${CH[d.channel]}</button></form>`:`<p class="lock">${ic('lock')}У вашей роли нет права писать клиентам.</p>`;
+  return {kind:'Сделка '+d.id,title:esc(d.client),sub:esc(d.kind+' · '+d.object),body:`
+    <ol class="steps" style="--n:${stagesFor(d).length}">${stagesFor(d).map((x,i)=>`<li class="${i<stagePos(d)?'done':x.id===d.stageId?'cur':''}"><span>${esc(x.name)}</span></li>`).join('')}</ol>
+    <dl class="kv"><dt>Объект</dt><dd>${esc(d.object)}</dd><dt>Менеджер</dt><dd>${esc(person(d.managerId)?.name||'нет данных: менеджер')}</dd><dt>Связь</dt><dd>${CH[d.channel]}</dd>${can('prices')?`<dt>Сумма</dt><dd>${d.amount?rub(d.amount):'не рассчитана'}</dd>`:''}</dl>
+    <div><h4 class="sh">Товар под сделку</h4>${goods}</div>
+    <div><h4 class="sh">Задачи</h4>${tasks}</div>
+    <div class="stack-s"><h4 class="sh" style="margin:0">Переписка</h4>${chat}${compose}</div>`};
+}
+
+// Раздел «Сообщения клиентам»
+// Перенесено из прототипа v2 без изменений логики.
+
+// ——— сообщения клиентам ———
+function tplSample(){const d=deal('Д-318');return d?`${fillTpl(d,'контроллер заряда MPPT 60 А — 1 шт',true)}<small>${CH[S.ui.tplCh]} · авто</small>`:''}
+function vMessages(){
+  const ed=can('auto');
+  const rules=`<section class="card"><div class="card-h"><h3>Правила: когда и что делаем</h3>${ed?'':'<span class="pill sm">менять может директор</span>'}</div><ul class="rules">${S.rules.map(r=>`<li class="rule"><label class="sw"><input type="checkbox" id="rule-${r.id}" data-on="rule" data-id="${r.id}" ${r.on?'checked':''} ${ed?'':'disabled'} aria-label="${esc(r.when)}"><span class="sw-t" aria-hidden="true"></span></label><div><p><b>Когда:</b> ${esc(r.when)}</p><p><b>Делаем:</b> ${esc(r.then)}</p></div></li>`).join('')}</ul></section>`;
+  const tpl=`<section class="card"><div class="card-h"><h3>Шаблон «Товар пришёл на склад»</h3><div class="seg">${['telegram','max'].map(c=>`<button class="${S.ui.tplCh===c?'on':''}" data-act="tpl-ch" data-ch="${c}">${CH[c]}</button>`).join('')}</div></div><div class="card-b tpl-grid"><div class="stack-s"><div class="field"><label for="tpl">Текст сообщения</label><textarea id="tpl" class="inp" rows="6" data-on="tpl" ${ed?'':'disabled'}>${esc(S.tpl)}</textarea></div><div class="vars"><span>Вставить:</span>${VARS.map(v=>`<button class="chip" data-act="ins-var" data-v="${v}" ${ed?'':'disabled'}>${v}</button>`).join('')}</div><div class="field"><label for="addr">Адрес склада для сообщений</label><input id="addr" class="inp" data-on="addr" value="${esc(S.address)}" placeholder="Нет данных — впишите адрес склада" ${ed?'':'disabled'}></div></div><div><p class="prev-h" id="tpl-h">Так увидит клиент в ${CH[S.ui.tplCh]} · пример по сделке Д-318</p><div class="chat"><div class="bub out" id="tpl-prev">${tplSample()}</div></div></div></div></section>`;
+  const log=`<section class="card clip"><div class="card-h"><h3>Журнал сообщений</h3><span class="pill sun sm">прототип: сообщения не отправляются</span></div><div class="xs"><table class="tbl"><thead><tr><th>Когда</th><th>Клиент</th><th>Канал</th><th>Сообщение</th><th>Кто</th></tr></thead><tbody>${S.msgs.slice().sort((a,b)=>b.at-a.at).map(x=>{const d=deal(x.deal);return `<tr><td class="nowrap">${fWhen(x.at)}</td><td><div class="pname"><span>${esc(d?.client||'')}</span><small class="mono">${x.deal}</small></div></td><td>${chPill(x.channel)}</td><td class="msg-cell">${esc(x.text)}</td><td class="nowrap">${x.inbound?'<span class="pill sm">ответ клиента</span>':x.auto?'<span class="pill violet sm">авто</span>':esc(person(x.by)?.name||'')}</td></tr>`}).join('')}</tbody></table></div></section>`;
+  return rules+tpl+log;
+}
+function updTpl(){const p=byId('tpl-prev');if(p) p.innerHTML=tplSample();const h=byId('tpl-h');if(h) h.textContent=`Так увидит клиент в ${CH[S.ui.tplCh]} · пример по сделке Д-318`}
+
+// Раздел «Сотрудники и права»
+// Перенесено из прототипа v2: люди и их роли, матрица прав. Роли — S.roles, права — Perms.LIST.
+
+// ——— сотрудники и права ———
+const isEngineer=p=>p.role==='engineer'||p.role==='chiefEngineer';
+function vTeam(){
+  const pick=S.roles.filter(r=>!r.all);
+  const roleCell=p=>Perms.roleOf(S,p.id)?.all?esc(roleName(p)):`<select class="inp sm w-auto" id="pr-${esc(p.id)}" data-on="person-role" data-id="${esc(p.id)}" aria-label="Роль: ${esc(p.name)}">${pick.map(r=>`<option value="${esc(r.id)}" ${p.role===r.id?'selected':''}>${esc(r.name)}</option>`).join('')}</select>`;
+  const specCell=p=>isEngineer(p)?`<select class="inp sm w-auto" id="ps-${esc(p.id)}" data-on="person-spec" data-id="${esc(p.id)}" aria-label="Специализация: ${esc(p.name)}">${p.specialty?'':'<option value="">нет данных</option>'}${Object.entries(SPECIALTY).map(([k,v])=>`<option value="${k}" ${p.specialty===k?'selected':''}>${v}</option>`).join('')}</select>`:'<span class="muted">—</span>';
+  const emp=`<section class="card clip"><div class="card-h"><h3>Сотрудники</h3><span class="muted sm">${S.people.length} ${pl(S.people.length,'человек','человека','человек')}${S.people.some(p=>p.demo)?' · демо: примеры, не ваши сотрудники':''}</span></div><div class="xs"><table class="tbl"><thead><tr><th>Сотрудник</th><th>Отдел</th><th>Роль</th><th>Специализация</th><th></th></tr></thead><tbody>${S.people.map(p=>`<tr><td><span class="who">${av(p)}${esc(p.name)}${p.demo?' <span class="pill sm">демо</span>':''}</span></td><td>${esc(deptName(p.dept))}</td><td>${roleCell(p)}</td><td>${specCell(p)}</td><td class="num"><button class="btn sm ghost" data-act="view-as" data-id="${esc(p.id)}">${ic('eye')}Войти как</button></td></tr>`).join('')}</tbody></table></div></section>`;
+  const mx=`<section class="card clip"><div class="card-h"><h3>Что может каждая роль</h3></div><div class="card-b"><p class="hint">Галочки работают сразу. Попробуйте: снимите «Видеть цены и суммы» у менеджера B2B, затем вверху выберите менеджера B2B — колонка цен пропадёт. У директора права не снимаются.</p></div><div class="xs"><table class="tbl matrix"><thead><tr><th>Право</th>${S.roles.map(r=>`<th class="c">${esc(r.name)}</th>`).join('')}</tr></thead><tbody>${Perms.LIST.map(([k,l])=>`<tr><td>${l}</td>${S.roles.map(r=>`<td class="c"><input type="checkbox" id="pm-${esc(r.id)}-${k}" data-on="perm" data-role="${esc(r.id)}" data-perm="${k}" ${r.all||r.perms[k]?'checked':''} ${r.all?'disabled':''} aria-label="${l} — ${esc(r.name)}"></td>`).join('')}</tr>`).join('')}</tbody></table></div></section>`;
+  return emp+mx;
+}
+
+// Раздел «Настройки»: вкладки из реестра SETTINGS_TABS, по order слева направо.
+// Вкладка — {id, label, order, ok:()=>bool, render:()=>html}; render — вид S → HTML, состояние не меняет.
+// Следующий таск добавляет свою вкладку одной строкой в своём файле: SETTINGS_TABS.push({…}).
+// Порядок вкладок по спецификации (R34): Внешний вид 10 · Уведомления · Воронки · Почта · Лиды ·
+// Склады и юрлица · Поставки · Роли и права · Данные 90.
+const SETTINGS_TABS=[];
+// Вкладки, открытые текущему человеку
+const settingsTabs=()=>SETTINGS_TABS.filter(t=>t.ok()).sort((a,b)=>a.order-b.order);
+// Открытая вкладка: выбранная (S.ui.setTab), если её видно этому человеку, иначе первая видимая
+const settingsTab=()=>{const vis=settingsTabs();return vis.find(t=>t.id===S.ui.setTab)||vis[0]||null};
+
+function vSettings(){
+  const vis=settingsTabs(),cur=settingsTab();
+  const tabs=`<div class="seg set-tabs" role="tablist" aria-label="Вкладки настроек">${vis.map(t=>`<button type="button" role="tab" aria-selected="${t===cur}" class="${t===cur?'on':''}" data-act="set-tab" data-tab="${esc(t.id)}">${esc(t.label)}</button>`).join('')}</div>`;
+  return `<div class="bar">${tabs}</div>${cur?cur.render():''}`;
+}
+
+SETTINGS_TABS.push(
+  {id:'look',label:'Внешний вид',order:10,ok:()=>true,render:()=>`<section class="card"><div class="card-h"><h3>Тема</h3></div><div class="card-b stack-s">
+    ${themeSwitch(false)}
+    <p class="hint">«Как в системе» — светлая или тёмная, как настроено на этом устройстве, и меняется вместе с ним. Тот же переключатель — значками в шапке. Выбор запоминается в этом браузере.</p>
+  </div></section>`},
+  {id:'data',label:'Данные',order:90,ok:()=>can('settings'),render:()=>`<section class="card"><div class="card-h"><h3>Данные прототипа</h3></div><div class="card-b stack-s">
+    <p class="m0"><b>Где хранятся:</b> в этом браузере, на этом компьютере. В другом браузере или на другом компьютере — свои данные, общего сервера у прототипа нет.</p>
+    <p class="hint">Сброс вернёт задачи, поставки, резервы, сделки, уведомления и остальное к исходным примерам. Перед сбросом прототип переспросит.</p>
+    <div><button type="button" class="btn" data-act="reset">Сбросить данные прототипа</button></div>
+  </div></section>`}
+);
+
+NAV.push({id:'settings',label:'Настройки',icon:'sliders',group:'Настройки',order:10,ok:()=>settingsTabs().length>0});
+VIEWS.settings=vSettings;
+A['set-tab']=el=>{S.ui.setTab=el.dataset.tab;render()};
+
+// Запуск: состояние из браузера (localStorage[Store.KEY]); нет или битое — демо seed(). Затем первая отрисовка.
+
+S=startState();
+render();
+})();
+</script>

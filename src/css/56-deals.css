@@ -1,0 +1,6 @@
+/* ——— клиенты ——— */
+.funnel{display:grid;grid-template-columns:repeat(8,minmax(92px,1fr));gap:6px;min-width:780px}
+.fn{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+.fn b{font:800 20px/1 var(--f-display)}
+.fn span{font-size:12px;color:var(--ink-3)}
+.fn.zero b{color:var(--ink-3)}

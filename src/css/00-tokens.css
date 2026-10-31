@@ -1,0 +1,22 @@
+/* Цвета и шрифт — из приложения PVCalc (его tokens.css и тёмная тема): тёплый светлый фон,
+   белые карточки, один зелёный акцент, солнечный янтарь — резервы и «внимание», красный — нарушения.
+   Синего и фиолетового в палитре приложения нет, поэтому «в пути» и каналы связи — нейтральный серый.
+   Раскладка: светлая панель разделов слева, справа рабочее поле с карточками.
+   Тема: оболочка ставит на <html> data-theme="light" или "dark" (светлая, тёмная или по системе — S.prefs.theme);
+   блок @media — только до запуска кода. --logo-plate — подложка логотипа: в тёмной теме светлая,
+   иначе тёмная надпись Windsolar не читается. */
+:root{
+  --bg:#F1F2EF; --surface:#FFFFFF; --surface-2:#F7F8F6; --sunken:#E8E9E6; --line:rgba(27,29,27,.10); --line-2:rgba(27,29,27,.18); --ink:#1B1D1B; --ink-2:rgba(27,29,27,.66); --ink-3:rgba(27,29,27,.64); --primary:#0C8646; --primary-2:#0A733A; --primary-ink:#FFFFFF; --primary-soft:#E7F5EE; --primary-line:rgba(14,158,82,.28); --primary-deep:#07602F; --sun:#F5A623; --on-sun:#2A1C00; --sun-soft:#FDEFD7; --sun-ink:#8A5200; --ok:#0A7A3F; --ok-soft:#E7F5EE; --warn:#8A5200; --warn-soft:#FDEFD7; --bad:#B3261E; --bad-soft:#F7E9E8; --info:#4F524F; --info-soft:#E8E9E6; --violet:#4F524F; --violet-soft:#E8E9E6; --seg-on:#FFFFFF; --bezel:#1B1D1B; --overlay:rgba(14,18,16,.45); --on-overlay:#FFFFFF; --shadow-1:0 1px 2px rgba(20,30,24,.05),0 2px 8px rgba(20,30,24,.05); --shadow:0 4px 10px rgba(20,30,24,.08),0 20px 44px rgba(20,30,24,.14);
+  --f-display:"Manrope",system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  --f-body:"Manrope",system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+  --logo-plate:transparent;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0E1210; --surface:#171C1A; --surface-2:#1D2220; --sunken:#222926; --line:rgba(255,255,255,.10); --line-2:rgba(255,255,255,.16); --ink:#ECEFEA; --ink-2:rgba(236,239,234,.66); --ink-3:rgba(236,239,234,.60); --primary:#35C77F; --primary-2:#4FCD91; --primary-ink:#0E1210; --primary-soft:#1B3026; --primary-line:rgba(53,199,127,.32); --primary-deep:#9BE8C0; --sun:#E8B23C; --on-sun:#2A1C00; --sun-soft:#38341F; --sun-ink:#EDBE5A; --ok:#35C77F; --ok-soft:#1B3026; --warn:#EDBE5A; --warn-soft:#38341F; --bad:#E0894A; --bad-soft:#332B21; --info:#B9BDB8; --info-soft:#222926; --violet:#B9BDB8; --violet-soft:#222926; --seg-on:#393E3B; --bezel:#2A302D; --overlay:rgba(0,0,0,.55); --on-overlay:#FFFFFF; --shadow-1:0 1px 2px rgba(0,0,0,.34),0 2px 8px rgba(0,0,0,.30); --shadow:0 4px 12px rgba(0,0,0,.42),0 22px 48px rgba(0,0,0,.55);
+  --logo-plate:#F1F2EF;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0E1210; --surface:#171C1A; --surface-2:#1D2220; --sunken:#222926; --line:rgba(255,255,255,.10); --line-2:rgba(255,255,255,.16); --ink:#ECEFEA; --ink-2:rgba(236,239,234,.66); --ink-3:rgba(236,239,234,.60); --primary:#35C77F; --primary-2:#4FCD91; --primary-ink:#0E1210; --primary-soft:#1B3026; --primary-line:rgba(53,199,127,.32); --primary-deep:#9BE8C0; --sun:#E8B23C; --on-sun:#2A1C00; --sun-soft:#38341F; --sun-ink:#EDBE5A; --ok:#35C77F; --ok-soft:#1B3026; --warn:#EDBE5A; --warn-soft:#38341F; --bad:#E0894A; --bad-soft:#332B21; --info:#B9BDB8; --info-soft:#222926; --violet:#B9BDB8; --violet-soft:#222926; --seg-on:#393E3B; --bezel:#2A302D; --overlay:rgba(0,0,0,.55); --on-overlay:#FFFFFF; --shadow-1:0 1px 2px rgba(0,0,0,.34),0 2px 8px rgba(0,0,0,.30); --shadow:0 4px 12px rgba(0,0,0,.42),0 22px 48px rgba(0,0,0,.55);
+  --logo-plate:#F1F2EF;
+  color-scheme:dark}

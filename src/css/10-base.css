@@ -1,0 +1,19 @@
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
+html{height:100%;box-sizing:border-box}
+body{height:100%;margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 var(--f-body);-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.ic{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.mono{font-family:var(--f-mono);font-size:.92em;letter-spacing:-.01em}
+.muted{color:var(--ink-3)}
+.sm{font-size:12.5px}
+.m0{margin:0}
+.nowrap{white-space:nowrap}
+.grow{flex:1}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.bad-t{color:var(--bad)}.ok-t{color:var(--ok)}.warn-t{color:var(--warn)}
+.xs{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.stack{display:flex;flex-direction:column;gap:16px;min-width:0}
+.stack-s{display:flex;flex-direction:column;gap:14px;min-width:0}

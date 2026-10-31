@@ -1,0 +1,44 @@
+<title>CRM wind-solar</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+{{CSS}}</style>
+
+<div class="app" id="app">
+  <aside class="side" aria-label="Разделы">
+    <div class="brand"><span class="logo"><img src="{{LOGO}}" alt="wind-solar" width="1393" height="384"></span><small>CRM · прототип</small></div>
+    <div class="side-b" id="side"></div>
+  </aside>
+  <div class="side-scrim" data-act="nav-toggle"></div>
+  <div class="main">
+    <header class="top">
+      <button class="btn ghost icon burger" data-act="nav-toggle" aria-label="Меню"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      <h1 class="ttl" id="ttl">Сегодня</h1>
+      <div class="search">
+        <span class="s-ic"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg></span>
+        <input id="q" class="inp" type="search" placeholder="Товар, клиент, поставка, задача…" autocomplete="off" aria-label="Поиск">
+        <div id="q-res" class="pop q-res" hidden></div>
+      </div>
+      <label class="as" for="role"><span>Кто я</span><select id="role" class="inp sm"></select></label>
+      <div class="theme-sw" id="theme-sw"></div>
+      <div class="bell-w">
+        <button class="btn ghost icon" id="bell" data-act="bell" aria-label="Уведомления"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg><span id="bell-n" class="bn" hidden></span></button>
+        <div id="pop" class="pop" hidden></div>
+      </div>
+    </header>
+    <div class="demo">
+      <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/></svg>
+      <span><b>Прототип.</b> Товары, цены, клиенты и сотрудники — примеры для показа, не ваши данные. Сообщения клиентам не отправляются. Переключайте «Кто я» вверху — так видно, что доступно каждой роли.</span>
+      <button class="btn sm ghost" data-act="reset">Сбросить</button>
+    </div>
+    <div class="scroll" id="scroll"><main class="view" id="view"></main></div>
+  </div>
+</div>
+<div id="drawer-root"></div>
+<div id="modal-root"></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script>
+{{JS}}</script>
