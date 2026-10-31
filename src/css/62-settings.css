@@ -1,0 +1,19 @@
+/* ——— «Настройки → Воронки» и режим «Редактировать доску»: один редактор воронок ——— */
+.pe-head{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:6px}
+.pe-name{flex:1 1 220px;max-width:420px;min-width:0;font-weight:600}
+.pe-stage{display:flex;align-items:center;gap:6px;min-width:0}
+.pe-sname{flex:1;min-width:0}
+.pe-lock{color:var(--ink-3)}
+.pe-list{margin:0;padding:0;list-style:none}
+.pe-row{display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.pe-row:first-child{border-top:0}
+.pe-n{width:22px;flex:none;text-align:right;font-size:12px;color:var(--ink-3)}
+.pe-main{flex:1 1 220px;min-width:0;display:flex;flex-direction:column;gap:4px}
+.pe-why{display:flex;align-items:flex-start;gap:5px;font-size:12px;color:var(--ink-3)}
+.pe-why .ic{width:13px;height:13px;flex:none;margin-top:1px}
+.pe-cnt{white-space:nowrap}
+.pe-foot{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding-top:12px;border-top:1px solid var(--line)}
+@media (max-width:560px){
+  .pe-row{align-items:flex-start}
+  .pe-cnt{flex-basis:100%;padding-left:32px}
+}

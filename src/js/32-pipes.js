@@ -2,6 +2,8 @@
 // Одна модель «воронка с этапами»; запись хранит id этапа, не номер, поэтому
 // переименование, вставка и удаление этапа данные не ломают.
 // «Сделано/закрыто» — флаг final у этапа, «прибыло, ждёт приёмки» — флаг arrived.
+// Правка воронок данных не теряет: удаление этапа или воронки переносит ВСЕ записи этого вида (Pipes.items знает пять видов)
+// и правила поставок (shipRules.then); этапы, на которые опирается логика по id, удалить нельзя — только переименовать.
 
 const Pipes = (() => {
   const KINDS = ['tasks', 'deals', 'leads', 'ships', 'dispatch'];
@@ -92,24 +94,72 @@ const Pipes = (() => {
     return s;
   }
 
-  const FLAG = { final: 'завершающий', arrived: '«прибыло, ждёт приёмки»' };
+  // Что значит флаг этапа — для объяснения, почему этап не удалить.
+  const FLAG_WHY = {
+    final: 'он завершающий: по нему CRM считает запись закрытой',
+    arrived: 'он отмечает «прибыло, ждёт приёмки»: по нему склад видит, что принимать',
+  };
 
-  // Удалить этап: его записи переезжают на этап moveToId той же воронки, ни одна не теряется.
+  // Этапы, на которые опирается логика по id, объявляет сам модуль вида: Pipes.guard('leads', pipe => ({ <id этапа>: 'зачем он нужен' })).
+  // Так список лежит там, где живёт логика (35-leads.js, 39-dispatch.js), а не копией здесь.
+  const guards = {};
+  function guard(kind, fn) { guards[kind] = fn; }
+
+  // Зачем этап нужен логике: '' — свободный. Этап с флагом и этап из списка модуля вида — только переименовывать.
+  function why(st, pipeId, stageId) {
+    const p = pipe(st, pipeId), s = p && p.stages.find(x => x.id === stageId);
+    if (!s) return '';
+    if (s.flag) return FLAG_WHY[s.flag] || 'у него есть флаг, на который опирается CRM';
+    return (guards[p.kind] ? guards[p.kind](p) : {})[stageId] || '';
+  }
+
+  // Почему этап нельзя удалить, целой фразой: '' — можно.
+  function lock(st, pipeId, stageId) {
+    const w = why(st, pipeId, stageId), s = stage(st, pipeId, stageId);
+    return w ? `Этап «${s.name}» нельзя удалить: ${w}. Его можно только переименовать.` : '';
+  }
+
+  // Правила поставок «если событие — поставить этап»: они ссылаются на этапы воронки поставок «едут к нам» (как в «Настройки → Поставки»).
+  const ruleHolds = p => p.kind === 'ships' && (p.dir || 'in') === 'in';
+  const rulesAt = (st, p, stageId) => (ruleHolds(p) ? (st.shipRules || []).filter(r => r.then === stageId) : []);
+
+  // Что висит на этапе: записей и правил. Нужно, чтобы спросить «куда перенести», только когда есть что переносить.
+  function usage(st, pipeId, stageId) {
+    const p = pipe(st, pipeId);
+    if (!p) return { items: 0, rules: 0 };
+    return { items: items(st, pipeId).filter(x => x.stageId === stageId).length, rules: rulesAt(st, p, stageId).length };
+  }
+
+  // После какого этапа вставлять новый, чтобы завершающие этапы остались в конце: перед первым этапом с флагом.
+  // Без флагов — undefined (в конец).
+  function beforeEnd(st, pipeId) {
+    const p = pipe(st, pipeId);
+    const i = p ? p.stages.findIndex(s => s.flag) : -1;
+    return i > 0 ? p.stages[i - 1].id : undefined;
+  }
+
+  // Удалить этап: его записи и правила поставок переезжают на этап moveToId той же воронки, ничего не теряется.
+  // Этап с флагом и этап, на который опирается логика (lock), не удаляется.
   function removeStage(st, pipeId, stageId, moveToId) {
     const p = pipe(st, pipeId);
     if (!p) return { ok: false, moved: 0, reason: 'Воронка не найдена' };
     const s = p.stages.find(x => x.id === stageId);
     if (!s) return { ok: false, moved: 0, reason: 'Этап не найден' };
     if (p.stages.length < 2) return { ok: false, moved: 0, reason: 'Последний этап воронки удалить нельзя' };
-    if (s.flag && !p.stages.some(x => x !== s && x.flag === s.flag)) {
-      return { ok: false, moved: 0, reason: `Этап «${s.name}» — единственный ${FLAG[s.flag] || s.flag} в воронке «${p.name}»` };
-    }
-    const here = items(st, pipeId).filter(x => x.stageId === stageId);
+    const why = lock(st, pipeId, stageId);
+    if (why) return { ok: false, moved: 0, reason: why };
+    const here = items(st, pipeId).filter(x => x.stageId === stageId), rules = rulesAt(st, p, stageId);
     const to = p.stages.find(x => x.id === moveToId && x.id !== stageId);
-    if (here.length && !to) return { ok: false, moved: 0, reason: `На этапе «${s.name}» ${here.length} зап. — выберите, куда их перенести` };
+    if ((here.length || rules.length) && !to) {
+      const what = [];
+      if (here.length) what.push(`${here.length} зап.`);
+      if (rules.length) what.push(`${rules.length} ${pl(rules.length, 'правило', 'правила', 'правил')} поставок`);
+      return { ok: false, moved: 0, reason: `На этапе «${s.name}» ${what.join(' и ')} — выберите, куда их перенести` };
+    }
     here.forEach(x => { x.stageId = to.id; });
+    rules.forEach(r => { r.then = to.id; });
     p.stages = p.stages.filter(x => x !== s);
-    return { ok: true, moved: here.length, reason: '' };
+    return { ok: true, moved: here.length, rules: rules.length, reason: '' };
   }
 
   // Новая воронка вида: этапы — копия воронки по умолчанию этого вида.
@@ -135,21 +185,28 @@ const Pipes = (() => {
       || to.stages[0];
   }
 
-  // Удалить воронку: последнюю своего вида нельзя; записи переезжают в moveToPipeId того же вида.
+  // Воронки «того же рода», что эта: вид, тип сделок (scope) и направление поставок (dir) совпадают.
+  // Записи переезжают только между такими: сделка B2B не должна оказаться в воронке B2C.
+  const alike = (a, b) => a.kind === b.kind && (a.scope || '') === (b.scope || '') && (a.dir || '') === (b.dir || '');
+  const siblings = (st, pipeId) => { const p = pipe(st, pipeId); return p ? pipes(st).filter(x => alike(x, p)) : []; };
+
+  // Удалить воронку: последнюю своего рода нельзя; записи и правила поставок переезжают в moveToPipeId того же рода.
   function removePipe(st, pipeId, moveToPipeId) {
     const p = pipe(st, pipeId);
     if (!p) return { ok: false, moved: 0, reason: 'Воронка не найдена' };
-    if (of(st, p.kind).length < 2) return { ok: false, moved: 0, reason: `«${p.name}» — последняя воронка этого вида, её нельзя удалить` };
+    if (siblings(st, pipeId).length < 2) return { ok: false, moved: 0, reason: `«${p.name}» — последняя воронка этого вида, её нельзя удалить` };
     const here = items(st, pipeId);
     const to = moveToPipeId !== pipeId ? pipe(st, moveToPipeId) : null;
-    if (here.length && (!to || to.kind !== p.kind)) {
+    const rules = ruleHolds(p) ? (st.shipRules || []).filter(r => p.stages.some(x => x.id === r.then)) : [];
+    if ((here.length || rules.length) && (!to || !alike(to, p))) {
       return { ok: false, moved: 0, reason: `В воронке «${p.name}» ${here.length} зап. — выберите воронку того же вида, куда их перенести` };
     }
     const { field } = STORE[p.kind];
     here.forEach(x => { x.stageId = matchStage(p, to, x.stageId).id; x[field] = to.id; });
+    rules.forEach(r => { r.then = matchStage(p, to, r.then).id; });
     st.pipelines = pipes(st).filter(x => x !== p);
     return { ok: true, moved: here.length, reason: '' };
   }
 
-  return { KINDS, defaults, of, stage, isFinal, items, rename, renameStage, addStage, removeStage, addPipe, removePipe };
+  return { KINDS, defaults, of, stage, isFinal, items, usage, why, lock, guard, beforeEnd, siblings, rename, renameStage, addStage, removeStage, addPipe, removePipe };
 })();

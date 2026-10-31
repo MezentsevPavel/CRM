@@ -399,7 +399,7 @@ test('РОП: в демо есть Елена Г. с ролью «РОП»; в �
 test('РОП: права по таску есть, лишних нет; право leadsAssign подписано по-русски, у менеджера его нет', () => {
   const app = load(), { Perms } = app, st = app.seed();
   const rop = st.people.find(p => p.role === 'rop').id, mgr = st.people.find(p => p.role === 'managerB2b').id;
-  const have = ['leads', 'leadsAssign', 'dealsAll', 'clients', 'stock', 'prices', 'reserve', 'write', 'mail', 'sell'];
+  const have = ['leads', 'leadsAssign', 'dealsAll', 'clients', 'stock', 'prices', 'reserve', 'write', 'mail', 'sell', 'tasksAssign']; // tasksAssign — по слову пользователя (таск 06)
   for (const k of have) assert.equal(Perms.can(st, rop, k), true, `у РОП нет права ${k}`);
   for (const k of Perms.LIST.map(p => p[0]).filter(k => !have.includes(k))) assert.equal(Perms.can(st, rop, k), false, `у РОП лишнее право ${k}`);
   assert.equal(Perms.LIST.find(p => p[0] === 'leadsAssign')[1], 'Распределять и передавать лиды');

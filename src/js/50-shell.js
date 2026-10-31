@@ -133,7 +133,7 @@ function mTask(){
     <div class="field"><label for="t-title">Что нужно сделать</label><input id="t-title" class="inp" placeholder="Например: подготовить КП на СЭС 15 кВт" autocomplete="off"></div>
     <div class="field"><label for="t-to">Кому</label><select id="t-to" class="inp"><optgroup label="Отдел целиком">${dps.map(d=>`<option value="d:${esc(d.id)}">Отдел «${esc(d.name)}»</option>`).join('')}</optgroup><optgroup label="Сотрудник">${ppl.map(p=>`<option value="p:${esc(p.id)}">${esc(p.name)} — ${esc(roleName(p).toLowerCase())}</option>`).join('')}</optgroup></select></div>
     <div class="grid2"><div class="field"><label for="t-due">Срок</label><input id="t-due" type="date" class="inp" value="${iso(day(2))}"></div><div class="field"><label for="t-prio">Важность</label><select id="t-prio" class="inp"><option value="normal">Обычная</option><option value="high">Срочно</option></select></div></div>
-    ${can('clients')?`<div class="field"><label for="t-deal">Сделка</label><select id="t-deal" class="inp"><option value="">Без сделки</option>${S.deals.map(d=>`<option value="${d.id}">${d.id} · ${esc(d.client)}</option>`).join('')}</select></div>`:''}
+    ${can('clients')?`<div class="field"><label for="t-deal">Сделка</label><select id="t-deal" class="inp"><option value="">Без сделки</option>${Leads.dealsVisible(S,S.me).map(d=>`<option value="${d.id}">${d.id} · ${esc(d.client)}</option>`).join('')}</select></div>`:''}
     <div class="field"><label for="t-desc">Подробности</label><textarea id="t-desc" class="inp" rows="3" placeholder="Что важно знать исполнителю"></textarea></div>
     ${all?'':'<p class="hint">У вашей роли нет права ставить задачи другим отделам — в списке только ваш отдел.</p>'}
     <p class="err" id="t-err" hidden></p></div>${mFoot('Поставить и уведомить')}</form>`;
@@ -443,7 +443,7 @@ const FORMS={
   task:()=>{
     const title=byId('t-title').value.trim();
     if(!title){showErr('t-err','Напишите, что нужно сделать.');byId('t-title').focus();return}
-    const [tt,id]=byId('t-to').value.split(':'),due=byId('t-due').value,m=me(),now=new Date(),board=taskBoard();
+    const [tt,id]=byId('t-to').value.split(':'),due=byId('t-due').value,m=me(),now=new Date(),board=curBoard();
     const t={id:Store.freeId(S.tasks,'t'),title,desc:byId('t-desc').value.trim(),to:{t:tt,id},from:m.id,due:due?fromIso(due,18):day(2,18),boardId:board.id,stageId:startStage(board.id).id,prio:byId('t-prio').value,deal:byId('t-deal')?.value||'',at:now};
     S.tasks.push(t);
     Notify.push(S,'task',m.id,`Новая задача: «${title}», срок ${fD(t.due)}.${t.deal?' Сделка '+t.deal+'.':''} От: ${m.name}.`,now,targetPeople(t.to));

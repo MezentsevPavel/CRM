@@ -357,13 +357,23 @@ const Leads = (() => {
   return { SOURCE, SOURCES, TYPE, STAGE, nextId, firstOf, title, managers, classify, route, pick, openCount, create, add, waitMin, setWaitMin, waitText, waiting, notifyWaiting, canTake, take, contacted, close, move, canWork, can, fresh, allows, setSource, canTransfer, transfer, toDeal, visible, dealsVisible };
 })();
 
+// Этапы воронки лидов, на которые опирается логика по id: Pipes.removeStage их не удаляет, их можно только переименовать.
+// Первый этап (firstOf) — сюда падает новый лид и по нему считается «ждёт»; остальные — действия Leads.
+Pipes.guard('leads', pipe => ({
+  [Leads.firstOf(pipe).id]: 'сюда падает каждый новый лид, и по нему считается «ждёт»',
+  [Leads.STAGE.contacted]: 'отметка «Связались» переводит лид сюда',
+  [Leads.STAGE.qualified]: 'отметка «Квалифицирован» переводит лид сюда',
+  [Leads.STAGE.deal]: 'сюда лид попадает, когда из него создали сделку',
+  [Leads.STAGE.lost]: 'сюда лид попадает при отказе',
+}));
+
 // Вид уведомления «Лид ждёт» в «Уведомления»: подпись и значок (список видов — KIND в 20-model.js)
 KIND.leadWait = { l: 'Лид ждёт', ic: 'clock', c: 'bad' };
 
 // Шаг SEEDS: роль РОП и демо-человек с этой ролью. РОП распределяет лиды (право leadsAssign) и сам лидов не получает:
 // у роли нет типа (scope), поэтому Leads.route и Leads.pick его не выбирают. Шаг стоит до лидов — чтобы человек уже был в команде.
 SEEDS.push(st => {
-  const on = ['leads', 'leadsAssign', 'dealsAll', 'clients', 'stock', 'prices', 'reserve', 'write', 'mail'];
+  const on = ['leads', 'leadsAssign', 'dealsAll', 'clients', 'stock', 'prices', 'reserve', 'write', 'mail', 'tasksAssign'];
   st.roles.push({ id: 'rop', name: 'РОП (руководитель отдела продаж)', builtin: true, perms: Object.fromEntries(Perms.LIST.map(([k]) => [k, on.includes(k)])) });
   st.people.push({ id: Store.freeId(st.people, 'p'), name: 'Елена Г.', role: 'rop', dept: 'sales', demo: true });
 });

@@ -32,8 +32,8 @@ const Perms = (() => {
   const ENGINEER = ['tasksAssign', 'stock', 'clients', 'dealsAll'];
   const DEFAULTS = [
     { id: 'director', name: 'Директор', all: true, on: KEYS },
-    { id: 'managerB2b', name: 'Менеджер B2B', scope: 'b2b', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'write', 'mail', 'sell'] },
-    { id: 'managerB2c', name: 'Менеджер B2C', scope: 'b2c', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'write', 'mail', 'sell'] },
+    { id: 'managerB2b', name: 'Менеджер B2B', scope: 'b2b', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'write', 'mail', 'sell', 'tasksAssign'] },
+    { id: 'managerB2c', name: 'Менеджер B2C', scope: 'b2c', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'write', 'mail', 'sell', 'tasksAssign'] },
     { id: 'logist', name: 'Логист', on: ['stock', 'logistics', 'mail', 'tasksAssign', 'dispatch'] },
     { id: 'warehouse', name: 'Кладовщик', on: ['stock', 'receive', 'dispatch'] },
     // Главный инженер и инженер — одна матрица (R30).
