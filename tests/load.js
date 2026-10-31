@@ -4,7 +4,8 @@
 //                   localStorage, location, поднимает состояние как запуск (S = startState(), без
 //                   первой отрисовки) и отдаёт всё объявленное на верхнем уровне
 //                   (функции и константы) как свойства-геттеры: значение всегда текущее (S, например);
-//                   ещё storage (содержимое localStorage) и document (заглушка: <html> — document.documentElement).
+//                   ещё storage (содержимое localStorage) и document (заглушка: <html> — document.documentElement;
+//                   document.dispatchEvent({type, target}) вызывает слушатели страницы — input, change, click…).
 //   bootPage(html)  исполняет код <script> собранной страницы целиком, включая запуск,
 //                   на заглушке DOM и отдаёт элементы по id — что страница в них нарисовала.
 //   Параметры обоих: storage — localStorage, hash — location.hash,
@@ -39,8 +40,12 @@ function fakeEl(id) {
 function fakeWindow({ storage = {}, hash = '', dark } = {}) {
   const els = new Map();
   const byId = id => { if (!els.has(id)) els.set(id, fakeEl(id)); return els.get(id); };
+  // слушатели страницы на document запоминаются: тест шлёт событие через dispatchEvent({type, target})
+  const listeners = {};
   const document = {
-    addEventListener() {}, removeEventListener() {},
+    addEventListener(type, f) { (listeners[type] ||= []).push(f); },
+    removeEventListener(type, f) { listeners[type] = (listeners[type] || []).filter(x => x !== f); },
+    dispatchEvent(ev) { (listeners[ev.type] || []).forEach(f => f(ev)); return true; },
     getElementById: byId,
     querySelector: () => null, querySelectorAll: () => [],
     createElement: tag => fakeEl(tag),

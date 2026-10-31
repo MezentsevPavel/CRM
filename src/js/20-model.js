@@ -64,29 +64,29 @@ SEEDS.push(st=>{
       {sku:'WND-3K',name:'Ветрогенератор 3 кВт',cat:'Ветрогенераторы',unit:'шт',price:245000,stock:0}
     ],
     shipments:[
-      {id:'П-1044',dir:'in',from:'Склад дистрибьютора, Москва',to:'Наш склад',carrier:'Сборный груз, транспортная компания',doc:'ТТН 44-552018',pipeId:'ships',stageId:'arrived',eta:day(0,14),last:{place:'Терминал транспортной компании в городе',at:day(0,8,15),by:'p6'},items:[{sku:'CAB-6R',qty:500},{sku:'CAB-6B',qty:500},{sku:'MC4',qty:200},{sku:'CTRL-60',qty:6},{sku:'BOX-DC',qty:10}],demo:true},
-      {id:'П-1041',dir:'in',from:'Поставщик инверторов, Москва',to:'Наш склад',carrier:'Сборный груз, транспортная компания',doc:'ТТН 41-008352',pipeId:'ships',stageId:'toStock',eta:day(3,12),last:{place:'Трасса М-7, Владимир',at:day(0,9,40),by:'p6'},items:[{sku:'INV-H6',qty:10},{sku:'BAT-LFP-100',qty:16}],demo:true},
-      {id:'П-1042',dir:'in',from:'Поставщик ветрогенераторов, Екатеринбург',to:'Наш склад',carrier:'Отдельная машина',doc:'ТТН 42-110907',pipeId:'ships',stageId:'toStock',eta:day(-1,12),last:{place:'Казань, стоянка',at:day(-1,18,5),by:'p6'},items:[{sku:'WND-3K',qty:2},{sku:'MTR-3F',qty:5}],demo:true},
-      {id:'П-1043',dir:'in',from:'Завод панелей, Китай',to:'Наш склад',carrier:'Контейнер: море + железная дорога',doc:'Контейнер TGHU 482117 3',pipeId:'ships',stageId:'toStock',eta:day(6,12),last:{place:'Ж/д станция, Новосибирск',at:day(-1,7,20),by:'p6'},items:[{sku:'PV-550M',qty:120},{sku:'MNT-R4',qty:30}],demo:true},
-      {id:'О-207',dir:'out',deal:'Д-305',from:'Наш склад',to:'Объект Д-305 · Волкова Мария',carrier:'Своя машина',doc:'Отгрузка О-207',pipeId:'shipsOut',stageId:'onWay',eta:day(0,16),last:{place:'Выехали со склада',at:day(0,11,0),by:'p6'},items:[{sku:'PV-550M',qty:12},{sku:'MNT-R4',qty:3},{sku:'CAB-6R',qty:60}],demo:true},
-      {id:'П-1038',dir:'in',from:'Производитель крепежа',to:'Наш склад',carrier:'Своя машина',doc:'УПД 1038',pipeId:'ships',stageId:'inStock',eta:day(-2,15),last:{place:'Наш склад',at:day(-2,15,30),by:'p5'},items:[{sku:'MNT-R4',qty:24,got:24}],received:{at:day(-2,15,30),by:'p5',photos:3,urls:[],note:''},demo:true}
+      {id:'П-1044',dir:'in',supplier:'Склад дистрибьютора, Москва',to:'Наш склад',carrier:'Сборный груз, транспортная компания',track:'ТТН 44-552018',pipeId:'ships',stageId:'arrived',eta:day(0,14),history:[{at:day(0,8,15),by:'p6',text:'Терминал транспортной компании в городе'}],items:[{productId:'CAB-6R',qty:500},{productId:'CAB-6B',qty:500},{productId:'MC4',qty:200},{productId:'CTRL-60',qty:6},{productId:'BOX-DC',qty:10}],demo:true},
+      {id:'П-1041',dir:'in',supplier:'Поставщик инверторов, Москва',to:'Наш склад',carrier:'Сборный груз, транспортная компания',track:'ТТН 41-008352',pipeId:'ships',stageId:'toStock',eta:day(3,12),history:[{at:day(0,9,40),by:'p6',text:'Трасса М-7, Владимир'}],items:[{productId:'INV-H6',qty:10},{productId:'BAT-LFP-100',qty:16}],demo:true},
+      {id:'П-1042',dir:'in',supplier:'Поставщик ветрогенераторов, Екатеринбург',to:'Наш склад',carrier:'Отдельная машина',track:'ТТН 42-110907',pipeId:'ships',stageId:'toStock',eta:day(-1,12),history:[{at:day(-1,18,5),by:'p6',text:'Казань, стоянка'}],items:[{productId:'WND-3K',qty:2},{productId:'MTR-3F',qty:5}],demo:true},
+      {id:'П-1043',dir:'in',supplier:'Завод панелей, Китай',to:'Наш склад',carrier:'Контейнер: море + железная дорога',track:'Контейнер TGHU 482117 3',pipeId:'ships',stageId:'toStock',eta:day(6,12),history:[{at:day(-1,7,20),by:'p6',text:'Ж/д станция, Новосибирск'}],items:[{productId:'PV-550M',qty:120},{productId:'MNT-R4',qty:30}],demo:true},
+      {id:'О-207',dir:'out',deal:'Д-305',supplier:'Наш склад',to:'Объект Д-305 · Волкова Мария',carrier:'Своя машина',track:'Отгрузка О-207',pipeId:'shipsOut',stageId:'onWay',eta:day(0,16),history:[{at:day(0,11,0),by:'p6',text:'Выехали со склада'}],items:[{productId:'PV-550M',qty:12},{productId:'MNT-R4',qty:3},{productId:'CAB-6R',qty:60}],demo:true},
+      {id:'П-1038',dir:'in',supplier:'Производитель крепежа',to:'Наш склад',carrier:'Своя машина',track:'УПД 1038',pipeId:'ships',stageId:'inStock',eta:day(-2,15),history:[{at:day(-2,15,30),by:'p5',text:'Наш склад'}],items:[{productId:'MNT-R4',qty:24,got:24}],received:{at:day(-2,15,30),by:'p5',photos:3,urls:[],note:''},demo:true}
     ],
     reserves:[
-      {id:'r1',sku:'PV-550M',deal:'Д-311',qty:22,src:'stock',until:day(9)},
-      {id:'r2',sku:'PV-550M',deal:'Д-314',qty:36,src:'stock',until:day(5)},
-      {id:'r3',sku:'PV-550M',deal:'Д-320',qty:54,src:'П-1043',until:day(20)},
-      {id:'r4',sku:'INV-H6',deal:'Д-311',qty:2,src:'stock',until:day(9)},
-      {id:'r5',sku:'INV-H6',deal:'Д-318',qty:1,src:'stock',until:day(1)},
-      {id:'r6',sku:'INV-H6',deal:'Д-305',qty:1,src:'stock',until:day(4)},
-      {id:'r7',sku:'BAT-LFP-100',deal:'Д-311',qty:3,src:'П-1041',until:day(14)},
-      {id:'r8',sku:'BAT-LFP-100',deal:'Д-318',qty:2,src:'П-1041',until:day(14)},
-      {id:'r9',sku:'INV-G10',deal:'Д-314',qty:2,src:'stock',until:day(7)},
-      {id:'r10',sku:'CTRL-60',deal:'Д-318',qty:1,src:'П-1044',until:day(10)},
-      {id:'r11',sku:'CAB-6R',deal:'Д-311',qty:80,src:'stock',until:day(9)},
-      {id:'r12',sku:'MC4',deal:'Д-311',qty:20,src:'stock',until:day(9)},
-      {id:'r13',sku:'WND-3K',deal:'Д-305',qty:1,src:'П-1042',until:day(10)},
-      {id:'r14',sku:'WND-3K',deal:'Д-314',qty:2,src:'П-1042',until:day(12)},
-      {id:'r15',sku:'BOX-DC',deal:'Д-311',qty:1,src:'П-1044',until:day(10)}
+      {id:'r1',productId:'PV-550M',dealId:'Д-311',qty:22,src:'stock',until:day(9)},
+      {id:'r2',productId:'PV-550M',dealId:'Д-314',qty:36,src:'stock',until:day(5)},
+      {id:'r3',productId:'PV-550M',dealId:'Д-320',qty:54,src:'П-1043',until:day(20)},
+      {id:'r4',productId:'INV-H6',dealId:'Д-311',qty:2,src:'stock',until:day(9)},
+      {id:'r5',productId:'INV-H6',dealId:'Д-318',qty:1,src:'stock',until:day(1)},
+      {id:'r6',productId:'INV-H6',dealId:'Д-305',qty:1,src:'stock',until:day(4)},
+      {id:'r7',productId:'BAT-LFP-100',dealId:'Д-311',qty:3,src:'П-1041',until:day(14)},
+      {id:'r8',productId:'BAT-LFP-100',dealId:'Д-318',qty:2,src:'П-1041',until:day(14)},
+      {id:'r9',productId:'INV-G10',dealId:'Д-314',qty:2,src:'stock',until:day(7)},
+      {id:'r10',productId:'CTRL-60',dealId:'Д-318',qty:1,src:'П-1044',until:day(10)},
+      {id:'r11',productId:'CAB-6R',dealId:'Д-311',qty:80,src:'stock',until:day(9)},
+      {id:'r12',productId:'MC4',dealId:'Д-311',qty:20,src:'stock',until:day(9)},
+      {id:'r13',productId:'WND-3K',dealId:'Д-305',qty:1,src:'П-1042',until:day(10)},
+      {id:'r14',productId:'WND-3K',dealId:'Д-314',qty:2,src:'П-1042',until:day(12)},
+      {id:'r15',productId:'BOX-DC',dealId:'Д-311',qty:1,src:'П-1044',until:day(10)}
     ],
     deals:[
       D('Д-311','Иванов Сергей','Сергей','Частный дом','Гибридная СЭС 12 кВт, АКБ 15 кВт·ч','b2c','delivery','p2','telegram',1180000),
@@ -115,14 +115,14 @@ SEEDS.push(st=>{
       {id:'m3',at:day(-2,15,32),deal:'Д-305',channel:'max',auto:true,text:'Мария, здравствуйте! Крепёж для вашей станции пришёл на склад. Отгрузку на объект согласуем с вами отдельно. Ваш менеджер — Анна С.'}
     ],
     moves:[
-      {at:day(0,11,0),sku:'PV-550M',kind:'Отгрузка',qty:12,doc:'О-207',by:'p5'},
-      {at:day(0,11,0),sku:'MNT-R4',kind:'Отгрузка',qty:3,doc:'О-207',by:'p5'},
-      {at:day(0,11,0),sku:'CAB-6R',kind:'Отгрузка',qty:60,doc:'О-207',by:'p5'},
-      {at:day(-1,10,5),sku:'PV-550M',kind:'Резерв',qty:22,doc:'Д-311',by:'p2'},
-      {at:day(-2,15,30),sku:'MNT-R4',kind:'Приход',qty:24,doc:'П-1038',by:'p5'},
-      {at:day(-3,12,40),sku:'PV-550M',kind:'Резерв',qty:36,doc:'Д-314',by:'p3'},
-      {at:day(-5,9,30),sku:'INV-H6',kind:'Приход',qty:6,doc:'П-1035',by:'p5'},
-      {at:day(-5,9,30),sku:'PV-550M',kind:'Приход',qty:60,doc:'П-1035',by:'p5'}
+      {at:day(0,11,0),productId:'PV-550M',kind:'Отгрузка',qty:12,doc:'О-207',by:'p5'},
+      {at:day(0,11,0),productId:'MNT-R4',kind:'Отгрузка',qty:3,doc:'О-207',by:'p5'},
+      {at:day(0,11,0),productId:'CAB-6R',kind:'Отгрузка',qty:60,doc:'О-207',by:'p5'},
+      {at:day(-1,10,5),productId:'PV-550M',kind:'Резерв',qty:22,doc:'Д-311',by:'p2'},
+      {at:day(-2,15,30),productId:'MNT-R4',kind:'Приход',qty:24,doc:'П-1038',by:'p5'},
+      {at:day(-3,12,40),productId:'PV-550M',kind:'Резерв',qty:36,doc:'Д-314',by:'p3'},
+      {at:day(-5,9,30),productId:'INV-H6',kind:'Приход',qty:6,doc:'П-1035',by:'p5'},
+      {at:day(-5,9,30),productId:'PV-550M',kind:'Приход',qty:60,doc:'П-1035',by:'p5'}
     ],
     rules:[
       {id:'arrive',on:true,when:'Товар клиента принят на склад',then:'Пишем клиенту в его мессенджер по шаблону ниже, менеджеру — уведомление'},
@@ -164,7 +164,8 @@ const person=id=>S.people.find(p=>p.id===id);
 const me=()=>person(S.me)||S.people[0]||{id:'',name:'нет данных: сотрудник',role:'',dept:''};
 const roleName=p=>(p&&Perms.roleOf(S,p.id)?.name)||'нет данных: роль';
 const deptName=id=>S.depts.find(d=>d.id===id)?.name||'нет данных: отдел';
-const product=sku=>S.products.find(p=>p.sku===sku);
+// Товар по productId (пока значение — артикул: товары ещё в форме v2, их переводит T02)
+const product=id=>S.products.find(p=>p.sku===id);
 const deal=id=>S.deals.find(d=>d.id===id);
 const ship=id=>S.shipments.find(s=>s.id===id);
 const rule=id=>S.rules.find(r=>r.id===id);
@@ -189,6 +190,8 @@ const stageTone=x=>{if(isDone(x)) return 'ok';const n=stagesFor(x).length,i=stag
 const awaitsReceipt=s=>s.dir==='in'&&stageOf(s)?.flag==='arrived';
 // Отгрузка клиенту ушла со склада — сошла с начального этапа своей воронки
 const leftStart=s=>s.stageId!==startStage(s.pipeId)?.id;
+// Последняя отметка поставки — последняя запись истории {at, by, text}; новая отметка — history.push
+const shipLast=s=>s.history[s.history.length-1];
 // Воронки по виду: поставки к нам / отгрузки клиентам, сделки по типу, доска задач
 const shipPipe=dir=>Pipes.of(S,'ships').find(p=>(p.dir||'in')===dir)||null;
 const dealPipe=type=>Pipes.of(S,'deals',type).find(p=>p.scope===type)||Pipes.of(S,'deals')[0]||null;
@@ -196,19 +199,19 @@ const taskBoard=()=>Pipes.of(S,'tasks')[0]||null;
 
 // ——— расчёты остатков: одно место для всех экранов ———
 const isLate=s=>!isDone(s)&&dd(s.eta)<0;
-const resOf=sku=>S.reserves.filter(r=>r.sku===sku);
+const resOf=pid=>S.reserves.filter(r=>r.productId===pid);
 const sum=(a,f)=>a.reduce((x,y)=>x+f(y),0);
-const resStock=sku=>sum(resOf(sku).filter(r=>r.src==='stock'),r=>r.qty);
-const resAll=sku=>sum(resOf(sku),r=>r.qty);
+const resStock=pid=>sum(resOf(pid).filter(r=>r.src==='stock'),r=>r.qty);
+const resAll=pid=>sum(resOf(pid),r=>r.qty);
 const openIn=()=>S.shipments.filter(s=>s.dir==='in'&&!isDone(s));
-const incomingOf=sku=>openIn().flatMap(s=>s.items.filter(i=>i.sku===sku).map(i=>({ship:s,qty:i.qty}))).sort((a,b)=>a.ship.eta-b.ship.eta);
-const incomingQty=sku=>sum(incomingOf(sku),x=>x.qty);
+const incomingOf=pid=>openIn().flatMap(s=>s.items.filter(i=>i.productId===pid).map(i=>({ship:s,qty:i.qty}))).sort((a,b)=>a.ship.eta-b.ship.eta);
+const incomingQty=pid=>sum(incomingOf(pid),x=>x.qty);
 const freeNow=p=>p.stock-resStock(p.sku);
 const freeAfter=p=>p.stock+incomingQty(p.sku)-resAll(p.sku);
-const shipFree=(sid,sku)=>{const s=ship(sid);const q=s?.items.find(i=>i.sku===sku)?.qty||0;return q-sum(S.reserves.filter(r=>r.src===sid&&r.sku===sku),r=>r.qty)};
-const byDeal=rs=>{const m=new Map();rs.forEach(r=>{if(!m.has(r.deal)) m.set(r.deal,[]);m.get(r.deal).push(r)});return m};
-const itemsText=list=>list.map(r=>{const p=product(r.sku);return `${low(p.name)} — ${num(r.qty)} ${p.unit}`}).join('; ');
-function shortItems(s){const c=[...new Set(s.items.map(i=>product(i.sku)?.cat).filter(Boolean))].map(low);return c.length>2?c.slice(0,2).join(', ')+` и ещё ${c.length-2}`:c.join(', ')}
+const shipFree=(sid,pid)=>{const s=ship(sid);const q=s?.items.find(i=>i.productId===pid)?.qty||0;return q-sum(S.reserves.filter(r=>r.src===sid&&r.productId===pid),r=>r.qty)};
+const byDeal=rs=>{const m=new Map();rs.forEach(r=>{if(!m.has(r.dealId)) m.set(r.dealId,[]);m.get(r.dealId).push(r)});return m};
+const itemsText=list=>list.map(r=>{const p=product(r.productId);return `${low(p.name)} — ${num(r.qty)} ${p.unit}`}).join('; ');
+function shortItems(s){const c=[...new Set(s.items.map(i=>product(i.productId)?.cat).filter(Boolean))].map(low);return c.length>2?c.slice(0,2).join(', ')+` и ещё ${c.length-2}`:c.join(', ')}
 
 // ——— задачи ———
 const taskMine=t=>{const m=me();return (t.to.t==='p'&&t.to.id===m.id)||(t.to.t==='d'&&t.to.id===m.dept)};
@@ -237,4 +240,7 @@ function fillTpl(d,items,html){
   if(!html) return t.split(A).join(addr||'[адрес склада не заполнен]');
   return esc(t).split(A).join(addr?esc(addr):'<mark>адрес склада не заполнен</mark>');
 }
+// Фото записи, которые не влезли в браузер (Store.dump пометил запись unsaved) — одна строка для карточки
+// поставки и черновика приёмки: «2 фото: не сохранено — мало места в браузере»
+const unsavedNote=x=>x&&x.unsaved?`<p class="warn-t sm m0">${num(x.unsaved.photos||0)} фото: ${esc(x.unsaved.text||Store.NO_SPACE)}</p>`:'';
 const chPill=c=>`<span class="pill sm ${c==='max'?'violet':c==='telegram'?'info':''}">${CH[c]}</span>`;

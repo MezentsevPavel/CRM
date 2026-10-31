@@ -17,7 +17,7 @@ function vHome(){
 function kpiHtml(){
   const open=S.tasks.filter(t=>!isDone(t)),over=open.filter(taskOverdue);
   const inT=openIn(),late=S.shipments.filter(isLate);
-  const rd=new Set(S.reserves.map(r=>r.deal));
+  const rd=new Set(S.reserves.map(r=>r.dealId));
   const act=S.deals.filter(d=>!isDone(d)),total=sum(act,d=>d.amount||0);
   const tile=(l,v,s,c,view)=>`<button class="kpi" data-act="go" data-view="${view}"><span class="k-l">${l}</span><b class="k-v">${v}</b><span class="k-s ${c}">${s}</span></button>`;
   return `<div class="kpis">${[
@@ -42,13 +42,13 @@ function attention(){
   const a=[];
   S.tasks.filter(t=>taskOverdue(t)&&taskVisible(t)).forEach(t=>a.push({lvl:'bad',icon:'tasks',text:`Просрочена задача «${t.title}»`,sub:`${targetName(t)} · срок был ${fD(t.due)}`,act:`data-act="open-task" data-id="${t.id}"`}));
   if(can('stock')){
-    S.shipments.filter(isLate).forEach(s=>a.push({lvl:'warn',icon:'truck',text:`${s.id} задерживается на ${days(-dd(s.eta))}`,sub:`Последняя отметка: ${s.last.place}`,act:'data-act="go" data-view="logistics"'}));
+    S.shipments.filter(isLate).forEach(s=>a.push({lvl:'warn',icon:'truck',text:`${s.id} задерживается на ${days(-dd(s.eta))}`,sub:`Последняя отметка: ${shipLast(s).text}`,act:'data-act="go" data-view="logistics"'}));
     S.products.forEach(p=>{
       const fa=freeAfter(p);
       if(fa<0) a.push({lvl:'bad',icon:'box',text:`${p.name}: под резервы не хватает ${num(-fa)} ${p.unit}`,sub:'Даже с учётом всех поставок в пути',act:`data-act="open-product" data-sku="${p.sku}"`});
       else if(p.stock>0&&freeNow(p)<=0&&!incomingQty(p.sku)) a.push({lvl:'warn',icon:'box',text:`${p.name}: свободный остаток закончился`,sub:'Всё, что на складе, в резерве. Поставок нет',act:`data-act="open-product" data-sku="${p.sku}"`});
     });
-    S.reserves.filter(r=>{const n=dd(r.until);return n>=0&&n<=2}).forEach(r=>{const p=product(r.sku),d=deal(r.deal);a.push({lvl:'info',icon:'clock',text:`Резерв истекает ${fRel(r.until)}: ${p.name} — ${num(r.qty)} ${p.unit}`,sub:`${r.deal} · ${d?.client||''}`,act:`data-act="open-product" data-sku="${p.sku}"`})});
+    S.reserves.filter(r=>{const n=dd(r.until);return n>=0&&n<=2}).forEach(r=>{const p=product(r.productId),d=deal(r.dealId);a.push({lvl:'info',icon:'clock',text:`Резерв истекает ${fRel(r.until)}: ${p.name} — ${num(r.qty)} ${p.unit}`,sub:`${r.dealId} · ${d?.client||''}`,act:`data-act="open-product" data-sku="${p.sku}"`})});
   }
   return a;
 }

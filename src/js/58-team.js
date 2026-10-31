@@ -11,3 +11,8 @@ function vTeam(){
   const mx=`<section class="card clip"><div class="card-h"><h3>Что может каждая роль</h3></div><div class="card-b"><p class="hint">Галочки работают сразу. Попробуйте: снимите «Видеть цены и суммы» у менеджера B2B, затем вверху выберите менеджера B2B — колонка цен пропадёт. У директора права не снимаются.</p></div><div class="xs"><table class="tbl matrix"><thead><tr><th>Право</th>${S.roles.map(r=>`<th class="c">${esc(r.name)}</th>`).join('')}</tr></thead><tbody>${Perms.LIST.map(([k,l])=>`<tr><td>${l}</td>${S.roles.map(r=>`<td class="c"><input type="checkbox" id="pm-${esc(r.id)}-${k}" data-on="perm" data-role="${esc(r.id)}" data-perm="${k}" ${r.all||r.perms[k]?'checked':''} ${r.all?'disabled':''} aria-label="${l} — ${esc(r.name)}"></td>`).join('')}</tr>`).join('')}</tbody></table></div></section>`;
   return emp+mx;
 }
+
+// ——— регистрация в реестрах оболочки ———
+ON.change.perm=t=>{const r=S.roles.find(x=>x.id===t.dataset.role);if(!r||r.all) return;r.perms[t.dataset.perm]=t.checked;const l=Perms.LIST.find(p=>p[0]===t.dataset.perm)?.[1]||t.dataset.perm;toast(`${r.name}: «${l}» — ${t.checked?'разрешено':'запрещено'}.`)};
+ON.change['person-role']=t=>{const p=person(t.dataset.id);p.role=t.value;render();toast(`${p.name} теперь ${roleName(p).toLowerCase()}.`)};
+ON.change['person-spec']=t=>{const p=person(t.dataset.id);p.specialty=t.value;toast(`${p.name}: специализация — ${SPECIALTY[p.specialty]||'нет данных'}.`)};

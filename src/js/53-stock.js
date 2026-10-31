@@ -26,11 +26,11 @@ function stockTable(){
 }
 function srcPill(r){
   if(r.src==='stock') return '<span class="pill ok sm">на складе</span>';
-  const s=ship(r.src),bad=freeAfter(product(r.sku))<0;
+  const s=ship(r.src),bad=freeAfter(product(r.productId))<0;
   return `<span class="pill ${bad?'bad':'info'} sm">едет: ${s?.id||r.src}${s?' · '+fD(s.eta):''}${bad?' · не хватает':''}</span>`;
 }
 function dProduct(p){
-  const rs=resOf(p.sku),inc=incomingOf(p.sku),mv=S.moves.filter(m=>m.sku===p.sku).slice(0,8),fn=freeNow(p),fa=freeAfter(p);
+  const rs=resOf(p.sku),inc=incomingOf(p.sku),mv=S.moves.filter(m=>m.productId===p.sku).slice(0,8),fn=freeNow(p),fa=freeAfter(p);
   const st=(l,v,c='')=>`<div class="st"><span>${l}</span><b class="${c}">${v}</b></div>`;
   let form='';
   if(can('reserve')){
@@ -38,7 +38,7 @@ function dProduct(p){
     const src=[`<option value="stock">Со склада — свободно ${num(Math.max(0,fn))} ${p.unit}</option>`,...inc.map(x=>`<option value="${x.ship.id}">Из поставки ${x.ship.id}, ${fD(x.ship.eta)} — свободно ${num(Math.max(0,shipFree(x.ship.id,p.sku)))} ${p.unit}</option>`)].join('');
     form=`<form class="rform" data-form="reserve" data-sku="${esc(p.sku)}" novalidate><h4 class="sh">Поставить резерв</h4><div class="grid2"><div class="field"><label for="rs-deal">Сделка</label><select id="rs-deal" class="inp">${deals.map(d=>`<option value="${d.id}">${d.id} · ${esc(d.client)}</option>`).join('')}</select></div><div class="field"><label for="rs-qty">Количество, ${p.unit}</label><input id="rs-qty" class="inp" type="number" min="1" value="1" inputmode="numeric"></div><div class="field span2"><label for="rs-src">Откуда</label><select id="rs-src" class="inp">${src}</select></div><div class="field"><label for="rs-until">Резерв до</label><input id="rs-until" class="inp" type="date" value="${iso(day(7))}"></div><div class="field end"><button class="btn pri" type="submit">${ic('lock')}Зарезервировать</button></div></div><p class="err" id="rs-err" hidden></p></form>`;
   } else form=`<p class="lock">${ic('lock')}Резервы ставит менеджер или директор. Вам придёт уведомление, когда резерв появится.</p>`;
-  const rTbl=rs.length?`<div class="xs"><table class="tbl"><thead><tr><th>Сделка</th><th class="num">Кол-во</th><th>Где товар</th><th>До</th>${can('reserve')?'<th></th>':''}</tr></thead><tbody>${rs.map(r=>{const d=deal(r.deal),n=dd(r.until);return `<tr><td>${can('clients')?`<button class="link" data-act="open-deal" data-id="${r.deal}">${r.deal}</button>`:r.deal}<small class="muted">${esc(d?.client||'')}</small></td><td class="num">${num(r.qty)}</td><td>${srcPill(r)}</td><td class="nowrap ${n<=2?'warn-t':''}">${fD(r.until)}</td>${can('reserve')?`<td class="num"><button class="btn sm ghost" data-act="unreserve" data-id="${r.id}">Снять</button></td>`:''}</tr>`}).join('')}</tbody></table></div>`:'<p class="muted m0">Резервов нет.</p>';
+  const rTbl=rs.length?`<div class="xs"><table class="tbl"><thead><tr><th>Сделка</th><th class="num">Кол-во</th><th>Где товар</th><th>До</th>${can('reserve')?'<th></th>':''}</tr></thead><tbody>${rs.map(r=>{const d=deal(r.dealId),n=dd(r.until);return `<tr><td>${can('clients')?`<button class="link" data-act="open-deal" data-id="${r.dealId}">${r.dealId}</button>`:r.dealId}<small class="muted">${esc(d?.client||'')}</small></td><td class="num">${num(r.qty)}</td><td>${srcPill(r)}</td><td class="nowrap ${n<=2?'warn-t':''}">${fD(r.until)}</td>${can('reserve')?`<td class="num"><button class="btn sm ghost" data-act="unreserve" data-id="${r.id}">Снять</button></td>`:''}</tr>`}).join('')}</tbody></table></div>`:'<p class="muted m0">Резервов нет.</p>';
   const iList=inc.length?`<ul class="mv">${inc.map(x=>`<li><b class="mono">${x.ship.id}</b><span>${num(x.qty)} ${p.unit}</span><span class="pill sm ${isLate(x.ship)?'bad':'info'}">${isLate(x.ship)?'задерживается':esc(stageName(x.ship).toLowerCase())}</span><small>ожидается ${fD(x.ship.eta)}</small></li>`).join('')}</ul>`:'<p class="muted m0">Поставок с этим товаром нет.</p>';
   const sign=m=>m.kind==='Приход'?'+':m.kind==='Отгрузка'?'−':'';
   const mList=mv.length?`<ul class="mv">${mv.map(m=>`<li><span class="pill sm ${m.kind==='Приход'?'ok':m.kind==='Отгрузка'?'info':'sun'}">${m.kind}</span><b>${sign(m)}${num(m.qty)} ${p.unit}</b><span class="mono muted">${esc(m.doc)}</span><small>${fWhen(m.at)} · ${esc(person(m.by)?.name||'')}</small></li>`).join('')}</ul>`:'<p class="muted m0">Движений пока нет.</p>';
@@ -49,3 +49,8 @@ function dProduct(p){
     <div><h4 class="sh">Едет к нам</h4>${iList}</div>
     <div><h4 class="sh">Движение товара</h4>${mList}</div>`};
 }
+
+// ——— регистрация в реестрах оболочки ———
+DRAWERS.product=id=>{const p=can('stock')?product(id):null;return p?dProduct(p):null};
+ON.input.sq=t=>{S.ui.sq=t.value;byId('stock-tbl').innerHTML=stockTable()};
+ON.change.deficit=t=>{S.ui.deficit=t.checked;byId('stock-tbl').innerHTML=stockTable()};

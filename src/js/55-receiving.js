@@ -3,7 +3,7 @@
 // предпросмотр и подтверждение считают по одному плану rcvPlan().
 
 // ——— приёмка ———
-const newRcv=id=>{const s=ship(id);return {shipId:id,qty:Object.fromEntries(s.items.map(i=>[i.sku,i.qty])),dmg:{},note:'',photos:[],done:null}};
+const newRcv=id=>{const s=ship(id);return {shipId:id,qty:Object.fromEntries(s.items.map(i=>[i.productId,i.qty])),dmg:{},note:'',photos:[],done:null}};
 function initRcv(id){S.rcv=newRcv(id)}
 const pendingRcv=()=>S.shipments.filter(awaitsReceipt).sort((a,b)=>a.eta-b.eta);
 // Текущая приёмка: начатая или первая из ждущих (без записи в S — вид не меняет состояние)
@@ -15,16 +15,16 @@ function curRcv(){
 }
 // Перед отрисовкой раздела: начатая приёмка или первая из ждущих становится текущей
 function syncRcv(){const r=curRcv();if(r!==S.rcv) S.rcv=r}
-const qv=(sku,r=S.rcv)=>Math.max(0,parseInt(r.qty[sku],10)||0);
-function diffHtml(it,r=S.rcv){const d=qv(it.sku,r)-it.qty;return d<0?`<span class="pill bad sm">недостача ${num(-d)}</span>`:d>0?`<span class="pill warn sm">излишек ${num(d)}</span>`:'<span class="pill ok sm">сходится</span>'}
+const qv=(pid,r=S.rcv)=>Math.max(0,parseInt(r.qty[pid],10)||0);
+function diffHtml(it,r=S.rcv){const d=qv(it.productId,r)-it.qty;return d<0?`<span class="pill bad sm">недостача ${num(-d)}</span>`:d>0?`<span class="pill warn sm">излишек ${num(d)}</span>`:'<span class="pill ok sm">сходится</span>'}
 // План приёмки — один на предпросмотр и подтверждение: расхождения, сделки-ждуны и что с каждой, кому уведомления
 function rcvPlan(r=S.rcv){
   const s=ship(r.shipId),auto=rule('arrive').on,issues=[],dmg=[];
   s.items.forEach(it=>{
-    const p=product(it.sku),q=qv(it.sku,r);
+    const p=product(it.productId),q=qv(it.productId,r);
     if(q<it.qty) issues.push(`${p.name}: принято ${num(q)} из ${num(it.qty)} ${p.unit}`);
     else if(q>it.qty) issues.push(`${p.name}: принято ${num(q)} вместо ${num(it.qty)} ${p.unit}`);
-    if(r.dmg[it.sku]) dmg.push(p.name);
+    if(r.dmg[it.productId]) dmg.push(p.name);
   });
   const res=S.reserves.filter(x=>x.src===s.id);
   // как сообщить клиенту: телефон → задача менеджеру; иначе авто-сообщение, если правило включено; иначе напоминание
@@ -46,17 +46,17 @@ function photosHtml(r=S.rcv){
 }
 function rcvPhoneHtml(r,pend){
   const s=ship(r.shipId);
-  const opts=pend.map(x=>{const on=x.id===s.id;return `<label class="opt ${on?'on':''}"><input type="radio" name="rcv-ship" id="rcv-s-${x.id}" value="${x.id}" ${on?'checked':''} data-on="rcv-ship"><span><b class="mono">${x.id}</b> · ${esc(x.from)}<small>${isLate(x)?'задерживается':esc(stageName(x).toLowerCase())} · ${x.items.length} ${pl(x.items.length,'позиция','позиции','позиций')} · ожидается ${fRel(x.eta)}</small></span></label>`}).join('');
-  const rows=s.items.map(it=>{const p=product(it.sku);return `<div class="cnt-row"><div class="cnt-name">${esc(p.name)}<small>Ожидалось: ${num(it.qty)} ${p.unit}</small></div><div class="qty"><button type="button" data-act="rcv-step" data-sku="${it.sku}" data-d="-1" aria-label="Меньше">−</button><input id="rcv-q-${it.sku}" type="number" inputmode="numeric" min="0" value="${esc(r.qty[it.sku])}" data-on="rcv-qty" data-sku="${it.sku}" aria-label="Принято, ${p.unit}"><button type="button" data-act="rcv-step" data-sku="${it.sku}" data-d="1" aria-label="Больше">+</button></div><div class="cnt-x"><label class="check"><input type="checkbox" id="rcv-d-${it.sku}" data-on="rcv-dmg" data-sku="${it.sku}" ${r.dmg[it.sku]?'checked':''}> Есть повреждения</label><span id="rcv-diff-${it.sku}">${diffHtml(it,r)}</span></div></div>`}).join('');
+  const opts=pend.map(x=>{const on=x.id===s.id;return `<label class="opt ${on?'on':''}"><input type="radio" name="rcv-ship" id="rcv-s-${x.id}" value="${x.id}" ${on?'checked':''} data-on="rcv-ship"><span><b class="mono">${x.id}</b> · ${esc(x.supplier)}<small>${isLate(x)?'задерживается':esc(stageName(x).toLowerCase())} · ${x.items.length} ${pl(x.items.length,'позиция','позиции','позиций')} · ожидается ${fRel(x.eta)}</small></span></label>`}).join('');
+  const rows=s.items.map(it=>{const p=product(it.productId);return `<div class="cnt-row"><div class="cnt-name">${esc(p.name)}<small>Ожидалось: ${num(it.qty)} ${p.unit}</small></div><div class="qty"><button type="button" data-act="rcv-step" data-pid="${it.productId}" data-d="-1" aria-label="Меньше">−</button><input id="rcv-q-${it.productId}" type="number" inputmode="numeric" min="0" value="${esc(r.qty[it.productId])}" data-on="rcv-qty" data-pid="${it.productId}" aria-label="Принято, ${p.unit}"><button type="button" data-act="rcv-step" data-pid="${it.productId}" data-d="1" aria-label="Больше">+</button></div><div class="cnt-x"><label class="check"><input type="checkbox" id="rcv-d-${it.productId}" data-on="rcv-dmg" data-pid="${it.productId}" ${r.dmg[it.productId]?'checked':''}> Есть повреждения</label><span id="rcv-diff-${it.productId}">${diffHtml(it,r)}</span></div></div>`}).join('');
   return `<div class="ph-sec"><span class="ph-step">Шаг 1</span><h3>Какая поставка пришла</h3>${opts}</div>
     <div class="ph-sec"><span class="ph-step">Шаг 2</span><h3>Пересчитайте товар</h3>${rows}</div>
-    <div class="ph-sec"><span class="ph-step">Шаг 3</span><h3>Фото груза и накладной</h3><div class="photos" id="rcv-photos">${photosHtml(r)}</div><div class="field"><label for="rcv-note">Комментарий</label><textarea id="rcv-note" class="inp" rows="2" data-on="rcv-note" placeholder="Например: одна коробка надорвана, содержимое целое">${esc(r.note)}</textarea></div></div>
+    <div class="ph-sec"><span class="ph-step">Шаг 3</span><h3>Фото груза и накладной</h3><div class="photos" id="rcv-photos">${photosHtml(r)}</div>${unsavedNote(r)}<div class="field"><label for="rcv-note">Комментарий</label><textarea id="rcv-note" class="inp" rows="2" data-on="rcv-note" placeholder="Например: одна коробка надорвана, содержимое целое">${esc(r.note)}</textarea></div></div>
     <div class="ph-foot"><button class="btn pri big" data-act="rcv-confirm">${ic('check')}Принять на склад и уведомить</button></div>`;
 }
 function rcvPreview(r=S.rcv){
   const P=rcvPlan(r),s=P.s,m=me();
   const ppl=P.to.filter(id=>id!==m.id).map(person).filter(Boolean);
-  const add=s.items.map(it=>{const p=product(it.sku);return `<li><span>${esc(p.name)}</span><b class="num">+${num(qv(it.sku,r))} ${p.unit}</b></li>`}).join('');
+  const add=s.items.map(it=>{const p=product(it.productId);return `<li><span>${esc(p.name)}</span><b class="num">+${num(qv(it.productId,r))} ${p.unit}</b></li>`}).join('');
   const warnNames=P.warnTo.map(id=>person(id)?.name).filter(Boolean).map(esc).join(', ');
   const waits=P.waits.map(({d,items,how})=>{
     const mg=person(d.managerId);
@@ -75,15 +75,15 @@ function updRcvPrev(){const b=byId('rcv-prev');if(b) b.innerHTML=rcvPreview()}
 function receiveShip(by,now){
   const r=S.rcv,P=rcvPlan(r),s=P.s,who=person(by);
   s.items.forEach(it=>{
-    const p=product(it.sku),q=qv(it.sku,r);
+    const p=product(it.productId),q=qv(it.productId,r);
     p.stock+=q;it.got=q;
-    if(q) S.moves.unshift({at:now,sku:it.sku,kind:'Приход',qty:q,doc:s.id,by});
+    if(q) S.moves.unshift({at:now,productId:it.productId,kind:'Приход',qty:q,doc:s.id,by});
   });
   P.res.forEach(x=>{x.src='stock'});
-  s.stageId=finalStage(s)?.id||s.stageId;s.last={place:'Наш склад',at:now,by};
+  s.stageId=finalStage(s)?.id||s.stageId;s.history.push({at:now,by,text:'Наш склад'});
   s.received={at:now,by,photos:r.photos.length,urls:r.photos.slice(),note:r.note.trim()};
   const notes=[],msgIds=[];
-  notes.push(Notify.push(S,'arrive',by,`${s.id} принята на склад: ${s.items.map(it=>`${low(product(it.sku).name)} ${num(it.got)} ${product(it.sku).unit}`).join(', ')}. Фото: ${r.photos.length}.${s.received.note?' Комментарий: '+s.received.note:''}`,now));
+  notes.push(Notify.push(S,'arrive',by,`${s.id} принята на склад: ${s.items.map(it=>`${low(product(it.productId).name)} ${num(it.got)} ${product(it.productId).unit}`).join(', ')}. Фото: ${r.photos.length}.${s.received.note?' Комментарий: '+s.received.note:''}`,now));
   if(P.issues.length||P.dmg.length) notes.push(Notify.push(S,'warn',by,`Приёмка ${s.id} с замечаниями. ${[P.issues.join('; '),P.dmg.length?'Повреждено: '+P.dmg.join(', '):''].filter(Boolean).join('. ')}. Фото в карточке поставки.`,now));
   P.waits.forEach(({d,items,how})=>{
     const mg=person(d.managerId);let tail;
@@ -121,3 +121,11 @@ function addPhotos(files){
     fr.readAsDataURL(f);
   });
 }
+
+// ——— поля приёмки (реестр ON оболочки) ———
+const rcvItem=pid=>ship(S.rcv.shipId).items.find(i=>i.productId===pid);
+ON.input['rcv-qty']=t=>{const pid=t.dataset.pid;S.rcv.qty[pid]=t.value;byId('rcv-diff-'+pid).innerHTML=diffHtml(rcvItem(pid));updRcvPrev()};
+ON.input['rcv-note']=t=>{S.rcv.note=t.value};
+ON.change['rcv-ship']=t=>{initRcv(t.value);render()};
+ON.change['rcv-dmg']=t=>{S.rcv.dmg[t.dataset.pid]=t.checked;updRcvPrev()};
+ON.change['rcv-photo']=t=>{addPhotos(t.files);t.value=''};

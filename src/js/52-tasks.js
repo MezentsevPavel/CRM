@@ -28,3 +28,7 @@ function dTask(t){
     <dl class="kv"><dt>Кому</dt><dd>${esc(targetName(t))}</dd><dt>Срок</dt><dd class="${over?'bad-t':''}">${fD(t.due)}, ${WD[new Date(t.due).getDay()]}${over?' · просрочена':''}</dd><dt>Важность</dt><dd>${t.prio==='high'?'Срочно':'Обычная'}</dd>${d?`<dt>Сделка</dt><dd>${can('clients')?`<button class="link" data-act="open-deal" data-id="${d.id}">${d.id} · ${esc(d.client)}</button>`:d.id}</dd>`:''}</dl>
     ${t.desc?`<div><h4 class="sh">Подробности</h4><p class="prose">${esc(t.desc)}</p></div>`:''}`};
 }
+
+// ——— регистрация в реестрах оболочки ———
+DRAWERS.task=id=>{const t=S.tasks.find(x=>x.id===id);return t&&taskVisible(t)?dTask(t):null};
+ON.change['task-dept']=t=>{S.ui.taskDept=t.value;render()};

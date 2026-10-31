@@ -144,7 +144,7 @@ function mStage(s){
   const def=stg.slice(stagePos(s)+1).find(x=>!locked(x))?.id||s.stageId;
   return `<form data-form="stage" data-id="${s.id}" novalidate>${mHead('Отметка по перевозке '+s.id)}<div class="modal-b">
     <div class="field"><label for="st-stage">Этап</label><select id="st-stage" class="inp">${stg.map(x=>`<option value="${esc(x.id)}" ${x.id===def?'selected':''} ${locked(x)?'disabled':''}>${esc(x.name)}${locked(x)?' — ставит склад при приёмке':''}</option>`).join('')}</select></div>
-    <div class="field"><label for="st-place">Где груз сейчас</label><input id="st-place" class="inp" value="${esc(s.last.place)}"></div>
+    <div class="field"><label for="st-place">Где груз сейчас</label><input id="st-place" class="inp" value="${esc(shipLast(s).text)}"></div>
     <div class="field"><label for="st-eta">${s.dir==='in'?'Ожидается на складе':'Доставка клиенту'}</label><input id="st-eta" type="date" class="inp" value="${iso(s.eta)}"></div>
     <div class="field"><label for="st-note">Комментарий</label><input id="st-note" class="inp" placeholder="Например: водитель звонил, будет к обеду"></div>
     <label class="check"><input type="checkbox" id="st-notify" checked> Уведомить сотрудников об отметке</label>
@@ -179,15 +179,15 @@ function closeModal(){if(S) S.ui.modal=null;byId('modal-root').innerHTML=''}
 const showErr=(id,t)=>{const e=byId(id);e.textContent=t;e.hidden=false};
 
 // ——— карточка справа ———
+// Реестр карточек: DRAWERS.<type> = id => ({kind, title, sub, body}) или null (нет записи или нет права —
+// карточка не открывается). Раздел кладёт свою карточку в своём файле: DRAWERS.product = id => …
+const DRAWERS={};
 function openDrawer(type,id){S.ui.drawer={type,id};renderDrawer()}
 function closeDrawer(){S.ui.drawer=null;renderDrawer()}
 function renderDrawer(){
   const root=byId('drawer-root'),d=S.ui.drawer;
   if(!d){root.innerHTML='';root.dataset.k='';return}
-  let c=null;
-  if(d.type==='product'&&can('stock')){const p=product(d.id);if(p) c=dProduct(p)}
-  else if(d.type==='deal'&&can('clients')){const x=deal(d.id);if(x) c=dDeal(x)}
-  else if(d.type==='task'){const t=S.tasks.find(t=>t.id===d.id);if(t&&taskVisible(t)) c=dTask(t)}
+  const f=Object.hasOwn(DRAWERS,d.type)?DRAWERS[d.type]:null,c=f?f(d.id):null;
   if(!c){S.ui.drawer=null;root.innerHTML='';root.dataset.k='';return}
   const k=d.type+':'+d.id,same=root.dataset.k===k,sc=same?(root.querySelector('.drawer-b')?.scrollTop||0):0;
   root.classList.toggle('still',same);
@@ -210,7 +210,7 @@ function searchRes(q){
   const r=[],has=s=>s.toLowerCase().includes(q);
   if(can('stock')) S.products.forEach(p=>{if(has(p.name+' '+p.sku)) r.push({type:'Товар',label:p.name,sub:`${p.sku} · свободно ${num(freeNow(p))} ${p.unit}`,act:`data-act="open-product" data-sku="${esc(p.sku)}"`})});
   if(can('clients')) S.deals.forEach(d=>{if(has(d.client+' '+d.id+' '+d.object)) r.push({type:'Сделка',label:d.client,sub:`${d.id} · ${d.object}`,act:`data-act="open-deal" data-id="${d.id}"`})});
-  if(can('stock')||can('logistics')) S.shipments.forEach(s=>{if(has(s.id+' '+s.from+' '+s.to+' '+s.doc)) r.push({type:'Перевозка',label:`${s.id} · ${s.from}`,sub:`${stageName(s)} · ${fD(s.eta)}`,act:`data-act="go" data-view="logistics" data-tab="${isDone(s)?'done':s.dir}"`})});
+  if(can('stock')||can('logistics')) S.shipments.forEach(s=>{if(has(s.id+' '+s.supplier+' '+s.to+' '+s.track)) r.push({type:'Перевозка',label:`${s.id} · ${s.supplier}`,sub:`${stageName(s)} · ${fD(s.eta)}`,act:`data-act="go" data-view="logistics" data-tab="${isDone(s)?'done':s.dir}"`})});
   S.tasks.filter(taskVisible).forEach(t=>{if(has(t.title)) r.push({type:'Задача',label:t.title,sub:`${targetName(t)} · ${fRel(t.due)}`,act:`data-act="open-task" data-id="${t.id}"`})});
   return r.slice(0,9);
 }
@@ -262,6 +262,12 @@ function render(){
   updBell();renderDrawer();save();
 }
 
+// ——— реестры полей и имитаций ———
+// Поля data-on: ON.input['<key>'] и ON.change['<key>'] = (el, e) => … — раздел регистрирует свои в своём файле.
+const ON={input:{},change:{}};
+// Имитации внешних событий для «Пульта проверки»: SIMS.push({id, label, run:()=>void}) — в файле раздела.
+const SIMS=[];
+
 // ——— действия по клику ———
 const A={
   go:el=>go(el.dataset.view,el.dataset.tab),
@@ -294,16 +300,16 @@ const A={
   'view-as':el=>setMe(el.dataset.id),
   unreserve:el=>{
     const r=S.reserves.find(x=>x.id===el.dataset.id);if(!r) return;
-    const p=product(r.sku),d=deal(r.deal),m=me(),now=new Date();
+    const p=product(r.productId),d=deal(r.dealId),m=me(),now=new Date();
     S.reserves=S.reserves.filter(x=>x!==r);
-    S.moves.unshift({at:now,sku:r.sku,kind:'Снят резерв',qty:r.qty,doc:r.deal,by:m.id});
-    Notify.push(S,'reserve',m.id,`Снят резерв: ${p.name} — ${num(r.qty)} ${p.unit} (${r.deal}, ${d?.client||''}).`,now);
+    S.moves.unshift({at:now,productId:r.productId,kind:'Снят резерв',qty:r.qty,doc:r.dealId,by:m.id});
+    Notify.push(S,'reserve',m.id,`Снят резерв: ${p.name} — ${num(r.qty)} ${p.unit} (${r.dealId}, ${d?.client||''}).`,now);
     render();toast('Резерв снят, товар снова свободен.');
   },
   'rcv-start':el=>{initRcv(el.dataset.id);go('receiving')},
   'rcv-step':el=>{
-    const sku=el.dataset.sku,inp=byId('rcv-q-'+sku),v=Math.max(0,(parseInt(inp.value,10)||0)+parseInt(el.dataset.d,10));
-    inp.value=v;S.rcv.qty[sku]=v;byId('rcv-diff-'+sku).innerHTML=diffHtml(ship(S.rcv.shipId).items.find(i=>i.sku===sku));updRcvPrev();saveSoon();
+    const pid=el.dataset.pid,inp=byId('rcv-q-'+pid),v=Math.max(0,(parseInt(inp.value,10)||0)+parseInt(el.dataset.d,10));
+    inp.value=v;S.rcv.qty[pid]=v;byId('rcv-diff-'+pid).innerHTML=diffHtml(rcvItem(pid));updRcvPrev();saveSoon();
   },
   'rcv-photo-del':el=>{S.rcv.photos.splice(+el.dataset.i,1);byId('rcv-photos').innerHTML=photosHtml();saveSoon()},
   'rcv-confirm':()=>rcvConfirm(),
@@ -327,8 +333,8 @@ const FORMS={
     if(qty>avail) return showErr('rs-err',`Свободно только ${num(Math.max(0,avail))} ${p.unit}. Уменьшите количество или выберите другой источник.`);
     if(!until||dd(fromIso(until))<0) return showErr('rs-err','Дата окончания резерва не может быть в прошлом.');
     const d=deal(did),m=me(),u=fromIso(until),now=new Date();
-    S.reserves.push({id:Store.freeId(S.reserves,'r'),sku:p.sku,deal:did,qty,src,until:u});
-    S.moves.unshift({at:now,sku:p.sku,kind:'Резерв',qty,doc:did,by:m.id});
+    S.reserves.push({id:Store.freeId(S.reserves,'r'),productId:p.sku,dealId:did,qty,src,until:u});
+    S.moves.unshift({at:now,productId:p.sku,kind:'Резерв',qty,doc:did,by:m.id});
     Notify.push(S,'reserve',m.id,`Резерв: ${low(p.name)} — ${num(qty)} ${p.unit} ${src==='stock'?'со склада':'из поставки '+src} для ${did} (${d.client}) до ${fD(u)}.`,now);
     render();toast(`Резерв поставлен: ${num(qty)} ${p.unit} для ${did}. Склад и директор получили уведомление.`);
   },
@@ -336,12 +342,12 @@ const FORMS={
     const s=ship(f.dataset.id),m=me(),now=new Date();
     const stg=Pipes.stage(S,s.pipeId,byId('st-stage').value);
     if(!stg||(s.dir==='in'&&stg.flag==='final')){closeModal();return}
-    const place=byId('st-place').value.trim()||s.last.place,eta=byId('st-eta').value,note=byId('st-note').value.trim(),notify=byId('st-notify').checked;
+    const place=byId('st-place').value.trim()||shipLast(s).text,eta=byId('st-eta').value,note=byId('st-note').value.trim(),notify=byId('st-notify').checked;
     const old=s.eta,ne=eta?fromIso(eta,s.eta.getHours()||12):s.eta,moved=dd(ne)!==dd(old),wasOut=s.dir==='out'&&leftStart(s);
-    s.stageId=stg.id;s.last={place,at:now,by:m.id};s.eta=ne;
+    s.stageId=stg.id;s.history.push({at:now,by:m.id,text:place});s.eta=ne;
     let sent=0;
     if(notify) sent=Notify.push(S,'ship',m.id,`${s.id}: ${stg.name.toLowerCase()} — ${place}. ${s.dir==='in'?'На складе ожидается':'Доставка'} ${fD(ne)}${moved?` (было ${fD(old)})`:''}.${note?' '+note:''}`,now).to.filter(id=>id!==m.id).length;
-    if(s.dir==='out'&&!wasOut&&leftStart(s)&&rule('shipped').on&&s.deal){const d=deal(s.deal);if(d&&d.channel!=='phone') S.msgs.push({id:Store.freeId(S.msgs,'m'),at:now,deal:d.id,channel:d.channel,auto:true,text:`${d.contact}, здравствуйте! Ваш заказ отгружен: ${s.doc}. Привезём ${fD(ne)}. Ваш менеджер — ${person(d.managerId)?.name||''}.`})}
+    if(s.dir==='out'&&!wasOut&&leftStart(s)&&rule('shipped').on&&s.deal){const d=deal(s.deal);if(d&&d.channel!=='phone') S.msgs.push({id:Store.freeId(S.msgs,'m'),at:now,deal:d.id,channel:d.channel,auto:true,text:`${d.contact}, здравствуйте! Ваш заказ отгружен: ${s.track}. Привезём ${fD(ne)}. Ваш менеджер — ${person(d.managerId)?.name||''}.`})}
     closeModal();render();toast(notify?`Отмечено. Уведомление получили ${sent} ${pl(sent,'сотрудник','сотрудника','сотрудников')}.`:'Отмечено без уведомления.');
   },
   task:()=>{
@@ -355,13 +361,13 @@ const FORMS={
   },
   ship:f=>{
     const from=byId('ns-from').value.trim(),m=me(),now=new Date(),items=[],pipe=shipPipe('in');
-    f.querySelectorAll('.irow').forEach(r=>{const sku=r.querySelector('select').value,q=parseInt(r.querySelector('input').value,10)||0;if(q<1) return;const e=items.find(i=>i.sku===sku);if(e) e.qty+=q;else items.push({sku,qty:q})});
+    f.querySelectorAll('.irow').forEach(r=>{const sku=r.querySelector('select').value,q=parseInt(r.querySelector('input').value,10)||0;if(q<1) return;const e=items.find(i=>i.productId===sku);if(e) e.qty+=q;else items.push({productId:sku,qty:q})});
     if(!from||!items.length) return showErr('ns-err','Укажите, откуда едет груз, и хотя бы одну позицию с количеством.');
     const id='П-'+(Math.max(0,...S.shipments.filter(s=>s.dir==='in').map(s=>parseInt(s.id.replace(/\D/g,''),10)||0))+1);
     const eta=byId('ns-eta').value?fromIso(byId('ns-eta').value):day(7,12);
     const stageId=Pipes.stage(S,pipe.id,byId('ns-stage').value)?.id||startStage(pipe.id).id;
-    S.shipments.push({id,dir:'in',from,to:'Наш склад',carrier:byId('ns-car').value,doc:byId('ns-doc').value.trim()||'нет данных: номер накладной',pipeId:pipe.id,stageId,eta,last:{place:from,at:now,by:m.id},items});
-    Notify.push(S,'ship',m.id,`Новая поставка ${id} из «${from}»: ${items.map(i=>`${low(product(i.sku).name)} ${num(i.qty)} ${product(i.sku).unit}`).join(', ')}. На складе ожидается ${fD(eta)}.`,now);
+    S.shipments.push({id,dir:'in',supplier:from,to:'Наш склад',carrier:byId('ns-car').value,track:byId('ns-doc').value.trim()||'нет данных: номер накладной',pipeId:pipe.id,stageId,eta,history:[{at:now,by:m.id,text:from}],items});
+    Notify.push(S,'ship',m.id,`Новая поставка ${id} из «${from}»: ${items.map(i=>`${low(product(i.productId).name)} ${num(i.qty)} ${product(i.productId).unit}`).join(', ')}. На складе ожидается ${fD(eta)}.`,now);
     closeModal();S.ui.logTab='in';render();toast(`Поставка ${id} создана. Менеджеры уже видят её в остатках как «едет к нам».`);
   },
   product:()=>{
@@ -394,28 +400,13 @@ document.addEventListener('click',e=>{
   f(el,e);
 });
 document.addEventListener('submit',e=>{const f=e.target,k=f.dataset.form;if(!k||!FORMS[k]) return;e.preventDefault();FORMS[k](f)});
-document.addEventListener('input',e=>{
-  const t=e.target,on=t.dataset?.on;if(!on) return;
-  if(on==='rcv-qty'){S.rcv.qty[t.dataset.sku]=t.value;byId('rcv-diff-'+t.dataset.sku).innerHTML=diffHtml(ship(S.rcv.shipId).items.find(i=>i.sku===t.dataset.sku));updRcvPrev()}
-  else if(on==='rcv-note') S.rcv.note=t.value;
-  else if(on==='sq'){S.ui.sq=t.value;byId('stock-tbl').innerHTML=stockTable()}
-  else if(on==='tpl'){S.tpl=t.value;updTpl()}
-  else if(on==='addr'){S.address=t.value;updTpl()}
-  saveSoon();
-});
-document.addEventListener('change',e=>{
-  const t=e.target,on=t.dataset?.on;if(!on) return;
-  if(on==='rcv-ship'){initRcv(t.value);render()}
-  else if(on==='rcv-dmg'){S.rcv.dmg[t.dataset.sku]=t.checked;updRcvPrev()}
-  else if(on==='rcv-photo'){addPhotos(t.files);t.value=''}
-  else if(on==='task-dept'){S.ui.taskDept=t.value;render()}
-  else if(on==='deficit'){S.ui.deficit=t.checked;byId('stock-tbl').innerHTML=stockTable()}
-  else if(on==='rule'){const r=rule(t.dataset.id);r.on=t.checked;toast(`Правило «${r.when}» ${r.on?'включено':'выключено'}.`)}
-  else if(on==='perm'){const r=S.roles.find(x=>x.id===t.dataset.role);if(!r||r.all) return;r.perms[t.dataset.perm]=t.checked;const l=Perms.LIST.find(p=>p[0]===t.dataset.perm)?.[1]||t.dataset.perm;toast(`${r.name}: «${l}» — ${t.checked?'разрешено':'запрещено'}.`)}
-  else if(on==='person-role'){const p=person(t.dataset.id);p.role=t.value;render();toast(`${p.name} теперь ${roleName(p).toLowerCase()}.`)}
-  else if(on==='person-spec'){const p=person(t.dataset.id);p.specialty=t.value;toast(`${p.name}: специализация — ${SPECIALTY[p.specialty]||'нет данных'}.`)}
-  saveSoon();
-});
+// Поле с data-on="<key>": обработчик ON.input[key] или ON.change[key], затем отложенное сохранение
+function onField(kind,e){
+  const t=e.target,k=t.dataset?.on;if(!k||!Object.hasOwn(ON[kind],k)) return;
+  ON[kind][k](t,e);saveSoon();
+}
+document.addEventListener('input',e=>onField('input',e));
+document.addEventListener('change',e=>onField('change',e));
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
     if(S.ui.modal) closeModal();else if(S.ui.drawer) closeDrawer();else{byId('pop').hidden=true;byId('q-res').hidden=true;if(S.ui.navOpen) setNav(false)}

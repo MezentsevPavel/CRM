@@ -75,15 +75,61 @@ test('load.js: код загружается, NAV — девять раздел�
   assert.equal(typeof app.render, 'function');
 });
 
-test('seed(): демо-записи v2 на месте — товары, поставки, задачи и остальное', () => {
+// Демо-записи разделов кладут шаги SEEDS (T02, T03, T06 заменяют свои) — поэтому здесь не число и не id
+// записей, а то, что обязано держаться при любых демо: разделы v2 не пусты (notes.md, п. 3 «Записи»)
+// и ссылки между записями ведут на существующие записи.
+const V2_RECORDS = ['products', 'shipments', 'reserves', 'deals', 'tasks', 'notes', 'msgs', 'moves', 'rules'];
+
+test('seed(): демо-записи v2 на месте — товары, поставки, задачи и остальное; ссылки целы', () => {
   const app = load();
   const st = app.seed();
-  // число демо-записей — notes.md, п. 3 «Записи» (люди — отдельный тест: команда v3 больше)
-  const expected = { products: 12, shipments: 6, reserves: 15, deals: 6, tasks: 10, notes: 10, msgs: 4, moves: 8, rules: 5 };
-  for (const [k, n] of Object.entries(expected)) assert.equal(st[k]?.length, n, `seed().${k}`);
-  assert.ok(st.products.some(p => p.sku === 'INV-H6' && p.name === 'Гибридный инвертор 6 кВт'));
-  assert.equal(app.S.products.length, 12, 'состояние S собрано из seed()');
+  for (const k of V2_RECORDS) {
+    assert.ok(Array.isArray(st[k]) && st[k].length > 0, `seed().${k} пуст`);
+    assert.equal(app.S[k].length, st[k].length, `состояние S.${k} собрано не из seed()`);
+  }
   assert.equal(app.S.view, 'home');
+  const has = (list, id) => list.some(x => x.id === id);
+  const isProduct = id => !!app.product(id);
+  for (const r of st.reserves) {
+    assert.ok(isProduct(r.productId), `резерв ${r.id}: товара ${r.productId} нет`);
+    assert.ok(has(st.deals, r.dealId), `резерв ${r.id}: сделки ${r.dealId} нет`);
+    assert.ok(r.src === 'stock' || has(st.shipments, r.src), `резерв ${r.id}: источника ${r.src} нет`);
+  }
+  for (const s of st.shipments) for (const it of s.items) assert.ok(isProduct(it.productId), `${s.id}: товара ${it.productId} нет`);
+  for (const m of st.moves) assert.ok(isProduct(m.productId), `движение ${m.doc}: товара ${m.productId} нет`);
+});
+
+// Ключи записей — схема v3 из interfaces.md, «Состояние S»: товар и сделка — productId и dealId,
+// у поставки — supplier, track, history[{at, by, text}] вместо from, doc, last v2.
+test('seed(): резервы, движения и поставки — ключами схемы v3; поиск в шапке и главный экран читают их', () => {
+  const app = load();
+  const st = app.seed();
+  const without = (x, keys, what) => keys.forEach(k => assert.ok(!(k in x), `${what}: осталось поле v2 «${k}»`));
+  for (const r of st.reserves) {
+    assert.ok(r.productId && r.dealId, `резерв ${r.id}: нет productId или dealId`);
+    without(r, ['sku', 'deal'], `резерв ${r.id}`);
+  }
+  for (const m of st.moves) { assert.ok(m.productId, 'движение без productId'); without(m, ['sku'], `движение ${m.doc}`); }
+  for (const s of st.shipments) {
+    for (const it of s.items) { assert.ok(it.productId, `${s.id}: позиция без productId`); without(it, ['sku'], `${s.id}: позиция`); }
+    without(s, ['from', 'doc', 'last'], s.id);
+    assert.ok(typeof s.supplier === 'string' && s.supplier, `${s.id}: нет supplier`);
+    assert.ok(typeof s.track === 'string' && s.track, `${s.id}: нет track`);
+    assert.ok(Array.isArray(s.history) && s.history.length, `${s.id}: нет history`);
+    for (const h of s.history) {
+      assert.ok(Object.prototype.toString.call(h.at) === '[object Date]' && h.by && h.text, `${s.id}: отметка истории не {at, by, text}`);
+    }
+  }
+  // поиск в шапке находит поставку по поставщику и по номеру документа (track) — значения из состояния
+  const s = app.S.shipments[0];
+  for (const q of [s.track, s.supplier]) {
+    assert.ok(app.searchRes(q).some(x => x.type === 'Перевозка' && x.label.includes(s.id)), `поиск «${q}» не нашёл ${s.id}`);
+  }
+  // главный экран директора: открытая поставка опоздала — в «Требует внимания» текст последней отметки истории
+  const late = app.S.shipments.find(x => !app.Pipes.isFinal(app.S, x.pipeId, x.stageId));
+  late.eta = app.day(-3);
+  const mark = late.history[late.history.length - 1].text;
+  assert.ok(app.VIEWS.home().includes(app.esc(`Последняя отметка: ${mark}`)), 'на главном нет последней отметки задержанной поставки');
 });
 
 // Роли и их названия — spec.md, истории R03, R27–R30 (ожидание не берётся из Perms).
@@ -413,18 +459,18 @@ test('Notify: выключенный у себя вид не приходит э
 });
 
 // ——— Разделы на ядре: этапы, приёмка, сохранение, «Кто я» ———
-// Ожидания — из seed v2 (notes.md, п. 3 и 7: остатки, резервы П-1044, каналы сделок) и spec.md (R01, R15, R16, R59i).
+// Ожидания — из spec.md (R01, R15, R16, R59i) и из состояния до действия: демо-записи заменяют шаги SEEDS
+// следующих тасков, поэтому ни числа, ни id демо здесь не зашиты.
 
 test('этапы: в разделах и модели нет обращения к этапу по номеру', () => {
   const dir = path.join(ROOT, 'src', 'js');
   const files = fs.readdirSync(dir).filter(f => /^(20|5\d)-.*\.js$/.test(f));
   assert.ok(files.length >= 9, 'мало файлов разделов');
+  // Только два признака номера этапа: сравнение этапа с числом и индекс stages[N]. Поле или фильтр
+  // с именем stage (el.dataset.stage, {stage} в Ships.query) — законны и сюда не попадают.
   const bad = [
     /\bstages?\s*(===|!==|==|!=|>=|<=|>|<)\s*\d/,          // s.stage===3, d.stage>=6
     /\bstages?\[\s*\d+\s*\]/,                               // stages[0]
-    /stagePos\([^)]*\)\s*(===|!==|==|!=|>=|<=|>|<)\s*\d/,    // stagePos(s)>=2
-    /\.stage(?![\w(])/,                                      // старое поле «номер этапа»
-    /\b(ST_IN|ST_OUT|DEAL_ST|TASK_ST)\b/,                    // массивы этапов v2
   ];
   for (const f of files) {
     fs.readFileSync(path.join(dir, f), 'utf8').split('\n').forEach((line, i) => {
@@ -434,21 +480,31 @@ test('этапы: в разделах и модели нет обращения 
   }
 });
 
-test('приёмка П-1044 кладовщиком: остаток вырос, резервы переведены, уведомления и сообщения клиентам', () => {
+test('приёмка кладовщиком: остаток вырос на принятое, резервы переведены, уведомления и сообщения клиентам', () => {
   const app = load();
+  // поставка, ждущая приёмки (этап с флагом arrived), под которую стоят резервы сделок — берётся из демо,
+  // ожидаемое — из состояния до приёмки, а не из чисел демо (их заменяют шаги SEEDS следующих тасков)
+  const flag = x => app.Pipes.stage(app.S, x.pipeId, x.stageId)?.flag;
+  const resOn = s => app.S.reserves.filter(r => r.src === s.id);
+  const dealOf = id => app.S.deals.find(d => d.id === id);
+  const s = app.S.shipments.find(x => x.dir === 'in' && flag(x) === 'arrived' && resOn(x).some(r => dealOf(r.dealId)?.channel !== 'phone'));
+  assert.ok(s, 'в демо нет поставки на этапе «прибыло» с резервом под сделку с мессенджером');
+  const onHand = pid => app.product(pid).stock;
+  const want = new Map();
+  for (const it of s.items) want.set(it.productId, (want.get(it.productId) ?? onHand(it.productId)) + it.qty);
+  const resIds = resOn(s).map(r => r.id);
+  const waitDeals = [...new Set(resOn(s).map(r => r.dealId))].map(dealOf);
+  app.S.rules.find(r => r.id === 'arrive').on = true; // авто-сообщения клиентам включены (R16)
+
   app.setMe('p5'); // Игорь К., кладовщик
-  app.A['rcv-start']({ dataset: { id: 'П-1044' } });
+  app.A['rcv-start']({ dataset: { id: s.id } });
   assert.equal(app.S.view, 'receiving');
   app.S.rcv.photos.push('data:image/jpeg;base64,AAAA');
   const notesBefore = app.S.notes.length, msgsBefore = app.S.msgs.length;
   app.A['rcv-confirm']();
-  const stock = sku => app.S.products.find(p => p.sku === sku).stock;
-  // остатки v2 + количества П-1044 (notes.md: CTRL-60 1, BOX-DC 3, CAB-6R 1140; в поставке 6, 10, 500)
-  assert.equal(stock('CTRL-60'), 7);
-  assert.equal(stock('BOX-DC'), 13);
-  assert.equal(stock('CAB-6R'), 1640);
-  for (const id of ['r10', 'r15']) assert.equal(app.S.reserves.find(r => r.id === id).src, 'stock', `${id} не переведён на склад`);
-  const s = app.S.shipments.find(x => x.id === 'П-1044');
+  // принято столько, сколько ехало (количество в приёмке не меняли): остаток до + принято
+  for (const [pid, n] of want) assert.equal(onHand(pid), n, `${pid}: остаток не вырос на принятое`);
+  for (const id of resIds) assert.equal(app.S.reserves.find(r => r.id === id).src, 'stock', `${id} не переведён на склад`);
   assert.ok(app.Pipes.isFinal(app.S, s.pipeId, s.stageId), 'поставка не на завершающем этапе');
   assert.equal(s.received.photos, 1);
   // уведомления (R15): «товар на складе» — все менеджеры и директор; менеджеру сделки — отдельно
@@ -459,25 +515,30 @@ test('приёмка П-1044 кладовщиком: остаток вырос, 
   assert.deepEqual([...new Set(arrive.to.map(roleOf))].sort(), ['director', 'managerB2b', 'managerB2c']);
   const managers = app.S.people.filter(p => /^manager/.test(p.role)).map(p => p.id);
   assert.ok(managers.length >= 4 && managers.every(id => arrive.to.includes(id)), 'не все менеджеры получили «товар на складе»');
-  // Д-311 и Д-318 ждали товар из П-1044; обе ведёт Анна С. (p2)
   const perDeal = fresh.filter(n => n.text.startsWith('Уведомите клиента'));
-  assert.equal(perDeal.length, 2);
-  for (const n of perDeal) {
-    assert.ok(n.to.includes('p2'), 'менеджер сделки не получил «уведомите клиента»');
-    assert.ok(!n.to.some(id => id !== 'p2' && managers.includes(id)), '«уведомите клиента» ушло чужому менеджеру');
+  assert.equal(perDeal.length, waitDeals.length, '«уведомите клиента» — не по одному на сделку, ждавшую товар');
+  for (const d of waitDeals) {
+    const n = perDeal.find(x => x.text.includes(`(${d.id})`));
+    assert.ok(n, `нет «уведомите клиента» по ${d.id}`);
+    assert.ok(n.to.includes(d.managerId), `${d.id}: менеджер сделки не получил «уведомите клиента»`);
+    assert.ok(!n.to.some(id => id !== d.managerId && managers.includes(id)), `${d.id}: «уведомите клиента» ушло чужому менеджеру`);
   }
-  // сообщения клиентам (R16): по шаблону, в канал сделки, имитация
+  // сообщения клиентам (R16): по шаблону, в канал своей сделки, имитация; клиенту «только по телефону» не пишем
   const msgs = app.S.msgs.slice(msgsBefore);
-  assert.deepEqual([...msgs.map(m => m.deal)].sort(), ['Д-311', 'Д-318']);
-  assert.ok(msgs.every(m => m.auto && m.text.includes('пришёл на склад')));
-  assert.equal(msgs.find(m => m.deal === 'Д-318').channel, 'max');
-  assert.equal(msgs.find(m => m.deal === 'Д-311').channel, 'telegram');
+  const chat = waitDeals.filter(d => d.channel !== 'phone');
+  assert.deepEqual([...msgs.map(m => m.deal)].sort(), chat.map(d => d.id).sort());
+  for (const d of chat) {
+    const m = msgs.find(x => x.deal === d.id);
+    assert.equal(m.channel, d.channel, `${d.id}: сообщение не в канал сделки`);
+    assert.ok(m.auto && m.text.includes('пришёл на склад'), `${d.id}: сообщение не по шаблону`);
+  }
 });
 
 test('сохранение: созданная задача переживает перезагрузку, даты — Date; сброс возвращает демо', () => {
   const app = load();
   const KEY = app.Store.KEY;
   assert.equal(app.storage[KEY], undefined);
+  const demo = app.S.tasks.length; // задач в демо — до действия
   const set = (id, v) => { app.byId(id).value = v; };
   set('t-title', 'Проверить сохранение'); set('t-to', 'p:p6'); set('t-due', '2026-11-05'); set('t-prio', 'high');
   app.FORMS.task();
@@ -487,12 +548,12 @@ test('сохранение: созданная задача переживает
   assert.ok(t, 'задача пропала после перезагрузки');
   assert.ok(isDate(t.due) && isDate(t.at), 'даты задачи после загрузки — не Date');
   assert.equal(t.due.getDate(), 5);
-  assert.equal(again.S.tasks.length, 11);
+  assert.equal(again.S.tasks.length, demo + 1, 'после перезагрузки задач не «демо + 1»');
   again.resetData();
-  assert.equal(again.S.tasks.length, 10);
+  assert.equal(again.S.tasks.length, demo);
   assert.ok(!again.S.tasks.some(x => x.title === 'Проверить сохранение'));
-  assert.equal(load({ storage: again.storage }).S.tasks.length, 10, 'сброс не записан в браузер');
-  assert.equal(load({ storage: { [KEY]: '{битое' } }).S.tasks.length, 10, 'битое сохранение — не демо');
+  assert.equal(load({ storage: again.storage }).S.tasks.length, demo, 'сброс не записан в браузер');
+  assert.equal(load({ storage: { [KEY]: '{битое' } }).S.tasks.length, demo, 'битое сохранение — не демо');
 });
 
 test('«Кто я»: в шапке каждый человек с ролью; задачи и прочитанность — этого человека', () => {
@@ -648,4 +709,90 @@ test('сброс данных: сначала подтверждение, пос
   assert.equal(app.S.me, 'p6');
   assert.equal(app.S.prefs.theme, 'dark');
   assert.equal(app.Store.load(app.storage[KEY]).tasks.length, tasks, 'сброс не записан в браузер');
+});
+
+// ——— Реестры (interfaces.md, «Реестры»): раздел подключается в своём файле, оболочку не правят ———
+
+test('реестры ON, DRAWERS, SIMS: поля data-on и карточки справа идут через них, v2 перенесён на них', () => {
+  const app = load();
+  app.render();
+  assert.deepEqual(Object.keys(app.ON).sort(), ['change', 'input']);
+  assert.ok(Array.isArray(app.SIMS), 'SIMS — не список');
+  for (const s of app.SIMS) assert.ok(s.id && s.label && typeof s.run === 'function', 'SIMS: запись не {id, label, run}');
+  const fire = (type, target) => app.document.dispatchEvent({ type, target });
+  // новый раздел регистрирует свой обработчик — оболочка зовёт его на input и change
+  const got = [];
+  app.ON.input.probe = el => got.push('input:' + el.value);
+  app.ON.change.probe = el => got.push('change:' + el.value);
+  fire('input', { dataset: { on: 'probe' }, value: 'а' });
+  fire('change', { dataset: { on: 'probe' }, value: 'б' });
+  fire('input', { dataset: { on: 'нет-такого' }, value: 'в' });
+  assert.deepEqual(got, ['input:а', 'change:б']);
+  // поля v2 работают через реестр: адрес склада (input) и правило авто-сообщений (change)
+  fire('input', { dataset: { on: 'addr' }, value: 'Проверочная, 1' });
+  assert.equal(app.S.address, 'Проверочная, 1');
+  const rule = app.S.rules[0], was = rule.on;
+  fire('change', { dataset: { on: 'rule', id: rule.id }, checked: !was });
+  assert.equal(rule.on, !was, 'правило не переключилось');
+  // карточка справа — из DRAWERS: новый тип показывается, null — карточки нет
+  const root = app.byId('drawer-root');
+  app.DRAWERS.probe = id => (id === 'x1' ? { kind: 'Проба', title: 'Карточка ' + id, sub: '', body: '<p>тело пробы</p>' } : null);
+  app.openDrawer('probe', 'x1');
+  assert.ok(root.innerHTML.includes('Карточка x1') && root.innerHTML.includes('тело пробы'), 'карточка нового типа не показана');
+  app.openDrawer('probe', 'нет');
+  assert.equal(root.innerHTML, '');
+  assert.equal(app.S.ui.drawer, null);
+  // карточки v2 — тоже записи DRAWERS, с правами внутри: сделка открыта директору, закрыта кладовщику
+  for (const k of ['product', 'deal', 'task']) assert.equal(typeof app.DRAWERS[k], 'function', `нет DRAWERS.${k}`);
+  const d = app.S.deals[0];
+  app.openDrawer('deal', d.id);
+  assert.ok(root.innerHTML.includes(app.esc(d.client)), 'директору не открылась карточка сделки');
+  app.setMe('p5'); // кладовщик: права «Клиенты и сделки» нет
+  app.openDrawer('deal', d.id);
+  assert.equal(root.innerHTML, '', 'кладовщику открылась карточка сделки');
+});
+
+// Фото, которые не влезли в браузер (Store.dump с малым лимитом), после перезагрузки — не значки,
+// а «не сохранено — мало места в браузере» (interfaces.md: Store помечает запись unsaved).
+const NO_SPACE = 'не сохранено — мало места в браузере';
+const PHOTO = 'data:image/jpeg;base64,' + 'A'.repeat(2000);
+// Перезагрузка после сохранения, где места не хватило ровно на фото
+function reloadTight(app) {
+  const full = app.Store.dump(app.S).text.length;
+  const r = app.Store.dump(app.S, full - 1);
+  assert.ok(r.droppedPhotos >= 2, 'малый лимит не выкинул фото');
+  return load({ storage: { [app.Store.KEY]: r.text } });
+}
+const arrivedShip = app => {
+  const s = app.S.shipments.find(x => x.dir === 'in' && app.Pipes.stage(app.S, x.pipeId, x.stageId)?.flag === 'arrived');
+  assert.ok(s, 'в демо нет поставки, ждущей приёмки');
+  return s;
+};
+
+test('мало места: после перезагрузки карточка принятой поставки говорит «не сохранено — мало места в браузере»', () => {
+  const app = load();
+  const s = arrivedShip(app);
+  app.setMe('p5');
+  app.A['rcv-start']({ dataset: { id: s.id } });
+  app.S.rcv.photos.push(PHOTO, PHOTO);
+  app.A['rcv-confirm']();
+  const card = a => { a.S.ui.logTab = 'done'; return a.VIEWS.logistics().split('<article').find(c => c.includes(`>${s.id}</b>`)) || ''; };
+  assert.ok(card(app).includes('<img'), 'до перезагрузки фото не видны');
+  assert.ok(!card(app).includes(NO_SPACE), 'фото в памяти, а карточка говорит «не сохранено»');
+  const again = reloadTight(app);
+  const c = card(again);
+  assert.ok(c, `после перезагрузки нет карточки ${s.id}`);
+  assert.ok(c.includes(`2 фото: ${NO_SPACE}`), 'карточка не говорит, что фото не сохранены');
+});
+
+test('мало места: после перезагрузки черновик приёмки говорит «не сохранено — мало места в браузере»', () => {
+  const app = load();
+  const s = arrivedShip(app);
+  app.setMe('p5');
+  app.A['rcv-start']({ dataset: { id: s.id } });
+  app.S.rcv.photos.push(PHOTO, PHOTO);
+  assert.ok(!app.VIEWS.receiving().includes(NO_SPACE), 'фото в памяти, а черновик говорит «не сохранено»');
+  const again = reloadTight(app);
+  assert.equal(again.S.rcv.shipId, s.id, 'черновик приёмки не пережил перезагрузку');
+  assert.ok(again.VIEWS.receiving().includes(`2 фото: ${NO_SPACE}`), 'черновик не говорит, что фото не сохранены');
 });

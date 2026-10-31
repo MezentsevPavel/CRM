@@ -11,3 +11,8 @@ function vMessages(){
   return rules+tpl+log;
 }
 function updTpl(){const p=byId('tpl-prev');if(p) p.innerHTML=tplSample();const h=byId('tpl-h');if(h) h.textContent=`Так увидит клиент в ${CH[S.ui.tplCh]} · пример по сделке Д-318`}
+
+// ——— регистрация в реестрах оболочки ———
+ON.input.tpl=t=>{S.tpl=t.value;updTpl()};
+ON.input.addr=t=>{S.address=t.value;updTpl()};
+ON.change.rule=t=>{const r=rule(t.dataset.id);r.on=t.checked;toast(`Правило «${r.when}» ${r.on?'включено':'выключено'}.`)};

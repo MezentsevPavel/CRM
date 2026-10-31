@@ -3,10 +3,10 @@
 
 // ——— клиенты и сделки ———
 function dealGoods(d){
-  const rs=S.reserves.filter(r=>r.deal===d.id);
+  const rs=S.reserves.filter(r=>r.dealId===d.id);
   if(!rs.length) return {lvl:'',text:'не зарезервирован'};
   const wait=rs.filter(r=>r.src!=='stock');
-  if(wait.some(r=>freeAfter(product(r.sku))<0)) return {lvl:'bad',text:'не хватает товара'};
+  if(wait.some(r=>freeAfter(product(r.productId))<0)) return {lvl:'bad',text:'не хватает товара'};
   if(!wait.length) return {lvl:'ok',text:'всё на складе'};
   const ss=[...new Set(wait.map(r=>r.src))].map(ship).filter(Boolean);
   const last=ss.reduce((a,s)=>s.eta>a?s.eta:a,ss[0].eta);
@@ -20,8 +20,8 @@ function vClients(){
   return `${fun}<section class="card clip"><div class="xs"><table class="tbl"><thead><tr><th>Клиент</th><th>Объект</th><th>Этап</th><th>Товар</th><th>Менеджер</th><th>Связь</th>${pr?'<th class="num">Сумма</th>':''}</tr></thead><tbody>${rows}</tbody></table></div></section>`;
 }
 function dDeal(d){
-  const rs=S.reserves.filter(r=>r.deal===d.id),ts=S.tasks.filter(t=>t.deal===d.id&&taskVisible(t)),ms=S.msgs.filter(x=>x.deal===d.id).slice().sort((a,b)=>a.at-b.at);
-  const goods=rs.length?`<div class="xs"><table class="tbl"><thead><tr><th>Товар</th><th class="num">Кол-во</th><th>Где</th></tr></thead><tbody>${rs.map(r=>{const p=product(r.sku);return `<tr ${can('stock')?`class="click" data-act="open-product" data-sku="${p.sku}"`:''}><td>${esc(p.name)}</td><td class="num">${num(r.qty)} ${p.unit}</td><td>${srcPill(r)}</td></tr>`}).join('')}</tbody></table></div>`:'<p class="muted m0">Под сделку ничего не зарезервировано.</p>';
+  const rs=S.reserves.filter(r=>r.dealId===d.id),ts=S.tasks.filter(t=>t.deal===d.id&&taskVisible(t)),ms=S.msgs.filter(x=>x.deal===d.id).slice().sort((a,b)=>a.at-b.at);
+  const goods=rs.length?`<div class="xs"><table class="tbl"><thead><tr><th>Товар</th><th class="num">Кол-во</th><th>Где</th></tr></thead><tbody>${rs.map(r=>{const p=product(r.productId);return `<tr ${can('stock')?`class="click" data-act="open-product" data-sku="${p.sku}"`:''}><td>${esc(p.name)}</td><td class="num">${num(r.qty)} ${p.unit}</td><td>${srcPill(r)}</td></tr>`}).join('')}</tbody></table></div>`:'<p class="muted m0">Под сделку ничего не зарезервировано.</p>';
   const tasks=ts.length?`<ul class="list" style="padding:0">${ts.map(t=>`<li><button class="li" data-act="open-task" data-id="${t.id}"><span class="tdot ${esc(t.stageId)}"></span><span class="li-t">${esc(t.title)}<small>${esc(targetName(t))} · ${esc(stageName(t))}</small></span><span class="due ${taskOverdue(t)?'bad':''}">${fRel(t.due)}</span></button></li>`).join('')}</ul>`:'<p class="muted m0">Задач по сделке нет.</p>';
   const chat=ms.length?`<div class="chat">${ms.map(x=>`<div class="bub ${x.inbound?'':'out'}">${esc(x.text)}<small>${x.inbound?esc(d.contact):x.auto?'Авто-сообщение':esc(person(x.by)?.name||'')} · ${CH[x.channel]} · ${fWhen(x.at)}</small></div>`).join('')}</div>`:'<p class="muted m0">Переписки пока нет.</p>';
   const compose=d.channel==='phone'?'<p class="lock">Клиент на связи только по телефону.</p>':can('write')?`<form class="compose" data-form="msg" data-id="${d.id}"><textarea id="msg-text" class="inp" rows="3" placeholder="Сообщение клиенту в ${CH[d.channel]}" aria-label="Сообщение клиенту"></textarea><button class="btn pri" type="submit">${ic('send')}Отправить в ${CH[d.channel]}</button></form>`:`<p class="lock">${ic('lock')}У вашей роли нет права писать клиентам.</p>`;
@@ -32,3 +32,6 @@ function dDeal(d){
     <div><h4 class="sh">Задачи</h4>${tasks}</div>
     <div class="stack-s"><h4 class="sh" style="margin:0">Переписка</h4>${chat}${compose}</div>`};
 }
+
+// ——— регистрация в реестрах оболочки ———
+DRAWERS.deal=id=>{const d=can('clients')?deal(id):null;return d?dDeal(d):null};
