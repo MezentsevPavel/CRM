@@ -51,7 +51,7 @@ function leadCard(l){
 function leadFunnel(list){
   const pipe=leadPipe();
   if(!pipe) return '<section class="card"><p class="empty">Воронки лидов нет — её заводят в «Настройки → Воронки».</p></section>';
-  return `<div class="xs"><div class="lkan" style="--n:${pipe.stages.length}">${pipe.stages.map(s=>{
+  return `<div class="xs" data-hscroll><div class="lkan" style="--n:${pipe.stages.length}">${pipe.stages.map(s=>{
     const c=list.filter(l=>l.pipeId===pipe.id&&l.stageId===s.id);
     return `<div class="col" data-lcol="${esc(s.id)}"><div class="col-h"><span>${esc(s.name)}</span><span class="cnt-s">${c.length}</span></div>${c.map(leadCard).join('')||'<p class="col-empty">Пусто</p>'}</div>`;
   }).join('')}</div></div>`;

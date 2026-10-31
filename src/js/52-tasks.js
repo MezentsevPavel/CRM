@@ -14,7 +14,7 @@ function vTasks(){
   if(can('tasksAll')) h+=`<select class="inp sm w-auto" id="task-dept" data-on="task-dept" aria-label="Отдел"><option value="all">Все отделы</option>${S.depts.map(d=>`<option value="${esc(d.id)}" ${S.ui.taskDept===d.id?'selected':''}>${esc(d.name)}</option>`).join('')}</select>`;
   h+=`<span class="grow"></span><button class="btn pri" data-act="new-task">${ic('plus')}Поставить задачу</button></div>`;
   h+=`<p class="hint">Перетаскивайте карточки между колонками или откройте задачу и смените статус. Тот, кто поставил задачу, получит уведомление.</p>`;
-  h+=`<div class="xs"><div class="kanban" style="grid-template-columns:repeat(${cols.length},minmax(250px,1fr))">${cols.map(st=>{const c=list.filter(t=>t.stageId===st.id).sort((a,b)=>a.due-b.due);return `<div class="col" data-col="${esc(st.id)}"><div class="col-h"><span>${esc(st.name)}</span><span class="cnt-s">${c.length}</span></div>${c.map(tCard).join('')||'<p class="col-empty">Пусто</p>'}</div>`}).join('')}</div></div>`;
+  h+=`<div class="xs" data-hscroll><div class="kanban" style="grid-template-columns:repeat(${cols.length},minmax(250px,1fr))">${cols.map(st=>{const c=list.filter(t=>t.stageId===st.id).sort((a,b)=>a.due-b.due);return `<div class="col" data-col="${esc(st.id)}"><div class="col-h"><span>${esc(st.name)}</span><span class="cnt-s">${c.length}</span></div>${c.map(tCard).join('')||'<p class="col-empty">Пусто</p>'}</div>`}).join('')}</div></div>`;
   return h;
 }
 function tCard(t){

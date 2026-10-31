@@ -103,7 +103,7 @@ button{cursor:pointer}
 .demo>span{flex:1;min-width:0}
 .demo .btn{color:var(--sun-ink)}
 .scroll{flex:1;overflow-y:auto;overflow-x:hidden}
-.view{display:flex;flex-direction:column;gap:16px;max-width:1480px;padding-block:22px 48px;padding-left:24px;padding-right:max(20px,env(safe-area-inset-right,0px))}
+.view{display:flex;flex-direction:column;gap:16px;padding-block:22px 48px;padding-left:24px;padding-right:max(20px,env(safe-area-inset-right,0px))}
 
 /* ——— элементы ——— */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:0 14px;border:1px solid var(--line-2);border-radius:12px;background:var(--surface);color:var(--ink);font-size:13.5px;font-weight:500;white-space:nowrap;transition:background .15s}
@@ -233,6 +233,19 @@ button.chip:disabled{opacity:.5;cursor:not-allowed}
 .toast{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:14px;background:var(--ink);color:var(--bg);box-shadow:var(--shadow);font-size:13.5px;line-height:1.4;pointer-events:auto;animation:tin .22s ease;transition:opacity .3s,transform .3s}
 .toast.out{opacity:0;transform:translateY(6px)}
 .toast .ic{width:17px;height:17px;margin-top:1px;color:var(--sun)}
+/* ——— стрелки у краёв досок (50-shell.js: контейнер с data-hscroll оборачивается в .hs) ———
+   Полоса .hs-a во всю высоту доски; сама кнопка липнет к видимой части экрана, чтобы её было видно и у высокой доски.
+   Видна, только когда с этой стороны есть что листать (иначе hidden) и мышь у края (data-near) или кнопка в фокусе. */
+.hs{position:relative;min-width:0}
+.hs-a{position:absolute;top:0;bottom:0;z-index:5;display:flex;align-items:center;justify-content:center;width:52px;pointer-events:none}
+.hs-l{left:0}
+.hs-r{right:0}
+.hs-b{position:sticky;top:96px;bottom:96px;display:grid;place-items:center;width:40px;height:40px;padding:0;border:1px solid var(--line-2);border-radius:50%;background:var(--surface);color:var(--ink);box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:opacity .15s,background .15s}
+.hs-b *{pointer-events:none}
+.hs-b:hover{background:var(--primary-soft);color:var(--primary-deep)}
+.hs[data-near="l"] .hs-l .hs-b,.hs[data-near="r"] .hs-r .hs-b,.hs-b:focus-visible{opacity:1;pointer-events:auto}
+/* палец листает сам, стрелки только мешали бы */
+@media (hover:none),(pointer:coarse){.hs-a{display:none}}
 @keyframes slide{from{transform:translateX(24px);opacity:.4}}
 @keyframes fade{from{opacity:0}}
 @keyframes tin{from{transform:translateY(8px);opacity:0}}
@@ -1571,7 +1584,8 @@ const Store = (() => {
   // 3 — почта: st.mail (ящики, поставщики, письма). Старое сохранение без неё уходит в пользу демо.
   // 4 — поставки: маршрут route, положение pos, depart, number, carrier, юрлицо/город; st.shipRules. Прежнее сохранение уходит в пользу демо.
   // 5 — лиды: st.leads, st.leadSource; у сделок из лидов leadId, phone, email. Прежнее сохранение уходит в пользу демо.
-  const REV = 5;
+  // 6 — роль РОП и право leadsAssign (таск 04): сохранение без них уходит в пользу демо.
+  const REV = 6;
   // Браузер даёт сайту около 5 млн символов на всё; берём с запасом.
   const LIMIT = 4500000;
   const NO_SPACE = 'не сохранено — мало места в браузере';
@@ -3667,6 +3681,108 @@ function setTaskStatus(id,stageId){
   render();toast(`Статус «${stg.name}». Уведомление ушло тому, кто поставил задачу.`);
 }
 
+// ——— прокрутка колонок воронок ———
+// Одно поведение для всех досок: раздел только ставит data-hscroll на контейнер, который листается вбок
+// (так отмечены задачи, поставки, лиды, сделки; отправки — тем же атрибутом). Оболочка заворачивает контейнер в
+// .hs и кладёт у краёв две кнопки «Листать влево/вправо». Стрелка видна, только когда с её стороны есть что листать
+// и мышь у края (или на ней); пока курсор на стрелке, колонки плавно едут; доехали до конца — стрелка пропала.
+// Карточку тащат у края — колонки едут сами. Пересчёт: прокрутка, размер окна, render() и любая перерисовка
+// куска раздела (поиск в поставках и лидах) — по наблюдателю за #view. Сенсорный экран: стрелок нет, листают пальцем.
+const HS_EDGE=64;     // полоса у края, px: мышь в ней — стрелка видна; карточка в ней — колонки едут сами
+const HS_SPEED=720;   // px/с под курсором на стрелке
+const HS_DRAG=1100;   // px/с у самой кромки при перетаскивании карточки
+const HS_STEP=0.8;    // доля ширины контейнера за одно нажатие стрелки с клавиатуры
+const HS_JUMP=0.4;    // при «меньше движения»: доля ширины за один скачок вместо плавной прокрутки
+const HS_JUMP_MS=450; // и пауза между скачками, пока курсор на стрелке
+Object.assign(IC,{
+  chevL:'<path d="M15 5l-7 7 7 7"/>',
+  chevR:'<path d="M9 5l7 7-7 7"/>'
+});
+// Куда ещё можно листать. el — {scrollLeft, clientWidth, scrollWidth}; доля пикселя на дробном масштабе не в счёт.
+function hscrollCan(el){
+  return {left:el.scrollLeft>1,right:el.scrollWidth-el.clientWidth-el.scrollLeft>1};
+}
+// Скорость прокрутки в px/с (минус — влево) для курсора в x над контейнером [left, right]: в полосе edge от кромки
+// растёт от нуля до max, чем ближе к кромке, тем быстрее.
+function hscrollEdgeSpeed(x,left,right,edge,max){
+  edge=Math.min(edge,(right-left)/3);
+  if(!(edge>0)) return 0;
+  const l=left+edge-x,r=x-(right-edge);
+  if(l>0) return -max*Math.min(1,l/edge);
+  if(r>0) return max*Math.min(1,r/edge);
+  return 0;
+}
+const hsArrow=d=>`<div class="hs-a hs-${d}" hidden><button type="button" class="hs-b" data-hs="${d}" aria-label="Листать ${d==='l'?'влево':'вправо'}">${ic(d==='l'?'chevL':'chevR')}</button></div>`;
+const hsBox=el=>{const w=el.parentElement;return w&&w.classList.contains('hs')?w:null};
+// Завернуть контейнер в .hs со стрелками. true — завернули сейчас (прокрутка при этом сбрасывается).
+function hscrollWrap(el){
+  if(hsBox(el)) return false;
+  const w=document.createElement('div');w.className='hs';
+  el.parentNode.insertBefore(w,el);w.appendChild(el);
+  w.insertAdjacentHTML('beforeend',hsArrow('l')+hsArrow('r'));
+  return true;
+}
+// Показать стрелку только с той стороны, куда ещё есть что листать
+function hscrollUpdate(el){
+  const w=hsBox(el);if(!w) return;
+  const c=hscrollCan(el),l=w.querySelector('.hs-l'),r=w.querySelector('.hs-r');
+  if(l) l.hidden=!c.left;
+  if(r) r.hidden=!c.right;
+}
+// Все помеченные контейнеры раздела: завернуть, вернуть прокрутку (keep — положения до перерисовки), пересчитать
+function hscrollSync(keep){
+  const list=[...byId('view').querySelectorAll('[data-hscroll]')];
+  list.forEach((el,i)=>{
+    const fresh=hscrollWrap(el);
+    if(fresh&&keep&&keep[i]) el.scrollLeft=keep[i];
+    hscrollUpdate(el);
+  });
+}
+// Раздел, который сейчас нарисован, и положения его досок: после перерисовки того же раздела (бросили карточку,
+// сменили фильтр) доска остаётся на месте, а не уезжает к первой колонке
+let _hsView='';
+const hscrollKeep=()=>_hsView===S.view?[...byId('view').querySelectorAll('[data-hscroll]')].map(el=>el.scrollLeft):[];
+
+// Прокрутка по кадрам: под курсором на стрелке и у края при перетаскивании. Работа одна на всех.
+let _hsJob=null,_hsRaf=0,_hsNear=null;
+const reducedMotion=()=>{try{return typeof matchMedia==='function'&&matchMedia('(prefers-reduced-motion: reduce)').matches}catch(_){return false}};
+// speed 0 или нет контейнера — остановить; until — когда перестать, если события перетаскивания пропали
+function hscrollRun(el,speed,until){
+  if(!el||!speed){_hsJob=null;return}
+  if(_hsJob&&_hsJob.el===el){_hsJob.speed=speed;_hsJob.until=until||0}
+  else _hsJob={el,speed,until:until||0,t:0,pos:el.scrollLeft,acc:HS_JUMP_MS};
+  if(!_hsRaf&&typeof requestAnimationFrame==='function') _hsRaf=requestAnimationFrame(hscrollFrame);
+}
+function hscrollFrame(now){
+  _hsRaf=0;
+  const j=_hsJob;if(!j) return;
+  if(j.until&&now>j.until){_hsJob=null;return}
+  const el=j.el,dt=j.t?Math.min(now-j.t,50):16,can=hscrollCan(el);
+  j.t=now;
+  if(j.speed<0?!can.left:!can.right){_hsJob=null;return}   // доехали до конца
+  if(reducedMotion()){
+    // «меньше движения»: вместо плавной прокрутки — скачки через паузу
+    j.acc+=dt;
+    if(j.acc>=HS_JUMP_MS){j.acc=0;el.scrollLeft+=Math.sign(j.speed)*Math.round(el.clientWidth*HS_JUMP)}
+  }else{
+    // дробный путь копим отдельно: браузер округляет scrollLeft, и медленная прокрутка иначе встала бы
+    if(Math.abs(el.scrollLeft-j.pos)>2) j.pos=el.scrollLeft;
+    j.pos+=j.speed*dt/1000;el.scrollLeft=j.pos;
+  }
+  _hsRaf=requestAnimationFrame(hscrollFrame);
+}
+const hscrollEl=w=>w&&w.querySelector('[data-hscroll]');
+// Мышь над .hs: у левого или правого края — просим CSS показать стрелку этой стороны (data-near)
+function hscrollPoint(e){
+  if(e.pointerType&&e.pointerType!=='mouse') return;
+  const w=e.target.closest?.('.hs');
+  if(_hsNear&&_hsNear!==w){delete _hsNear.dataset.near;_hsNear=null}
+  const el=hscrollEl(w);if(!el) return;
+  const r=el.getBoundingClientRect(),side=e.clientX-r.left<HS_EDGE?'l':r.right-e.clientX<HS_EDGE?'r':'';
+  if(side){w.dataset.near=side;_hsNear=w}else delete w.dataset.near;
+}
+function hscrollClearNear(){if(_hsNear){delete _hsNear.dataset.near;_hsNear=null}}
+
 // ——— главный вывод ———
 const VIEWS={home:vHome,tasks:vTasks,notifications:vNotes,stock:vStock,logistics:vLogistics,receiving:vReceiving,clients:vClients,messages:vMessages,team:vTeam};
 // Прямой переход (адрес, сохранённый раздел) туда, где у человека нет права: в меню раздела нет, на экране — это.
@@ -3677,7 +3793,9 @@ function render(){
   if(!NAV.some(n=>n.id===S.view&&VIEWS[n.id])) S.view='home';
   const n=NAV.find(x=>x.id===S.view),ok=n.ok();
   if(ok&&S.view==='receiving') syncRcv();
+  const keep=hscrollKeep();
   byId('view').innerHTML=ok?VIEWS[S.view]():vNoAccess(n);
+  hscrollSync(keep);_hsView=S.view;
   // открыли по адресу (#…) — адрес следует за разделом, иначе перезагрузка вернёт старый
   try{const h=hashView();if(h&&h!==S.view) history.replaceState(null,'','#'+S.view)}catch(_){}
   // открыл раздел «Уведомления» — свои прочитаны (подсвечены один раз, при этой отрисовке)
@@ -3819,6 +3937,34 @@ document.addEventListener('dragstart',e=>{const c=e.target.closest?.('[data-drag
 document.addEventListener('dragend',()=>{document.querySelectorAll('.dragging,.col.drop').forEach(x=>x.classList.remove('dragging','drop'))});
 document.addEventListener('dragover',e=>{const col=e.target.closest?.('[data-col]');if(!col) return;e.preventDefault();document.querySelectorAll('.col.drop').forEach(x=>{if(x!==col) x.classList.remove('drop')});col.classList.add('drop')});
 document.addEventListener('drop',e=>{const col=e.target.closest?.('[data-col]');if(!col) return;e.preventDefault();const id=e.dataTransfer.getData('text/plain');col.classList.remove('drop');if(id) setTaskStatus(id,col.dataset.col)});
+// Прокрутка колонок воронок (см. выше «прокрутка колонок воронок»)
+document.addEventListener('scroll',e=>{const el=e.target;if(el&&el.hasAttribute&&el.hasAttribute('data-hscroll')) hscrollUpdate(el)},true);
+document.addEventListener('pointermove',hscrollPoint);
+document.addEventListener('mouseout',e=>{if(!e.relatedTarget) hscrollClearNear()});
+document.addEventListener('pointerover',e=>{
+  const b=e.target.closest?.('.hs-b');if(!b||(e.pointerType&&e.pointerType!=='mouse')) return;
+  hscrollRun(hscrollEl(b.closest('.hs')),b.dataset.hs==='l'?-HS_SPEED:HS_SPEED);
+});
+document.addEventListener('pointerout',e=>{const b=e.target.closest?.('.hs-b');if(b&&!b.contains(e.relatedTarget)) hscrollRun(null)});
+// с клавиатуры — шаг на ширину окна; мышью стрелка и так едет, пока курсор на ней (detail 0 — нажатие без мыши)
+document.addEventListener('click',e=>{
+  const b=e.target.closest?.('.hs-b');if(!b||e.detail) return;
+  const el=hscrollEl(b.closest('.hs'));if(!el) return;
+  el.scrollBy({left:(b.dataset.hs==='l'?-1:1)*Math.round(el.clientWidth*HS_STEP),behavior:reducedMotion()?'auto':'smooth'});
+});
+// карточку тащат у края контейнера — колонки едут сами; события пропали (увели, бросили) — стоп
+document.addEventListener('dragstart',hscrollClearNear);
+document.addEventListener('dragover',e=>{
+  const el=hscrollEl(e.target.closest?.('.hs'));
+  if(!el){if(_hsJob&&_hsJob.until) hscrollRun(null);return}
+  const r=el.getBoundingClientRect();
+  hscrollRun(el,hscrollEdgeSpeed(e.clientX,r.left,r.right,HS_EDGE,HS_DRAG),performance.now()+400);
+});
+document.addEventListener('dragend',()=>hscrollRun(null));
+document.addEventListener('drop',()=>hscrollRun(null));
+if(typeof window!=='undefined') window.addEventListener('resize',()=>hscrollSync());
+// Часть раздела перерисовали без render() (поиск в поставках и лидах) — новым доскам тоже нужны стрелки
+try{if(typeof MutationObserver==='function') new MutationObserver(()=>hscrollSync()).observe(byId('view'),{childList:true,subtree:true})}catch(_){}
 byId('role').addEventListener('change',e=>setMe(e.target.value));
 // адрес поменяли руками (#team) — показать этот раздел (или «Нет доступа»)
 if(typeof window!=='undefined') window.addEventListener('hashchange',()=>{const v=hashView();if(v&&S&&v!==S.view){S.view=v;S.ui.drawer=null;render()}});
@@ -3918,7 +4064,7 @@ function vTasks(){
   if(can('tasksAll')) h+=`<select class="inp sm w-auto" id="task-dept" data-on="task-dept" aria-label="Отдел"><option value="all">Все отделы</option>${S.depts.map(d=>`<option value="${esc(d.id)}" ${S.ui.taskDept===d.id?'selected':''}>${esc(d.name)}</option>`).join('')}</select>`;
   h+=`<span class="grow"></span><button class="btn pri" data-act="new-task">${ic('plus')}Поставить задачу</button></div>`;
   h+=`<p class="hint">Перетаскивайте карточки между колонками или откройте задачу и смените статус. Тот, кто поставил задачу, получит уведомление.</p>`;
-  h+=`<div class="xs"><div class="kanban" style="grid-template-columns:repeat(${cols.length},minmax(250px,1fr))">${cols.map(st=>{const c=list.filter(t=>t.stageId===st.id).sort((a,b)=>a.due-b.due);return `<div class="col" data-col="${esc(st.id)}"><div class="col-h"><span>${esc(st.name)}</span><span class="cnt-s">${c.length}</span></div>${c.map(tCard).join('')||'<p class="col-empty">Пусто</p>'}</div>`}).join('')}</div></div>`;
+  h+=`<div class="xs" data-hscroll><div class="kanban" style="grid-template-columns:repeat(${cols.length},minmax(250px,1fr))">${cols.map(st=>{const c=list.filter(t=>t.stageId===st.id).sort((a,b)=>a.due-b.due);return `<div class="col" data-col="${esc(st.id)}"><div class="col-h"><span>${esc(st.name)}</span><span class="cnt-s">${c.length}</span></div>${c.map(tCard).join('')||'<p class="col-empty">Пусто</p>'}</div>`}).join('')}</div></div>`;
   return h;
 }
 function tCard(t){
@@ -4333,7 +4479,7 @@ function shipFunnel(u,pr,dir,now){
     const list=rows.filter(s=>s.stageId===st.id),un=list.reduce((x,s)=>x+Ships.units(s),0);
     return `<section class="col scol" data-scol="${esc(st.id)}" aria-label="${esc(st.name)}"><div class="col-h"><span>${esc(st.name)}</span><span class="cnt-s">${list.length} · ${num(un)} шт.</span></div><div class="scol-b">${list.map(s=>shipCardMini(s,now)).join('')||'<p class="col-empty">Пусто</p>'}</div></section>`;
   }).join('');
-  return `${shipCounter(rows.length,rows.length)}${can('logistics')?'<p class="hint">Перетащите карточку в другую колонку — этап сменится, сотрудникам придёт уведомление. На склад входящую поставку ставит приёмка.</p>':''}<div class="xs"><div class="sfun" style="--n:${pipe.stages.length}">${cols}</div></div>`;
+  return `${shipCounter(rows.length,rows.length)}${can('logistics')?'<p class="hint">Перетащите карточку в другую колонку — этап сменится, сотрудникам придёт уведомление. На склад входящую поставку ставит приёмка.</p>':''}<div class="xs" data-hscroll><div class="sfun" style="--n:${pipe.stages.length}">${cols}</div></div>`;
 }
 
 // ——— схема маршрута ———
@@ -4799,7 +4945,7 @@ function vClients(){
   const vis=Leads.dealsVisible(S,S.me),types=dealTypes(vis),cur=types.includes(S.ui.dealType)?S.ui.dealType:types[0];
   const mine=vis.filter(d=>d.type===cur);
   // воронка выбранного типа: этапы со счётчиками (воронок типа может быть несколько — показываем те, где есть сделки)
-  const pipes=Pipes.of(S,'deals',cur),fun=pipes.filter(p=>pipes.length<2||mine.some(d=>d.pipeId===p.id)).map(p=>{const ds=mine.filter(d=>d.pipeId===p.id);return `<h4 class="sh">${esc(p.name)}</h4><div class="xs"><div class="funnel" style="grid-template-columns:repeat(${p.stages.length},minmax(92px,1fr))">${p.stages.map(st=>{const c=ds.filter(d=>d.stageId===st.id).length;return `<div class="fn ${c?'':'zero'}"><b>${c}</b><span>${esc(st.name)}</span></div>`}).join('')}</div></div>`}).join('');
+  const pipes=Pipes.of(S,'deals',cur),fun=pipes.filter(p=>pipes.length<2||mine.some(d=>d.pipeId===p.id)).map(p=>{const ds=mine.filter(d=>d.pipeId===p.id);return `<h4 class="sh">${esc(p.name)}</h4><div class="xs" data-hscroll><div class="funnel" style="grid-template-columns:repeat(${p.stages.length},minmax(92px,1fr))">${p.stages.map(st=>{const c=ds.filter(d=>d.stageId===st.id).length;return `<div class="fn ${c?'':'zero'}"><b>${c}</b><span>${esc(st.name)}</span></div>`}).join('')}</div></div>`}).join('');
   const sw=types.length>1?`<div class="bar"><div class="seg" role="group" aria-label="Тип клиентов">${types.map(t=>`<button type="button" class="${cur===t?'on':''}" aria-pressed="${cur===t}" data-act="deal-type" data-type="${t}">${Leads.TYPE[t]}<b>${vis.filter(d=>d.type===t).length}</b></button>`).join('')}</div></div>`:'';
   const hint=`<p class="hint">Сделки ведутся по менеджерам, у каждого типа клиентов своя воронка. Новая сделка появляется из лида — кнопкой «Создать сделку» в разделе «Лиды». ${types.length>1?'Переключатель показывает сделки выбранного типа.':`Вам видны сделки типа ${Leads.TYPE[cur]}.`}</p>`;
   const rows=mine.slice().sort((a,b)=>stagePos(b)-stagePos(a)).map(d=>{const g=dealGoods(d);return `<tr class="click" data-act="open-deal" data-id="${d.id}" tabindex="0"><td><div class="pname"><span>${esc(d.client)}</span><small class="mono">${d.id} · ${esc(d.kind)}<span class="pill sm">${Leads.TYPE[d.type]||'нет данных: тип'}</span></small></div></td><td>${esc(d.object)}</td><td><span class="pill ${stageTone(d)}">${esc(stageName(d))}</span></td><td><span class="pill sm ${g.lvl}">${esc(g.text)}</span></td><td class="nowrap">${esc(person(d.managerId)?.name||'нет данных: менеджер')}</td><td>${chPill(d.channel)}</td>${pr?`<td class="num">${d.amount?rub(d.amount):'<span class="muted">не рассчитана</span>'}</td>`:''}</tr>`}).join('');
@@ -4949,7 +5095,7 @@ function leadCard(l){
 function leadFunnel(list){
   const pipe=leadPipe();
   if(!pipe) return '<section class="card"><p class="empty">Воронки лидов нет — её заводят в «Настройки → Воронки».</p></section>';
-  return `<div class="xs"><div class="lkan" style="--n:${pipe.stages.length}">${pipe.stages.map(s=>{
+  return `<div class="xs" data-hscroll><div class="lkan" style="--n:${pipe.stages.length}">${pipe.stages.map(s=>{
     const c=list.filter(l=>l.pipeId===pipe.id&&l.stageId===s.id);
     return `<div class="col" data-lcol="${esc(s.id)}"><div class="col-h"><span>${esc(s.name)}</span><span class="cnt-s">${c.length}</span></div>${c.map(leadCard).join('')||'<p class="col-empty">Пусто</p>'}</div>`;
   }).join('')}</div></div>`;

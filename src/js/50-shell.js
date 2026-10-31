@@ -241,6 +241,108 @@ function setTaskStatus(id,stageId){
   render();toast(`Статус «${stg.name}». Уведомление ушло тому, кто поставил задачу.`);
 }
 
+// ——— прокрутка колонок воронок ———
+// Одно поведение для всех досок: раздел только ставит data-hscroll на контейнер, который листается вбок
+// (так отмечены задачи, поставки, лиды, сделки; отправки — тем же атрибутом). Оболочка заворачивает контейнер в
+// .hs и кладёт у краёв две кнопки «Листать влево/вправо». Стрелка видна, только когда с её стороны есть что листать
+// и мышь у края (или на ней); пока курсор на стрелке, колонки плавно едут; доехали до конца — стрелка пропала.
+// Карточку тащат у края — колонки едут сами. Пересчёт: прокрутка, размер окна, render() и любая перерисовка
+// куска раздела (поиск в поставках и лидах) — по наблюдателю за #view. Сенсорный экран: стрелок нет, листают пальцем.
+const HS_EDGE=64;     // полоса у края, px: мышь в ней — стрелка видна; карточка в ней — колонки едут сами
+const HS_SPEED=720;   // px/с под курсором на стрелке
+const HS_DRAG=1100;   // px/с у самой кромки при перетаскивании карточки
+const HS_STEP=0.8;    // доля ширины контейнера за одно нажатие стрелки с клавиатуры
+const HS_JUMP=0.4;    // при «меньше движения»: доля ширины за один скачок вместо плавной прокрутки
+const HS_JUMP_MS=450; // и пауза между скачками, пока курсор на стрелке
+Object.assign(IC,{
+  chevL:'<path d="M15 5l-7 7 7 7"/>',
+  chevR:'<path d="M9 5l7 7-7 7"/>'
+});
+// Куда ещё можно листать. el — {scrollLeft, clientWidth, scrollWidth}; доля пикселя на дробном масштабе не в счёт.
+function hscrollCan(el){
+  return {left:el.scrollLeft>1,right:el.scrollWidth-el.clientWidth-el.scrollLeft>1};
+}
+// Скорость прокрутки в px/с (минус — влево) для курсора в x над контейнером [left, right]: в полосе edge от кромки
+// растёт от нуля до max, чем ближе к кромке, тем быстрее.
+function hscrollEdgeSpeed(x,left,right,edge,max){
+  edge=Math.min(edge,(right-left)/3);
+  if(!(edge>0)) return 0;
+  const l=left+edge-x,r=x-(right-edge);
+  if(l>0) return -max*Math.min(1,l/edge);
+  if(r>0) return max*Math.min(1,r/edge);
+  return 0;
+}
+const hsArrow=d=>`<div class="hs-a hs-${d}" hidden><button type="button" class="hs-b" data-hs="${d}" aria-label="Листать ${d==='l'?'влево':'вправо'}">${ic(d==='l'?'chevL':'chevR')}</button></div>`;
+const hsBox=el=>{const w=el.parentElement;return w&&w.classList.contains('hs')?w:null};
+// Завернуть контейнер в .hs со стрелками. true — завернули сейчас (прокрутка при этом сбрасывается).
+function hscrollWrap(el){
+  if(hsBox(el)) return false;
+  const w=document.createElement('div');w.className='hs';
+  el.parentNode.insertBefore(w,el);w.appendChild(el);
+  w.insertAdjacentHTML('beforeend',hsArrow('l')+hsArrow('r'));
+  return true;
+}
+// Показать стрелку только с той стороны, куда ещё есть что листать
+function hscrollUpdate(el){
+  const w=hsBox(el);if(!w) return;
+  const c=hscrollCan(el),l=w.querySelector('.hs-l'),r=w.querySelector('.hs-r');
+  if(l) l.hidden=!c.left;
+  if(r) r.hidden=!c.right;
+}
+// Все помеченные контейнеры раздела: завернуть, вернуть прокрутку (keep — положения до перерисовки), пересчитать
+function hscrollSync(keep){
+  const list=[...byId('view').querySelectorAll('[data-hscroll]')];
+  list.forEach((el,i)=>{
+    const fresh=hscrollWrap(el);
+    if(fresh&&keep&&keep[i]) el.scrollLeft=keep[i];
+    hscrollUpdate(el);
+  });
+}
+// Раздел, который сейчас нарисован, и положения его досок: после перерисовки того же раздела (бросили карточку,
+// сменили фильтр) доска остаётся на месте, а не уезжает к первой колонке
+let _hsView='';
+const hscrollKeep=()=>_hsView===S.view?[...byId('view').querySelectorAll('[data-hscroll]')].map(el=>el.scrollLeft):[];
+
+// Прокрутка по кадрам: под курсором на стрелке и у края при перетаскивании. Работа одна на всех.
+let _hsJob=null,_hsRaf=0,_hsNear=null;
+const reducedMotion=()=>{try{return typeof matchMedia==='function'&&matchMedia('(prefers-reduced-motion: reduce)').matches}catch(_){return false}};
+// speed 0 или нет контейнера — остановить; until — когда перестать, если события перетаскивания пропали
+function hscrollRun(el,speed,until){
+  if(!el||!speed){_hsJob=null;return}
+  if(_hsJob&&_hsJob.el===el){_hsJob.speed=speed;_hsJob.until=until||0}
+  else _hsJob={el,speed,until:until||0,t:0,pos:el.scrollLeft,acc:HS_JUMP_MS};
+  if(!_hsRaf&&typeof requestAnimationFrame==='function') _hsRaf=requestAnimationFrame(hscrollFrame);
+}
+function hscrollFrame(now){
+  _hsRaf=0;
+  const j=_hsJob;if(!j) return;
+  if(j.until&&now>j.until){_hsJob=null;return}
+  const el=j.el,dt=j.t?Math.min(now-j.t,50):16,can=hscrollCan(el);
+  j.t=now;
+  if(j.speed<0?!can.left:!can.right){_hsJob=null;return}   // доехали до конца
+  if(reducedMotion()){
+    // «меньше движения»: вместо плавной прокрутки — скачки через паузу
+    j.acc+=dt;
+    if(j.acc>=HS_JUMP_MS){j.acc=0;el.scrollLeft+=Math.sign(j.speed)*Math.round(el.clientWidth*HS_JUMP)}
+  }else{
+    // дробный путь копим отдельно: браузер округляет scrollLeft, и медленная прокрутка иначе встала бы
+    if(Math.abs(el.scrollLeft-j.pos)>2) j.pos=el.scrollLeft;
+    j.pos+=j.speed*dt/1000;el.scrollLeft=j.pos;
+  }
+  _hsRaf=requestAnimationFrame(hscrollFrame);
+}
+const hscrollEl=w=>w&&w.querySelector('[data-hscroll]');
+// Мышь над .hs: у левого или правого края — просим CSS показать стрелку этой стороны (data-near)
+function hscrollPoint(e){
+  if(e.pointerType&&e.pointerType!=='mouse') return;
+  const w=e.target.closest?.('.hs');
+  if(_hsNear&&_hsNear!==w){delete _hsNear.dataset.near;_hsNear=null}
+  const el=hscrollEl(w);if(!el) return;
+  const r=el.getBoundingClientRect(),side=e.clientX-r.left<HS_EDGE?'l':r.right-e.clientX<HS_EDGE?'r':'';
+  if(side){w.dataset.near=side;_hsNear=w}else delete w.dataset.near;
+}
+function hscrollClearNear(){if(_hsNear){delete _hsNear.dataset.near;_hsNear=null}}
+
 // ——— главный вывод ———
 const VIEWS={home:vHome,tasks:vTasks,notifications:vNotes,stock:vStock,logistics:vLogistics,receiving:vReceiving,clients:vClients,messages:vMessages,team:vTeam};
 // Прямой переход (адрес, сохранённый раздел) туда, где у человека нет права: в меню раздела нет, на экране — это.
@@ -251,7 +353,9 @@ function render(){
   if(!NAV.some(n=>n.id===S.view&&VIEWS[n.id])) S.view='home';
   const n=NAV.find(x=>x.id===S.view),ok=n.ok();
   if(ok&&S.view==='receiving') syncRcv();
+  const keep=hscrollKeep();
   byId('view').innerHTML=ok?VIEWS[S.view]():vNoAccess(n);
+  hscrollSync(keep);_hsView=S.view;
   // открыли по адресу (#…) — адрес следует за разделом, иначе перезагрузка вернёт старый
   try{const h=hashView();if(h&&h!==S.view) history.replaceState(null,'','#'+S.view)}catch(_){}
   // открыл раздел «Уведомления» — свои прочитаны (подсвечены один раз, при этой отрисовке)
@@ -393,6 +497,34 @@ document.addEventListener('dragstart',e=>{const c=e.target.closest?.('[data-drag
 document.addEventListener('dragend',()=>{document.querySelectorAll('.dragging,.col.drop').forEach(x=>x.classList.remove('dragging','drop'))});
 document.addEventListener('dragover',e=>{const col=e.target.closest?.('[data-col]');if(!col) return;e.preventDefault();document.querySelectorAll('.col.drop').forEach(x=>{if(x!==col) x.classList.remove('drop')});col.classList.add('drop')});
 document.addEventListener('drop',e=>{const col=e.target.closest?.('[data-col]');if(!col) return;e.preventDefault();const id=e.dataTransfer.getData('text/plain');col.classList.remove('drop');if(id) setTaskStatus(id,col.dataset.col)});
+// Прокрутка колонок воронок (см. выше «прокрутка колонок воронок»)
+document.addEventListener('scroll',e=>{const el=e.target;if(el&&el.hasAttribute&&el.hasAttribute('data-hscroll')) hscrollUpdate(el)},true);
+document.addEventListener('pointermove',hscrollPoint);
+document.addEventListener('mouseout',e=>{if(!e.relatedTarget) hscrollClearNear()});
+document.addEventListener('pointerover',e=>{
+  const b=e.target.closest?.('.hs-b');if(!b||(e.pointerType&&e.pointerType!=='mouse')) return;
+  hscrollRun(hscrollEl(b.closest('.hs')),b.dataset.hs==='l'?-HS_SPEED:HS_SPEED);
+});
+document.addEventListener('pointerout',e=>{const b=e.target.closest?.('.hs-b');if(b&&!b.contains(e.relatedTarget)) hscrollRun(null)});
+// с клавиатуры — шаг на ширину окна; мышью стрелка и так едет, пока курсор на ней (detail 0 — нажатие без мыши)
+document.addEventListener('click',e=>{
+  const b=e.target.closest?.('.hs-b');if(!b||e.detail) return;
+  const el=hscrollEl(b.closest('.hs'));if(!el) return;
+  el.scrollBy({left:(b.dataset.hs==='l'?-1:1)*Math.round(el.clientWidth*HS_STEP),behavior:reducedMotion()?'auto':'smooth'});
+});
+// карточку тащат у края контейнера — колонки едут сами; события пропали (увели, бросили) — стоп
+document.addEventListener('dragstart',hscrollClearNear);
+document.addEventListener('dragover',e=>{
+  const el=hscrollEl(e.target.closest?.('.hs'));
+  if(!el){if(_hsJob&&_hsJob.until) hscrollRun(null);return}
+  const r=el.getBoundingClientRect();
+  hscrollRun(el,hscrollEdgeSpeed(e.clientX,r.left,r.right,HS_EDGE,HS_DRAG),performance.now()+400);
+});
+document.addEventListener('dragend',()=>hscrollRun(null));
+document.addEventListener('drop',()=>hscrollRun(null));
+if(typeof window!=='undefined') window.addEventListener('resize',()=>hscrollSync());
+// Часть раздела перерисовали без render() (поиск в поставках и лидах) — новым доскам тоже нужны стрелки
+try{if(typeof MutationObserver==='function') new MutationObserver(()=>hscrollSync()).observe(byId('view'),{childList:true,subtree:true})}catch(_){}
 byId('role').addEventListener('change',e=>setMe(e.target.value));
 // адрес поменяли руками (#team) — показать этот раздел (или «Нет доступа»)
 if(typeof window!=='undefined') window.addEventListener('hashchange',()=>{const v=hashView();if(v&&S&&v!==S.view){S.view=v;S.ui.drawer=null;render()}});

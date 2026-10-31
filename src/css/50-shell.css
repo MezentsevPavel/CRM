@@ -53,7 +53,7 @@
 .demo>span{flex:1;min-width:0}
 .demo .btn{color:var(--sun-ink)}
 .scroll{flex:1;overflow-y:auto;overflow-x:hidden}
-.view{display:flex;flex-direction:column;gap:16px;max-width:1480px;padding-block:22px 48px;padding-left:24px;padding-right:max(20px,env(safe-area-inset-right,0px))}
+.view{display:flex;flex-direction:column;gap:16px;padding-block:22px 48px;padding-left:24px;padding-right:max(20px,env(safe-area-inset-right,0px))}
 
 /* ——— элементы ——— */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:0 14px;border:1px solid var(--line-2);border-radius:12px;background:var(--surface);color:var(--ink);font-size:13.5px;font-weight:500;white-space:nowrap;transition:background .15s}
@@ -183,6 +183,19 @@ button.chip:disabled{opacity:.5;cursor:not-allowed}
 .toast{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:14px;background:var(--ink);color:var(--bg);box-shadow:var(--shadow);font-size:13.5px;line-height:1.4;pointer-events:auto;animation:tin .22s ease;transition:opacity .3s,transform .3s}
 .toast.out{opacity:0;transform:translateY(6px)}
 .toast .ic{width:17px;height:17px;margin-top:1px;color:var(--sun)}
+/* ——— стрелки у краёв досок (50-shell.js: контейнер с data-hscroll оборачивается в .hs) ———
+   Полоса .hs-a во всю высоту доски; сама кнопка липнет к видимой части экрана, чтобы её было видно и у высокой доски.
+   Видна, только когда с этой стороны есть что листать (иначе hidden) и мышь у края (data-near) или кнопка в фокусе. */
+.hs{position:relative;min-width:0}
+.hs-a{position:absolute;top:0;bottom:0;z-index:5;display:flex;align-items:center;justify-content:center;width:52px;pointer-events:none}
+.hs-l{left:0}
+.hs-r{right:0}
+.hs-b{position:sticky;top:96px;bottom:96px;display:grid;place-items:center;width:40px;height:40px;padding:0;border:1px solid var(--line-2);border-radius:50%;background:var(--surface);color:var(--ink);box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:opacity .15s,background .15s}
+.hs-b *{pointer-events:none}
+.hs-b:hover{background:var(--primary-soft);color:var(--primary-deep)}
+.hs[data-near="l"] .hs-l .hs-b,.hs[data-near="r"] .hs-r .hs-b,.hs-b:focus-visible{opacity:1;pointer-events:auto}
+/* палец листает сам, стрелки только мешали бы */
+@media (hover:none),(pointer:coarse){.hs-a{display:none}}
 @keyframes slide{from{transform:translateX(24px);opacity:.4}}
 @keyframes fade{from{opacity:0}}
 @keyframes tin{from{transform:translateY(8px);opacity:0}}

@@ -214,7 +214,7 @@ function shipFunnel(u,pr,dir,now){
     const list=rows.filter(s=>s.stageId===st.id),un=list.reduce((x,s)=>x+Ships.units(s),0);
     return `<section class="col scol" data-scol="${esc(st.id)}" aria-label="${esc(st.name)}"><div class="col-h"><span>${esc(st.name)}</span><span class="cnt-s">${list.length} · ${num(un)} шт.</span></div><div class="scol-b">${list.map(s=>shipCardMini(s,now)).join('')||'<p class="col-empty">Пусто</p>'}</div></section>`;
   }).join('');
-  return `${shipCounter(rows.length,rows.length)}${can('logistics')?'<p class="hint">Перетащите карточку в другую колонку — этап сменится, сотрудникам придёт уведомление. На склад входящую поставку ставит приёмка.</p>':''}<div class="xs"><div class="sfun" style="--n:${pipe.stages.length}">${cols}</div></div>`;
+  return `${shipCounter(rows.length,rows.length)}${can('logistics')?'<p class="hint">Перетащите карточку в другую колонку — этап сменится, сотрудникам придёт уведомление. На склад входящую поставку ставит приёмка.</p>':''}<div class="xs" data-hscroll><div class="sfun" style="--n:${pipe.stages.length}">${cols}</div></div>`;
 }
 
 // ——— схема маршрута ———
