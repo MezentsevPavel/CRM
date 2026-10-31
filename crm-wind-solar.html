@@ -650,6 +650,42 @@ fieldset.ss-f legend{padding:0;margin-bottom:6px;font-size:12.5px;font-weight:50
 .matrix th:first-child{background:var(--surface-2)}
 .matrix input{width:18px;height:18px;accent-color:var(--primary)}
 
+/* ——— лиды: список, воронка, карточка ——— */
+.lbar .search-in{flex:1 1 260px;max-width:380px}
+.lfilt{gap:8px}
+.lfilt .inp{max-width:100%}
+.l-show-s{display:none}
+/* воронка: столбцы — этапы, на телефоне друг под другом */
+.lkan{display:grid;grid-template-columns:repeat(var(--n),minmax(210px,1fr));gap:12px}
+.lkan .col{min-height:180px}
+.lcard .tc-t small{display:block;margin-top:2px;font-size:11.5px;color:var(--ink-3)}
+.lcard .lc-x{display:-webkit-box;margin:0;overflow:hidden;overflow-wrap:anywhere;font-size:12.5px;line-height:1.4;color:var(--ink-2);-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.lcard .tc-m{flex-wrap:wrap}
+/* карточка лида */
+.lead-act{display:flex;flex-wrap:wrap;gap:8px}
+.drawer .mv li>span{min-width:0;overflow-wrap:anywhere}
+
+@media (max-width:700px){
+  .lkan{grid-template-columns:minmax(0,1fr)}
+  .l-hide-s{display:none}
+  .l-show-s{display:inline}
+  .lbar .search-in{flex-basis:100%;max-width:none}
+  .lbar .btn.sm{white-space:normal;height:auto;min-height:30px;padding-block:5px;text-align:left}
+}
+
+/* ——— Настройки → Лиды ——— */
+.lset-opts{display:flex;flex-direction:column;gap:8px}
+.lset-opt{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+.lset-opt.on{border-color:var(--primary);background:var(--primary-soft)}
+.lset-opt input{margin-top:2px}
+.lset-opt span{display:flex;flex-direction:column;gap:2px}
+.lset-opt small{font-size:12.5px;color:var(--ink-2)}
+.lset-list{display:flex;flex-direction:column;margin:0;padding:0;list-style:none}
+.lset-list li{display:grid;grid-template-columns:minmax(0,220px) minmax(0,1fr);gap:4px 16px;padding:10px 0;border-top:1px solid var(--line);font-size:13.5px}
+.lset-list li:first-child{border-top:0}
+.lset-list span{color:var(--ink-2)}
+@media (max-width:700px){.lset-list li{grid-template-columns:minmax(0,1fr)}}
+
 /* ——— почта: три столбца (ящики и папки · письма · письмо), на телефоне — один с кнопкой «назад» ——— */
 .mail-hint{margin:0}
 .mail{display:grid;grid-template-columns:minmax(210px,250px) minmax(280px,360px) minmax(0,1fr);gap:14px;align-items:start}
@@ -1474,7 +1510,7 @@ const leftStart=s=>s.stageId!==startStage(s.pipeId)?.id;
 const shipLast=s=>s.history[s.history.length-1];
 // Воронки по виду: поставки к нам / отгрузки клиентам, сделки по типу, доска задач
 const shipPipe=dir=>Pipes.of(S,'ships').find(p=>(p.dir||'in')===dir)||null;
-const dealPipe=type=>Pipes.of(S,'deals',type).find(p=>p.scope===type)||Pipes.of(S,'deals')[0]||null;
+const dealPipe=(type,st=S)=>Pipes.of(st,'deals',type).find(p=>p.scope===type)||Pipes.of(st,'deals')[0]||null;
 const taskBoard=()=>Pipes.of(S,'tasks')[0]||null;
 
 // ——— остатки: считает Stock (33-stock.js), здесь — только вызов и подписи ———
@@ -1534,7 +1570,8 @@ const Store = (() => {
   // 2 — товары каталога (id вместо sku), остатки по юрлицам и городам, юрлица и города в состоянии. Сохранения без rev — ревизия 1.
   // 3 — почта: st.mail (ящики, поставщики, письма). Старое сохранение без неё уходит в пользу демо.
   // 4 — поставки: маршрут route, положение pos, depart, number, carrier, юрлицо/город; st.shipRules. Прежнее сохранение уходит в пользу демо.
-  const REV = 4;
+  // 5 — лиды: st.leads, st.leadSource; у сделок из лидов leadId, phone, email. Прежнее сохранение уходит в пользу демо.
+  const REV = 5;
   // Браузер даёт сайту около 5 млн символов на всё; берём с запасом.
   const LIMIT = 4500000;
   const NO_SPACE = 'не сохранено — мало места в браузере';
@@ -1660,6 +1697,7 @@ const Perms = (() => {
     ['admin', 'Управлять сотрудниками и правами'],
     ['mail', 'Работать с почтой своих ящиков'],
     ['leads', 'Видеть и вести лиды'],
+    ['leadsAssign', 'Распределять и передавать лиды'],
     ['dealsAll', 'Видеть сделки всех типов'],
     ['settings', 'Менять настройки фирмы'],
   ];
@@ -2596,6 +2634,343 @@ SEEDS.push(st => {
   ];
 });
 
+// Ядро: лиды. Чистые функции над состоянием st, время приходит параметром now (Date).
+// Тип лида и менеджер определяются автоматически (классификация и распределение), дальше
+// менеджер ведёт лид: взять, «связались», закрыть, создать сделку; директор и РОП передают любой лид.
+// Видимость: менеджер видит лиды своего типа (роль со scope); все лиды видит и раздаёт тот, у кого право
+// «Распределять и передавать лиды» (leadsAssign): директор и РОП.
+// Права — Perms, воронки — Pipes, уведомления — Notify; тут их только вызывают.
+// Экраны — 60-leads.js (раздел «Лиды»), 56-deals.js (сделки), 67-settings-leads.js (настройки); они зовут только это ядро.
+
+const Leads = (() => {
+  // Откуда пришёл лид и как он подписан; «phone» и «mail» — вход из телефонии и почты (схема leads).
+  const SOURCE = { site: 'сайт', bitrix: 'Битрикс24', phone: 'телефон', mail: 'почта' };
+  const TYPE = { b2b: 'B2B', b2c: 'B2C' };
+  // Откуда принимаем лиды — выбор в «Настройки → Лиды» (st.leadSource); подписи вариантов выбора.
+  const SOURCES = { bitrix: 'Битрикс24', site: 'Сайт напрямую', both: 'Оба' };
+  // Этапы воронки лидов, которых касаются действия, — по id (названия можно переименовать).
+  const ST_CONTACTED = 'contacted', ST_QUALIFIED = 'qualified', ST_DEAL = 'deal', ST_LOST = 'lost';
+  const STAGE = { contacted: ST_CONTACTED, qualified: ST_QUALIFIED, deal: ST_DEAL, lost: ST_LOST };
+
+  const filled = v => String(v == null ? '' : v).trim() !== '';
+  const personOf = (st, id) => (st.people || []).find(p => p.id === id) || null;
+  const nameOf = (st, id) => (personOf(st, id) || {}).name || 'нет данных: сотрудник';
+  const scopeOf = (st, id) => { const r = Perms.roleOf(st, id); return (r && r.scope) || null; };
+  const isDirector = (st, id) => { const r = Perms.roleOf(st, id); return !!(r && r.all); };
+  const byId = (st, leadId) => (st.leads || []).find(l => l.id === leadId) || null;
+  const pipeOf = (st, lead) => Pipes.of(st, 'leads').find(p => p.id === lead.pipeId) || null;
+  const stageIn = (pipe, id) => (pipe && pipe.stages.find(s => s.id === id)) || null;
+  const isOpen = (st, lead) => !Pipes.isFinal(st, lead.pipeId, lead.stageId);
+  // С чего запись начинает путь по воронке: первый этап без флага
+  const firstOf = pipe => pipe.stages.find(s => !s.flag) || pipe.stages[0];
+
+  // Следующий номер вида «Л-101»: после самого большого из занятых, но не меньше min + 1.
+  function nextId(list, prefix, min) {
+    const re = new RegExp('^' + prefix + '-(\\d+)$');
+    let n = min;
+    for (const x of list || []) { const m = re.exec(String(x.id)); if (m) n = Math.max(n, +m[1]); }
+    return prefix + '-' + (n + 1);
+  }
+
+  const log = (lead, now, by, text) => { lead.history.push({ at: now, by: by || null, text }); };
+
+  // Как называть лид в тексте: компания, имя, телефон, почта — что есть.
+  const title = lead => lead.company || lead.name || lead.phone || lead.email || 'нет данных: имя и контакт';
+
+  // Тип лида по заявке: компания или ИНН → b2b; иначе телефон или почта → b2c; иначе null.
+  function classify(lead) {
+    if (filled(lead.company) || filled(lead.inn)) return 'b2b';
+    if (filled(lead.phone) || filled(lead.email)) return 'b2c';
+    return null;
+  }
+
+  // Открытые лиды менеджера (этап не final); skipId — не считать этот лид (он как раз переезжает).
+  const openCount = (st, managerId, skipId) =>
+    (st.leads || []).filter(l => l.managerId === managerId && l.id !== skipId && isOpen(st, l)).length;
+
+  // Менеджеры, которым достаются лиды: у роли есть тип (scope) и право «лиды»; type — только этого типа.
+  const managers = (st, type) => (st.people || []).filter(p => {
+    const scope = scopeOf(st, p.id);
+    return !!scope && (!type || scope === type) && Perms.can(st, p.id, 'leads');
+  });
+
+  // Менеджер типа с наименьшим числом открытых лидов; при равенстве — первый в списке людей. Нет такого — null.
+  function pick(st, type, skipId) {
+    if (!TYPE[type]) return null;
+    let best = null, bestN = Infinity;
+    for (const p of managers(st, type)) {
+      const n = openCount(st, p.id, skipId);
+      if (n < bestN) { best = p.id; bestN = n; }
+    }
+    return best;
+  }
+
+  // Кому достаётся лид: по типу заявки. Тип не определён или менеджера такого типа нет — null («Нераспределённые»).
+  const route = (st, lead) => pick(st, classify(lead));
+
+  // Новый лид: тип, менеджер, первый этап воронки лидов, история. Уведомление вида «lead» — назначенному
+  // менеджеру и директору; opts.silent — без уведомления (демо-данные).
+  function create(st, data, now, opts) {
+    const source = data.source;
+    if (!SOURCE[source]) throw new Error(`Неизвестный источник лида: ${source}`);
+    const pipe = Pipes.of(st, 'leads')[0];
+    if (!pipe) throw new Error('Нет воронки лидов');
+    st.leads = st.leads || [];
+    const lead = {
+      id: nextId(st.leads, 'Л', 100), at: now, source,
+      name: String(data.name || '').trim(), phone: String(data.phone || '').trim(), email: String(data.email || '').trim(),
+      company: String(data.company || '').trim(), inn: String(data.inn || '').trim(), text: String(data.text || '').trim(),
+      type: null, managerId: null,
+      pipeId: pipe.id, stageId: firstOf(pipe).id,
+      history: [], demo: !!data.demo,
+    };
+    lead.type = classify(lead);
+    lead.managerId = route(st, lead);
+    log(lead, now, null, `Лид пришёл: ${SOURCE[source]}`);
+    if (lead.managerId) log(lead, now, null, `Назначен автоматически: ${nameOf(st, lead.managerId)} (${TYPE[lead.type]})`);
+    else log(lead, now, null, lead.type
+      ? `Нераспределённый: нет менеджера ${TYPE[lead.type]}`
+      : 'Нераспределённый: нет ни компании, ни ИНН, ни телефона, ни почты');
+    st.leads.push(lead);
+    if (!(opts && opts.silent)) {
+      const who = lead.managerId ? `менеджер — ${nameOf(st, lead.managerId)}` : 'нераспределённый';
+      Notify.push(st, 'lead', null, `Новый лид ${lead.id} (${SOURCE[source]}): ${title(lead)}${lead.type ? ', ' + TYPE[lead.type] : ''}, ${who}.`, now, lead.managerId ? [lead.managerId] : []);
+    }
+    return lead;
+  }
+
+  // Можно ли человеку взять лид себе: лид открыт и человек его видит (право «лиды», тип не чужой),
+  // лид ничей или уже его.
+  function canTake(st, lead, personId) {
+    if (!lead || !personOf(st, personId) || !isOpen(st, lead) || !Perms.can(st, personId, 'leads')) return false;
+    if (lead.managerId && lead.managerId !== personId) return false;
+    const scope = scopeOf(st, personId);
+    return !(scope && lead.type && scope !== lead.type) && visible(st, personId).includes(lead);
+  }
+
+  // Взять лид себе. Нельзя: закрытый лид, чужой лид, лид чужого типа, нет права «лиды». Возвращает лид или null.
+  function take(st, leadId, personId, now) {
+    const lead = byId(st, leadId);
+    if (!canTake(st, lead, personId)) return null;
+    const me = personOf(st, personId), scope = scopeOf(st, personId);
+    lead.managerId = personId;
+    if (!lead.type && scope) lead.type = scope;
+    log(lead, now, personId, `Взял в работу: ${me.name}`);
+    return lead;
+  }
+
+  // «Связались»: этап «Связались», если лид ещё не дальше него; запись в историю в любом случае.
+  function contacted(st, leadId, by, now) {
+    const lead = byId(st, leadId);
+    if (!lead || !personOf(st, by) || !isOpen(st, lead)) return null;
+    const pipe = pipeOf(st, lead), to = stageIn(pipe, ST_CONTACTED);
+    if (to && pipe.stages.indexOf(to) > pipe.stages.findIndex(s => s.id === lead.stageId)) lead.stageId = to.id;
+    log(lead, now, by, 'Связались с клиентом');
+    return lead;
+  }
+
+  // Закрыть лид с причиной: этап «Отказ». Без причины — нельзя. Возвращает лид или null.
+  function close(st, leadId, reason, by, now) {
+    const lead = byId(st, leadId), why = String(reason || '').trim();
+    if (!lead || !why || !personOf(st, by) || !isOpen(st, lead)) return null;
+    const to = stageIn(pipeOf(st, lead), ST_LOST);
+    if (!to) return null;
+    lead.stageId = to.id;
+    lead.reason = why;
+    log(lead, now, by, `Закрыт: ${why}`);
+    return lead;
+  }
+
+  // Единственный путь смены этапа из воронки (перетаскивание карточки). Сделка создана → toDeal; Отказ →
+  // close, причина обязательна (reason; воронка спрашивает её окном); остальные этапы — смена и запись в историю.
+  // Двигает менеджер, который лид ведёт, или тот, кто раздаёт лиды; закрытый лид не двигается; на тот же этап — нельзя.
+  // Возвращает лид или null.
+  function move(st, leadId, stageId, by, now, reason) {
+    const lead = byId(st, leadId), pipe = lead && pipeOf(st, lead), to = stageIn(pipe, stageId);
+    if (!lead || !to || to.id === lead.stageId || !canWork(st, lead, by)) return null;
+    if (to.id === ST_DEAL) return toDeal(st, leadId, by, now) ? lead : null;
+    if (to.id === ST_LOST) return close(st, leadId, reason, by, now);
+    if (to.flag === 'final') return null;       // прочие финальные этапы (если их добавили в настройках) вручную не ставим
+    lead.stageId = to.id;
+    log(lead, now, by, to.id === ST_QUALIFIED ? 'Квалифицирован' : `Этап: «${to.name}»`);
+    return lead;
+  }
+
+  // Вести лид (связаться, квалифицировать, закрыть, двигать по воронке, делать сделку): тот, кто раздаёт лиды
+  // (директор, РОП), или менеджер, которому лид достался, пока лид открыт и человек его видит.
+  const canWork = (st, lead, personId) => !!lead && !!personOf(st, personId) && isOpen(st, lead)
+    && (canTransfer(st, personId) || lead.managerId === personId) && visible(st, personId).includes(lead);
+
+  // Что человеку можно с лидом — одним вызовом, на нём стоят кнопки карточки: {take, work, deal, transfer}.
+  function can(st, leadId, personId) {
+    const lead = byId(st, leadId), work = canWork(st, lead, personId);
+    return {
+      take: !!lead && !lead.managerId && canTake(st, lead, personId),
+      work,
+      deal: work && !lead.dealId && !!lead.managerId && !!(lead.type || scopeOf(st, lead.managerId)),
+      transfer: !!lead && isOpen(st, lead) && canTransfer(st, personId),
+    };
+  }
+
+  // Новые лиды человека (число на пункте меню): открытые, на первом этапе воронки, которые ведёт он сам;
+  // тому, кто раздаёт лиды (директор, РОП), — ещё и нераспределённые.
+  function fresh(st, personId) {
+    return visible(st, personId).filter(l => {
+      const pipe = pipeOf(st, l);
+      return !!pipe && isOpen(st, l) && l.stageId === firstOf(pipe).id
+        && (l.managerId === personId || (!l.managerId && canTransfer(st, personId)));
+    });
+  }
+
+  // Принимаем ли лиды из этого источника: сайт и Битрикс24 включаются в настройках; телефон и почта — всегда.
+  function allows(st, source) {
+    if (source !== 'site' && source !== 'bitrix') return true;
+    const pick = st.leadSource || 'both';
+    return pick === 'both' || pick === source;
+  }
+  // Выбрать источник лидов (настройки). Неизвестное значение — отказ.
+  function setSource(st, value) {
+    if (!SOURCES[value]) return false;
+    st.leadSource = value;
+    return true;
+  }
+
+  // Кто может передавать лиды и видит все — право «Распределять и передавать лиды»: директор и РОП.
+  const canTransfer = (st, personId) => Perms.can(st, personId, 'leadsAssign');
+
+  // Передать лид (директор): {managerId} — конкретному менеджеру, {type} — типу (тогда менеджер по меньшей
+  // загрузке, а если такого нет — «Нераспределённые» этого типа). Тип лида становится типом менеджера/выбранным.
+  // Новый менеджер получает уведомление. Возвращает лид или null.
+  function transfer(st, leadId, target, by, now) {
+    const lead = byId(st, leadId);
+    if (!lead || !canTransfer(st, by) || !isOpen(st, lead) || !target) return null;
+    let text;
+    if (target.managerId) {
+      const m = personOf(st, target.managerId);
+      if (!m || !Perms.can(st, m.id, 'leads')) return null;
+      lead.managerId = m.id;
+      const scope = scopeOf(st, m.id);
+      if (scope) lead.type = scope;
+      text = `Передан менеджеру: ${m.name}`;
+    } else if (TYPE[target.type]) {
+      lead.type = target.type;
+      lead.managerId = pick(st, target.type, lead.id);
+      text = lead.managerId
+        ? `Передан типу ${TYPE[target.type]}: ${nameOf(st, lead.managerId)}`
+        : `Передан типу ${TYPE[target.type]}: менеджера нет, лид нераспределённый`;
+    } else return null;
+    log(lead, now, by, text);
+    if (lead.managerId) {
+      Notify.push(st, 'lead', by, `Вам передан лид ${lead.id} (${SOURCE[lead.source]}): ${title(lead)}.`, now, [lead.managerId]);
+    }
+    return lead;
+  }
+
+  // Создать сделку из лида: воронка своего типа, первый этап, тот же менеджер, контакт и текст заявки.
+  // Лид уходит в «Сделка создана» и ссылается на сделку. Возвращает id сделки; null — если нельзя
+  // (лид закрыт, сделка уже есть, нет менеджера или тип неизвестен).
+  function toDeal(st, leadId, by, now) {
+    const lead = byId(st, leadId);
+    if (!lead || lead.dealId || !personOf(st, by) || !isOpen(st, lead) || !lead.managerId) return null;
+    const type = lead.type || scopeOf(st, lead.managerId);
+    const pipe = type ? dealPipe(type, st) : null, done = stageIn(pipeOf(st, lead), ST_DEAL);
+    if (!pipe || !done) return null;
+    st.deals = st.deals || [];
+    const d = {
+      id: nextId(st.deals, 'Д', 300),
+      client: lead.company || lead.name || 'нет данных: клиент',
+      contact: lead.name || lead.company || 'нет данных: контакт',
+      kind: type === 'b2b' ? 'Компания' : 'Частный клиент',
+      object: lead.text || 'нет данных: текст заявки',
+      type, pipeId: pipe.id, stageId: firstOf(pipe).id,
+      managerId: lead.managerId,
+      // мессенджер клиента из лида неизвестен — связь по телефону; телефон и почта едут в сделку как есть
+      channel: 'phone', amount: 0, phone: lead.phone, email: lead.email,
+      leadId: lead.id, demo: lead.demo,
+    };
+    st.deals.push(d);
+    lead.type = type;
+    lead.stageId = done.id;
+    lead.dealId = d.id;
+    log(lead, now, by, `Создана сделка ${d.id}`);
+    return d.id;
+  }
+
+  // Лиды, которые видит человек. Нет права «лиды» — никаких. Кто раздаёт лиды (директор, РОП) — все. Менеджер —
+  // лиды своего типа и свои. Лид без типа и без менеджера («Нераспределённый» без данных) — только тем, кто раздаёт.
+  function visible(st, personId) {
+    if (!Perms.can(st, personId, 'leads')) return [];
+    const all = st.leads || [];
+    if (canTransfer(st, personId)) return all.slice();
+    const scope = scopeOf(st, personId);
+    return all.filter(l => l.managerId === personId || (!!scope && l.type === scope));
+  }
+
+  // Сделки, которые видит человек: нужно право «клиенты»; директор и право «все типы» — все;
+  // менеджер — сделки своего типа и свои.
+  function dealsVisible(st, personId) {
+    if (!Perms.can(st, personId, 'clients')) return [];
+    const all = st.deals || [];
+    if (isDirector(st, personId) || Perms.can(st, personId, 'dealsAll')) return all.slice();
+    const scope = scopeOf(st, personId);
+    return all.filter(d => d.managerId === personId || (!!scope && d.type === scope));
+  }
+
+  return { SOURCE, SOURCES, TYPE, STAGE, title, managers, classify, route, pick, openCount, create, canTake, take, contacted, close, move, canWork, can, fresh, allows, setSource, canTransfer, transfer, toDeal, visible, dealsVisible };
+})();
+
+// Шаг SEEDS: роль РОП и демо-человек с этой ролью. РОП распределяет лиды (право leadsAssign) и сам лидов не получает:
+// у роли нет типа (scope), поэтому Leads.route и Leads.pick его не выбирают. Шаг стоит до лидов — чтобы человек уже был в команде.
+SEEDS.push(st => {
+  const on = ['leads', 'leadsAssign', 'dealsAll', 'clients', 'stock', 'prices', 'reserve', 'write', 'mail'];
+  st.roles.push({ id: 'rop', name: 'РОП (руководитель отдела продаж)', builtin: true, perms: Object.fromEntries(Perms.LIST.map(([k]) => [k, on.includes(k)])) });
+  st.people.push({ id: Store.freeId(st.people, 'p'), name: 'Елена Г.', role: 'rop', dept: 'sales', demo: true });
+});
+
+// Шаг SEEDS: источник лидов и 24 демо-лида. Всё помечено «пример» (demo:true и слово в имени/компании),
+// телефоны вида +7 900 000-00-NN, почта на example.com — настоящих людей и компаний тут нет.
+// Лиды заводятся теми же функциями, что и в работе (create, contacted, close, toDeal), но без уведомлений:
+// менеджера выбирает route, поэтому «Нераспределённые» — лиды без компании и контакта.
+SEEDS.push(st => {
+  st.leadSource = 'both';
+  st.leads = [];
+  const pad = (n, w) => String(n).padStart(w, '0');
+  const COMPANIES = ['ООО „Пример-Строй“', 'ИП Пример-Агро', 'КФХ „Пример“', 'ООО „Пример-Сервис“', 'АО „Пример-Энерго“', 'ООО „Пример-Склад“', 'ООО „Пример-Дом“', 'ООО „Пример-Транс“'];
+  const TEXTS = {
+    b2b: ['Пример заявки: нужна станция для объекта компании, просим рассчитать и прислать КП.', 'Пример заявки: интересует сетевая станция на кровлю, просим связаться по телефону.', 'Пример заявки: нужен расчёт по резервному питанию для склада.'],
+    b2c: ['Пример заявки: интересует станция для дома, просьба перезвонить.', 'Пример заявки: хочу узнать, что нужно для автономного питания на даче.', 'Пример заявки: нужен расчёт ветро-солнечной станции для участка.'],
+    none: ['Пример заявки: клиент не оставил ни телефона, ни почты, назвал только имя.'],
+  };
+  const REASONS = ['Пример причины: клиент выбрал другого поставщика', 'Пример причины: не вышли на связь', 'Пример причины: передумал покупать'];
+  // [дней назад, час, источник, что указал клиент, где лид сейчас]
+  // что указал: B — компания и телефон, BI — компания, ИНН и почта, I — только ИНН, P — телефон, E — почта,
+  // PE — телефон и почта, N — ничего
+  const ROWS = [
+    [14, 10, 'site', 'B', 'lost'], [13, 11, 'bitrix', 'P', 'lost'], [12, 9, 'site', 'I', 'contacted'], [12, 14, 'bitrix', 'PE', 'deal'],
+    [11, 10, 'site', 'E', 'contacted'], [10, 12, 'bitrix', 'B', 'qualified'], [9, 9, 'site', 'P', 'qualified'], [9, 15, 'bitrix', 'BI', 'deal'],
+    [8, 11, 'site', 'P', 'lost'], [7, 10, 'bitrix', 'E', 'contacted'], [7, 13, 'site', 'N', 'new'], [6, 12, 'bitrix', 'P', 'qualified'],
+    [5, 9, 'site', 'B', 'contacted'], [5, 16, 'bitrix', 'PE', 'new'], [4, 10, 'site', 'I', 'new'], [4, 14, 'bitrix', 'N', 'new'],
+    [3, 9, 'site', 'P', 'deal'], [3, 13, 'bitrix', 'B', 'lost'], [2, 11, 'site', 'E', 'new'], [2, 15, 'bitrix', 'P', 'new'],
+    [1, 10, 'site', 'BI', 'qualified'], [1, 14, 'bitrix', 'N', 'new'], [0, 7, 'site', 'P', 'new'], [0, 8, 'bitrix', 'N', 'new'],
+  ];
+  ROWS.forEach(([back, h, source, kind, stage], i) => {
+    const k = i + 1, at = day(-back, h, 0), later = n => day(-back, h + n, 0);
+    const data = { source, demo: true, name: `Клиент-пример ${k}` };
+    if (kind === 'B' || kind === 'BI') { data.company = COMPANIES[k % COMPANIES.length]; data.name = `Контакт-пример ${k}`; }
+    if (kind === 'B' || kind === 'P' || kind === 'PE') data.phone = `+7 900 000-00-${pad(k, 2)}`;
+    if (kind === 'BI' || kind === 'E' || kind === 'PE') data.email = `primer${k}@example.com`;
+    if (kind === 'BI' || kind === 'I') data.inn = `0000000${pad(k, 3)}`;
+    const group = kind === 'N' ? 'none' : kind[0] === 'B' || kind === 'I' ? 'b2b' : 'b2c';
+    data.text = TEXTS[group][k % TEXTS[group].length];
+    const lead = Leads.create(st, data, at, { silent: true });
+    const m = lead.managerId;
+    if (stage !== 'new') Leads.contacted(st, lead.id, m, later(1));
+    if (stage === 'qualified' || stage === 'deal') Leads.move(st, lead.id, 'qualified', m, later(2));
+    if (stage === 'deal') Leads.toDeal(st, lead.id, m, later(3));
+    if (stage === 'lost') Leads.close(st, lead.id, REASONS[k % REASONS.length], m, later(2));
+  });
+});
+
 // Ядро: почта — ящики, папки поставщиков, правила по адресам. Чистая логика, без DOM.
 // Это имитация: наружу ничего не уходит, ответ только ложится в ветку письма с пометкой.
 // Папка письма — id поставщика или INBOX. В ящике закупок INBOX — это «Разобрать»; в остальных ящиках
@@ -2825,7 +3200,7 @@ const Notify = (() => {
     warn: ['director', 'logist', 'managerB2b', 'managerB2c'],  // приёмка с замечаниями — как в v2
     task: [],                                                  // задачи — исполнитель, отдел и автор (extraPersons)
     msg: ['director'],                                         // сообщения клиентам — плюс менеджер сделки (extraPersons)
-    lead: ['director'],                                        // новый лид — плюс менеджер, кому он ушёл (extraPersons)
+    lead: ['director', 'rop'],                                 // новый лид — директору и РОП, плюс менеджер, кому он ушёл (extraPersons)
     mail: [],                                                  // новое письмо — те, кто видит ящик (extraPersons)
   };
 
@@ -3261,7 +3636,7 @@ function searchRes(q){
   q=q.trim().toLowerCase();if(q.length<2) return [];
   const r=[],has=s=>s.toLowerCase().includes(q);
   if(can('stock')) Catalog.query(S,{q}).slice(0,6).forEach(p=>{const k=stockOf(p.id);r.push({type:'Товар',label:p.name,sub:k.known?`свободно ${qtyOf(k.free,p)}`:'остаток: нет данных',act:`data-act="open-product" data-pid="${esc(p.id)}"`})});
-  if(can('clients')) S.deals.forEach(d=>{if(has(d.client+' '+d.id+' '+d.object)) r.push({type:'Сделка',label:d.client,sub:`${d.id} · ${d.object}`,act:`data-act="open-deal" data-id="${d.id}"`})});
+  if(can('clients')) Leads.dealsVisible(S,S.me).forEach(d=>{if(has(d.client+' '+d.id+' '+d.object)) r.push({type:'Сделка',label:d.client,sub:`${d.id} · ${d.object}`,act:`data-act="open-deal" data-id="${d.id}"`})});
   if(can('stock')||can('logistics')) S.shipments.forEach(s=>{if(has(s.id+' '+s.supplier+' '+s.to+' '+s.track)) r.push({type:'Перевозка',label:`${s.id} · ${s.supplier}`,sub:`${stageName(s)} · ${fD(s.eta)}`,act:`data-act="open-ship" data-id="${esc(s.id)}"`})});
   S.tasks.filter(taskVisible).forEach(t=>{if(has(t.title)) r.push({type:'Задача',label:t.title,sub:`${targetName(t)} · ${fRel(t.due)}`,act:`data-act="open-task" data-id="${t.id}"`})});
   return r.slice(0,9);
@@ -4411,14 +4786,28 @@ function dealGoods(d){
   const last=ss.reduce((a,s)=>s.eta>a?s.eta:a,ss[0].eta);
   return {lvl:'info',text:`едет ${ss.map(s=>s.id).join(', ')} · до ${fD(last)}`};
 }
+// Типы, между которыми человек переключает сделки: директор и те, у кого есть право «Видеть сделки всех типов»,
+// — оба; остальные — свой тип (и тот, в котором у них есть сделки). Нет ни того, ни другого — оба.
+function dealTypes(vis){
+  if(can('dealsAll')) return ['b2b','b2c'];
+  const own=Perms.roleOf(S,S.me)?.scope,t=['b2b','b2c'].filter(x=>x===own||vis.some(d=>d.type===x));
+  return t.length?t:['b2b','b2c'];
+}
 function vClients(){
   const pr=can('prices');
-  // воронка на каждую воронку сделок, в которой есть сделки или которая единственная
-  const pipes=Pipes.of(S,'deals'),fun=pipes.filter(p=>pipes.length<2||Pipes.items(S,p.id).length).map(p=>{const ds=Pipes.items(S,p.id);return `${pipes.length>1?`<h4 class="sh">${esc(p.name)}</h4>`:''}<div class="xs"><div class="funnel" style="grid-template-columns:repeat(${p.stages.length},minmax(92px,1fr))">${p.stages.map(st=>{const c=ds.filter(d=>d.stageId===st.id).length;return `<div class="fn ${c?'':'zero'}"><b>${c}</b><span>${esc(st.name)}</span></div>`}).join('')}</div></div>`}).join('');
-  const rows=S.deals.slice().sort((a,b)=>stagePos(b)-stagePos(a)).map(d=>{const g=dealGoods(d);return `<tr class="click" data-act="open-deal" data-id="${d.id}" tabindex="0"><td><div class="pname"><span>${esc(d.client)}</span><small class="mono">${d.id} · ${esc(d.kind)}</small></div></td><td>${esc(d.object)}</td><td><span class="pill ${stageTone(d)}">${esc(stageName(d))}</span></td><td><span class="pill sm ${g.lvl}">${esc(g.text)}</span></td><td class="nowrap">${esc(person(d.managerId)?.name||'нет данных: менеджер')}</td><td>${chPill(d.channel)}</td>${pr?`<td class="num">${d.amount?rub(d.amount):'<span class="muted">не рассчитана</span>'}</td>`:''}</tr>`}).join('');
-  return `${fun}<section class="card clip"><div class="xs"><table class="tbl"><thead><tr><th>Клиент</th><th>Объект</th><th>Этап</th><th>Товар</th><th>Менеджер</th><th>Связь</th>${pr?'<th class="num">Сумма</th>':''}</tr></thead><tbody>${rows}</tbody></table></div></section>`;
+  // только сделки, которые этому человеку положено видеть (свой тип, а с правом «все типы» — все)
+  const vis=Leads.dealsVisible(S,S.me),types=dealTypes(vis),cur=types.includes(S.ui.dealType)?S.ui.dealType:types[0];
+  const mine=vis.filter(d=>d.type===cur);
+  // воронка выбранного типа: этапы со счётчиками (воронок типа может быть несколько — показываем те, где есть сделки)
+  const pipes=Pipes.of(S,'deals',cur),fun=pipes.filter(p=>pipes.length<2||mine.some(d=>d.pipeId===p.id)).map(p=>{const ds=mine.filter(d=>d.pipeId===p.id);return `<h4 class="sh">${esc(p.name)}</h4><div class="xs"><div class="funnel" style="grid-template-columns:repeat(${p.stages.length},minmax(92px,1fr))">${p.stages.map(st=>{const c=ds.filter(d=>d.stageId===st.id).length;return `<div class="fn ${c?'':'zero'}"><b>${c}</b><span>${esc(st.name)}</span></div>`}).join('')}</div></div>`}).join('');
+  const sw=types.length>1?`<div class="bar"><div class="seg" role="group" aria-label="Тип клиентов">${types.map(t=>`<button type="button" class="${cur===t?'on':''}" aria-pressed="${cur===t}" data-act="deal-type" data-type="${t}">${Leads.TYPE[t]}<b>${vis.filter(d=>d.type===t).length}</b></button>`).join('')}</div></div>`:'';
+  const hint=`<p class="hint">Сделки ведутся по менеджерам, у каждого типа клиентов своя воронка. Новая сделка появляется из лида — кнопкой «Создать сделку» в разделе «Лиды». ${types.length>1?'Переключатель показывает сделки выбранного типа.':`Вам видны сделки типа ${Leads.TYPE[cur]}.`}</p>`;
+  const rows=mine.slice().sort((a,b)=>stagePos(b)-stagePos(a)).map(d=>{const g=dealGoods(d);return `<tr class="click" data-act="open-deal" data-id="${d.id}" tabindex="0"><td><div class="pname"><span>${esc(d.client)}</span><small class="mono">${d.id} · ${esc(d.kind)}<span class="pill sm">${Leads.TYPE[d.type]||'нет данных: тип'}</span></small></div></td><td>${esc(d.object)}</td><td><span class="pill ${stageTone(d)}">${esc(stageName(d))}</span></td><td><span class="pill sm ${g.lvl}">${esc(g.text)}</span></td><td class="nowrap">${esc(person(d.managerId)?.name||'нет данных: менеджер')}</td><td>${chPill(d.channel)}</td>${pr?`<td class="num">${d.amount?rub(d.amount):'<span class="muted">не рассчитана</span>'}</td>`:''}</tr>`}).join('');
+  const table=rows?`<section class="card clip"><div class="xs"><table class="tbl"><thead><tr><th>Клиент</th><th>Объект</th><th>Этап</th><th>Товар</th><th>Менеджер</th><th>Связь</th>${pr?'<th class="num">Сумма</th>':''}</tr></thead><tbody>${rows}</tbody></table></div></section>`:`<section class="card"><p class="empty">Сделок типа ${Leads.TYPE[cur]} пока нет. Они появляются из лидов: в разделе «Лиды» у лида — «Создать сделку».</p></section>`;
+  return `${hint}${sw}${fun}${table}`;
 }
 function dDeal(d){
+  const fromLead=d.leadId?`<dt>Лид</dt><dd>${Leads.visible(S,S.me).some(l=>l.id===d.leadId)?`<button type="button" class="link" data-act="open-lead" data-id="${esc(d.leadId)}">${esc(d.leadId)}</button>`:esc(d.leadId)}</dd>`:'';
   const rs=S.reserves.filter(r=>r.dealId===d.id),ts=S.tasks.filter(t=>t.deal===d.id&&taskVisible(t)),ms=S.msgs.filter(x=>x.deal===d.id).slice().sort((a,b)=>a.at-b.at);
   const goods=rs.length?`<div class="xs"><table class="tbl"><thead><tr><th>Товар</th><th class="num">Кол-во</th><th>Где</th></tr></thead><tbody>${rs.map(r=>{const p=product(r.productId);return `<tr ${can('stock')?`class="click" data-act="open-product" data-pid="${esc(p.id)}"`:''}><td>${esc(p.name)}</td><td class="num">${qtyOf(r.qty,p)}</td><td>${srcPill(r)}</td></tr>`}).join('')}</tbody></table></div>`:'<p class="muted m0">Под сделку ничего не зарезервировано.</p>';
   const tasks=ts.length?`<ul class="list" style="padding:0">${ts.map(t=>`<li><button class="li" data-act="open-task" data-id="${t.id}"><span class="tdot ${esc(t.stageId)}"></span><span class="li-t">${esc(t.title)}<small>${esc(targetName(t))} · ${esc(stageName(t))}</small></span><span class="due ${taskOverdue(t)?'bad':''}">${fRel(t.due)}</span></button></li>`).join('')}</ul>`:'<p class="muted m0">Задач по сделке нет.</p>';
@@ -4426,14 +4815,15 @@ function dDeal(d){
   const compose=d.channel==='phone'?'<p class="lock">Клиент на связи только по телефону.</p>':can('write')?`<form class="compose" data-form="msg" data-id="${d.id}"><textarea id="msg-text" class="inp" rows="3" placeholder="Сообщение клиенту в ${CH[d.channel]}" aria-label="Сообщение клиенту"></textarea><button class="btn pri" type="submit">${ic('send')}Отправить в ${CH[d.channel]}</button></form>`:`<p class="lock">${ic('lock')}У вашей роли нет права писать клиентам.</p>`;
   return {kind:'Сделка '+d.id,title:esc(d.client),sub:esc(d.kind+' · '+d.object),body:`
     <ol class="steps" style="--n:${stagesFor(d).length}">${stagesFor(d).map((x,i)=>`<li class="${i<stagePos(d)?'done':x.id===d.stageId?'cur':''}"><span>${esc(x.name)}</span></li>`).join('')}</ol>
-    <dl class="kv"><dt>Объект</dt><dd>${esc(d.object)}</dd><dt>Менеджер</dt><dd>${esc(person(d.managerId)?.name||'нет данных: менеджер')}</dd><dt>Связь</dt><dd>${CH[d.channel]}</dd>${can('prices')?`<dt>Сумма</dt><dd>${d.amount?rub(d.amount):'не рассчитана'}</dd>`:''}</dl>
+    <dl class="kv"><dt>Объект</dt><dd>${esc(d.object)}</dd><dt>Тип</dt><dd>${Leads.TYPE[d.type]||'нет данных: тип'}</dd><dt>Воронка</dt><dd>${esc(pipeById(d.pipeId)?.name||'нет данных: воронка')}</dd><dt>Менеджер</dt><dd>${esc(person(d.managerId)?.name||'нет данных: менеджер')}</dd>${fromLead}<dt>Связь</dt><dd>${CH[d.channel]}</dd>${can('prices')?`<dt>Сумма</dt><dd>${d.amount?rub(d.amount):'не рассчитана'}</dd>`:''}</dl>
     <div><h4 class="sh">Товар под сделку</h4>${goods}</div>
     <div><h4 class="sh">Задачи</h4>${tasks}</div>
     <div class="stack-s"><h4 class="sh" style="margin:0">Переписка</h4>${chat}${compose}</div>`};
 }
 
 // ——— регистрация в реестрах оболочки ———
-DRAWERS.deal=id=>{const d=can('clients')?deal(id):null;return d?dDeal(d):null};
+A['deal-type']=el=>{S.ui.dealType=el.dataset.type==='b2c'?'b2c':'b2b';render()};
+DRAWERS.deal=id=>{const d=Leads.dealsVisible(S,S.me).find(x=>x.id===id);return d?dDeal(d):null};
 
 // Раздел «Сообщения клиентам»
 // Перенесено из прототипа v2 без изменений логики.
@@ -4505,6 +4895,257 @@ SETTINGS_TABS.push(
 NAV.push({id:'settings',label:'Настройки',icon:'sliders',group:'Настройки',order:10,ok:()=>settingsTabs().length>0});
 VIEWS.settings=vSettings;
 A['set-tab']=el=>{S.ui.setTab=el.dataset.tab;render()};
+
+// Раздел «Лиды»: список и воронка, карточка лида справа, действия «Взять», «Связались», «Квалифицирован»,
+// «Создать сделку», «Закрыть» (с причиной) и «Передать» (тот, у кого право leadsAssign: директор, РОП), имитация «пришёл лид».
+// Всё решает ядро Leads (35-leads.js): кто что может — Leads.can, смена этапа — Leads.move, видимость — Leads.visible.
+// Здесь — только экран. Выбор на экране (вид, поиск, фильтры) лежит в S.ui.leads и не сохраняется;
+// вид читает его через leadSel() и ничего не меняет.
+
+Object.assign(IC,{funnel:'<path d="M3.5 5h17l-6.5 7.5V19l-4 1.5v-8z"/>'});
+
+const LEAD_DEF={view:'list',q:'',stage:'',type:'',source:'',manager:''};
+const leadU=()=>S.ui.leads||(S.ui.leads=Object.assign({},LEAD_DEF));
+const leadSel=()=>Object.assign({},LEAD_DEF,S.ui.leads||{});
+const leadById=id=>(S.leads||[]).find(l=>l.id===id)||null;
+const leadPipe=()=>Pipes.of(S,'leads')[0]||null;
+const leadWho=id=>person(id)?.name||'нет данных: сотрудник';
+const leadNoData=t=>`<span class="muted">нет данных: ${t}</span>`;
+
+// ——— отбор: одни условия на список, воронку и счётчики ———
+// Стадию как условие берёт только список: в воронке этапы — это сами столбцы.
+function leadFilter(list,u,withStage){
+  const q=u.q.trim().toLowerCase();
+  return list.filter(l=>
+    (!withStage||!u.stage||l.stageId===u.stage)
+    &&(!u.type||(u.type==='none'?!l.type:l.type===u.type))
+    &&(!u.source||l.source===u.source)
+    &&(!u.manager||(u.manager==='none'?!l.managerId&&!isDone(l):l.managerId===u.manager))
+    &&(!q||[l.id,l.name,l.company,l.inn,l.phone,l.email,l.text].join(' ').toLowerCase().includes(q))
+  ).sort((a,b)=>b.at-a.at);
+}
+// «Нераспределённые»: открытые лиды без менеджера — единственное определение для фильтра и счётчика
+const leadFreeCount=all=>all.filter(l=>!l.managerId&&!isDone(l)).length;
+
+// ——— метки ———
+const leadSrcPill=l=>`<span class="pill sm ${l.source==='site'?'info':l.source==='bitrix'?'violet':''}">${esc(Leads.SOURCE[l.source]||l.source)}</span>`;
+const leadTypePill=l=>l.type?`<span class="pill sm">${Leads.TYPE[l.type]}</span>`:'<span class="pill sm warn">тип не определён</span>';
+const leadTone=l=>l.stageId===Leads.STAGE.lost?'bad':l.stageId===Leads.STAGE.deal?'ok':stagePos(l)>0?'info':'';
+const leadStagePill=l=>`<span class="pill sm ${leadTone(l)}">${esc(stageName(l))}</span>`;
+const leadMgrCell=l=>l.managerId?esc(leadWho(l.managerId)):'<span class="pill sm warn">Нераспределённый</span>';
+const leadDemoPill=l=>l.demo?' <span class="pill sm">пример</span>':'';
+
+// ——— список ———
+function leadTable(list){
+  const rows=list.map(l=>`<tr class="click" data-act="open-lead" data-id="${esc(l.id)}" tabindex="0"><td><div class="pname"><span>${esc(Leads.title(l))}${leadDemoPill(l)}</span><small class="mono">${esc(l.id)}<span class="l-show-s"> · ${esc(Leads.SOURCE[l.source]||l.source)}${l.type?' · '+Leads.TYPE[l.type]:''}</span></small></div></td><td class="l-hide-s">${leadSrcPill(l)}</td><td class="l-hide-s">${leadTypePill(l)}</td><td>${leadStagePill(l)}</td><td>${leadMgrCell(l)}</td><td class="l-hide-s nowrap">${esc(fWhen(l.at))}</td></tr>`).join('');
+  return `<section class="card clip"><div class="xs"><table class="tbl"><thead><tr><th>Лид</th><th class="l-hide-s">Источник</th><th class="l-hide-s">Тип</th><th>Этап</th><th>Менеджер</th><th class="l-hide-s">Пришёл</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+}
+
+// ——— воронка ———
+function leadCard(l){
+  const mgr=l.managerId?`<span class="who">${av(person(l.managerId),'xs')}${esc(leadWho(l.managerId))}</span>`:'<span class="pill sm warn">Нераспределённый</span>';
+  return `<article class="tcard lcard${isDone(l)?' done':''}" draggable="true" data-drag="${esc(l.id)}" data-act="open-lead" data-id="${esc(l.id)}" tabindex="0"><div class="tc-top">${leadSrcPill(l)}${leadTypePill(l)}${l.demo?'<span class="pill sm">пример</span>':''}</div><p class="tc-t">${esc(Leads.title(l))}<small class="mono lc-id">${esc(l.id)}</small></p>${l.text?`<p class="lc-x">${esc(l.text)}</p>`:''}<div class="tc-m">${mgr}<span class="due">${esc(fRel(l.at))}</span></div></article>`;
+}
+function leadFunnel(list){
+  const pipe=leadPipe();
+  if(!pipe) return '<section class="card"><p class="empty">Воронки лидов нет — её заводят в «Настройки → Воронки».</p></section>';
+  return `<div class="xs"><div class="lkan" style="--n:${pipe.stages.length}">${pipe.stages.map(s=>{
+    const c=list.filter(l=>l.pipeId===pipe.id&&l.stageId===s.id);
+    return `<div class="col" data-lcol="${esc(s.id)}"><div class="col-h"><span>${esc(s.name)}</span><span class="cnt-s">${c.length}</span></div>${c.map(leadCard).join('')||'<p class="col-empty">Пусто</p>'}</div>`;
+  }).join('')}</div></div>`;
+}
+
+// ——— тело раздела: счёт + список или воронка (его же перерисовывает поиск) ———
+function leadBody(){
+  const u=leadSel(),all=Leads.visible(S,S.me),funnel=u.view==='funnel';
+  const list=leadFilter(all,u,!funnel);
+  const head=`<p class="count"><span>Лидов: <b>${list.length}</b>${list.length!==all.length?` из ${all.length}`:''}</span><span>без менеджера: <b>${leadFreeCount(all)}</b></span></p>`;
+  if(!all.length) return `${head}<section class="card"><p class="empty">Лидов пока нет. Они приходят с сайта и из Битрикса24 — откуда именно, выбирают в «Настройки → Лиды».${can('settings')?' Проверить можно кнопками «Имитация» выше.':''}</p></section>`;
+  if(!list.length) return `${head}<section class="card"><p class="empty">По этим условиям лидов нет. <button type="button" class="link" data-act="lead-reset">Сбросить поиск и фильтры</button></p></section>`;
+  return head+(funnel?`<p class="hint">Перетащите карточку на другой этап или откройте лид и нажмите кнопку. «Сделка создана» заводит сделку, «Отказ» спрашивает причину. Двигать лид может менеджер, который его ведёт, и тот, кто раздаёт лиды (директор, РОП).</p>${leadFunnel(list)}`:leadTable(list));
+}
+
+function vLeads(){
+  const u=leadSel(),all=Leads.visible(S,S.me),pipe=leadPipe(),funnel=u.view==='funnel';
+  const free=leadFreeCount(all);
+  const opt=(v,l,cur)=>`<option value="${esc(v)}"${cur===v?' selected':''}>${esc(l)}</option>`;
+  const sel=(k,label,opts)=>`<select class="inp sm w-auto" data-on="lead-f" data-k="${k}" aria-label="${label}">${opts}</select>`;
+  const filters=(funnel?'':sel('stage','Этап',opt('','Все этапы',u.stage)+(pipe?pipe.stages.map(s=>opt(s.id,s.name,u.stage)).join(''):'')))
+    +sel('type','Тип',opt('','Все типы',u.type)+opt('b2b','B2B',u.type)+opt('b2c','B2C',u.type)+opt('none','Тип не определён',u.type))
+    +sel('source','Источник',opt('','Все источники',u.source)+Object.entries(Leads.SOURCE).map(([k,v])=>opt(k,v,u.source)).join(''))
+    +sel('manager','Менеджер',opt('','Все менеджеры',u.manager)+opt('none','Нераспределённые',u.manager)+Leads.managers(S).map(m=>opt(m.id,m.name,u.manager)).join(''));
+  const dirty=u.q.trim()||u.stage||u.type||u.source||u.manager;
+  const sims=can('settings')?`<span class="grow"></span><button type="button" class="btn sm" data-act="lead-sim" data-source="site">${ic('plus')}Имитация: пришёл лид с сайта</button><button type="button" class="btn sm" data-act="lead-sim" data-source="bitrix">${ic('plus')}Имитация: пришёл лид из Битрикса24</button>`:'';
+  return `<p class="hint">Лиды — заявки, которые ещё не стали сделками. Новый лид сам уходит менеджеру своего типа: компания или ИНН — B2B, иначе телефон или почта — B2C; кому менеджера не нашлось, тот лежит в «Нераспределённых» — их раздаёт РОП или директор. Заявки здесь пока примерные: настоящего подключения сайта и Битрикса24 нет.</p>
+  <div class="bar lbar"><div class="seg" role="group" aria-label="Вид">${[['list','Список'],['funnel','Воронка']].map(([k,l])=>`<button type="button" class="${u.view===k?'on':''}" aria-pressed="${u.view===k}" data-act="lead-view" data-v="${k}">${l}</button>`).join('')}</div>
+    <div class="search-in">${ic('search')}<input id="lead-q" class="inp" type="search" placeholder="Поиск: имя, компания, ИНН, телефон, почта, текст" value="${esc(u.q)}" data-on="lead-q" autocomplete="off" aria-label="Поиск по лидам"></div>${sims}</div>
+  <div class="bar lfilt">${filters}<button type="button" class="fchip${u.manager==='none'?' on':''}" aria-pressed="${u.manager==='none'}" data-act="lead-free">Нераспределённые · ${free}</button>${dirty?'<button type="button" class="btn ghost sm" data-act="lead-reset">Сбросить</button>':''}</div>
+  <div id="lead-body" class="stack-s">${leadBody()}</div>`;
+}
+
+// ——— почему нельзя: один текст на экран, окно и тост ———
+function leadWhy(l,need){
+  if(isDone(l)) return `Лид ${l.id} закрыт — менять его уже нельзя.`;
+  if(need==='transfer') return 'Передавать лиды могут директор и РОП — тот, у кого есть право «Распределять и передавать лиды».';
+  if(need==='take') return l.managerId===S.me?`Лид ${l.id} уже у вас.`:l.managerId?`Лид ${l.id} уже ведёт ${leadWho(l.managerId)}.`:`Лид ${l.id} другого типа — взять его может менеджер ${Leads.TYPE[l.type]||'нужного типа'}.`;
+  if(need==='deal'&&l.dealId) return `Сделка по лиду ${l.id} уже создана: ${l.dealId}.`;
+  if(!l.managerId) return `У лида ${l.id} пока нет менеджера — сначала нажмите «Взять» или попросите РОП или директора передать лид.`;
+  if(need==='deal'&&Leads.can(S,l.id,S.me).work) return `Сделку из лида ${l.id} не создать: не определён тип лида — передайте его менеджеру B2B или B2C.`;
+  return `Лид ${l.id} ведёт ${leadWho(l.managerId)} — менять его могут он и тот, кто раздаёт лиды (директор, РОП).`;
+}
+
+// ——— карточка лида ———
+function dLead(l){
+  const c=Leads.can(S,l.id,S.me),open=!isDone(l);
+  const deal=l.dealId?Leads.dealsVisible(S,S.me).find(d=>d.id===l.dealId):null;
+  const stg=stagesFor(l).filter(s=>s.id!==Leads.STAGE.lost);
+  const steps=l.stageId===Leads.STAGE.lost
+    ?`<p class="lock">${ic('lock')}Лид закрыт. Причина: ${esc(l.reason||'нет данных: причина')}</p>`
+    :`<ol class="steps" style="--n:${stg.length}">${stg.map((x,i)=>`<li class="${i<stagePos(l)?'done':x.id===l.stageId?'cur':''}"><span>${esc(x.name)}</span></li>`).join('')}</ol>`;
+  const b=(act,label,cls)=>`<button type="button" class="btn${cls?' '+cls:''}" data-act="${act}" data-id="${esc(l.id)}">${label}</button>`;
+  let acts='';
+  if(c.take) acts+=b('lead-take','Взять','pri');
+  if(c.work){
+    acts+=b('lead-contacted','Связались');
+    if(l.stageId!==Leads.STAGE.qualified) acts+=b('lead-qualify','Квалифицирован');
+    if(c.deal) acts+=b('lead-deal',ic('plus')+'Создать сделку','pri');
+    acts+=b('lead-close',ic('x')+'Закрыть');
+  }
+  if(deal) acts+=`<button type="button" class="btn" data-act="open-deal" data-id="${esc(deal.id)}">Открыть сделку ${esc(deal.id)}</button>`;
+  const lock=open&&!c.take&&!c.work?`<p class="lock">${ic('lock')}${esc(leadWhy(l,'work'))}</p>`:'';
+  const tr=c.transfer?`<form class="rform" data-form="lead-transfer" data-id="${esc(l.id)}" novalidate><p class="sh">Передать</p><div class="field"><label for="lead-tr">Кому</label><select id="lead-tr" class="inp"><optgroup label="Менеджеру">${Leads.managers(S).map(m=>`<option value="m:${esc(m.id)}"${m.id===l.managerId?' selected':''}>${esc(m.name)} — ${Leads.TYPE[Perms.roleOf(S,m.id).scope]}, открытых лидов: ${Leads.openCount(S,m.id)}</option>`).join('')}</optgroup><optgroup label="Типу — менеджеру с меньшей загрузкой"><option value="t:b2b">Тип B2B</option><option value="t:b2c">Тип B2C</option></optgroup></select></div><p class="hint">Новый менеджер получит уведомление, в истории лида останется, кто и кому передал.</p><div><button type="submit" class="btn">Передать</button></div></form>`:'';
+  const hist=l.history.slice().reverse().map(h=>`<li><span>${esc(h.text)}</span><small>${esc(h.by?leadWho(h.by):'Система')} · ${esc(fWhen(h.at))}</small></li>`).join('');
+  return {kind:'Лид '+l.id,title:esc(Leads.title(l)),sub:`${esc(Leads.SOURCE[l.source]||l.source)} · ${esc(fWhen(l.at))}`,body:`
+    ${steps}
+    ${acts?`<div class="lead-act">${acts}</div>`:''}${lock}
+    <dl class="kv"><dt>Источник</dt><dd>${leadSrcPill(l)}${leadDemoPill(l)}</dd><dt>Пришёл</dt><dd>${esc(fWhen(l.at))}</dd><dt>Тип</dt><dd>${leadTypePill(l)}</dd><dt>Менеджер</dt><dd>${leadMgrCell(l)}</dd>
+      <dt>Контакт</dt><dd>${l.name?esc(l.name):leadNoData('имя')}</dd><dt>Телефон</dt><dd>${l.phone?esc(l.phone):leadNoData('телефон')}</dd><dt>Почта</dt><dd>${l.email?esc(l.email):leadNoData('почта')}</dd>
+      ${l.company?`<dt>Компания</dt><dd>${esc(l.company)}</dd>`:''}${l.inn?`<dt>ИНН</dt><dd>${esc(l.inn)}</dd>`:''}${l.reason?`<dt>Причина отказа</dt><dd>${esc(l.reason)}</dd>`:''}${l.dealId?`<dt>Сделка</dt><dd>${esc(l.dealId)}</dd>`:''}</dl>
+    <div><h4 class="sh">Текст заявки</h4><p class="prose">${l.text?esc(l.text):leadNoData('текст заявки')}</p></div>
+    ${tr}
+    <div><h4 class="sh">История</h4><ul class="mv">${hist}</ul></div>`};
+}
+
+// ——— окно «Закрыть лид» ———
+MODALS.leadLost=id=>{
+  const l=leadById(id);
+  return `<form data-form="lead-lost" data-id="${esc(id)}" novalidate>${mHead('Закрыть лид '+esc(id))}<div class="modal-b">
+    <p class="m0">${l?esc(Leads.title(l)):''}</p>
+    <div class="field"><label for="ll-reason">Причина отказа</label><textarea id="ll-reason" class="inp" rows="3" placeholder="Например: выбрал другого поставщика"></textarea></div>
+    <p class="hint">Лид уйдёт на этап «Отказ», причина запишется в его историю. Вернуть закрытый лид нельзя.</p>
+    <p class="err" id="ll-err" hidden></p></div>${mFoot('Закрыть лид')}</form>`;
+};
+
+// ——— действия: каждое — запись в историю (ядро) и короткое подтверждение ———
+// need — что требуется от человека по Leads.can: take, work, deal, transfer
+function leadAct(id,need,run,done){
+  const l=leadById(id);if(!l) return null;
+  if(!Leads.can(S,id,S.me)[need]){toast(leadWhy(l,need),'warn');return null}
+  const r=run(new Date());
+  if(!r){toast(`Лид ${id}: не получилось.`,'warn');return null}
+  render();toast(done(r));return r;
+}
+// Перевести лид на этап: из воронки (перетаскивание) и из кнопок карточки. Всё — через Leads.move
+function leadMoveTo(id,stageId){
+  const l=leadById(id),to=l&&Pipes.stage(S,l.pipeId,stageId);
+  if(!l||!to||to.id===l.stageId) return null;
+  const c=Leads.can(S,id,S.me);
+  if(!c.work){toast(leadWhy(l,'work'),'warn');return null}
+  if(stageId===Leads.STAGE.lost){openModal('leadLost',id);return null}
+  if(stageId===Leads.STAGE.deal&&!c.deal){toast(leadWhy(l,'deal'),'warn');return null}
+  const r=Leads.move(S,id,stageId,S.me,new Date());
+  if(!r){toast(`Лид ${id} на этап «${to.name}» не переносится.`,'warn');return null}
+  render();
+  if(stageId===Leads.STAGE.deal){
+    const d=S.deals.find(x=>x.id===r.dealId);
+    toast(`Сделка ${d.id} создана из лида ${id}: контакт и текст заявки перенесены. Воронка «${pipeById(d.pipeId).name}», менеджер — ${leadWho(d.managerId)}.`);
+  }else toast(`Лид ${id} теперь на этапе «${to.name}». Запись в истории есть.`);
+  return r;
+}
+
+A['open-lead']=el=>openDrawer('lead',el.dataset.id);
+A['lead-view']=el=>{leadU().view=el.dataset.v==='funnel'?'funnel':'list';render()};
+A['lead-free']=()=>{const u=leadU();u.manager=u.manager==='none'?'':'none';render()};
+A['lead-reset']=()=>{S.ui.leads=Object.assign({},LEAD_DEF,{view:leadSel().view});render()};
+A['lead-take']=el=>leadAct(el.dataset.id,'take',now=>Leads.take(S,el.dataset.id,S.me,now),l=>`Лид ${l.id} теперь у вас: ${Leads.title(l)}.`);
+A['lead-contacted']=el=>leadAct(el.dataset.id,'work',now=>Leads.contacted(S,el.dataset.id,S.me,now),l=>`Записали: связались по лиду ${l.id}. Этап — «${stageName(l)}».`);
+A['lead-qualify']=el=>leadMoveTo(el.dataset.id,Leads.STAGE.qualified);
+A['lead-deal']=el=>leadMoveTo(el.dataset.id,Leads.STAGE.deal);
+A['lead-close']=el=>leadMoveTo(el.dataset.id,Leads.STAGE.lost);
+A['lead-sim']=el=>leadSimulate(el.dataset.source);
+
+ON.input['lead-q']=t=>{
+  leadU().q=t.value;
+  const box=byId('lead-body');if(box) box.innerHTML=leadBody();
+};
+ON.change['lead-f']=t=>{
+  const k=t.dataset.k;if(!Object.hasOwn(LEAD_DEF,k)||k==='view'||k==='q') return;
+  leadU()[k]=t.value;render();
+};
+
+FORMS['lead-lost']=f=>{
+  const id=f.dataset.id,reason=byId('ll-reason').value.trim(),l=leadById(id);
+  if(!l) return closeModal();
+  if(!reason) return showErr('ll-err','Напишите причину отказа.');
+  if(!Leads.can(S,id,S.me).work) return showErr('ll-err',leadWhy(l,'work'));
+  if(!Leads.move(S,id,Leads.STAGE.lost,S.me,new Date(),reason)) return showErr('ll-err','Лид не закрылся.');
+  closeModal();render();
+  toast(`Лид ${id} закрыт. Причина записана в историю: ${reason}.`);
+};
+FORMS['lead-transfer']=f=>{
+  const id=f.dataset.id,[kind,val]=byId('lead-tr').value.split(':');
+  const target=kind==='m'?{managerId:val}:{type:val};
+  leadAct(id,'transfer',now=>Leads.transfer(S,id,target,S.me,now),l=>`Лид ${l.id} передан. ${l.history[l.history.length-1].text}.`);
+};
+
+// драг и дроп: столбцы воронки лидов — data-lcol (задачи в оболочке — data-col, они не пересекаются)
+document.addEventListener('dragover',e=>{
+  const col=e.target.closest?.('[data-lcol]');if(!col) return;
+  e.preventDefault();
+  document.querySelectorAll('.col.drop').forEach(x=>{if(x!==col) x.classList.remove('drop')});col.classList.add('drop');
+});
+document.addEventListener('drop',e=>{
+  const col=e.target.closest?.('[data-lcol]');if(!col) return;
+  e.preventDefault();col.classList.remove('drop');
+  const id=e.dataTransfer.getData('text/plain');
+  if(id&&leadById(id)) leadMoveTo(id,col.dataset.lcol);
+});
+
+// ——— имитация: пришёл лид ———
+// Заявки по кругу: компания, телефон, только ИНН, только почта — чтобы видно было и B2B, и B2C.
+// Всё явно ненастоящее: имена «пример», телефоны +7 900 000-01-NN, почта на example.com.
+const LEAD_SIM=[
+  {company:'ООО „Пример-Имитация“',phone:'+7 900 000-01-',text:'Пример заявки (имитация): нужна станция для объекта компании, просим прислать КП.'},
+  {phone:'+7 900 000-01-',text:'Пример заявки (имитация): интересует станция для дома, просьба перезвонить.'},
+  {inn:'0000001',text:'Пример заявки (имитация): нужен расчёт резервного питания для склада.'},
+  {email:'sim-primer@example.com',text:'Пример заявки (имитация): написал на почту, хочет узнать про ветро-солнечную станцию для дачи.'},
+];
+function leadSimulate(source){
+  if(!Object.hasOwn(Leads.SOURCE,source)) return null;
+  if(!Leads.allows(S,source)){
+    toast(`Источник «${Leads.SOURCE[source]}» сейчас не используется: в «Настройки → Лиды» выбрано «${Leads.SOURCES[S.leadSource]||Leads.SOURCES.both}». Лид не создан.`,'warn');
+    return null;
+  }
+  const n=(S.leads||[]).filter(l=>l.sim).length+1,k=LEAD_SIM[(n-1)%LEAD_SIM.length],nn=String(n%100).padStart(2,'0');
+  const data={source,demo:true,name:`Клиент-пример (имитация ${n})`,text:k.text};
+  if(k.company){data.company=k.company;data.name=`Контакт-пример (имитация ${n})`}
+  if(k.phone) data.phone=k.phone+nn;
+  if(k.inn) data.inn=k.inn+String(n%1000).padStart(3,'0');
+  if(k.email) data.email=k.email;
+  const lead=Leads.create(S,data,new Date());
+  lead.sim=true;
+  const note=S.notes[0],got=note&&note.kind==='lead'?note.to.length:0;
+  render();
+  toast(`Пришёл лид ${lead.id} (${Leads.SOURCE[source]}, «пример»). ${lead.managerId?`Тип ${Leads.TYPE[lead.type]}, менеджер — ${leadWho(lead.managerId)}.`:'Менеджера нет — лид нераспределённый.'} Уведомление получили: ${got}.`);
+  return lead;
+}
+SIMS.push({id:'lead-site',label:'Имитация: пришёл лид с сайта',run:()=>{leadSimulate('site')}});
+SIMS.push({id:'lead-bitrix',label:'Имитация: пришёл лид из Битрикса24',run:()=>{leadSimulate('bitrix')}});
+
+// ——— регистрация в реестрах оболочки ———
+NAV.push({id:'leads',label:'Лиды',icon:'funnel',group:'Продажи',order:5,ok:()=>can('leads'),badge:()=>Leads.fresh(S,S.me).length,hot:true});
+VIEWS.leads=vLeads;
+DRAWERS.lead=id=>{const l=Leads.visible(S,S.me).find(x=>x.id===id);return l?dLead(l):null};
 
 // Раздел «Почта»: слева ящики и папки поставщиков со счётчиками непрочитанных, в середине список писем с поиском,
 // справа письмо. Это имитация: ответ только ложится в ветку письма с пометкой, наружу ничего не уходит.
@@ -4825,6 +5466,57 @@ FORMS['ship-rule-add']=()=>{
 };
 
 SETTINGS_TABS.push({id:'ships',label:'Поставки',order:70,ok:()=>can('settings'),render:vShipSettings});
+
+// Настройки → «Лиды»: откуда приходят лиды — Битрикс24, сайт напрямую или оба. Выбор лежит в S.leadSource и
+// запоминается вместе с остальными данными. Рядом — что ещё живёт в Битриксе и что нужно, чтобы от него отказаться.
+// Подключения в прототипе нет: лиды появляются кнопками «Имитация» (они есть и здесь, и в разделе «Лиды»).
+
+// Что сейчас держит Битрикс24 (слова директора из брифа) и есть ли это в CRM уже сейчас.
+// «Есть в CRM» — про прототип: раздел, который уже можно открыть; настоящих подключений ни у одного пункта нет.
+const LEAD_BITRIX=[
+  {what:'Почта, задачи',crm:'В CRM есть разделы «Почта» (ящики закупок и клиентов) и «Задачи». Почта работает как имитация: настоящий ящик не подключён.'},
+  {what:'Лиды с сайта',crm:'В CRM есть раздел «Лиды». Настоящего приёма заявок с сайта в прототипе нет — заявки появляются кнопкой «Имитация».'},
+  {what:'Лиды и сделки',crm:'В CRM есть «Лиды» и «Клиенты и сделки»: лид сам уходит менеджеру своего типа, из него создаётся сделка в воронке B2B или B2C.'},
+  {what:'Телефония или чаты',crm:'В CRM этого нет: телефонии нет, а сообщения клиентам в Telegram и MAX — имитация, наружу ничего не уходит.'},
+];
+
+function leadSettingsCounts(){
+  const all=S.leads||[],by=k=>all.filter(l=>l.source===k).length;
+  return {all:all.length,site:by('site'),bitrix:by('bitrix')};
+}
+
+function vLeadSettings(){
+  const cur=Leads.SOURCES[S.leadSource]?S.leadSource:'both',n=leadSettingsCounts();
+  const hint={
+    bitrix:'Лиды приходят только из Битрикса24. Лиды «с сайта» принимать не будем.',
+    site:'Лиды приходят только напрямую с сайта. Битрикс24 не используем.',
+    both:'Лиды приходят и из Битрикса24, и напрямую с сайта.'
+  };
+  const radios=Object.entries(Leads.SOURCES).map(([k,l])=>`<label class="check lset-opt${cur===k?' on':''}"><input type="radio" name="lead-source" value="${k}" ${cur===k?'checked':''} data-on="lead-source"> <span><b>${esc(l)}</b><small>${esc(hint[k])}</small></span></label>`).join('');
+  const rows=LEAD_BITRIX.map(r=>`<li><b>${esc(r.what)}</b><span>${esc(r.crm)}</span></li>`).join('');
+  return `<section class="card"><div class="card-h"><h3>Откуда приходят лиды</h3></div><div class="card-b stack-s">
+    <div class="lset-opts" role="radiogroup" aria-label="Источник лидов">${radios}</div>
+    <p class="hint">Сейчас выбрано: <b>${esc(Leads.SOURCES[cur])}</b>. В CRM лидов: ${n.all} (с сайта — ${n.site}, из Битрикса24 — ${n.bitrix}); у каждого лида в карточке стоит метка, откуда он пришёл. Выбор запоминается.</p>
+    <div class="bar"><button type="button" class="btn sm" data-act="lead-sim" data-source="site">${ic('plus')}Имитация: пришёл лид с сайта</button><button type="button" class="btn sm" data-act="lead-sim" data-source="bitrix">${ic('plus')}Имитация: пришёл лид из Битрикса24</button></div>
+    <p class="hint">Если источник выключен, его кнопка лид не создаёт и сообщает, что источник сейчас не используется.</p>
+  </div></section>
+  <section class="card"><div class="card-h"><h3>Что ещё живёт в Битриксе24</h3></div><div class="card-b stack-s">
+    <p class="m0">Сейчас в Битриксе24: «почта, задачи», лиды с сайта, лиды и сделки, телефония или чаты.</p>
+    <ul class="lset-list">${rows}</ul>
+    <p class="m0"><b>Чтобы отказаться от Битрикса24, CRM должна взять на себя всё это.</b> Почта, задачи, лиды и сделки в прототипе уже есть как экраны; телефонии и чатов нет.</p>
+    <p class="warn-t m0">В прототипе никакого подключения к Битриксу24 и к сайту нет — это имитация: лиды создаются кнопками, наружу ничего не уходит.</p>
+  </div></section>`;
+}
+
+ON.change['lead-source']=t=>{
+  if(!t.checked&&t.checked!==undefined) return;
+  const was=S.leadSource;
+  if(!Leads.setSource(S,t.value)){toast('Такого источника лидов нет.','warn');return}
+  render();
+  toast(was===S.leadSource?`Источник лидов: «${Leads.SOURCES[S.leadSource]}».`:`Источник лидов теперь «${Leads.SOURCES[S.leadSource]}». Выбор сохранён.`);
+};
+
+SETTINGS_TABS.push({id:'leads',label:'Лиды',order:50,ok:()=>can('settings'),render:vLeadSettings});
 
 // Настройки → «Почта»: ящики (добавить, адрес, кто видит) и поставщики (добавить, переименовать, правила-адреса,
 // удалить). Данные лежат в S.mail, раздел «Почта» читает их оттуда же, поэтому правка видна там сразу.

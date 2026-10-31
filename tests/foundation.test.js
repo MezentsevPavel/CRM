@@ -135,10 +135,10 @@ test('seed(): резервы, движения и поставки — ключ�
 // Роли и их названия — spec.md, истории R03, R27–R30 (ожидание не берётся из Perms).
 const SPEC_ROLES = {
   director: 'Директор', managerB2b: 'Менеджер B2B', managerB2c: 'Менеджер B2C', logist: 'Логист',
-  warehouse: 'Кладовщик', chiefEngineer: 'Главный инженер', engineer: 'Инженер',
+  warehouse: 'Кладовщик', chiefEngineer: 'Главный инженер', engineer: 'Инженер', rop: 'РОП (руководитель отдела продаж)',
 };
 
-test('seed(): схема v3 — семь ролей в демо-команде, этапы записей — по id существующих этапов', () => {
+test('seed(): схема v3 — восемь ролей в демо-команде (с РОП), этапы записей — по id существующих этапов', () => {
   const { seed, SEEDS, Pipes, Perms } = load();
   const st = seed();
   assert.equal(st.v, 3);
@@ -255,7 +255,7 @@ function team(Perms) {
 test('Perms: список прав — v2 и новые; семь встроенных ролей с правами по спецификации', () => {
   const { Perms } = load();
   const keys = Array.from(Perms.LIST, p => p[0]);
-  assert.deepEqual(keys, [...V2_PERMS, 'mail', 'leads', 'dealsAll', 'settings']);
+  assert.deepEqual(keys, [...V2_PERMS, 'mail', 'leads', 'leadsAssign', 'dealsAll', 'settings']);
   assert.equal(Perms.LIST.find(p => p[0] === 'dealsAll')[1], 'Видеть сделки всех типов');
   const roles = Perms.defaultRoles();
   assert.deepEqual(Array.from(roles, r => r.name), ROLE_NAMES);

@@ -13,7 +13,7 @@ const Notify = (() => {
     warn: ['director', 'logist', 'managerB2b', 'managerB2c'],  // приёмка с замечаниями — как в v2
     task: [],                                                  // задачи — исполнитель, отдел и автор (extraPersons)
     msg: ['director'],                                         // сообщения клиентам — плюс менеджер сделки (extraPersons)
-    lead: ['director'],                                        // новый лид — плюс менеджер, кому он ушёл (extraPersons)
+    lead: ['director', 'rop'],                                 // новый лид — директору и РОП, плюс менеджер, кому он ушёл (extraPersons)
     mail: [],                                                  // новое письмо — те, кто видит ящик (extraPersons)
   };
 

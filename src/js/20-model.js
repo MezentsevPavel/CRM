@@ -177,7 +177,7 @@ const leftStart=s=>s.stageId!==startStage(s.pipeId)?.id;
 const shipLast=s=>s.history[s.history.length-1];
 // Воронки по виду: поставки к нам / отгрузки клиентам, сделки по типу, доска задач
 const shipPipe=dir=>Pipes.of(S,'ships').find(p=>(p.dir||'in')===dir)||null;
-const dealPipe=type=>Pipes.of(S,'deals',type).find(p=>p.scope===type)||Pipes.of(S,'deals')[0]||null;
+const dealPipe=(type,st=S)=>Pipes.of(st,'deals',type).find(p=>p.scope===type)||Pipes.of(st,'deals')[0]||null;
 const taskBoard=()=>Pipes.of(S,'tasks')[0]||null;
 
 // ——— остатки: считает Stock (33-stock.js), здесь — только вызов и подписи ———

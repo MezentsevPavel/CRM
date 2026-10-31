@@ -210,7 +210,7 @@ function searchRes(q){
   q=q.trim().toLowerCase();if(q.length<2) return [];
   const r=[],has=s=>s.toLowerCase().includes(q);
   if(can('stock')) Catalog.query(S,{q}).slice(0,6).forEach(p=>{const k=stockOf(p.id);r.push({type:'Товар',label:p.name,sub:k.known?`свободно ${qtyOf(k.free,p)}`:'остаток: нет данных',act:`data-act="open-product" data-pid="${esc(p.id)}"`})});
-  if(can('clients')) S.deals.forEach(d=>{if(has(d.client+' '+d.id+' '+d.object)) r.push({type:'Сделка',label:d.client,sub:`${d.id} · ${d.object}`,act:`data-act="open-deal" data-id="${d.id}"`})});
+  if(can('clients')) Leads.dealsVisible(S,S.me).forEach(d=>{if(has(d.client+' '+d.id+' '+d.object)) r.push({type:'Сделка',label:d.client,sub:`${d.id} · ${d.object}`,act:`data-act="open-deal" data-id="${d.id}"`})});
   if(can('stock')||can('logistics')) S.shipments.forEach(s=>{if(has(s.id+' '+s.supplier+' '+s.to+' '+s.track)) r.push({type:'Перевозка',label:`${s.id} · ${s.supplier}`,sub:`${stageName(s)} · ${fD(s.eta)}`,act:`data-act="open-ship" data-id="${esc(s.id)}"`})});
   S.tasks.filter(taskVisible).forEach(t=>{if(has(t.title)) r.push({type:'Задача',label:t.title,sub:`${targetName(t)} · ${fRel(t.due)}`,act:`data-act="open-task" data-id="${t.id}"`})});
   return r.slice(0,9);
