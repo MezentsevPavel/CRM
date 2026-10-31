@@ -321,6 +321,80 @@ test('reserveItem: больше свободного — отказ с объя�
   assert.ok(st.feed.some(x => x.kind === 'reserve' && x.text.startsWith('Снят резерв')));
 });
 
+test('setItem: количество строки нельзя опустить ниже резерва по товару; цену и скидку при этом править можно', () => {
+  const app = load(), { Deals } = app;
+  const st = mini(app);
+  const id = make(app, st, 'b2b', 'b1');
+  // как демо-сделка Д-311: строка на 22 шт. и резерв на 22 шт.; склад — кабель, его 100
+  Deals.addItem(st, id, { productId: 'pc', qty: 22 }, 'b1', T1);
+  assert.equal(Deals.reserveItem(st, id, 0, { entityId: 'ip', cityId: 'irk', qty: 22 }, 'b1', T1).ok, true);
+  const feedLen = st.feed.length;
+  // до 1 шт. — отказ: резерв остался бы больше строки; причина называет число резерва (22)
+  const r = Deals.setItem(st, id, 0, { qty: 1 }, 'b1', T2);
+  assert.equal(r.ok, false);
+  assert.ok(r.reason.includes('резерв') && r.reason.includes('22'), r.reason);
+  assert.equal(deal(st, id).items[0].qty, 22, 'при отказе количество поменялось');
+  assert.equal(st.feed.length, feedLen, 'при отказе в ленту записана правка');
+  // 21 — тоже ниже резерва; ровно 22 (по границе) и больше — можно
+  assert.equal(Deals.setItem(st, id, 0, { qty: 21 }, 'b1', T2).ok, false);
+  assert.equal(Deals.setItem(st, id, 0, { qty: 22 }, 'b1', T2).ok, true);
+  assert.equal(Deals.setItem(st, id, 0, { qty: 30 }, 'b1', T2).ok, true);
+  assert.equal(deal(st, id).items[0].qty, 30);
+  // цена и скидка резерва не касаются: правятся и при резерве на всю строку
+  assert.equal(Deals.setItem(st, id, 0, { qty: 22 }, 'b1', T2).ok, true);
+  assert.equal(Deals.setItem(st, id, 0, { price: 1400, disc: 5 }, 'b1', T2).ok, true);
+  // вторая строка того же товара (5 шт.): общая сумма 27, резерв 22 — первую можно уменьшить до 17, не ниже
+  Deals.addItem(st, id, { productId: 'pc', qty: 5 }, 'b1', T2);
+  assert.equal(Deals.setItem(st, id, 0, { qty: 16 }, 'b1', T3).ok, false, '16 + 5 = 21 меньше резерва 22');
+  assert.equal(Deals.setItem(st, id, 0, { qty: 17 }, 'b1', T3).ok, true, '17 + 5 = 22 ровно резерв');
+});
+
+test('removeItem: строку нельзя убрать, если в оставшихся строках товара меньше, чем в резерве', () => {
+  const app = load(), { Deals } = app;
+  const st = mini(app);
+  const id = make(app, st, 'b2b', 'b1');
+  // две строки одного товара: 10 и 5; в резерве 10
+  Deals.addItem(st, id, { productId: 'pc', qty: 10 }, 'b1', T1);
+  Deals.addItem(st, id, { productId: 'pc', qty: 5 }, 'b1', T1);
+  assert.equal(Deals.reserveItem(st, id, 0, { entityId: 'ip', cityId: 'irk', qty: 10 }, 'b1', T1).ok, true);
+  // убрать строку на 10: остались бы 5 при резерве 10 — отказ, причина называет резерв
+  const r = Deals.removeItem(st, id, 0, 'b1', T2);
+  assert.equal(r.ok, false);
+  assert.ok(r.reason.includes('резерв') && r.reason.includes('10'), r.reason);
+  assert.equal(deal(st, id).items.length, 2, 'при отказе строка убрана');
+  assert.ok(!st.feed.some(x => x.kind === 'item' && x.text.startsWith('Убрана строка')), 'при отказе в ленте запись об удалении');
+  // убрать строку на 5: остаются 10 при резерве 10 — можно
+  assert.equal(Deals.removeItem(st, id, 1, 'b1', T2).ok, true);
+  assert.deepEqual(col(deal(st, id).items, it => it.qty), [10]);
+  // последнюю строку при резерве — по-прежнему нельзя
+  assert.equal(Deals.removeItem(st, id, 0, 'b1', T3).ok, false);
+});
+
+test('reserveItem: две строки одного товара (10 и 5) — резервировать можно сумму, 15, а не только 10', () => {
+  const app = load(), { Deals, Stock } = app;
+  const st = mini(app);
+  const id = make(app, st, 'b2b', 'b1');
+  Deals.addItem(st, id, { productId: 'pc', qty: 10 }, 'b1', T1);
+  Deals.addItem(st, id, { productId: 'pc', qty: 5 }, 'b1', T1);
+  const cell = { entityId: 'ip', cityId: 'irk' };
+  // больше суммы строк (15) — отказ, предел назван: 15
+  let r = Deals.reserveItem(st, id, 0, { ...cell, qty: 16 }, 'b1', T1);
+  assert.equal(r.ok, false);
+  assert.equal(r.max, 15);
+  assert.ok(r.reason.includes('можно ещё 15'), r.reason);
+  // 10 по первой строке, остаток по второй (по умолчанию — вся нерезервированная часть: 15 − 10 = 5)
+  assert.equal(Deals.reserveItem(st, id, 0, { ...cell, qty: 10 }, 'b1', T1).ok, true);
+  r = Deals.reserveItem(st, id, 1, cell, 'b1', T2);
+  assert.equal(r.ok, true, r.reason);
+  assert.equal(r.reserve.qty, 5);
+  assert.equal(Deals.reserved(st, deal(st, id), 'pc'), 15);
+  assert.equal(Stock.summary(st, 'pc', T2).free, 85, 'на складе было 100, в резерве 15');
+  // всё зарезервировано — дальше отказ
+  r = Deals.reserveItem(st, id, 1, cell, 'b1', T3);
+  assert.equal(r.ok, false);
+  assert.ok(r.reason.includes('целиком'), r.reason);
+});
+
 test('Feed.of: резервы сделки (и поставленные до ленты), сообщения клиенту, история лида; у клиента — ленты его сделок и лидов только видимых', () => {
   const app = load(), { Deals, Feed } = app;
   const st = mini(app);

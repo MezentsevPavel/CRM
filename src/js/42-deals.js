@@ -88,6 +88,19 @@ const Deals = (() => {
 
   // Сколько по сделке зарезервировано этого товара (все резервы сделки по нему).
   const reserved = (st, d, productId) => (st.reserves || []).filter(r => r.dealId === d.id && r.productId === productId).reduce((s, r) => s + r.qty, 0);
+  // Сколько этого товара в строках сделки — сумма количеств всех строк с ним. Резерв по товару не бывает больше этой суммы:
+  // резерв считается по товару, а не по строке, поэтому «можно ещё» = lined − reserved.
+  const lined = (d, productId) => round2((d.items || []).filter(x => x.productId === productId).reduce((s, x) => s + x.qty, 0));
+  // Проверка перед правкой или удалением строки: after — сколько товара останется в строках сделки. Резерв по нему больше —
+  // текст отказа (what: 'remove' — удаление, иначе правка количества), иначе null. Один текст на правку и на удаление.
+  const reserveBlock = (st, d, productId, after, what) => {
+    const held = reserved(st, d, productId);
+    if (!(held > after)) return null;
+    const p = productOf(st, productId), name = (p || {}).name || 'нет данных: товар', rows = (d.items || []).filter(x => x.productId === productId).length;
+    return what === 'remove'
+      ? `По товару «${name}» в резерве ${qtyOf(held, p)}, а после удаления в строках останется ${qtyOf(after, p)} — сначала снимите резерв.`
+      : `По товару «${name}» в резерве ${qtyOf(held, p)} — сначала снимите резерв или оставьте не меньше ${num(held)}${rows > 1 ? ' в сумме по строкам этого товара' : ''}.`;
+  };
 
   // ——— заведение ———
   const MISSING = { client: 'клиент', type: 'тип сделки' };
@@ -270,6 +283,11 @@ const Deals = (() => {
     for (const f of ['qty', 'price', 'disc']) if (f in p) raw[f] = p[f];
     const c = cleanItem(st, raw);
     if (c.reason) return fail(c.reason);
+    // Количество уменьшают: резерв по товару не должен оказаться больше суммы строк (правка цены и скидки резерва не касается).
+    if (it.productId && c.item.qty < it.qty) {
+      const why = reserveBlock(st, d, it.productId, round2(lined(d, it.productId) - it.qty + c.item.qty), 'set');
+      if (why) return fail(why);
+    }
     const lines = [];
     for (const f of ['text', 'qty', 'price', 'disc']) {
       if (it.productId && f === 'text') continue;
@@ -282,14 +300,16 @@ const Deals = (() => {
     return { ok: true, reason: '' };
   }
 
-  // Убрать строку. Пока по товару строки стоит резерв сделки, убрать нельзя: сначала снять резерв. → {ok, reason}
+  // Убрать строку. Если в оставшихся строках товара станет меньше, чем в резерве сделки, убрать нельзя: сначала снять резерв.
+  // → {ok, reason}
   function removeItem(st, id, idx, by, now) {
     const { d, err } = open(st, id, by);
     if (err) return err;
     const it = (d.items || [])[idx];
     if (!it) return fail('Такой строки нет.');
-    if (it.productId && reserved(st, d, it.productId) > 0 && !d.items.some((x, i) => i !== idx && x.productId === it.productId)) {
-      return fail(`По строке «${itemName(st, it)}» стоит резерв (${num(reserved(st, d, it.productId))}) — сначала снимите его.`);
+    if (it.productId) {
+      const why = reserveBlock(st, d, it.productId, round2(lined(d, it.productId) - it.qty), 'remove');
+      if (why) return fail(why);
     }
     d.items.splice(idx, 1);
     log(st, d, 'item', `Убрана строка: ${itemLine(st, it)}`, by, now);
@@ -308,10 +328,12 @@ const Deals = (() => {
     const it = (d.items || [])[idx], o = opt || {};
     if (!it) return fail('Такой строки нет.');
     if (!it.productId) return fail('Своя строка: такого товара нет в каталоге, резервировать нечего.');
-    const held = reserved(st, d, it.productId), left = it.qty - held;
+    // Предел — по товару, а не по строке: две строки одного товара (10 и 5) дают 15, а не 10.
+    const all = lined(d, it.productId), rows = d.items.filter(x => x.productId === it.productId).length;
+    const held = reserved(st, d, it.productId), left = round2(all - held);
     if (!(left > 0)) return fail(`Строка «${itemName(st, it)}» уже зарезервирована целиком (${num(held)}).`);
     const qty = o.qty === undefined || str(o.qty) === '' ? left : toNum(o.qty);
-    if (qty > left) return fail(`В строке ${num(it.qty)}, уже зарезервировано ${num(held)}: можно ещё ${num(left)}.`, { max: left });
+    if (qty > left) return fail(`${rows > 1 ? `В ${rows} строках этого товара ${num(all)}` : `В строке ${num(all)}`}, уже зарезервировано ${num(held)}: можно ещё ${num(left)}.`, { max: left });
     const cell = o.entityId === undefined && o.cityId === undefined ? Stock.bestCell(st, it.productId) : { entityId: o.entityId, cityId: o.cityId };
     const until = o.until || new Date(new Date(now).getTime() + 14 * 864e5);
     const ask = { productId: it.productId, qty, entityId: cell.entityId, cityId: cell.cityId, src: 'stock' };
@@ -368,7 +390,7 @@ const Deals = (() => {
   }
 
   return {
-    defaultReasons, reasons, lineSum, total, noPrice, state, canEdit, itemName, reserved, byId,
+    defaultReasons, reasons, lineSum, total, noPrice, state, canEdit, itemName, reserved, lined, byId,
     create, update, move, win, lose, reopen, addItem, setItem, removeItem, reserveItem, unreserve, query, columns,
   };
 })();
