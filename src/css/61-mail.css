@@ -1,0 +1,79 @@
+/* ——— почта: три столбца (ящики и папки · письма · письмо), на телефоне — один с кнопкой «назад» ——— */
+.mail-hint{margin:0}
+.mail{display:grid;grid-template-columns:minmax(210px,250px) minmax(280px,360px) minmax(0,1fr);gap:14px;align-items:start}
+.mail>.card{max-height:calc(100vh - 190px);min-height:320px;overflow:auto}
+.mail-back{display:none;align-self:flex-start}
+.mail-nav-b{display:flex;flex-direction:column;gap:6px;padding:0 10px 12px}
+.mail-box{display:flex;flex-direction:column;align-items:flex-start;gap:3px;width:100%;padding:9px 10px;border:1px solid transparent;border-radius:12px;background:transparent;text-align:left;color:var(--ink)}
+.mail-box:hover{background:var(--surface-2)}
+.mail-box.on{background:var(--primary-soft);border-color:var(--primary-line)}
+.mail-box-t{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%}
+.mail-box small{max-width:100%;overflow-wrap:anywhere;font-size:11.5px;color:var(--ink-2)}
+.mail-box small.muted{color:var(--ink-3)}
+.mail-folds{display:flex;flex-direction:column;gap:1px;margin:-2px 0 4px 10px;padding-left:8px;border-left:2px solid var(--line)}
+.mail-fold{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:7px 9px;border:0;border-radius:10px;background:transparent;color:var(--ink-2);font-size:13px;text-align:left}
+.mail-fold:hover{background:var(--surface-2)}
+.mail-fold.on{background:var(--sunken);color:var(--ink);font-weight:600}
+.mail-fold>span:first-child{min-width:0;overflow-wrap:anywhere}
+/* список писем */
+.mail-bar{display:flex;flex-direction:column;gap:10px;padding:14px 14px 10px;border-bottom:1px solid var(--line)}
+.mail-title{display:flex;flex-direction:column;gap:1px}
+.mail-title small{color:var(--ink-3);font-size:12px}
+.mail-bar .search-in{max-width:none;min-width:0}
+.mail-items{margin:0;padding:6px;list-style:none}
+.mail-li{display:flex;flex-direction:column;gap:3px;width:100%;padding:9px 10px;border:0;border-radius:12px;background:transparent;text-align:left;color:var(--ink)}
+.mail-li:hover{background:var(--surface-2)}
+.mail-li.on{background:var(--primary-soft)}
+.mail-li-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.mail-li-top b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+.mail-li-top small{flex:none;font-size:11.5px;color:var(--ink-3)}
+.mail-li.unread .mail-li-top b,.mail-li.unread .mail-li-sub{font-weight:700}
+.mail-li.unread .mail-li-top b::before{content:"";display:inline-block;width:8px;height:8px;margin-right:6px;border-radius:50%;background:var(--sun)}
+.mail-li-sub{font-size:13px;overflow-wrap:anywhere}
+.mail-li-sn{font-size:12px;color:var(--ink-3);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.mail-li-tags{display:flex;flex-wrap:wrap;gap:4px}
+.mail-li-tags:empty{display:none}
+/* письмо */
+.mail-lh{display:flex;flex-direction:column;gap:8px;padding:16px 18px 10px;border-bottom:1px solid var(--line)}
+.mail-lh h2{margin:0;font-size:17px;overflow-wrap:anywhere}
+.mail-meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;margin:0;font-size:12.5px;color:var(--ink-2);overflow-wrap:anywhere}
+.mail-body{padding:14px 18px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.55}
+.mail-replies{display:flex;flex-direction:column;gap:10px;padding:0 18px 12px}
+.mail-replies h4{margin:0;font-size:13px;color:var(--ink-2)}
+.mail-reply{padding:10px 12px;border-left:3px solid var(--sun);border-radius:0 12px 12px 0;background:var(--sun-soft);color:var(--sun-ink)}
+.mail-reply-h{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px}
+.mail-reply-h small{color:var(--sun-ink);font-size:11.5px}
+.mail-reply p{margin:6px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ink);font-size:13.5px}
+.mail-act{display:flex;flex-direction:column;gap:14px;padding:4px 18px 18px}
+.mail-reply-f{display:flex;flex-direction:column;gap:10px}
+.mail-reply-f textarea{height:auto;padding:9px 11px;resize:vertical}
+.mail-reply-btns{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}
+.mail-rem{display:flex;flex-direction:column;gap:8px;padding:12px;border:1px dashed var(--line-2);border-radius:14px;background:var(--surface-2)}
+.mail-rem-f{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:10px;align-items:end}
+.mail-empty{display:grid;place-items:center}
+
+/* ——— Настройки → Почта ——— */
+.mset-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) auto;gap:10px;align-items:end;padding:10px 0;border-top:1px solid var(--line)}
+.mset-row:first-of-type{border-top:0}
+.mset-box{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.mset-box:first-of-type{border-top:0}
+.mset-roles{display:flex;flex-wrap:wrap;gap:6px 16px}
+.mset-add{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.mset-add .wide{grid-column:1/-1}
+.mset-name{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+
+@media (max-width:1100px){
+  .mail{grid-template-columns:minmax(190px,220px) minmax(0,1fr)}
+  .mail-letter{grid-column:1/-1}
+  .mail>.mail-letter{max-height:none}
+}
+@media (max-width:900px){
+  /* один столбец: ящики и папки → письма → письмо, назад — кнопкой */
+  .mail{grid-template-columns:minmax(0,1fr)}
+  .mail>.card{display:none;max-height:none}
+  .mail[data-pane="nav"]>.mail-nav,.mail[data-pane="list"]>.mail-list,.mail[data-pane="letter"]>.mail-letter{display:block}
+  .mail[data-pane="letter"]>.mail-letter.mail-empty{display:grid}
+  .mail-back{display:inline-flex}
+  .mail[data-pane="nav"] .mail-back{display:none}
+  .mail-rem-f,.mset-row,.mset-box,.mset-add{grid-template-columns:minmax(0,1fr)}
+}

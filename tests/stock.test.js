@@ -510,12 +510,17 @@ test('«Новый товар» и «Новая поставка»: товар �
 });
 
 // ——— снимки не живут в сохранении браузера ———
-test('сохранение без снимка: после seed() меньше 40 КБ; после dump → load все товары на месте, свои товары и правки целы', () => {
+test('сохранение без снимка: товаров снимка в записи нет, размер разумный; после dump → load все товары на месте, свои товары и правки целы', () => {
   const app = load();
   const { Store, S } = app;
   const text = Store.dump(S).text;
-  assert.ok(text.length < 40000, `сохранение после seed() весит ${text.length} символов — снимок каталога попал в браузер`);
-  assert.ok(!text.includes('HAVEL 340'), 'названия товаров снимка записаны в сохранение');
+  // суть: в записи нет ни одного товара снимка каталога (ищем по их id), а не «запись короче N символов»
+  const snapIds = new Set(S.products.filter(p => p.src === 'catalog' || p.src === 'sheet').map(p => p.id));
+  assert.equal(snapIds.size, 434, 'в демо-состоянии 434 товара снимка');
+  const leaked = JSON.parse(text).products.filter(p => snapIds.has(p.id));
+  assert.equal(leaked.length, 0, `в сохранение попали товары снимка каталога: ${leaked.length}`);
+  // запасной предел: запись не разрастается (товары снимка весили бы в ней сотни тысяч символов)
+  assert.ok(text.length < 150000, `сохранение после seed() весит ${text.length} символов`);
   // всё, что пользователь добавил и поправил, сохраняется; всё остальное восстанавливается из снимка
   S.products.push({ id: 'u1', name: 'Мой кабель', brand: null, cat: 'Кабель', unit: 'м', price: 77, avail: null, url: null, src: 'user', inCatalog: false });
   const havel = S.products.find(p => p.name === 'Солнечная панель HAVEL 340');

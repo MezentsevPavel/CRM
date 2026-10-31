@@ -6,7 +6,7 @@
 const CH={telegram:'Telegram',max:'MAX',phone:'Телефон'};
 const CARRIERS=['Сборный груз, транспортная компания','Отдельная машина','Своя машина','Контейнер: море + железная дорога'];
 const VARS=['{имя}','{товар}','{сделка}','{менеджер}','{адрес_склада}'];
-const KIND={ship:{l:'Перевозки',ic:'truck',c:'info'},arrive:{l:'Склад',ic:'box',c:'ok'},task:{l:'Задачи',ic:'tasks',c:'pri'},reserve:{l:'Резервы',ic:'lock',c:'sun'},msg:{l:'Клиентам',ic:'chat',c:'violet'},warn:{l:'Предупреждения',ic:'alert',c:'bad'},lead:{l:'Лиды',ic:'users',c:'pri'}};
+const KIND={ship:{l:'Перевозки',ic:'truck',c:'info'},arrive:{l:'Склад',ic:'box',c:'ok'},task:{l:'Задачи',ic:'tasks',c:'pri'},reserve:{l:'Резервы',ic:'lock',c:'sun'},msg:{l:'Клиентам',ic:'chat',c:'violet'},warn:{l:'Предупреждения',ic:'alert',c:'bad'},lead:{l:'Лиды',ic:'users',c:'pri'},mail:{l:'Почта',ic:'mail',c:'info'}};
 // Специализация инженера — главного инженера и инженера (R30)
 const SPECIALTY={designer:'проектировщик',installer:'монтажник'};
 
