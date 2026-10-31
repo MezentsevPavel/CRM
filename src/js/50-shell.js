@@ -360,7 +360,7 @@ function render(){
   try{const h=hashView();if(h&&h!==S.view) history.replaceState(null,'','#'+S.view)}catch(_){}
   // открыл раздел «Уведомления» — свои прочитаны (подсвечены один раз, при этой отрисовке)
   if(ok&&S.view==='notifications') Notify.markRead(S,S.me);
-  Acts.notify(S,new Date());
+  Acts.notify(S,new Date());Leads.notifyWaiting(S,new Date());
   renderSide();
   byId('ttl').textContent=n.label;
   byId('role').innerHTML=whoOptions();

@@ -7,7 +7,7 @@ const Feed = (() => {
   // Виды записей и подписи. Модули дел и отправок добавляют свои виды сюда же: Feed.KINDS.act = 'Дело'.
   const KINDS = {
     comment: 'Комментарий', create: 'Создано', stage: 'Этап', field: 'Изменение', item: 'Товары',
-    reserve: 'Резерв', win: 'Успешно', lose: 'Провалена', msg: 'Сообщение клиенту', history: 'История', act: 'Дело выполнено',
+    reserve: 'Резерв', win: 'Успешно', lose: 'Провалена', msg: 'Сообщение клиенту', history: 'История', act: 'Дело выполнено', actmove: 'Дела из лида',
   };
   // Что есть ссылка на карточку и как её назвать в ленте клиента.
   const REF = { deal: 'Сделка', lead: 'Лид', client: 'Клиент', dispatch: 'Отправка' };
@@ -228,11 +228,11 @@ function feedWire() {
   };
 }
 
-// Раз в минуту (и при каждой перерисовке — в render()): напоминания, которым пора. Перерисовывает только колокол и меню,
-// чтобы не сбить ввод в открытой форме.
+// Раз в минуту (и при каждой перерисовке — в render()): напоминания, которым пора, и лиды, которые ждут дольше положенного
+// (РОП). Перерисовывает только колокол и меню, чтобы не сбить ввод в открытой форме.
 function actsTick() {
   if (!S) return;
-  const made = Acts.notify(S, new Date());
+  const now = new Date(), made = [...Acts.notify(S, now), ...Leads.notifyWaiting(S, now)];
   if (!made.length) return;
   updBell(); renderSide(); save();
   const mine = made.filter(n => n.to.includes(S.me));

@@ -351,3 +351,66 @@ test('экраны: метка «нет следующего шага» на к�
   S.ui.leads = Object.assign({}, app.LEAD_DEF, { view: 'funnel' });
   assert.equal(count(app.leadBody(), /act-nx none/g), lnone.length);
 });
+
+// ——— карточка лида: те же «Детали» и «Лента» с делами, что у сделки ———
+
+test('карточка лида: вкладки «Детали» и «Лента»; в ленте «Запланировать», открытые дела и комментарий; дело ставится и закрывается результатом прямо из лида', () => {
+  const app = load(), { S, Acts } = app;
+  const el = id => app.document.getElementById(id);
+  app.setMe(S.people.find(p => p.role === 'director').id);
+  const lead = S.leads.find(l => l.managerId && Acts.alive(S, L(l.id)));
+  const ref = L(lead.id);
+  app.A['open-lead']({ dataset: { id: lead.id } });
+  // «Детали» по умолчанию: данные заявки и история, ленты с делами ещё нет
+  let body = app.DRAWERS.lead(lead.id).body;
+  assert.ok(body.includes('data-act="lead-tab" data-tab="details"') && body.includes('data-act="lead-tab" data-tab="feed"'), 'нет вкладок');
+  assert.ok(body.includes('Текст заявки') && !body.includes('data-form="act-plan"'), 'в «Деталях» оказалась лента');
+  // «Лента»: форма дела, открытые дела (если есть), комментарий
+  app.A['lead-tab']({ dataset: { tab: 'feed' } });
+  body = app.DRAWERS.lead(lead.id).body;
+  assert.ok(body.includes('data-form="act-plan"') && body.includes('Запланировать'), 'в ленте лида нет «Запланировать»');
+  assert.ok(body.includes('data-form="feed-comment"') && body.includes('data-ref-t="lead"') && body.includes(`data-ref-id="${lead.id}"`));
+  assert.ok(!body.includes('Текст заявки'), 'в ленте остались «Детали»');
+  // поставить дело формой, как в карточке сделки
+  const before = Acts.open(S, ref).length;
+  el('act-type').value = 'meet'; el('act-title').value = 'Встреча по лиду'; el('act-due').value = '2030-01-01T10:00';
+  el('act-owner').value = S.me; el('act-remind').value = '';
+  app.FORMS['act-plan']({ dataset: { t: 'lead', id: lead.id } });
+  const open = Acts.open(S, ref);
+  assert.equal(open.length, before + 1, 'дело не поставлено: ' + el('act-err').textContent);
+  const made = open.find(a => a.title === 'Встреча по лиду');
+  assert.ok(made && made.type === 'meet' && made.ownerId === S.me);
+  body = app.DRAWERS.lead(lead.id).body;
+  assert.ok(body.includes('Встреча по лиду') && body.includes(`data-act="act-done" data-id="${made.id}"`), 'открытого дела нет в ленте лида');
+  assert.ok(body.includes(`<b>${open.length}</b>`), 'на вкладке «Лента» нет числа открытых дел');
+  // выполнить с результатом — дело серое, в ленте
+  el('ad-result').value = 'Встретились, ждёт КП';
+  app.FORMS['act-done']({ dataset: { id: made.id } });
+  assert.ok(Acts.byId(S, made.id).doneAt, 'дело не выполнено');
+  body = app.DRAWERS.lead(lead.id).body;
+  assert.ok(body.includes('Встретились, ждёт КП') && !body.includes(`data-act="act-done" data-id="${made.id}"`));
+  // закрытый лид: ни формы дела, ни кнопок
+  const closed = S.leads.find(l => l.stageId === 'lost');
+  assert.ok(!app.DRAWERS.lead(closed.id).body.includes('data-form="act-plan"'));
+  app.A['lead-tab']({ dataset: { tab: 'feed' } });
+  const cb = app.DRAWERS.lead(closed.id).body;
+  assert.ok(!cb.includes('data-form="act-plan"') && !cb.includes('Нет следующего шага'), 'у закрытого лида форма дела или «нет следующего шага»');
+  // открытие другой карточки возвращает «Детали»
+  app.A['open-lead']({ dataset: { id: lead.id } });
+  assert.equal(S.ui.leadTab, 'details');
+});
+
+test('«Создать сделку» из лида: открытые дела едут в сделку, и сделка показывает их в своей ленте', () => {
+  const app = load(), { S, Acts } = app;
+  const lead = S.leads.find(l => l.managerId && l.type && !l.dealId && Acts.alive(S, L(l.id)) && Acts.open(S, L(l.id)).length > 0);
+  assert.ok(lead, 'в демо нет открытого лида с делами');
+  const mgr = lead.managerId, ids = Acts.open(S, L(lead.id)).map(a => a.id);
+  app.setMe(mgr);
+  app.A['lead-deal']({ dataset: { id: lead.id } });
+  assert.ok(lead.dealId, 'сделка не создана');
+  assert.equal(Acts.open(S, L(lead.id)).length, 0);
+  assert.deepEqual([...Acts.open(S, D(lead.dealId)).map(a => a.id)].sort(), [...ids].sort());
+  const feed = app.feedHtml(D(lead.dealId), S, NOW);
+  assert.ok(feed.includes('перенесены открытые дела') && feed.includes('Дела из лида'), 'в ленте сделки нет записи о переносе');
+  for (const id of ids) assert.ok(feed.includes(`data-act="act-done" data-id="${id}"`), 'перенесённое дело не видно среди открытых дел сделки');
+});

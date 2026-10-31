@@ -9,8 +9,14 @@
 .lcard .tc-t small{display:block;margin-top:2px;font-size:11.5px;color:var(--ink-3)}
 .lcard .lc-x{display:-webkit-box;margin:0;overflow:hidden;overflow-wrap:anywhere;font-size:12.5px;line-height:1.4;color:var(--ink-2);-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .lcard .tc-m{flex-wrap:wrap}
+/* метка «ждёт N мин»: в списке под этапом, в воронке отдельной строкой карточки */
+.lead-wait .ic{width:12px;height:12px}
+.tcard>.lead-wait{align-self:flex-start}
+td>.lead-wait{margin-top:4px}
 /* карточка лида */
 .lead-act{display:flex;flex-wrap:wrap;gap:8px}
+.lead-waitnote{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:0;font-size:13px;color:var(--ink-2)}
+.lead-waitnote>span{min-width:0;overflow-wrap:anywhere}
 .drawer .mv li>span{min-width:0;overflow-wrap:anywhere}
 
 @media (max-width:700px){
@@ -33,3 +39,5 @@
 .lset-list li:first-child{border-top:0}
 .lset-list span{color:var(--ink-2)}
 @media (max-width:700px){.lset-list li{grid-template-columns:minmax(0,1fr)}}
+.lwait{max-width:260px}
+@media (max-width:700px){.lwait{max-width:none}}

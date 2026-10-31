@@ -1,6 +1,7 @@
 // Настройки → «Лиды и сделки»: откуда приходят лиды — Битрикс24, сайт напрямую или оба. Выбор лежит в S.leadSource и
 // запоминается вместе с остальными данными. Рядом — что ещё живёт в Битриксе и что нужно, чтобы от него отказаться,
-// и список причин отказа (S.lostReasons): его предлагает окно «Провалена» у сделки.
+// время реакции на новый лид (S.leadWaitMin) и список причин отказа (S.lostReasons): его предлагают окна «Провалена» у сделки
+// и «Закрыть» у лида.
 // Подключения в прототипе нет: лиды появляются кнопками «Имитация» (они есть и здесь, и в разделе «Лиды»).
 
 // Что сейчас держит Битрикс24 (слова директора из брифа) и есть ли это в CRM уже сейчас.
@@ -67,10 +68,21 @@ function lostReasonsCard(){
     return `<li class="lreason"><input class="inp" value="${esc(r.name)}" data-on="reason-name" data-id="${esc(r.id)}" aria-label="Причина отказа: ${esc(r.name)}" autocomplete="off"><small class="muted">${n?`записана: ${n}`:'пока не использована'}</small><button type="button" class="btn ghost icon sm" data-act="reason-del" data-id="${esc(r.id)}" aria-label="Удалить причину «${esc(r.name)}»">${ic('x')}</button></li>`;
   }).join('');
   return `<section class="card"><div class="card-h"><h3>Причины отказа</h3></div><div class="card-b stack-s">
-    <p class="m0">Этот список предлагает окно «Провалена» у сделки. Причин сейчас: <b>${list.length}</b>.</p>
-    ${list.length?`<ul class="lreasons">${rows}</ul>`:'<p class="hint">Список пуст: при «Провалена» причину придётся писать своими словами.</p>'}
+    <p class="m0">Этот список предлагают окно «Провалена» у сделки и окно «Закрыть» у лида. Причин сейчас: <b>${list.length}</b>.</p>
+    ${list.length?`<ul class="lreasons">${rows}</ul>`:'<p class="hint">Список пуст: при «Провалена» и «Закрыть» причину придётся писать своими словами.</p>'}
     <form class="rform" data-form="reason-add" novalidate><p class="sh">Новая причина</p><div class="lreason-new"><input id="lr-new" class="inp" placeholder="Например: не устроил срок поставки" aria-label="Новая причина отказа" autocomplete="off"><button type="submit" class="btn">${ic('plus')}Добавить</button></div><p class="err" id="lr-err" hidden></p></form>
     <p class="hint">Удалить или переименовать причину можно в любой момент: у уже проваленных сделок остаётся тот текст, который был записан.</p>
+  </div></section>`;
+}
+
+// ——— время реакции ———
+// Лид на первом этапе, с которым никто не работал дольше этого времени, получает метку «ждёт N мин» в списке и воронке,
+// а РОП — уведомление (один раз на лид). Что считать «ждёт» — Leads.waiting; здесь только поле и число ждущих сейчас.
+function leadWaitCard(){
+  const now=new Date(),n=(S.leads||[]).filter(l=>Leads.waiting(S,l,now)!==null).length,ro=!can('settings');
+  return `<section class="card"><div class="card-h"><h3>Время реакции на новый лид</h3></div><div class="card-b stack-s">
+    <div class="field lwait"><label for="lead-wait">Новый лид ждёт не дольше, мин</label><input id="lead-wait" class="inp" type="number" min="1" max="10080" step="1" inputmode="numeric" value="${esc(Leads.waitMin(S))}" data-on="lead-wait"${ro?' disabled':''}></div>
+    <p class="hint">Если лид лежит на первом этапе дольше этого времени и с ним не сделано ни одного действия (никто не взял, не позвонил, не запланировал дело), в списке и воронке у него появляется метка «ждёт N мин», а РОП получает уведомление — один раз на лид. Сейчас ждут: <b>${n}</b>. Изначально — 15 минут.</p>
   </div></section>`;
 }
 
@@ -89,6 +101,7 @@ function vLeadSettings(){
     <div class="bar"><button type="button" class="btn sm" data-act="lead-sim" data-source="site">${ic('plus')}Имитация: пришёл лид с сайта</button><button type="button" class="btn sm" data-act="lead-sim" data-source="bitrix">${ic('plus')}Имитация: пришёл лид из Битрикса24</button></div>
     <p class="hint">Если источник выключен, его кнопка лид не создаёт и сообщает, что источник сейчас не используется.</p>
   </div></section>
+  ${leadWaitCard()}
   ${lostReasonsCard()}
   <section class="card"><div class="card-h"><h3>Что ещё живёт в Битриксе24</h3></div><div class="card-b stack-s">
     <p class="m0">Сейчас в Битриксе24: «почта, задачи», лиды с сайта, лиды и сделки, телефония или чаты.</p>
@@ -104,6 +117,14 @@ ON.change['lead-source']=t=>{
   if(!Leads.setSource(S,t.value)){toast('Такого источника лидов нет.','warn');return}
   render();
   toast(was===S.leadSource?`Источник лидов: «${Leads.SOURCES[S.leadSource]}».`:`Источник лидов теперь «${Leads.SOURCES[S.leadSource]}». Выбор сохранён.`);
+};
+
+ON.change['lead-wait']=t=>{
+  if(!can('settings')){toast('Менять время реакции могут те, у кого есть право на «Настройки».','warn');render();return}
+  const r=Leads.setWaitMin(S,t.value);
+  if(!r.ok){toast(r.reason,'warn');render();return}
+  render();
+  toast(`Новый лид ждёт не дольше ${r.value} мин. Выбор сохранён.`);
 };
 
 // Причины отказа: добавить, переименовать, убрать. Каждое действие — короткое подтверждение; права — как у вкладки («Настройки»)

@@ -13,7 +13,7 @@ const Store = (() => {
   // 6 — роль РОП и право leadsAssign (таск 04): сохранение без них уходит в пользу демо.
   // 7 — клиенты и лента (таск 09): st.clients, st.feed, st.lostReasons; у сделок clientId, items, at, wonAt, lostReason; у лидов clientId.
   // 8 — дела (таск 10): st.acts; лента подмешивает выполненные дела.
-  const REV = 8;
+  const REV = 9;
   // Браузер даёт сайту около 5 млн символов на всё; берём с запасом.
   const LIMIT = 4500000;
   const NO_SPACE = 'не сохранено — мало места в браузере';

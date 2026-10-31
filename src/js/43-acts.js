@@ -121,6 +121,15 @@ const Acts = (() => {
     const rs = refs(st, ref, personId);
     return all(st).filter(a => !a.doneAt && rs.some(r => same(r, a.ref))).sort(byDue);
   }
+  // Перенести открытые дела с одной карточки на другую (лид стал сделкой): меняется ref, в ленту новой карточки — одна запись
+  // со списком. Выполненные дела остаются где были. → [перенесённые дела, ближайшее первым]
+  function moveOpen(st, from, to, by, now) {
+    const moved = all(st).filter(a => !a.doneAt && same(a.ref, from)).sort(byDue);
+    if (!moved.length) return [];
+    moved.forEach(a => { a.ref = { t: to.t, id: to.id }; });
+    Feed.add(st, to, { kind: 'actmove', by, at: now, text: `Из ${(Feed.REF[from.t] || 'карточки').toLowerCase()} ${from.id} перенесены открытые дела (${moved.length}): ${moved.map(a => `${label(a)} «${a.title}»`).join('; ')}.` });
+    return moved;
+  }
   // Ближайшее открытое дело или null.
   const next = (st, ref, personId) => open(st, ref, personId)[0] || null;
   // «Нет следующего шага»: карточка жива, а открытых дел у неё нет.
@@ -165,7 +174,7 @@ const Acts = (() => {
     });
   }
 
-  return { TYPES, REMINDS, QUICK, REFS, byId, alive, refTitle, label, quick, plan, done, doneText, open, next, noNext, overdue, matches, counts, due, notify };
+  return { TYPES, REMINDS, QUICK, REFS, byId, alive, refTitle, label, quick, plan, done, doneText, moveOpen, open, next, noNext, overdue, matches, counts, due, notify };
 })();
 
 // Вид уведомления «Дела» в «Уведомления»: подпись и значок (список видов — KIND в 20-model.js)

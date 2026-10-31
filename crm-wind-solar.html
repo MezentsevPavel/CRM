@@ -853,8 +853,14 @@ fieldset.ss-f legend{padding:0;margin-bottom:6px;font-size:12.5px;font-weight:50
 .lcard .tc-t small{display:block;margin-top:2px;font-size:11.5px;color:var(--ink-3)}
 .lcard .lc-x{display:-webkit-box;margin:0;overflow:hidden;overflow-wrap:anywhere;font-size:12.5px;line-height:1.4;color:var(--ink-2);-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .lcard .tc-m{flex-wrap:wrap}
+/* метка «ждёт N мин»: в списке под этапом, в воронке отдельной строкой карточки */
+.lead-wait .ic{width:12px;height:12px}
+.tcard>.lead-wait{align-self:flex-start}
+td>.lead-wait{margin-top:4px}
 /* карточка лида */
 .lead-act{display:flex;flex-wrap:wrap;gap:8px}
+.lead-waitnote{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:0;font-size:13px;color:var(--ink-2)}
+.lead-waitnote>span{min-width:0;overflow-wrap:anywhere}
 .drawer .mv li>span{min-width:0;overflow-wrap:anywhere}
 
 @media (max-width:700px){
@@ -877,6 +883,8 @@ fieldset.ss-f legend{padding:0;margin-bottom:6px;font-size:12.5px;font-weight:50
 .lset-list li:first-child{border-top:0}
 .lset-list span{color:var(--ink-2)}
 @media (max-width:700px){.lset-list li{grid-template-columns:minmax(0,1fr)}}
+.lwait{max-width:260px}
+@media (max-width:700px){.lwait{max-width:none}}
 
 /* ——— почта: три столбца (ящики и папки · письма · письмо), на телефоне — один с кнопкой «назад» ——— */
 .mail-hint{margin:0}
@@ -1816,7 +1824,7 @@ const Store = (() => {
   // 6 — роль РОП и право leadsAssign (таск 04): сохранение без них уходит в пользу демо.
   // 7 — клиенты и лента (таск 09): st.clients, st.feed, st.lostReasons; у сделок clientId, items, at, wonAt, lostReason; у лидов clientId.
   // 8 — дела (таск 10): st.acts; лента подмешивает выполненные дела.
-  const REV = 8;
+  const REV = 9;
   // Браузер даёт сайту около 5 млн символов на всё; берём с запасом.
   const LIMIT = 4500000;
   const NO_SPACE = 'не сохранено — мало места в браузере';
@@ -2888,10 +2896,11 @@ SEEDS.push(st => {
 // Экраны — 60-leads.js (раздел «Лиды»), 56-deals.js (сделки), 67-settings-leads.js (настройки); они зовут только это ядро.
 
 const Leads = (() => {
-  // Откуда пришёл лид и как он подписан; «phone» и «mail» — вход из телефонии и почты (схема leads).
-  const SOURCE = { site: 'сайт', bitrix: 'Битрикс24', phone: 'телефон', mail: 'почта' };
+  // Откуда пришёл лид и как он подписан; «phone», «mail» и «other» — лид, заведённый руками (форма «Новый лид»).
+  // Порядок — как в форме: звонок, почта, сайт, Битрикс24, другое.
+  const SOURCE = { phone: 'звонок', mail: 'почта', site: 'сайт', bitrix: 'Битрикс24', other: 'другое' };
   const TYPE = { b2b: 'B2B', b2c: 'B2C' };
-  // Откуда принимаем лиды — выбор в «Настройки → Лиды» (st.leadSource); подписи вариантов выбора.
+  // Откуда принимаем лиды — выбор в «Настройки → Лиды и сделки» (st.leadSource); подписи вариантов выбора.
   const SOURCES = { bitrix: 'Битрикс24', site: 'Сайт напрямую', both: 'Оба' };
   // Этапы воронки лидов, которых касаются действия, — по id (названия можно переименовать).
   const ST_CONTACTED = 'contacted', ST_QUALIFIED = 'qualified', ST_DEAL = 'deal', ST_LOST = 'lost';
@@ -2917,7 +2926,8 @@ const Leads = (() => {
     return prefix + '-' + (n + 1);
   }
 
-  const log = (lead, now, by, text) => { lead.history.push({ at: now, by: by || null, text }); };
+  // start — запись о приходе лида (как пришёл, кем заведён, кому достался): сама по себе действием с лидом не считается
+  const log = (lead, now, by, text, start) => { lead.history.push(start ? { at: now, by: by || null, text, start: true } : { at: now, by: by || null, text }); };
 
   // Как называть лид в тексте: компания, имя, телефон, почта — что есть.
   const title = lead => lead.company || lead.name || lead.phone || lead.email || 'нет данных: имя и контакт';
@@ -2954,9 +2964,10 @@ const Leads = (() => {
   const route = (st, lead) => pick(st, classify(lead));
 
   // Новый лид: тип, менеджер, первый этап воронки лидов, история. Уведомление вида «lead» — назначенному
-  // менеджеру и директору; opts.silent — без уведомления (демо-данные).
+  // менеджеру, директору и РОП; opts.silent — без уведомления (демо-данные); opts.by — лид завёл человек руками
+  // (в истории он назван). data.clientId — клиент, к которому лид привязан (существование проверяет add).
   function create(st, data, now, opts) {
-    const source = data.source;
+    const source = data.source, by = (opts && opts.by) || null;
     if (!SOURCE[source]) throw new Error(`Неизвестный источник лида: ${source}`);
     const pipe = Pipes.of(st, 'leads')[0];
     if (!pipe) throw new Error('Нет воронки лидов');
@@ -2971,17 +2982,76 @@ const Leads = (() => {
     };
     lead.type = classify(lead);
     lead.managerId = route(st, lead);
-    log(lead, now, null, `Лид пришёл: ${SOURCE[source]}`);
-    if (lead.managerId) log(lead, now, null, `Назначен автоматически: ${nameOf(st, lead.managerId)} (${TYPE[lead.type]})`);
+    log(lead, now, by, by ? `Заведён вручную: ${SOURCE[source]}` : `Лид пришёл: ${SOURCE[source]}`, true);
+    const client = data.clientId ? Clients.byId(st, data.clientId) : null;
+    if (client) {
+      lead.clientId = client.id;
+      log(lead, now, by, `Привязан к клиенту ${client.id}: ${client.name}`, true);
+    }
+    if (lead.managerId) log(lead, now, null, `Назначен автоматически: ${nameOf(st, lead.managerId)} (${TYPE[lead.type]})`, true);
     else log(lead, now, null, lead.type
       ? `Нераспределённый: нет менеджера ${TYPE[lead.type]}`
-      : 'Нераспределённый: нет ни компании, ни ИНН, ни телефона, ни почты');
+      : 'Нераспределённый: нет ни компании, ни ИНН, ни телефона, ни почты', true);
     st.leads.push(lead);
     if (!(opts && opts.silent)) {
       const who = lead.managerId ? `менеджер — ${nameOf(st, lead.managerId)}` : 'нераспределённый';
-      Notify.push(st, 'lead', null, `Новый лид ${lead.id} (${SOURCE[source]}): ${title(lead)}${lead.type ? ', ' + TYPE[lead.type] : ''}, ${who}.`, now, lead.managerId ? [lead.managerId] : []);
+      Notify.push(st, 'lead', by, `Новый лид ${lead.id} (${SOURCE[source]}): ${title(lead)}${lead.type ? ', ' + TYPE[lead.type] : ''}, ${who}.`, now, lead.managerId ? [lead.managerId] : []);
     }
     return lead;
+  }
+
+  // Завести лид руками (форма «Новый лид»): data — как у create, плюс clientId (привязка к найденному клиенту).
+  // Нужны известный источник и хоть что-то о клиенте (имя, телефон, почта, компания или ИНН); заводит тот, у кого есть
+  // право «лиды». Тип и менеджер — как у любого лида (classify, route). → {ok, lead, reason}
+  function add(st, data, by, now) {
+    const d = data || {}, no = reason => ({ ok: false, lead: null, reason });
+    if (!SOURCE[d.source]) return no('Выберите, откуда пришёл лид.');
+    if (!personOf(st, by) || !Perms.can(st, by, 'leads')) return no('Заводить лиды могут те, у кого есть право на раздел «Лиды».');
+    if (!['name', 'phone', 'email', 'company', 'inn'].some(k => filled(d[k]))) return no('Укажите хотя бы имя, телефон, почту или компанию.');
+    if (filled(d.clientId) && !Clients.byId(st, d.clientId)) return no('Клиента, к которому привязываете лид, нет.');
+    return { ok: true, lead: create(st, d, now, { by }), reason: '' };
+  }
+
+  // ——— время реакции ———
+  // Сколько минут новый лид может лежать без единого действия (Настройки → Лиды и сделки): st.leadWaitMin, по умолчанию 15.
+  const WAIT_DEFAULT = 15, WAIT_MAX = 10080, MINUTE = 6e4;
+  const waitMin = st => (Number(st.leadWaitMin) >= 1 ? Number(st.leadWaitMin) : WAIT_DEFAULT);
+  // Поменять порог: целое число минут от 1 до 10080 (неделя). → {ok, value, reason}
+  function setWaitMin(st, value) {
+    const s = String(value == null ? '' : value).trim();
+    if (!/^\d+$/.test(s) || +s < 1 || +s > WAIT_MAX) return { ok: false, value: waitMin(st), reason: `Напишите целое число минут от 1 до ${WAIT_MAX}.` };
+    st.leadWaitMin = +s;
+    return { ok: true, value: +s, reason: '' };
+  }
+  // «15 мин», «1 ч 5 мин», «2 д 3 ч» — одна фраза об ожидании на экране и в уведомлении
+  function waitText(min) {
+    if (min < 60) return `${min} мин`;
+    const h = Math.floor(min / 60), m = min % 60;
+    if (h < 24) return m ? `${h} ч ${m} мин` : `${h} ч`;
+    const d = Math.floor(h / 24), hh = h % 24;
+    return hh ? `${d} д ${hh} ч` : `${d} д`;
+  }
+  // Было ли с лидом хоть одно действие: запись от человека в истории (кроме записей о приходе лида), дело или запись в ленте.
+  const touched = (st, lead) => (lead.history || []).some(h => h.by && !h.start)
+    || (st.acts || []).some(a => a.ref.t === 'lead' && a.ref.id === lead.id)
+    || (st.feed || []).some(e => e.by && e.ref.t === 'lead' && e.ref.id === lead.id);
+  // Сколько минут лид ждёт реакции на момент now, а если не ждёт — null. Ждёт: лид открыт, всё ещё на первом этапе воронки,
+  // с ним не сделано ни одного действия и прошло больше порога. Единственное определение «ждёт» — для метки и уведомления.
+  function waiting(st, lead, now) {
+    const pipe = lead && pipeOf(st, lead), gone = new Date(now).getTime() - new Date(lead && lead.at).getTime();
+    if (!pipe || !(gone > waitMin(st) * MINUTE) || !isOpen(st, lead) || lead.stageId !== firstOf(pipe).id || touched(st, lead)) return null;
+    return Math.floor(gone / MINUTE);
+  }
+  // Разослать уведомление «leadWait» (РОП) о лидах, которые ждут, — по одному разу на лид (lead.waitNoted). → [уведомление…]
+  function notifyWaiting(st, now) {
+    const out = [];
+    for (const l of st.leads || []) {
+      const min = l.waitNoted ? null : waiting(st, l, now);
+      if (min === null) continue;
+      l.waitNoted = now;
+      out.push(Notify.push(st, 'leadWait', null, `Лид ${l.id} ждёт ${waitText(min)}: ${title(l)} — с ним никто не работал. ${l.managerId ? 'Менеджер — ' + nameOf(st, l.managerId) : 'Менеджера нет, лид нераспределённый.'}`, now));
+    }
+    return out;
   }
 
   // Можно ли человеку взять лид себе: лид открыт и человек его видит (право «лиды», тип не чужой),
@@ -3112,7 +3182,8 @@ const Leads = (() => {
   }
 
   // Создать сделку из лида: воронка своего типа, первый этап, тот же менеджер, контакт и текст заявки. Клиент сделки —
-  // уже заведённый с тем же ИНН, телефоном или почтой, иначе новый (Clients.findOrCreate); лид и сделка ссылаются на него.
+  // тот, к которому лид привязан; иначе уже заведённый с тем же ИНН, телефоном или почтой; иначе новый (Clients.findOrCreate);
+  // лид и сделка ссылаются на него. Открытые дела лида переходят в сделку (Acts.moveOpen).
   // Лид уходит в «Сделка создана» и ссылается на сделку. Возвращает id сделки; null — если нельзя
   // (лид закрыт, сделка уже есть, нет менеджера или тип неизвестен).
   function toDeal(st, leadId, by, now) {
@@ -3123,10 +3194,11 @@ const Leads = (() => {
     if (!pipe || !done) return null;
     st.deals = st.deals || [];
     // Клиент сделки: тот же ИНН, телефон или почта — уже заведённый клиент, иначе новый (Clients.findOrCreate)
-    const { client } = Clients.findOrCreate(st, {
+    // (клиент, к которому лид привязан при заведении, — он и есть клиент сделки)
+    const client = (lead.clientId && Clients.byId(st, lead.clientId)) || Clients.findOrCreate(st, {
       name: lead.company || lead.name || 'нет данных: клиент', kind: lead.company || lead.inn ? 'company' : 'person',
       inn: lead.inn, phone: lead.phone, email: lead.email, managerId: lead.managerId, demo: lead.demo,
-    }, by, now);
+    }, by, now).client;
     const d = {
       id: nextId(st.deals, 'Д', 300),
       clientId: client.id, client: client.name,
@@ -3141,6 +3213,8 @@ const Leads = (() => {
     };
     st.deals.push(d);
     Feed.add(st, { t: 'deal', id: d.id }, { kind: 'create', text: `Сделка создана из лида ${lead.id}`, by, at: now });
+    // открытые дела лида едут в сделку вместе с ним: следующий шаг не теряется
+    Acts.moveOpen(st, { t: 'lead', id: lead.id }, { t: 'deal', id: d.id }, by, now);
     lead.type = type;
     lead.stageId = done.id;
     lead.dealId = d.id;
@@ -3169,8 +3243,11 @@ const Leads = (() => {
     return all.filter(d => d.managerId === personId || (!!scope && d.type === scope));
   }
 
-  return { SOURCE, SOURCES, TYPE, STAGE, nextId, firstOf, title, managers, classify, route, pick, openCount, create, canTake, take, contacted, close, move, canWork, can, fresh, allows, setSource, canTransfer, transfer, toDeal, visible, dealsVisible };
+  return { SOURCE, SOURCES, TYPE, STAGE, nextId, firstOf, title, managers, classify, route, pick, openCount, create, add, waitMin, setWaitMin, waitText, waiting, notifyWaiting, canTake, take, contacted, close, move, canWork, can, fresh, allows, setSource, canTransfer, transfer, toDeal, visible, dealsVisible };
 })();
+
+// Вид уведомления «Лид ждёт» в «Уведомления»: подпись и значок (список видов — KIND в 20-model.js)
+KIND.leadWait = { l: 'Лид ждёт', ic: 'clock', c: 'bad' };
 
 // Шаг SEEDS: роль РОП и демо-человек с этой ролью. РОП распределяет лиды (право leadsAssign) и сам лидов не получает:
 // у роли нет типа (scope), поэтому Leads.route и Leads.pick его не выбирают. Шаг стоит до лидов — чтобы человек уже был в команде.
@@ -3186,6 +3263,7 @@ SEEDS.push(st => {
 // менеджера выбирает route, поэтому «Нераспределённые» — лиды без компании и контакта.
 SEEDS.push(st => {
   st.leadSource = 'both';
+  st.leadWaitMin = 15;
   st.leads = [];
   const pad = (n, w) => String(n).padStart(w, '0');
   const COMPANIES = ['ООО „Пример-Строй“', 'ИП Пример-Агро', 'КФХ „Пример“', 'ООО „Пример-Сервис“', 'АО „Пример-Энерго“', 'ООО „Пример-Склад“', 'ООО „Пример-Дом“', 'ООО „Пример-Транс“'];
@@ -3216,6 +3294,7 @@ SEEDS.push(st => {
     const group = kind === 'N' ? 'none' : kind[0] === 'B' || kind === 'I' ? 'b2b' : 'b2c';
     data.text = TEXTS[group][k % TEXTS[group].length];
     const lead = Leads.create(st, data, at, { silent: true });
+    lead.waitNoted = at;     // демо-лиды старые: «ждёт» на них видно, но уведомление РОП при первом запуске не сыплется
     const m = lead.managerId;
     if (stage !== 'new') Leads.contacted(st, lead.id, m, later(1));
     if (stage === 'qualified' || stage === 'deal') Leads.move(st, lead.id, 'qualified', m, later(2));
@@ -3456,6 +3535,7 @@ const Notify = (() => {
     lead: ['director', 'rop'],                                 // новый лид — директору и РОП, плюс менеджер, кому он ушёл (extraPersons)
     mail: [],                                                  // новое письмо — те, кто видит ящик (extraPersons)
     act: [],                                                   // напоминание о деле — ответственный (extraPersons)
+    leadWait: ['rop'],                                         // новый лид долго без действий — РОП
   };
 
   const wants = (st, personId, kind) => {
@@ -3898,7 +3978,7 @@ const Feed = (() => {
   // Виды записей и подписи. Модули дел и отправок добавляют свои виды сюда же: Feed.KINDS.act = 'Дело'.
   const KINDS = {
     comment: 'Комментарий', create: 'Создано', stage: 'Этап', field: 'Изменение', item: 'Товары',
-    reserve: 'Резерв', win: 'Успешно', lose: 'Провалена', msg: 'Сообщение клиенту', history: 'История', act: 'Дело выполнено',
+    reserve: 'Резерв', win: 'Успешно', lose: 'Провалена', msg: 'Сообщение клиенту', history: 'История', act: 'Дело выполнено', actmove: 'Дела из лида',
   };
   // Что есть ссылка на карточку и как её назвать в ленте клиента.
   const REF = { deal: 'Сделка', lead: 'Лид', client: 'Клиент', dispatch: 'Отправка' };
@@ -4119,11 +4199,11 @@ function feedWire() {
   };
 }
 
-// Раз в минуту (и при каждой перерисовке — в render()): напоминания, которым пора. Перерисовывает только колокол и меню,
-// чтобы не сбить ввод в открытой форме.
+// Раз в минуту (и при каждой перерисовке — в render()): напоминания, которым пора, и лиды, которые ждут дольше положенного
+// (РОП). Перерисовывает только колокол и меню, чтобы не сбить ввод в открытой форме.
 function actsTick() {
   if (!S) return;
-  const made = Acts.notify(S, new Date());
+  const now = new Date(), made = [...Acts.notify(S, now), ...Leads.notifyWaiting(S, now)];
   if (!made.length) return;
   updBell(); renderSide(); save();
   const mine = made.filter(n => n.to.includes(S.me));
@@ -4761,6 +4841,15 @@ const Acts = (() => {
     const rs = refs(st, ref, personId);
     return all(st).filter(a => !a.doneAt && rs.some(r => same(r, a.ref))).sort(byDue);
   }
+  // Перенести открытые дела с одной карточки на другую (лид стал сделкой): меняется ref, в ленту новой карточки — одна запись
+  // со списком. Выполненные дела остаются где были. → [перенесённые дела, ближайшее первым]
+  function moveOpen(st, from, to, by, now) {
+    const moved = all(st).filter(a => !a.doneAt && same(a.ref, from)).sort(byDue);
+    if (!moved.length) return [];
+    moved.forEach(a => { a.ref = { t: to.t, id: to.id }; });
+    Feed.add(st, to, { kind: 'actmove', by, at: now, text: `Из ${(Feed.REF[from.t] || 'карточки').toLowerCase()} ${from.id} перенесены открытые дела (${moved.length}): ${moved.map(a => `${label(a)} «${a.title}»`).join('; ')}.` });
+    return moved;
+  }
   // Ближайшее открытое дело или null.
   const next = (st, ref, personId) => open(st, ref, personId)[0] || null;
   // «Нет следующего шага»: карточка жива, а открытых дел у неё нет.
@@ -4805,7 +4894,7 @@ const Acts = (() => {
     });
   }
 
-  return { TYPES, REMINDS, QUICK, REFS, byId, alive, refTitle, label, quick, plan, done, doneText, open, next, noNext, overdue, matches, counts, due, notify };
+  return { TYPES, REMINDS, QUICK, REFS, byId, alive, refTitle, label, quick, plan, done, doneText, moveOpen, open, next, noNext, overdue, matches, counts, due, notify };
 })();
 
 // Вид уведомления «Дела» в «Уведомления»: подпись и значок (список видов — KIND в 20-model.js)
@@ -5211,7 +5300,7 @@ function render(){
   try{const h=hashView();if(h&&h!==S.view) history.replaceState(null,'','#'+S.view)}catch(_){}
   // открыл раздел «Уведомления» — свои прочитаны (подсвечены один раз, при этой отрисовке)
   if(ok&&S.view==='notifications') Notify.markRead(S,S.me);
-  Acts.notify(S,new Date());
+  Acts.notify(S,new Date());Leads.notifyWaiting(S,new Date());
   renderSide();
   byId('ttl').textContent=n.label;
   byId('role').innerHTML=whoOptions();
@@ -6527,11 +6616,14 @@ const dealTotalText=d=>{
   const np=Deals.noPrice(d).length;
   return np?`В итог не вошли строки без цены: ${np}. Впишите цену — и они посчитаются.`:((d.items||[]).length?'':(Deals.total(d)?'Строк нет: показана сумма, вписанная в «Деталях».':'Строк нет — добавьте товары.'));
 };
+// Сколько товара сделки ещё можно зарезервировать: сумма всех её строк с этим товаром (Deals.lined) минус уже в резерве.
+// Резерв ставится по товару, а не по строке, поэтому две строки одного товара считаются вместе.
+const dealLeft=(d,productId)=>Math.round((Deals.lined(d,productId)-Deals.reserved(S,d,productId))*100)/100;
 function dealLine(d,it,i,edit,pr){
   const id=esc(d.id),p=it.productId?product(it.productId):null,name=Deals.itemName(S,it);
   let info,res='',btn='';
   if(p){
-    const k=stockOf(p.id),held=Deals.reserved(S,d,p.id),left=it.qty-held;
+    const k=stockOf(p.id),held=Deals.reserved(S,d,p.id),left=dealLeft(d,p.id);
     info=`<small class="dl-st">${k.known?`свободно ${qtyOf(Math.max(0,k.free),p)}`:'остаток: нет данных'}${held?` · в резерве по сделке: ${qtyOf(held,p)}`:''}</small>`;
     res=S.reserves.filter(r=>r.dealId===d.id&&r.productId===p.id).map(r=>`<span class="chip dl-r">${srcPill(r)}<span>${qtyOf(r.qty,p)}${r.src==='stock'?' · '+esc(cellText(r.entityId,r.cityId)):''}${r.until?' · до '+fD(r.until):''}</span>${edit&&can('reserve')?`<button type="button" class="btn sm ghost" data-act="deal-unres" data-id="${id}" data-rid="${esc(r.id)}">Снять</button>`:''}</span>`).join('');
     if(edit&&can('reserve')&&left>0) btn=`<button type="button" class="btn sm" data-act="deal-res" data-id="${id}" data-i="${i}">${ic('lock')}Зарезервировать</button>`;
@@ -6599,10 +6691,10 @@ MODALS.dealLose=id=>{
 MODALS.dealReserve=key=>{
   const [did,i]=String(key).split(':'),d=Deals.byId(S,did),it=d&&(d.items||[])[+i],p=it&&it.productId?product(it.productId):null;
   if(!d||!it||!p) return `${mHead('Резерв')}<div class="modal-b"><p class="m0">Строка не найдена или это своя строка — резервировать нечего.</p></div>`;
-  const held=Deals.reserved(S,d,p.id),left=it.qty-held,cell=Stock.bestCell(S,p.id),k=stockOf(p.id);
+  const held=Deals.reserved(S,d,p.id),all=Deals.lined(d,p.id),left=dealLeft(d,p.id),cell=Stock.bestCell(S,p.id),k=stockOf(p.id);
   const opt=(list,none,cur)=>[...list.map(x=>[x.id,x.name]),[Stock.ANY,none]].map(([v,n])=>`<option value="${esc(v)}"${v===cur?' selected':''}>${esc(n)}</option>`).join('');
   return `<form data-form="deal-reserve" data-id="${esc(did)}" data-i="${+i}" novalidate>${mHead('Зарезервировать: '+esc(p.name))}<div class="modal-b">
-    <p class="m0">Сделка ${esc(did)} · ${esc(d.client)}. В строке ${qtyOf(it.qty,p)}, уже в резерве ${num(held)}, осталось ${qtyOf(left,p)}. Свободно на складе: ${k.known?qtyOf(Math.max(0,k.free),p):'нет данных'} (${esc(stockNote())}).</p>
+    <p class="m0">Сделка ${esc(did)} · ${esc(d.client)}. ${all!==it.qty?`В сделке по этому товару ${qtyOf(all,p)} (в этой строке ${num(it.qty)})`:`В строке ${qtyOf(it.qty,p)}`}, уже в резерве ${num(held)}, осталось ${qtyOf(left,p)}. Свободно на складе: ${k.known?qtyOf(Math.max(0,k.free),p):'нет данных'} (${esc(stockNote())}).</p>
     <div class="grid2"><div class="field"><label for="dr-ent">Юрлицо</label><select id="dr-ent" class="inp" data-on="deal-rs" data-pid="${esc(p.id)}">${opt(S.entities,Stock.NO_ENTITY,cell.entityId)}</select></div><div class="field"><label for="dr-city">Город</label><select id="dr-city" class="inp" data-on="deal-rs" data-pid="${esc(p.id)}">${opt(S.cities,Stock.NO_CITY,cell.cityId)}</select></div>
       <div class="field"><label for="dr-qty">Сколько</label><input id="dr-qty" class="inp" type="number" min="1" step="any" value="${esc(left)}" inputmode="decimal"></div><div class="field"><label for="dr-until">Резерв до</label><input id="dr-until" class="inp" type="date" value="${iso(day(14))}"></div></div>
     <p class="hint" id="dr-max">${esc(maxText(p.id,'stock',cell.entityId,cell.cityId))}</p>
@@ -6914,17 +7006,22 @@ const leadTone=l=>l.stageId===Leads.STAGE.lost?'bad':l.stageId===Leads.STAGE.dea
 const leadStagePill=l=>`<span class="pill sm ${leadTone(l)}">${esc(stageName(l))}</span>`;
 const leadMgrCell=l=>l.managerId?esc(leadWho(l.managerId)):'<span class="pill sm warn">Нераспределённый</span>';
 const leadDemoPill=l=>l.demo?' <span class="pill sm">пример</span>':'';
+// «ждёт N мин»: лид на первом этапе, с которым никто не работал дольше порога. Считает Leads.waiting; now — подмена в тестах
+function leadWaitHtml(l,now=new Date(),st=S){
+  const m=Leads.waiting(st,l,now);
+  return m===null?'':`<span class="pill sm bad lead-wait" title="С лидом никто не работал дольше ${Leads.waitMin(st)} мин">${ic('clock')}ждёт ${esc(Leads.waitText(m))}</span>`;
+}
 
 // ——— список ———
 function leadTable(list){
-  const rows=list.map(l=>`<tr class="click" data-act="open-lead" data-id="${esc(l.id)}" tabindex="0"><td><div class="pname"><span>${esc(Leads.title(l))}${leadDemoPill(l)}</span><small class="mono">${esc(l.id)}<span class="l-show-s"> · ${esc(Leads.SOURCE[l.source]||l.source)}${l.type?' · '+Leads.TYPE[l.type]:''}</span></small></div></td><td class="l-hide-s">${leadSrcPill(l)}</td><td class="l-hide-s">${leadTypePill(l)}</td><td>${leadStagePill(l)}${actNextHtml({t:'lead',id:l.id})}</td><td>${leadMgrCell(l)}</td><td class="l-hide-s nowrap">${esc(fWhen(l.at))}</td></tr>`).join('');
+  const rows=list.map(l=>`<tr class="click" data-act="open-lead" data-id="${esc(l.id)}" tabindex="0"><td><div class="pname"><span>${esc(Leads.title(l))}${leadDemoPill(l)}</span><small class="mono">${esc(l.id)}<span class="l-show-s"> · ${esc(Leads.SOURCE[l.source]||l.source)}${l.type?' · '+Leads.TYPE[l.type]:''}</span></small></div></td><td class="l-hide-s">${leadSrcPill(l)}</td><td class="l-hide-s">${leadTypePill(l)}</td><td>${leadStagePill(l)}${leadWaitHtml(l)}${actNextHtml({t:'lead',id:l.id})}</td><td>${leadMgrCell(l)}</td><td class="l-hide-s nowrap">${esc(fWhen(l.at))}</td></tr>`).join('');
   return `<section class="card clip"><div class="xs"><table class="tbl"><thead><tr><th>Лид</th><th class="l-hide-s">Источник</th><th class="l-hide-s">Тип</th><th>Этап</th><th>Менеджер</th><th class="l-hide-s">Пришёл</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
 }
 
 // ——— воронка ———
 function leadCard(l){
   const mgr=l.managerId?`<span class="who">${av(person(l.managerId),'xs')}${esc(leadWho(l.managerId))}</span>`:'<span class="pill sm warn">Нераспределённый</span>';
-  return `<article class="tcard lcard${isDone(l)?' done':''}" draggable="true" data-drag="${esc(l.id)}" data-act="open-lead" data-id="${esc(l.id)}" tabindex="0"><div class="tc-top">${leadSrcPill(l)}${leadTypePill(l)}${l.demo?'<span class="pill sm">пример</span>':''}</div><p class="tc-t">${esc(Leads.title(l))}<small class="mono lc-id">${esc(l.id)}</small></p>${l.text?`<p class="lc-x">${esc(l.text)}</p>`:''}${actNextHtml({t:'lead',id:l.id})}<div class="tc-m">${mgr}<span class="due">${esc(fRel(l.at))}</span></div></article>`;
+  return `<article class="tcard lcard${isDone(l)?' done':''}" draggable="true" data-drag="${esc(l.id)}" data-act="open-lead" data-id="${esc(l.id)}" tabindex="0"><div class="tc-top">${leadSrcPill(l)}${leadTypePill(l)}${l.demo?'<span class="pill sm">пример</span>':''}</div><p class="tc-t">${esc(Leads.title(l))}<small class="mono lc-id">${esc(l.id)}</small></p>${l.text?`<p class="lc-x">${esc(l.text)}</p>`:''}${leadWaitHtml(l)}${actNextHtml({t:'lead',id:l.id})}<div class="tc-m">${mgr}<span class="due">${esc(fRel(l.at))}</span></div></article>`;
 }
 function leadFunnel(list){
   const pipe=leadPipe();
@@ -6940,7 +7037,7 @@ function leadBody(){
   const u=leadSel(),all=Leads.visible(S,S.me),funnel=u.view==='funnel';
   const list=leadFilter(all,u,!funnel);
   const head=`<p class="count"><span>Лидов: <b>${list.length}</b>${list.length!==all.length?` из ${all.length}`:''}</span><span>без менеджера: <b>${leadFreeCount(all)}</b></span></p>`;
-  if(!all.length) return `${head}<section class="card"><p class="empty">Лидов пока нет. Они приходят с сайта и из Битрикса24 — откуда именно, выбирают в «Настройки → Лиды».${can('settings')?' Проверить можно кнопками «Имитация» выше.':''}</p></section>`;
+  if(!all.length) return `${head}<section class="card"><p class="empty">Лидов пока нет. Они приходят с сайта и из Битрикса24 — откуда именно, выбирают в «Настройки → Лиды и сделки».${can('settings')?' Проверить можно кнопками «Имитация» выше.':''}</p></section>`;
   if(!list.length) return `${head}<section class="card"><p class="empty">По этим условиям лидов нет. <button type="button" class="link" data-act="lead-reset">Сбросить поиск и фильтры</button></p></section>`;
   return head+(funnel?`<p class="hint">Перетащите карточку на другой этап или откройте лид и нажмите кнопку. «Сделка создана» заводит сделку, «Отказ» спрашивает причину. Двигать лид может менеджер, который его ведёт, и тот, кто раздаёт лиды (директор, РОП).</p>${leadFunnel(list)}`:leadTable(list));
 }
@@ -6959,7 +7056,7 @@ function vLeads(){
   const sims=can('settings')?`<span class="grow"></span><button type="button" class="btn sm" data-act="lead-sim" data-source="site">${ic('plus')}Имитация: пришёл лид с сайта</button><button type="button" class="btn sm" data-act="lead-sim" data-source="bitrix">${ic('plus')}Имитация: пришёл лид из Битрикса24</button>`:'';
   return `<p class="hint">Лиды — заявки, которые ещё не стали сделками. Новый лид сам уходит менеджеру своего типа: компания или ИНН — B2B, иначе телефон или почта — B2C; кому менеджера не нашлось, тот лежит в «Нераспределённых» — их раздаёт РОП или директор. Заявки здесь пока примерные: настоящего подключения сайта и Битрикса24 нет.</p>
   <div class="bar lbar"><div class="seg" role="group" aria-label="Вид">${[['list','Список'],['funnel','Воронка']].map(([k,l])=>`<button type="button" class="${u.view===k?'on':''}" aria-pressed="${u.view===k}" data-act="lead-view" data-v="${k}">${l}</button>`).join('')}</div>
-    <div class="search-in">${ic('search')}<input id="lead-q" class="inp" type="search" placeholder="Поиск: имя, компания, ИНН, телефон, почта, текст" value="${esc(u.q)}" data-on="lead-q" autocomplete="off" aria-label="Поиск по лидам"></div>${sims}</div>
+    <div class="search-in">${ic('search')}<input id="lead-q" class="inp" type="search" placeholder="Поиск: имя, компания, ИНН, телефон, почта, текст" value="${esc(u.q)}" data-on="lead-q" autocomplete="off" aria-label="Поиск по лидам"></div><button type="button" class="btn pri" data-act="lead-new">${ic('plus')}Новый лид</button>${sims}</div>
   <div class="bar lfilt">${filters}<button type="button" class="fchip${u.manager==='none'?' on':''}" aria-pressed="${u.manager==='none'}" data-act="lead-free">Нераспределённые · ${free}</button><button type="button" class="fchip${u.acts==='none'?' on':''}" aria-pressed="${u.acts==='none'}" data-act="lead-acts" data-k="none">Без дел · ${noActN}</button><button type="button" class="fchip${u.acts==='overdue'?' on':''}" aria-pressed="${u.acts==='overdue'}" data-act="lead-acts" data-k="overdue">Просрочены дела · ${lateN}</button>${dirty?'<button type="button" class="btn ghost sm" data-act="lead-reset">Сбросить</button>':''}</div>
   <div id="lead-body" class="stack-s">${leadBody()}</div>`;
 }
@@ -6976,6 +7073,8 @@ function leadWhy(l,need){
 }
 
 // ——— карточка лида ———
+// «Детали» и «Лента» — как у сделки; в «Ленте» дела («Запланировать», открытые дела) и комментарии (feedHtml)
+const LEAD_TABS=[['details','Детали'],['feed','Лента']];
 function dLead(l){
   const c=Leads.can(S,l.id,S.me),open=!isDone(l);
   const deal=l.dealId?Leads.dealsVisible(S,S.me).find(d=>d.id===l.dealId):null;
@@ -6996,26 +7095,64 @@ function dLead(l){
   const lock=open&&!c.take&&!c.work?`<p class="lock">${ic('lock')}${esc(leadWhy(l,'work'))}</p>`:'';
   const tr=c.transfer?`<form class="rform" data-form="lead-transfer" data-id="${esc(l.id)}" novalidate><p class="sh">Передать</p><div class="field"><label for="lead-tr">Кому</label><select id="lead-tr" class="inp"><optgroup label="Менеджеру">${Leads.managers(S).map(m=>`<option value="m:${esc(m.id)}"${m.id===l.managerId?' selected':''}>${esc(m.name)} — ${Leads.TYPE[Perms.roleOf(S,m.id).scope]}, открытых лидов: ${Leads.openCount(S,m.id)}</option>`).join('')}</optgroup><optgroup label="Типу — менеджеру с меньшей загрузкой"><option value="t:b2b">Тип B2B</option><option value="t:b2c">Тип B2C</option></optgroup></select></div><p class="hint">Новый менеджер получит уведомление, в истории лида останется, кто и кому передал.</p><div><button type="submit" class="btn">Передать</button></div></form>`:'';
   const hist=l.history.slice().reverse().map(h=>`<li><span>${esc(h.text)}</span><small>${esc(h.by?leadWho(h.by):'Система')} · ${esc(fWhen(h.at))}</small></li>`).join('');
-  return {kind:'Лид '+l.id,title:esc(Leads.title(l)),sub:`${esc(Leads.SOURCE[l.source]||l.source)} · ${esc(fWhen(l.at))}`,body:`
-    ${steps}
-    ${acts?`<div class="lead-act">${acts}</div>`:''}${lock}
+  const tab=LEAD_TABS.some(t=>t[0]===S.ui.leadTab)?S.ui.leadTab:'details',nOpen=Acts.open(S,{t:'lead',id:l.id}).length;
+  const tabs=`<div class="dtabs" role="tablist" aria-label="Разделы карточки">${LEAD_TABS.map(([k,v])=>`<button type="button" role="tab" class="dtab${tab===k?' on':''}" aria-selected="${tab===k}" data-act="lead-tab" data-tab="${k}">${v}${k==='feed'&&nOpen?`<b>${nOpen}</b>`:''}</button>`).join('')}</div>`;
+  const wait=Leads.waiting(S,l,new Date()),waitNote=wait===null?'':`<p class="lead-waitnote">${leadWaitHtml(l)}<span>С лидом никто не работал дольше ${Leads.waitMin(S)} мин: нажмите «Взять» или запланируйте звонок во вкладке «Лента».</span></p>`;
+  const details=`
     <dl class="kv"><dt>Источник</dt><dd>${leadSrcPill(l)}${leadDemoPill(l)}</dd><dt>Пришёл</dt><dd>${esc(fWhen(l.at))}</dd><dt>Тип</dt><dd>${leadTypePill(l)}</dd><dt>Менеджер</dt><dd>${leadMgrCell(l)}</dd>
       <dt>Контакт</dt><dd>${l.name?esc(l.name):leadNoData('имя')}</dd><dt>Телефон</dt><dd>${l.phone?esc(l.phone):leadNoData('телефон')}</dd><dt>Почта</dt><dd>${l.email?esc(l.email):leadNoData('почта')}</dd>
       ${l.company?`<dt>Компания</dt><dd>${esc(l.company)}</dd>`:''}${l.inn?`<dt>ИНН</dt><dd>${esc(l.inn)}</dd>`:''}${l.reason?`<dt>Причина отказа</dt><dd>${esc(l.reason)}</dd>`:''}${l.dealId?`<dt>Сделка</dt><dd>${esc(l.dealId)}</dd>`:''}</dl>
     <div><h4 class="sh">Текст заявки</h4><p class="prose">${l.text?esc(l.text):leadNoData('текст заявки')}</p></div>
     ${tr}
-    <div><h4 class="sh">История</h4><ul class="mv">${hist}</ul></div>`};
+    <div><h4 class="sh">История</h4><ul class="mv">${hist}</ul></div>`;
+  return {kind:'Лид '+l.id,title:esc(Leads.title(l)),sub:`${esc(Leads.SOURCE[l.source]||l.source)} · ${esc(fWhen(l.at))}`,body:`
+    ${steps}
+    ${acts?`<div class="lead-act">${acts}</div>`:''}${lock}${waitNote}${tabs}<div class="dpane">${tab==='feed'?feedHtml({t:'lead',id:l.id}):details}</div>`};
 }
 
 // ——— окно «Закрыть лид» ———
+// Причина — из общего списка (Deals.reasons, «Настройки → Лиды и сделки»). Вариант «Другое» открывает поле для своих слов:
+// если такой причины в списке нет, окно добавляет её последней строкой. Список пуст — сразу поле для своих слов.
+const LEAD_OTHER='__other';
+const leadOtherName=list=>list.find(r=>r.trim().toLowerCase()==='другое')||null;
+const leadIsOther=v=>v===LEAD_OTHER||v.trim().toLowerCase()==='другое';
 MODALS.leadLost=id=>{
-  const l=leadById(id);
+  const l=leadById(id),why=Deals.reasons(S);
+  const opts=why.map(r=>`<option value="${esc(r)}">${esc(r)}</option>`).join('')+(leadOtherName(why)?'':`<option value="${LEAD_OTHER}">Другое — своими словами</option>`);
   return `<form data-form="lead-lost" data-id="${esc(id)}" novalidate>${mHead('Закрыть лид '+esc(id))}<div class="modal-b">
     <p class="m0">${l?esc(Leads.title(l)):''}</p>
-    <div class="field"><label for="ll-reason">Причина отказа</label><textarea id="ll-reason" class="inp" rows="3" placeholder="Например: выбрал другого поставщика"></textarea></div>
-    <p class="hint">Лид уйдёт на этап «Отказ», причина запишется в его историю. Вернуть закрытый лид нельзя.</p>
+    <div class="field"><label for="ll-reason">Причина отказа</label><select id="ll-reason" class="inp" data-on="lead-reason">${opts}</select></div>
+    <div class="field" id="ll-other-f"${leadIsOther(why[0]||LEAD_OTHER)?'':' hidden'}><label for="ll-other">Своими словами</label><textarea id="ll-other" class="inp" rows="3" placeholder="Например: выбрал другого поставщика"></textarea></div>
+    <p class="hint">Лид уйдёт на этап «Отказ», причина запишется в его историю. Вернуть закрытый лид нельзя. Список причин правят в «Настройки → Лиды и сделки».</p>
     <p class="err" id="ll-err" hidden></p></div>${mFoot('Закрыть лид')}</form>`;
 };
+// Причина из окна: выбранная из списка, а у «Другое» — то, что написано своими словами
+function leadReasonOf(){
+  const v=byId('ll-reason').value.trim();
+  return leadIsOther(v)?byId('ll-other').value.trim():v;
+}
+
+// ——— окно «Новый лид» ———
+// Тип лида и менеджера ставит ядро (Leads.add → classify, route); до сохранения — подсказка «Похоже, это клиент …»
+// (clientDupHtml из «Клиентов»), и лид можно привязать к найденному. Выбранный клиент хранится в S.ui.leadClient (не сохраняется).
+MODALS.leadNew=()=>{
+  const f=(id,label,html,cls)=>`<div class="field${cls?' '+cls:''}"><label for="ln-${id}">${label}</label>${html}</div>`;
+  const inp=(id,type,dup,mode)=>`<input id="ln-${id}" class="inp" type="${type}"${mode?` inputmode="${mode}"`:''}${dup?' data-on="lead-dup"':''} autocomplete="off">`;
+  return `<form data-form="lead-new" novalidate>${mHead('Новый лид')}<div class="modal-b">
+    <div class="grid2">${f('source','Откуда пришёл',`<select id="ln-source" class="inp">${Object.entries(Leads.SOURCE).map(([k,v])=>`<option value="${k}">${esc(v)}</option>`).join('')}</select>`)}
+      ${f('name','Имя',inp('name','text'))}${f('phone','Телефон',inp('phone','tel',1))}${f('email','Почта',inp('email','email',1))}
+      ${f('company','Компания',inp('company','text'))}${f('inn','ИНН',inp('inn','text',1,'numeric'))}
+      ${f('text','Текст заявки','<textarea id="ln-text" class="inp" rows="3" placeholder="Что просит клиент"></textarea>','span2')}</div>
+    <div id="ln-dup" aria-live="polite">${leadDupHtml()}</div>
+    <p class="hint">Тип лида (B2B или B2C) определится сам: компания или ИНН — B2B, иначе телефон или почта — B2C. Менеджера выберет система. Нужно хотя бы имя, телефон, почта или компания.</p>
+    <p class="err" id="ln-err" hidden></p></div>${mFoot('Завести лид')}</form>`;
+};
+// Подсказка о похожем клиенте по тому, что уже введено; «Выбрать его» из «Клиентов» здесь превращается в «Привязать лид»
+function leadDupHtml(){
+  const v=id=>(byId(id)||{}).value||'',c=S.ui.leadClient&&Clients.byId(S,S.ui.leadClient);
+  if(c) return `<div class="dup" role="status"><p class="dup-t m0">${ic('check')}<span>Лид будет привязан к клиенту <b>${esc(c.name)}</b><small>${esc(c.id)}${c.demo?' · пример':''}</small></span></p><div><button type="button" class="btn sm" data-act="lead-unlink">Не привязывать</button></div></div>`;
+  return clientDupHtml({phone:v('ln-phone'),email:v('ln-email'),inn:v('ln-inn')}).replace(/data-act="dup-pick"([^>]*)>Выбрать его</g,'data-act="lead-link"$1>Привязать лид<');
+}
 
 // ——— действия: каждое — запись в историю (ядро) и короткое подтверждение ———
 // need — что требуется от человека по Leads.can: take, work, deal, transfer
@@ -7044,7 +7181,15 @@ function leadMoveTo(id,stageId){
   return r;
 }
 
-A['open-lead']=el=>openDrawer('lead',el.dataset.id);
+A['open-lead']=el=>{S.ui.leadTab='details';openDrawer('lead',el.dataset.id)};
+A['lead-tab']=el=>{S.ui.leadTab=el.dataset.tab;render()};
+A['lead-new']=()=>{S.ui.leadClient=null;openModal('leadNew')};
+A['lead-link']=el=>{
+  const c=Clients.byId(S,el.dataset.id);if(!c) return;
+  S.ui.leadClient=c.id;const box=byId('ln-dup');if(box) box.innerHTML=leadDupHtml();
+  toast(`Лид будет привязан к существующему клиенту ${c.id}: ${c.name}. Новый клиент не заводится.`);
+};
+A['lead-unlink']=()=>{S.ui.leadClient=null;const box=byId('ln-dup');if(box) box.innerHTML=leadDupHtml()};
 A['lead-view']=el=>{leadU().view=el.dataset.v==='funnel'?'funnel':'list';render()};
 A['lead-free']=()=>{const u=leadU();u.manager=u.manager==='none'?'':'none';render()};
 A['lead-acts']=el=>{const u=leadU();u.acts=u.acts===el.dataset.k?'':el.dataset.k;render()};
@@ -7060,19 +7205,30 @@ ON.input['lead-q']=t=>{
   leadU().q=t.value;
   const box=byId('lead-body');if(box) box.innerHTML=leadBody();
 };
+ON.input['lead-dup']=()=>{const box=byId('ln-dup');if(box) box.innerHTML=leadDupHtml()};
+ON.change['lead-reason']=t=>{const f=byId('ll-other-f');if(f){f.hidden=!leadIsOther(t.value);if(!f.hidden) byId('ll-other').focus()}};
 ON.change['lead-f']=t=>{
   const k=t.dataset.k;if(!Object.hasOwn(LEAD_DEF,k)||k==='view'||k==='q') return;
   leadU()[k]=t.value;render();
 };
 
 FORMS['lead-lost']=f=>{
-  const id=f.dataset.id,reason=byId('ll-reason').value.trim(),l=leadById(id);
+  const id=f.dataset.id,reason=leadReasonOf(),l=leadById(id);
   if(!l) return closeModal();
   if(!reason) return showErr('ll-err','Напишите причину отказа.');
   if(!Leads.can(S,id,S.me).work) return showErr('ll-err',leadWhy(l,'work'));
   if(!Leads.move(S,id,Leads.STAGE.lost,S.me,new Date(),reason)) return showErr('ll-err','Лид не закрылся.');
   closeModal();render();
   toast(`Лид ${id} закрыт. Причина записана в историю: ${reason}.`);
+};
+FORMS['lead-new']=()=>{
+  const v=id=>byId(id).value.trim();
+  const r=Leads.add(S,{source:v('ln-source'),name:v('ln-name'),phone:v('ln-phone'),email:v('ln-email'),company:v('ln-company'),inn:v('ln-inn'),text:v('ln-text'),clientId:S.ui.leadClient||undefined},S.me,new Date());
+  if(!r.ok) return showErr('ln-err',r.reason);
+  const l=r.lead,mine=Leads.visible(S,S.me).some(x=>x.id===l.id);
+  S.ui.leadClient=null;closeModal();render();
+  if(mine){S.ui.leadTab='details';openDrawer('lead',l.id)}
+  toast(`Лид ${l.id} заведён (${Leads.SOURCE[l.source]}).${l.clientId?` Привязан к клиенту ${l.clientId}.`:''}${mine?'':' Он у другого менеджера, поэтому вам не виден.'} ${l.managerId?`Тип: ${Leads.TYPE[l.type]}. Менеджер: ${leadWho(l.managerId)}`:'Менеджера нет — лид нераспределённый.'}`);
 };
 FORMS['lead-transfer']=f=>{
   const id=f.dataset.id,[kind,val]=byId('lead-tr').value.split(':');
@@ -7105,7 +7261,7 @@ const LEAD_SIM=[
 function leadSimulate(source){
   if(!Object.hasOwn(Leads.SOURCE,source)) return null;
   if(!Leads.allows(S,source)){
-    toast(`Источник «${Leads.SOURCE[source]}» сейчас не используется: в «Настройки → Лиды» выбрано «${Leads.SOURCES[S.leadSource]||Leads.SOURCES.both}». Лид не создан.`,'warn');
+    toast(`Источник «${Leads.SOURCE[source]}» сейчас не используется: в «Настройки → Лиды и сделки» выбрано «${Leads.SOURCES[S.leadSource]||Leads.SOURCES.both}». Лид не создан.`,'warn');
     return null;
   }
   const n=(S.leads||[]).filter(l=>l.sim).length+1,k=LEAD_SIM[(n-1)%LEAD_SIM.length],nn=String(n%100).padStart(2,'0');
@@ -7451,7 +7607,8 @@ SETTINGS_TABS.push({id:'ships',label:'Поставки',order:70,ok:()=>can('set
 
 // Настройки → «Лиды и сделки»: откуда приходят лиды — Битрикс24, сайт напрямую или оба. Выбор лежит в S.leadSource и
 // запоминается вместе с остальными данными. Рядом — что ещё живёт в Битриксе и что нужно, чтобы от него отказаться,
-// и список причин отказа (S.lostReasons): его предлагает окно «Провалена» у сделки.
+// время реакции на новый лид (S.leadWaitMin) и список причин отказа (S.lostReasons): его предлагают окна «Провалена» у сделки
+// и «Закрыть» у лида.
 // Подключения в прототипе нет: лиды появляются кнопками «Имитация» (они есть и здесь, и в разделе «Лиды»).
 
 // Что сейчас держит Битрикс24 (слова директора из брифа) и есть ли это в CRM уже сейчас.
@@ -7518,10 +7675,21 @@ function lostReasonsCard(){
     return `<li class="lreason"><input class="inp" value="${esc(r.name)}" data-on="reason-name" data-id="${esc(r.id)}" aria-label="Причина отказа: ${esc(r.name)}" autocomplete="off"><small class="muted">${n?`записана: ${n}`:'пока не использована'}</small><button type="button" class="btn ghost icon sm" data-act="reason-del" data-id="${esc(r.id)}" aria-label="Удалить причину «${esc(r.name)}»">${ic('x')}</button></li>`;
   }).join('');
   return `<section class="card"><div class="card-h"><h3>Причины отказа</h3></div><div class="card-b stack-s">
-    <p class="m0">Этот список предлагает окно «Провалена» у сделки. Причин сейчас: <b>${list.length}</b>.</p>
-    ${list.length?`<ul class="lreasons">${rows}</ul>`:'<p class="hint">Список пуст: при «Провалена» причину придётся писать своими словами.</p>'}
+    <p class="m0">Этот список предлагают окно «Провалена» у сделки и окно «Закрыть» у лида. Причин сейчас: <b>${list.length}</b>.</p>
+    ${list.length?`<ul class="lreasons">${rows}</ul>`:'<p class="hint">Список пуст: при «Провалена» и «Закрыть» причину придётся писать своими словами.</p>'}
     <form class="rform" data-form="reason-add" novalidate><p class="sh">Новая причина</p><div class="lreason-new"><input id="lr-new" class="inp" placeholder="Например: не устроил срок поставки" aria-label="Новая причина отказа" autocomplete="off"><button type="submit" class="btn">${ic('plus')}Добавить</button></div><p class="err" id="lr-err" hidden></p></form>
     <p class="hint">Удалить или переименовать причину можно в любой момент: у уже проваленных сделок остаётся тот текст, который был записан.</p>
+  </div></section>`;
+}
+
+// ——— время реакции ———
+// Лид на первом этапе, с которым никто не работал дольше этого времени, получает метку «ждёт N мин» в списке и воронке,
+// а РОП — уведомление (один раз на лид). Что считать «ждёт» — Leads.waiting; здесь только поле и число ждущих сейчас.
+function leadWaitCard(){
+  const now=new Date(),n=(S.leads||[]).filter(l=>Leads.waiting(S,l,now)!==null).length,ro=!can('settings');
+  return `<section class="card"><div class="card-h"><h3>Время реакции на новый лид</h3></div><div class="card-b stack-s">
+    <div class="field lwait"><label for="lead-wait">Новый лид ждёт не дольше, мин</label><input id="lead-wait" class="inp" type="number" min="1" max="10080" step="1" inputmode="numeric" value="${esc(Leads.waitMin(S))}" data-on="lead-wait"${ro?' disabled':''}></div>
+    <p class="hint">Если лид лежит на первом этапе дольше этого времени и с ним не сделано ни одного действия (никто не взял, не позвонил, не запланировал дело), в списке и воронке у него появляется метка «ждёт N мин», а РОП получает уведомление — один раз на лид. Сейчас ждут: <b>${n}</b>. Изначально — 15 минут.</p>
   </div></section>`;
 }
 
@@ -7540,6 +7708,7 @@ function vLeadSettings(){
     <div class="bar"><button type="button" class="btn sm" data-act="lead-sim" data-source="site">${ic('plus')}Имитация: пришёл лид с сайта</button><button type="button" class="btn sm" data-act="lead-sim" data-source="bitrix">${ic('plus')}Имитация: пришёл лид из Битрикса24</button></div>
     <p class="hint">Если источник выключен, его кнопка лид не создаёт и сообщает, что источник сейчас не используется.</p>
   </div></section>
+  ${leadWaitCard()}
   ${lostReasonsCard()}
   <section class="card"><div class="card-h"><h3>Что ещё живёт в Битриксе24</h3></div><div class="card-b stack-s">
     <p class="m0">Сейчас в Битриксе24: «почта, задачи», лиды с сайта, лиды и сделки, телефония или чаты.</p>
@@ -7555,6 +7724,14 @@ ON.change['lead-source']=t=>{
   if(!Leads.setSource(S,t.value)){toast('Такого источника лидов нет.','warn');return}
   render();
   toast(was===S.leadSource?`Источник лидов: «${Leads.SOURCES[S.leadSource]}».`:`Источник лидов теперь «${Leads.SOURCES[S.leadSource]}». Выбор сохранён.`);
+};
+
+ON.change['lead-wait']=t=>{
+  if(!can('settings')){toast('Менять время реакции могут те, у кого есть право на «Настройки».','warn');render();return}
+  const r=Leads.setWaitMin(S,t.value);
+  if(!r.ok){toast(r.reason,'warn');render();return}
+  render();
+  toast(`Новый лид ждёт не дольше ${r.value} мин. Выбор сохранён.`);
 };
 
 // Причины отказа: добавить, переименовать, убрать. Каждое действие — короткое подтверждение; права — как у вкладки («Настройки»)

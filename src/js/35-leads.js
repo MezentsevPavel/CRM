@@ -7,10 +7,11 @@
 // Экраны — 60-leads.js (раздел «Лиды»), 56-deals.js (сделки), 67-settings-leads.js (настройки); они зовут только это ядро.
 
 const Leads = (() => {
-  // Откуда пришёл лид и как он подписан; «phone» и «mail» — вход из телефонии и почты (схема leads).
-  const SOURCE = { site: 'сайт', bitrix: 'Битрикс24', phone: 'телефон', mail: 'почта' };
+  // Откуда пришёл лид и как он подписан; «phone», «mail» и «other» — лид, заведённый руками (форма «Новый лид»).
+  // Порядок — как в форме: звонок, почта, сайт, Битрикс24, другое.
+  const SOURCE = { phone: 'звонок', mail: 'почта', site: 'сайт', bitrix: 'Битрикс24', other: 'другое' };
   const TYPE = { b2b: 'B2B', b2c: 'B2C' };
-  // Откуда принимаем лиды — выбор в «Настройки → Лиды» (st.leadSource); подписи вариантов выбора.
+  // Откуда принимаем лиды — выбор в «Настройки → Лиды и сделки» (st.leadSource); подписи вариантов выбора.
   const SOURCES = { bitrix: 'Битрикс24', site: 'Сайт напрямую', both: 'Оба' };
   // Этапы воронки лидов, которых касаются действия, — по id (названия можно переименовать).
   const ST_CONTACTED = 'contacted', ST_QUALIFIED = 'qualified', ST_DEAL = 'deal', ST_LOST = 'lost';
@@ -36,7 +37,8 @@ const Leads = (() => {
     return prefix + '-' + (n + 1);
   }
 
-  const log = (lead, now, by, text) => { lead.history.push({ at: now, by: by || null, text }); };
+  // start — запись о приходе лида (как пришёл, кем заведён, кому достался): сама по себе действием с лидом не считается
+  const log = (lead, now, by, text, start) => { lead.history.push(start ? { at: now, by: by || null, text, start: true } : { at: now, by: by || null, text }); };
 
   // Как называть лид в тексте: компания, имя, телефон, почта — что есть.
   const title = lead => lead.company || lead.name || lead.phone || lead.email || 'нет данных: имя и контакт';
@@ -73,9 +75,10 @@ const Leads = (() => {
   const route = (st, lead) => pick(st, classify(lead));
 
   // Новый лид: тип, менеджер, первый этап воронки лидов, история. Уведомление вида «lead» — назначенному
-  // менеджеру и директору; opts.silent — без уведомления (демо-данные).
+  // менеджеру, директору и РОП; opts.silent — без уведомления (демо-данные); opts.by — лид завёл человек руками
+  // (в истории он назван). data.clientId — клиент, к которому лид привязан (существование проверяет add).
   function create(st, data, now, opts) {
-    const source = data.source;
+    const source = data.source, by = (opts && opts.by) || null;
     if (!SOURCE[source]) throw new Error(`Неизвестный источник лида: ${source}`);
     const pipe = Pipes.of(st, 'leads')[0];
     if (!pipe) throw new Error('Нет воронки лидов');
@@ -90,17 +93,76 @@ const Leads = (() => {
     };
     lead.type = classify(lead);
     lead.managerId = route(st, lead);
-    log(lead, now, null, `Лид пришёл: ${SOURCE[source]}`);
-    if (lead.managerId) log(lead, now, null, `Назначен автоматически: ${nameOf(st, lead.managerId)} (${TYPE[lead.type]})`);
+    log(lead, now, by, by ? `Заведён вручную: ${SOURCE[source]}` : `Лид пришёл: ${SOURCE[source]}`, true);
+    const client = data.clientId ? Clients.byId(st, data.clientId) : null;
+    if (client) {
+      lead.clientId = client.id;
+      log(lead, now, by, `Привязан к клиенту ${client.id}: ${client.name}`, true);
+    }
+    if (lead.managerId) log(lead, now, null, `Назначен автоматически: ${nameOf(st, lead.managerId)} (${TYPE[lead.type]})`, true);
     else log(lead, now, null, lead.type
       ? `Нераспределённый: нет менеджера ${TYPE[lead.type]}`
-      : 'Нераспределённый: нет ни компании, ни ИНН, ни телефона, ни почты');
+      : 'Нераспределённый: нет ни компании, ни ИНН, ни телефона, ни почты', true);
     st.leads.push(lead);
     if (!(opts && opts.silent)) {
       const who = lead.managerId ? `менеджер — ${nameOf(st, lead.managerId)}` : 'нераспределённый';
-      Notify.push(st, 'lead', null, `Новый лид ${lead.id} (${SOURCE[source]}): ${title(lead)}${lead.type ? ', ' + TYPE[lead.type] : ''}, ${who}.`, now, lead.managerId ? [lead.managerId] : []);
+      Notify.push(st, 'lead', by, `Новый лид ${lead.id} (${SOURCE[source]}): ${title(lead)}${lead.type ? ', ' + TYPE[lead.type] : ''}, ${who}.`, now, lead.managerId ? [lead.managerId] : []);
     }
     return lead;
+  }
+
+  // Завести лид руками (форма «Новый лид»): data — как у create, плюс clientId (привязка к найденному клиенту).
+  // Нужны известный источник и хоть что-то о клиенте (имя, телефон, почта, компания или ИНН); заводит тот, у кого есть
+  // право «лиды». Тип и менеджер — как у любого лида (classify, route). → {ok, lead, reason}
+  function add(st, data, by, now) {
+    const d = data || {}, no = reason => ({ ok: false, lead: null, reason });
+    if (!SOURCE[d.source]) return no('Выберите, откуда пришёл лид.');
+    if (!personOf(st, by) || !Perms.can(st, by, 'leads')) return no('Заводить лиды могут те, у кого есть право на раздел «Лиды».');
+    if (!['name', 'phone', 'email', 'company', 'inn'].some(k => filled(d[k]))) return no('Укажите хотя бы имя, телефон, почту или компанию.');
+    if (filled(d.clientId) && !Clients.byId(st, d.clientId)) return no('Клиента, к которому привязываете лид, нет.');
+    return { ok: true, lead: create(st, d, now, { by }), reason: '' };
+  }
+
+  // ——— время реакции ———
+  // Сколько минут новый лид может лежать без единого действия (Настройки → Лиды и сделки): st.leadWaitMin, по умолчанию 15.
+  const WAIT_DEFAULT = 15, WAIT_MAX = 10080, MINUTE = 6e4;
+  const waitMin = st => (Number(st.leadWaitMin) >= 1 ? Number(st.leadWaitMin) : WAIT_DEFAULT);
+  // Поменять порог: целое число минут от 1 до 10080 (неделя). → {ok, value, reason}
+  function setWaitMin(st, value) {
+    const s = String(value == null ? '' : value).trim();
+    if (!/^\d+$/.test(s) || +s < 1 || +s > WAIT_MAX) return { ok: false, value: waitMin(st), reason: `Напишите целое число минут от 1 до ${WAIT_MAX}.` };
+    st.leadWaitMin = +s;
+    return { ok: true, value: +s, reason: '' };
+  }
+  // «15 мин», «1 ч 5 мин», «2 д 3 ч» — одна фраза об ожидании на экране и в уведомлении
+  function waitText(min) {
+    if (min < 60) return `${min} мин`;
+    const h = Math.floor(min / 60), m = min % 60;
+    if (h < 24) return m ? `${h} ч ${m} мин` : `${h} ч`;
+    const d = Math.floor(h / 24), hh = h % 24;
+    return hh ? `${d} д ${hh} ч` : `${d} д`;
+  }
+  // Было ли с лидом хоть одно действие: запись от человека в истории (кроме записей о приходе лида), дело или запись в ленте.
+  const touched = (st, lead) => (lead.history || []).some(h => h.by && !h.start)
+    || (st.acts || []).some(a => a.ref.t === 'lead' && a.ref.id === lead.id)
+    || (st.feed || []).some(e => e.by && e.ref.t === 'lead' && e.ref.id === lead.id);
+  // Сколько минут лид ждёт реакции на момент now, а если не ждёт — null. Ждёт: лид открыт, всё ещё на первом этапе воронки,
+  // с ним не сделано ни одного действия и прошло больше порога. Единственное определение «ждёт» — для метки и уведомления.
+  function waiting(st, lead, now) {
+    const pipe = lead && pipeOf(st, lead), gone = new Date(now).getTime() - new Date(lead && lead.at).getTime();
+    if (!pipe || !(gone > waitMin(st) * MINUTE) || !isOpen(st, lead) || lead.stageId !== firstOf(pipe).id || touched(st, lead)) return null;
+    return Math.floor(gone / MINUTE);
+  }
+  // Разослать уведомление «leadWait» (РОП) о лидах, которые ждут, — по одному разу на лид (lead.waitNoted). → [уведомление…]
+  function notifyWaiting(st, now) {
+    const out = [];
+    for (const l of st.leads || []) {
+      const min = l.waitNoted ? null : waiting(st, l, now);
+      if (min === null) continue;
+      l.waitNoted = now;
+      out.push(Notify.push(st, 'leadWait', null, `Лид ${l.id} ждёт ${waitText(min)}: ${title(l)} — с ним никто не работал. ${l.managerId ? 'Менеджер — ' + nameOf(st, l.managerId) : 'Менеджера нет, лид нераспределённый.'}`, now));
+    }
+    return out;
   }
 
   // Можно ли человеку взять лид себе: лид открыт и человек его видит (право «лиды», тип не чужой),
@@ -231,7 +293,8 @@ const Leads = (() => {
   }
 
   // Создать сделку из лида: воронка своего типа, первый этап, тот же менеджер, контакт и текст заявки. Клиент сделки —
-  // уже заведённый с тем же ИНН, телефоном или почтой, иначе новый (Clients.findOrCreate); лид и сделка ссылаются на него.
+  // тот, к которому лид привязан; иначе уже заведённый с тем же ИНН, телефоном или почтой; иначе новый (Clients.findOrCreate);
+  // лид и сделка ссылаются на него. Открытые дела лида переходят в сделку (Acts.moveOpen).
   // Лид уходит в «Сделка создана» и ссылается на сделку. Возвращает id сделки; null — если нельзя
   // (лид закрыт, сделка уже есть, нет менеджера или тип неизвестен).
   function toDeal(st, leadId, by, now) {
@@ -242,10 +305,11 @@ const Leads = (() => {
     if (!pipe || !done) return null;
     st.deals = st.deals || [];
     // Клиент сделки: тот же ИНН, телефон или почта — уже заведённый клиент, иначе новый (Clients.findOrCreate)
-    const { client } = Clients.findOrCreate(st, {
+    // (клиент, к которому лид привязан при заведении, — он и есть клиент сделки)
+    const client = (lead.clientId && Clients.byId(st, lead.clientId)) || Clients.findOrCreate(st, {
       name: lead.company || lead.name || 'нет данных: клиент', kind: lead.company || lead.inn ? 'company' : 'person',
       inn: lead.inn, phone: lead.phone, email: lead.email, managerId: lead.managerId, demo: lead.demo,
-    }, by, now);
+    }, by, now).client;
     const d = {
       id: nextId(st.deals, 'Д', 300),
       clientId: client.id, client: client.name,
@@ -260,6 +324,8 @@ const Leads = (() => {
     };
     st.deals.push(d);
     Feed.add(st, { t: 'deal', id: d.id }, { kind: 'create', text: `Сделка создана из лида ${lead.id}`, by, at: now });
+    // открытые дела лида едут в сделку вместе с ним: следующий шаг не теряется
+    Acts.moveOpen(st, { t: 'lead', id: lead.id }, { t: 'deal', id: d.id }, by, now);
     lead.type = type;
     lead.stageId = done.id;
     lead.dealId = d.id;
@@ -288,8 +354,11 @@ const Leads = (() => {
     return all.filter(d => d.managerId === personId || (!!scope && d.type === scope));
   }
 
-  return { SOURCE, SOURCES, TYPE, STAGE, nextId, firstOf, title, managers, classify, route, pick, openCount, create, canTake, take, contacted, close, move, canWork, can, fresh, allows, setSource, canTransfer, transfer, toDeal, visible, dealsVisible };
+  return { SOURCE, SOURCES, TYPE, STAGE, nextId, firstOf, title, managers, classify, route, pick, openCount, create, add, waitMin, setWaitMin, waitText, waiting, notifyWaiting, canTake, take, contacted, close, move, canWork, can, fresh, allows, setSource, canTransfer, transfer, toDeal, visible, dealsVisible };
 })();
+
+// Вид уведомления «Лид ждёт» в «Уведомления»: подпись и значок (список видов — KIND в 20-model.js)
+KIND.leadWait = { l: 'Лид ждёт', ic: 'clock', c: 'bad' };
 
 // Шаг SEEDS: роль РОП и демо-человек с этой ролью. РОП распределяет лиды (право leadsAssign) и сам лидов не получает:
 // у роли нет типа (scope), поэтому Leads.route и Leads.pick его не выбирают. Шаг стоит до лидов — чтобы человек уже был в команде.
@@ -305,6 +374,7 @@ SEEDS.push(st => {
 // менеджера выбирает route, поэтому «Нераспределённые» — лиды без компании и контакта.
 SEEDS.push(st => {
   st.leadSource = 'both';
+  st.leadWaitMin = 15;
   st.leads = [];
   const pad = (n, w) => String(n).padStart(w, '0');
   const COMPANIES = ['ООО „Пример-Строй“', 'ИП Пример-Агро', 'КФХ „Пример“', 'ООО „Пример-Сервис“', 'АО „Пример-Энерго“', 'ООО „Пример-Склад“', 'ООО „Пример-Дом“', 'ООО „Пример-Транс“'];
@@ -335,6 +405,7 @@ SEEDS.push(st => {
     const group = kind === 'N' ? 'none' : kind[0] === 'B' || kind === 'I' ? 'b2b' : 'b2c';
     data.text = TEXTS[group][k % TEXTS[group].length];
     const lead = Leads.create(st, data, at, { silent: true });
+    lead.waitNoted = at;     // демо-лиды старые: «ждёт» на них видно, но уведомление РОП при первом запуске не сыплется
     const m = lead.managerId;
     if (stage !== 'new') Leads.contacted(st, lead.id, m, later(1));
     if (stage === 'qualified' || stage === 'deal') Leads.move(st, lead.id, 'qualified', m, later(2));

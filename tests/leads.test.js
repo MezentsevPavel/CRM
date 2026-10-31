@@ -826,3 +826,292 @@ test('раздел «Сделки»: менеджер B2C видит тольк�
   asRole(app, 'director');
   assert.ok(app.searchRes('Иванов Сергей').some(r => r.type === 'Сделка'), 'директор не нашёл сделку через поиск');
 });
+
+// ——— таск 10 (кусок 2): лид руками, дубли, дела при «Создать сделку», время реакции ———
+// Ожидаемые значения посчитаны вручную: время — подмена NOW (пятница 31.10.2026, 12:00), порог по умолчанию 15 минут.
+
+const MIN = 6e4;
+const plusMin = n => new Date(NOW.getTime() + n * MIN);
+// объекты из страницы живут в другом окружении vm: для deepEqual их сначала делают обычными
+const plain = x => JSON.parse(JSON.stringify(x));
+
+test('Leads.add: источник «другое» принят, тип и менеджер сами; без источника или без единого контакта — отказ; телефон существующего клиента находит его, привязка ставит clientId', () => {
+  const app = load(), { Leads, Clients } = app, st = mini(app);
+  assert.equal(Leads.SOURCE.other, 'другое');
+  assert.equal(Leads.SOURCE.phone, 'звонок');
+  const c = Clients.create(st, { name: 'ООО „Пример-Агро“', inn: '0000000001', phone: '+7 900 000-00-01' }, 'dir', NOW).client;
+  // тот же номер в другой записи (8 вместо +7, скобки и дефисы) находит клиента
+  const found = Clients.find(st, { phone: '8 (900) 000-00-01' });
+  assert.deepEqual(plain(found.map(x => x.id)), [c.id], 'клиент по телефону не найден');
+  // привязка к найденному
+  const r = Leads.add(st, { source: 'phone', name: 'Иван', phone: '8 (900) 000-00-01', clientId: found[0].id }, 'dir', NOW);
+  assert.equal(r.ok, true, r.reason);
+  assert.equal(r.lead.clientId, c.id, 'clientId не поставлен');
+  assert.equal(r.lead.type, 'b2c');
+  assert.equal(r.lead.managerId, 'c1', 'менеджер — по Leads.route');
+  assert.equal(r.lead.source, 'phone');
+  assert.ok(st.leads.includes(r.lead));
+  assert.match(r.lead.history[0].text, /звонок/);
+  assert.equal(r.lead.history[0].by, 'dir', 'кто завёл — в истории');
+  // без привязки clientId нет
+  assert.equal(Leads.add(st, { source: 'other', email: 'primer@example.com' }, 'dir', NOW).lead.clientId, undefined);
+  // отказы
+  assert.equal(Leads.add(st, { source: 'fax', name: 'Иван' }, 'dir', NOW).ok, false, 'неизвестный источник принят');
+  const empty = Leads.add(st, { source: 'site', text: 'только текст' }, 'dir', NOW);
+  assert.equal(empty.ok, false, 'лид без имени и контактов принят');
+  assert.match(empty.reason, /имя|телефон/i);
+  assert.equal(Leads.add(st, { source: 'site', name: 'Иван', clientId: 'К-нет' }, 'dir', NOW).ok, false, 'привязка к несуществующему клиенту принята');
+  assert.equal(Leads.add(st, { source: 'site', name: 'Иван' }, 'wh', NOW).ok, false, 'кладовщик завёл лид');
+});
+
+test('toDeal: открытые дела лида переходят в сделку (ref меняется), в ленте сделки запись; выполненные остаются у лида; привязанный клиент становится клиентом сделки', () => {
+  const app = load(), { Leads, Acts, Clients, Feed } = app, st = mini(app);
+  const c = Clients.create(st, { name: 'Клиент-пример', phone: '+7 900 000-00-77' }, 'dir', NOW).client;
+  const lead = Leads.add(st, { source: 'phone', name: 'Иван', phone: '+7 900 000-00-01', clientId: c.id }, 'dir', NOW).lead;
+  const L1 = { t: 'lead', id: lead.id };
+  const open1 = Acts.plan(st, L1, { type: 'call', title: 'Перезвонить', due: plusMin(60) }, 'c1', NOW).id;
+  const open2 = Acts.plan(st, L1, { type: 'meet', title: 'Замер', due: plusMin(2000) }, 'c1', NOW).id;
+  const gone = Acts.plan(st, L1, { type: 'mail', title: 'Письмо', due: plusMin(10) }, 'c1', NOW).id;
+  Acts.done(st, gone, 'Отправили', 'c1', plusMin(5));
+  const did = Leads.toDeal(st, lead.id, 'c1', plusMin(30));
+  assert.ok(did, 'сделка не создана');
+  assert.deepEqual(plain(Acts.byId(st, open1).ref), { t: 'deal', id: did });
+  assert.deepEqual(plain(Acts.byId(st, open2).ref), { t: 'deal', id: did });
+  assert.deepEqual(plain(Acts.byId(st, gone).ref), L1, 'выполненное дело ушло из лида');
+  assert.deepEqual(plain(Acts.open(st, { t: 'deal', id: did }).map(a => a.id)), [open1, open2]);
+  assert.equal(Acts.open(st, L1).length, 0);
+  const text = Feed.of(st, { t: 'deal', id: did }).map(e => e.text).join('\n');
+  assert.ok(text.includes('перенесены открытые дела') && text.includes('Перезвонить') && text.includes('Замер') && !text.includes('Письмо'), text);
+  assert.equal(st.deals.find(d => d.id === did).clientId, c.id, 'клиент сделки — не тот, к которому привязан лид');
+  assert.equal(st.clients.length, 1, 'завели лишнего клиента');
+  // лид без дел: ни записи в ленте, ни ошибки
+  const bare = Leads.add(st, { source: 'site', name: 'Пётр', phone: '+7 900 000-00-02' }, 'dir', NOW).lead;
+  const did2 = Leads.toDeal(st, bare.id, 'c1', plusMin(30));
+  assert.ok(!Feed.of(st, { t: 'deal', id: did2 }).some(e => /перенесены/.test(e.text)));
+});
+
+test('время реакции: «ждёт» только у открытого лида на первом этапе без действий дольше порога; уведомление РОП — один раз', () => {
+  const app = load(), { Leads, Acts, Notify } = app, st = mini(app);
+  st.roles = st.roles.concat(app.S.roles.filter(r => r.id === 'rop'));
+  st.people.push({ id: 'rop1', name: 'РОП', role: 'rop' }, { id: 'rop2', name: 'РОП 2', role: 'rop' });
+  const lead = Leads.create(st, B2C, NOW, { silent: true });
+  assert.equal(Leads.waitMin(st), 15, 'порог по умолчанию');
+  assert.equal(Leads.waiting(st, lead, plusMin(15)), null, 'ровно 15 минут — ещё не дольше');
+  assert.equal(Leads.waiting(st, lead, plusMin(20)), 20);
+  assert.equal(Leads.waiting(st, lead, plusMin(-5)), null, 'время до прихода лида');
+  st.leadWaitMin = 30;
+  assert.equal(Leads.waiting(st, lead, plusMin(20)), null, 'порог 30: 20 минут — ждать ещё можно');
+  assert.equal(Leads.waiting(st, lead, plusMin(45)), 45);
+  st.leadWaitMin = 15;
+  // действие снимает ожидание: дело, комментарий, «Связались»
+  const l2 = Leads.create(st, B2C, NOW, { silent: true });
+  Acts.plan(st, { t: 'lead', id: l2.id }, { type: 'call', due: plusMin(100) }, 'c1', NOW);
+  assert.equal(Leads.waiting(st, l2, plusMin(20)), null, 'запланированное дело — это действие');
+  const l3 = Leads.create(st, B2C, NOW, { silent: true });
+  app.Feed.comment(st, { t: 'lead', id: l3.id }, 'Звонил, не взяли', 'c1', plusMin(3));
+  assert.equal(Leads.waiting(st, l3, plusMin(20)), null, 'комментарий — это действие');
+  const l4 = Leads.create(st, B2C, NOW, { silent: true });
+  Leads.contacted(st, l4.id, 'c1', plusMin(2));
+  assert.equal(Leads.waiting(st, l4, plusMin(20)), null, '«Связались» — действие, и лид уже не на первом этапе');
+  // закрытый лид не ждёт
+  const l5 = Leads.create(st, B2C, NOW, { silent: true });
+  Leads.close(st, l5.id, 'Не вышли на связь', 'c1', plusMin(1));
+  assert.equal(Leads.waiting(st, l5, plusMin(20)), null);
+  // остался один ждущий лид — lead. Уведомление: до порога тишина, после — РОП, второй раз не шлём
+  const before = st.notes.length;
+  assert.equal(Leads.notifyWaiting(st, plusMin(10)).length, 0);
+  assert.equal(st.notes.length, before);
+  const made = Leads.notifyWaiting(st, plusMin(20));
+  assert.equal(made.length, 1, 'ждёт один лид — одно уведомление');
+  assert.equal(made[0].kind, 'leadWait');
+  assert.deepEqual([...made[0].to].sort(), ['rop1', 'rop2']);
+  assert.ok(made[0].text.includes(lead.id) && made[0].text.includes('20 мин'), made[0].text);
+  assert.equal(Leads.notifyWaiting(st, plusMin(40)).length, 0, 'второй раз то же уведомление ушло снова');
+  assert.equal(st.notes.length, before + 1);
+  assert.deepEqual([...Notify.RECIPIENTS.leadWait], ['rop']);
+  // новый лид — новое уведомление
+  Leads.create(st, B2C, plusMin(41), { silent: true });
+  assert.equal(Leads.notifyWaiting(st, plusMin(60)).length, 1);
+});
+
+// ——— экраны: «Новый лид», закрытие с причиной из списка, «ждёт», настройки ———
+
+const elOf = (app, id) => app.document.getElementById(id);
+const setVals = (app, vals) => { for (const [id, v] of Object.entries(vals)) elOf(app, id).value = v; };
+const openLead = app => app.S.leads.find(l => l.managerId && !finished(l));
+
+test('«Новый лид»: в разделе есть кнопка; в форме пять источников и нужные поля; телефон известного клиента показывает «Похоже, это клиент», «Привязать лид» ставит clientId, лид заводится с типом и менеджером', () => {
+  const app = load(), { S } = app;
+  openLeadsView(app, 'director');
+  assert.ok(viewHtml(app).includes('data-act="lead-new"'), 'нет кнопки «Новый лид»');
+  const form = app.MODALS.leadNew();
+  for (const s of ['звонок', 'почта', 'сайт', 'Битрикс24', 'другое']) assert.ok(form.includes(`>${s}</option>`), 'нет источника ' + s);
+  for (const f of ['ln-name', 'ln-phone', 'ln-email', 'ln-company', 'ln-inn', 'ln-text']) assert.ok(form.includes(`id="${f}"`), 'нет поля ' + f);
+  assert.ok(form.includes('id="ln-dup"'));
+  // известный клиент: телефон из демо
+  const known = S.clients.find(c => c.phones.length);
+  assert.ok(known, 'в демо нет клиента с телефоном');
+  app.A['lead-new']({});
+  setVals(app, { 'ln-phone': known.phones[0], 'ln-email': '', 'ln-inn': '' });
+  fireOn(app, 'input', 'lead-dup', '');
+  let dup = elOf(app, 'ln-dup').innerHTML;
+  assert.ok(dup.includes('Похоже, это') && dup.includes(known.name) && dup.includes('data-act="lead-link"') && dup.includes('Привязать лид'), dup);
+  assert.ok(!dup.includes('data-act="dup-pick"'), 'кнопка «Выбрать его» из «Клиентов» осталась: она открыла бы карточку вместо привязки');
+  // привязка
+  app.A['lead-link']({ dataset: { id: known.id } });
+  dup = elOf(app, 'ln-dup').innerHTML;
+  assert.ok(dup.includes('привязан к клиенту') && dup.includes(known.id) && dup.includes('data-act="lead-unlink"'), dup);
+  app.A['lead-unlink']({});
+  assert.ok(elOf(app, 'ln-dup').innerHTML.includes('data-act="lead-link"'), 'после «Не привязывать» подсказка не вернулась');
+  app.A['lead-link']({ dataset: { id: known.id } });
+  // сохранение
+  const n = S.leads.length;
+  setVals(app, { 'ln-source': 'mail', 'ln-name': 'Пример Иван', 'ln-company': '', 'ln-text': 'Звонили, просят расчёт' });
+  app.FORMS['lead-new']({});
+  assert.equal(S.leads.length, n + 1, 'лид не заведён: ' + elOf(app, 'ln-err').textContent);
+  const lead = S.leads[S.leads.length - 1];
+  assert.equal(lead.source, 'mail');
+  assert.equal(lead.clientId, known.id);
+  assert.equal(lead.type, 'b2c');
+  assert.ok(lead.managerId, 'менеджер не выбран');
+  assert.equal(lead.history[0].by, S.me, 'в истории не записано, кто завёл');
+  assert.equal(S.ui.modal, null, 'окно не закрылось');
+  assert.deepEqual(plain(S.ui.drawer), { type: 'lead', id: lead.id }, 'карточка нового лида не открылась');
+  // пустая форма — отказ, лид не появляется
+  app.A['lead-new']({});
+  setVals(app, { 'ln-source': 'phone', 'ln-name': '', 'ln-phone': '', 'ln-email': '', 'ln-company': '', 'ln-inn': '', 'ln-text': 'только текст' });
+  app.FORMS['lead-new']({});
+  assert.equal(S.leads.length, n + 1);
+  assert.match(elOf(app, 'ln-err').textContent, /хотя бы/);
+});
+
+test('закрытие лида: причины берутся из общего списка («Настройки → Лиды и сделки»); «Другое» — своими словами; список без «Другое» получает вариант свободного ввода', () => {
+  const app = load(), { S, Deals } = app;
+  asRole(app, 'director');
+  const reasons = [...Deals.reasons(S)];
+  assert.ok(reasons.length >= 3);
+  let l = S.leads.find(x => x.managerId && !finished(x));
+  let html = app.MODALS.leadLost(l.id);
+  for (const r of reasons) assert.ok(html.includes(`<option value="${r}">${r}</option>`), 'нет причины из списка: ' + r);
+  assert.equal((html.match(/<option/g) || []).length, reasons.length, 'в списке «Другое» уже есть — второго варианта быть не должно');
+  assert.ok(html.includes('id="ll-other"'));
+  // причина из списка
+  setVals(app, { 'll-reason': reasons[0], 'll-other': '' });
+  app.FORMS['lead-lost']({ dataset: { id: l.id } });
+  assert.equal(l.stageId, 'lost');
+  assert.equal(l.reason, reasons[0]);
+  // «Другое» без слов — отказ; со словами — они и записываются
+  l = S.leads.find(x => x.managerId && !finished(x));
+  setVals(app, { 'll-reason': 'Другое', 'll-other': '  ' });
+  app.FORMS['lead-lost']({ dataset: { id: l.id } });
+  assert.match(elOf(app, 'll-err').textContent, /причин/);
+  assert.notEqual(l.stageId, 'lost', 'лид закрыт без причины');
+  setVals(app, { 'll-other': 'Купил у соседа' });
+  app.FORMS['lead-lost']({ dataset: { id: l.id } });
+  assert.equal(l.reason, 'Купил у соседа');
+  // изменённый список: без «Другое» — добавляется вариант свободного ввода; пустой — только он
+  S.lostReasons = [{ id: 'lr1', name: 'Дорого' }];
+  html = app.MODALS.leadLost(l.id);
+  assert.ok(html.includes('<option value="Дорого">') && html.includes('value="__other"'), html);
+  S.lostReasons = [];
+  l = S.leads.find(x => x.managerId && !finished(x));
+  html = app.MODALS.leadLost(l.id);
+  assert.equal((html.match(/<option/g) || []).length, 1);
+  assert.ok(!/id="ll-other-f" hidden/.test(html), 'при пустом списке поле для своих слов спрятано');
+  setVals(app, { 'll-reason': '__other', 'll-other': 'Свои слова' });
+  app.FORMS['lead-lost']({ dataset: { id: l.id } });
+  assert.equal(l.reason, 'Свои слова');
+  // выбор «Другое» в списке показывает поле для слов
+  S.lostReasons = undefined;
+  const f = elOf(app, 'll-other-f');
+  f.hidden = true;
+  app.document.dispatchEvent({ type: 'change', target: { dataset: { on: 'lead-reason' }, value: 'Другое' } });
+  assert.equal(f.hidden, false);
+  app.document.dispatchEvent({ type: 'change', target: { dataset: { on: 'lead-reason' }, value: 'Дорого' } });
+  assert.equal(f.hidden, true);
+});
+
+test('«ждёт N мин»: метка в списке и воронке; «Имитация: лид с сайта» даёт лид, который через 20 минут «ждёт»; РОП узнаёт один раз, демо-лиды при запуске тишину не нарушают', () => {
+  const app = load(), { S, Leads } = app;
+  asRole(app, 'director');
+  app.render();
+  assert.equal(S.notes.filter(n => n.kind === 'leadWait').length, 0, 'демо-лиды разослали уведомления при первом запуске');
+  const sim = app.SIMS.find(s => s.id === 'lead-site');
+  sim.run();
+  const lead = S.leads[S.leads.length - 1];
+  assert.ok(lead.sim, 'имитация не создала лид');
+  const at = new Date(lead.at).getTime();
+  assert.equal(app.leadWaitHtml(lead, new Date(at + 10 * MIN)), '', 'через 10 минут метки быть не должно');
+  const html20 = app.leadWaitHtml(lead, new Date(at + 20 * MIN));
+  assert.ok(html20.includes('ждёт 20 мин') && html20.includes('lead-wait'), html20);
+  // в списке и в воронке — по настоящему времени: сдвигаем приход на 20 минут назад
+  lead.at = new Date(Date.now() - 20 * MIN);
+  const list = app.leadTable([lead]), card = app.leadCard(lead);
+  assert.ok(list.includes('ждёт 20 мин'), 'в списке нет метки');
+  assert.ok(card.includes('ждёт 20 мин'), 'в воронке нет метки');
+  assert.ok(app.DRAWERS.lead(lead.id).body.includes('lead-waitnote'), 'в карточке нет пояснения');
+  // РОП получает уведомление один раз
+  const rop = S.people.find(p => p.role === 'rop').id;
+  app.render();
+  let notes = S.notes.filter(n => n.kind === 'leadWait');
+  assert.equal(notes.length, 1);
+  assert.deepEqual(plain(notes[0].to), [rop]);
+  assert.ok(notes[0].text.includes(lead.id));
+  app.render(); app.actsTick();
+  assert.equal(S.notes.filter(n => n.kind === 'leadWait').length, 1, 'уведомление ушло повторно');
+  // как только с лидом что-то сделали, метка исчезает
+  app.Feed.comment(S, { t: 'lead', id: lead.id }, 'Позвонил', S.me, new Date());
+  assert.ok(!app.leadTable([lead]).includes('ждёт'));
+  assert.equal(Leads.waiting(S, lead, new Date()), null);
+});
+
+test('настройки «Лиды и сделки»: поле «Новый лид ждёт не дольше, мин» (по умолчанию 15) меняет порог; ноль и мусор — отказ', () => {
+  const app = load(), { S, Leads } = app;
+  asRole(app, 'director');
+  let html = app.vLeadSettings();
+  assert.ok(html.includes('Новый лид ждёт не дольше, мин') && html.includes('id="lead-wait"') && html.includes('value="15"'), 'нет поля или нет 15 по умолчанию');
+  const lead = Leads.create(S, { source: 'site', name: 'Клиент-пример', phone: '+7 900 000-09-09' }, new Date(Date.now() - 10 * MIN), { silent: true });
+  assert.equal(Leads.waiting(S, lead, new Date()), null, '10 минут при пороге 15 — ещё не ждёт');
+  fireOn(app, 'change', 'lead-wait', '5');
+  assert.equal(S.leadWaitMin, 5);
+  assert.equal(Leads.waiting(S, lead, new Date()), 10, 'порог 5: лид уже ждёт');
+  assert.ok(app.vLeadSettings().includes('value="5"'));
+  for (const bad of ['0', 'abc', '-3', '1.5', '']) {
+    fireOn(app, 'change', 'lead-wait', bad);
+    assert.equal(S.leadWaitMin, 5, `значение «${bad}» принято`);
+  }
+  assert.ok(app.vLeadSettings().includes('Причины отказа') && app.vLeadSettings().includes('окно «Закрыть» у лида'));
+  // без права «Настройки» — не меняется
+  asRole(app, 'managerB2b');
+  fireOn(app, 'change', 'lead-wait', '40');
+  assert.equal(S.leadWaitMin, 5);
+});
+
+test('сделка: две строки одного товара — «Зарезервировать» не пропадает, пока не зарезервировано всё по товару; окно считает по сумме строк', () => {
+  const app = load(), { S, Deals, Stock, DRAWERS, MODALS } = app;
+  asRole(app, 'director');
+  const now = new Date();
+  const d = S.deals.find(x => Deals.state(S, x) === 'open');
+  d.items = [];
+  const prod = S.products.find(p => { const k = Stock.summary(S, p.id, now); return k.known && k.free >= 3 && Deals.reserved(S, d, p.id) === 0; });
+  assert.ok(prod, 'в демо нет товара со свободным остатком');
+  assert.ok(Deals.addItem(S, d.id, { productId: prod.id, qty: 1 }, S.me, now).ok);
+  assert.ok(Deals.addItem(S, d.id, { productId: prod.id, qty: 1 }, S.me, now).ok);
+  app.A['deal-tab']({ dataset: { tab: 'items' } });
+  const btn = i => `data-act="deal-res" data-id="${d.id}" data-i="${i}"`;
+  let body = DRAWERS.deal(d.id).body;
+  assert.ok(body.includes(btn(0)) && body.includes(btn(1)));
+  // резервируем 1 (одну штуку из двух): по товару ещё можно 1, поэтому кнопка есть у обеих строк
+  const cell = Stock.bestCell(S, prod.id);
+  const r = Deals.reserveItem(S, d.id, 0, { entityId: cell.entityId, cityId: cell.cityId, qty: 1 }, S.me, now);
+  assert.equal(r.ok, true, r.reason);
+  body = DRAWERS.deal(d.id).body;
+  assert.ok(body.includes(btn(0)) && body.includes(btn(1)), 'после резерва одной штуки из двух кнопка пропала');
+  const modal = MODALS.dealReserve(`${d.id}:1`);
+  assert.ok(modal.includes('В сделке по этому товару') && modal.includes('осталось'), modal.slice(0, 600));
+  assert.ok(modal.includes('id="dr-qty" class="inp" type="number" min="1" step="any" value="1"'), 'в окне предложено не 1 штука');
+  // зарезервировали всё — кнопок нет
+  assert.equal(Deals.reserveItem(S, d.id, 1, { entityId: cell.entityId, cityId: cell.cityId, qty: 1 }, S.me, now).ok, true);
+  body = DRAWERS.deal(d.id).body;
+  assert.ok(!body.includes(btn(0)) && !body.includes(btn(1)), 'кнопка осталась при полном резерве');
+});

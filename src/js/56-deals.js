@@ -193,11 +193,14 @@ const dealTotalText=d=>{
   const np=Deals.noPrice(d).length;
   return np?`В итог не вошли строки без цены: ${np}. Впишите цену — и они посчитаются.`:((d.items||[]).length?'':(Deals.total(d)?'Строк нет: показана сумма, вписанная в «Деталях».':'Строк нет — добавьте товары.'));
 };
+// Сколько товара сделки ещё можно зарезервировать: сумма всех её строк с этим товаром (Deals.lined) минус уже в резерве.
+// Резерв ставится по товару, а не по строке, поэтому две строки одного товара считаются вместе.
+const dealLeft=(d,productId)=>Math.round((Deals.lined(d,productId)-Deals.reserved(S,d,productId))*100)/100;
 function dealLine(d,it,i,edit,pr){
   const id=esc(d.id),p=it.productId?product(it.productId):null,name=Deals.itemName(S,it);
   let info,res='',btn='';
   if(p){
-    const k=stockOf(p.id),held=Deals.reserved(S,d,p.id),left=it.qty-held;
+    const k=stockOf(p.id),held=Deals.reserved(S,d,p.id),left=dealLeft(d,p.id);
     info=`<small class="dl-st">${k.known?`свободно ${qtyOf(Math.max(0,k.free),p)}`:'остаток: нет данных'}${held?` · в резерве по сделке: ${qtyOf(held,p)}`:''}</small>`;
     res=S.reserves.filter(r=>r.dealId===d.id&&r.productId===p.id).map(r=>`<span class="chip dl-r">${srcPill(r)}<span>${qtyOf(r.qty,p)}${r.src==='stock'?' · '+esc(cellText(r.entityId,r.cityId)):''}${r.until?' · до '+fD(r.until):''}</span>${edit&&can('reserve')?`<button type="button" class="btn sm ghost" data-act="deal-unres" data-id="${id}" data-rid="${esc(r.id)}">Снять</button>`:''}</span>`).join('');
     if(edit&&can('reserve')&&left>0) btn=`<button type="button" class="btn sm" data-act="deal-res" data-id="${id}" data-i="${i}">${ic('lock')}Зарезервировать</button>`;
@@ -265,10 +268,10 @@ MODALS.dealLose=id=>{
 MODALS.dealReserve=key=>{
   const [did,i]=String(key).split(':'),d=Deals.byId(S,did),it=d&&(d.items||[])[+i],p=it&&it.productId?product(it.productId):null;
   if(!d||!it||!p) return `${mHead('Резерв')}<div class="modal-b"><p class="m0">Строка не найдена или это своя строка — резервировать нечего.</p></div>`;
-  const held=Deals.reserved(S,d,p.id),left=it.qty-held,cell=Stock.bestCell(S,p.id),k=stockOf(p.id);
+  const held=Deals.reserved(S,d,p.id),all=Deals.lined(d,p.id),left=dealLeft(d,p.id),cell=Stock.bestCell(S,p.id),k=stockOf(p.id);
   const opt=(list,none,cur)=>[...list.map(x=>[x.id,x.name]),[Stock.ANY,none]].map(([v,n])=>`<option value="${esc(v)}"${v===cur?' selected':''}>${esc(n)}</option>`).join('');
   return `<form data-form="deal-reserve" data-id="${esc(did)}" data-i="${+i}" novalidate>${mHead('Зарезервировать: '+esc(p.name))}<div class="modal-b">
-    <p class="m0">Сделка ${esc(did)} · ${esc(d.client)}. В строке ${qtyOf(it.qty,p)}, уже в резерве ${num(held)}, осталось ${qtyOf(left,p)}. Свободно на складе: ${k.known?qtyOf(Math.max(0,k.free),p):'нет данных'} (${esc(stockNote())}).</p>
+    <p class="m0">Сделка ${esc(did)} · ${esc(d.client)}. ${all!==it.qty?`В сделке по этому товару ${qtyOf(all,p)} (в этой строке ${num(it.qty)})`:`В строке ${qtyOf(it.qty,p)}`}, уже в резерве ${num(held)}, осталось ${qtyOf(left,p)}. Свободно на складе: ${k.known?qtyOf(Math.max(0,k.free),p):'нет данных'} (${esc(stockNote())}).</p>
     <div class="grid2"><div class="field"><label for="dr-ent">Юрлицо</label><select id="dr-ent" class="inp" data-on="deal-rs" data-pid="${esc(p.id)}">${opt(S.entities,Stock.NO_ENTITY,cell.entityId)}</select></div><div class="field"><label for="dr-city">Город</label><select id="dr-city" class="inp" data-on="deal-rs" data-pid="${esc(p.id)}">${opt(S.cities,Stock.NO_CITY,cell.cityId)}</select></div>
       <div class="field"><label for="dr-qty">Сколько</label><input id="dr-qty" class="inp" type="number" min="1" step="any" value="${esc(left)}" inputmode="decimal"></div><div class="field"><label for="dr-until">Резерв до</label><input id="dr-until" class="inp" type="date" value="${iso(day(14))}"></div></div>
     <p class="hint" id="dr-max">${esc(maxText(p.id,'stock',cell.entityId,cell.cityId))}</p>
