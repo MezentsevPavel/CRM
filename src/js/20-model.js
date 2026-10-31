@@ -4,7 +4,6 @@
 
 // ——— справочники ———
 const CH={telegram:'Telegram',max:'MAX',phone:'Телефон'};
-const CATS=['Панели','Инверторы','Аккумуляторы','Контроллеры','Кабель и разъёмы','Крепёж','Защита и учёт','Ветрогенераторы'];
 const CARRIERS=['Сборный груз, транспортная компания','Отдельная машина','Своя машина','Контейнер: море + железная дорога'];
 const VARS=['{имя}','{товар}','{сделка}','{менеджер}','{адрес_склада}'];
 const KIND={ship:{l:'Перевозки',ic:'truck',c:'info'},arrive:{l:'Склад',ic:'box',c:'ok'},task:{l:'Задачи',ic:'tasks',c:'pri'},reserve:{l:'Резервы',ic:'lock',c:'sun'},msg:{l:'Клиентам',ic:'chat',c:'violet'},warn:{l:'Предупреждения',ic:'alert',c:'bad'},lead:{l:'Лиды',ic:'users',c:'pri'}};
@@ -49,20 +48,9 @@ SEEDS.push(st=>{
   const T=(id,title,deal,to,from,due,stageId,prio,desc,at)=>({id,title,deal,to,from,due,boardId:'tasksCommon',stageId,prio,desc,at});
   const D=(id,client,contact,kind,object,type,stageId,managerId,channel,amount)=>({id,client,contact,kind,object,type,pipeId:type==='b2b'?'dealsB2b':'dealsB2c',stageId,managerId,channel,amount,demo:true});
   Object.assign(st,{
-    products:[
-      {sku:'PV-550M',name:'Солнечная панель 550 Вт, моно',cat:'Панели',unit:'шт',price:14900,stock:86},
-      {sku:'INV-H6',name:'Гибридный инвертор 6 кВт',cat:'Инверторы',unit:'шт',price:96000,stock:4},
-      {sku:'INV-G10',name:'Сетевой инвертор 10 кВт, 3 фазы',cat:'Инверторы',unit:'шт',price:128000,stock:2},
-      {sku:'BAT-LFP-100',name:'АКБ LiFePO4 51,2 В 100 А·ч',cat:'Аккумуляторы',unit:'шт',price:62000,stock:0},
-      {sku:'CTRL-60',name:'Контроллер заряда MPPT 60 А',cat:'Контроллеры',unit:'шт',price:21500,stock:1},
-      {sku:'CAB-6R',name:'Кабель солнечный 6 мм², красный',cat:'Кабель и разъёмы',unit:'м',price:95,stock:1140},
-      {sku:'CAB-6B',name:'Кабель солнечный 6 мм², чёрный',cat:'Кабель и разъёмы',unit:'м',price:95,stock:1150},
-      {sku:'MC4',name:'Разъём MC4, пара',cat:'Кабель и разъёмы',unit:'пар',price:180,stock:340},
-      {sku:'MNT-R4',name:'Крепёж на скатную кровлю, на 4 панели',cat:'Крепёж',unit:'компл.',price:7800,stock:21},
-      {sku:'BOX-DC',name:'Щит защиты DC, 2 строки',cat:'Защита и учёт',unit:'шт',price:9400,stock:3},
-      {sku:'MTR-3F',name:'Счётчик двунаправленный, 3 фазы',cat:'Защита и учёт',unit:'шт',price:18700,stock:1},
-      {sku:'WND-3K',name:'Ветрогенератор 3 кВт',cat:'Ветрогенераторы',unit:'шт',price:245000,stock:0}
-    ],
+    // товары и остатки кладёт шаг каталога (38-catalog.js) из снимков; ниже записи v2 ссылаются на товары по старым артикулам,
+    // шаг каталога переводит их на настоящие позиции
+    products:[],
     shipments:[
       {id:'П-1044',dir:'in',supplier:'Склад дистрибьютора, Москва',to:'Наш склад',carrier:'Сборный груз, транспортная компания',track:'ТТН 44-552018',pipeId:'ships',stageId:'arrived',eta:day(0,14),history:[{at:day(0,8,15),by:'p6',text:'Терминал транспортной компании в городе'}],items:[{productId:'CAB-6R',qty:500},{productId:'CAB-6B',qty:500},{productId:'MC4',qty:200},{productId:'CTRL-60',qty:6},{productId:'BOX-DC',qty:10}],demo:true},
       {id:'П-1041',dir:'in',supplier:'Поставщик инверторов, Москва',to:'Наш склад',carrier:'Сборный груз, транспортная компания',track:'ТТН 41-008352',pipeId:'ships',stageId:'toStock',eta:day(3,12),history:[{at:day(0,9,40),by:'p6',text:'Трасса М-7, Владимир'}],items:[{productId:'INV-H6',qty:10},{productId:'BAT-LFP-100',qty:16}],demo:true},
@@ -164,8 +152,8 @@ const person=id=>S.people.find(p=>p.id===id);
 const me=()=>person(S.me)||S.people[0]||{id:'',name:'нет данных: сотрудник',role:'',dept:''};
 const roleName=p=>(p&&Perms.roleOf(S,p.id)?.name)||'нет данных: роль';
 const deptName=id=>S.depts.find(d=>d.id===id)?.name||'нет данных: отдел';
-// Товар по productId (пока значение — артикул: товары ещё в форме v2, их переводит T02)
-const product=id=>S.products.find(p=>p.sku===id);
+// Товар по productId: ключ каталога, 'sheet-NNN' (строка остатков без пары в каталоге) или 'uN' (добавлен вручную)
+const product=id=>S.products.find(p=>p.id===id);
 const deal=id=>S.deals.find(d=>d.id===id);
 const ship=id=>S.shipments.find(s=>s.id===id);
 const rule=id=>S.rules.find(r=>r.id===id);
@@ -197,20 +185,17 @@ const shipPipe=dir=>Pipes.of(S,'ships').find(p=>(p.dir||'in')===dir)||null;
 const dealPipe=type=>Pipes.of(S,'deals',type).find(p=>p.scope===type)||Pipes.of(S,'deals')[0]||null;
 const taskBoard=()=>Pipes.of(S,'tasks')[0]||null;
 
-// ——— расчёты остатков: одно место для всех экранов ———
+// ——— остатки: считает Stock (33-stock.js), здесь — только вызов и подписи ———
 const isLate=s=>!isDone(s)&&dd(s.eta)<0;
 const resOf=pid=>S.reserves.filter(r=>r.productId===pid);
 const sum=(a,f)=>a.reduce((x,y)=>x+f(y),0);
-const resStock=pid=>sum(resOf(pid).filter(r=>r.src==='stock'),r=>r.qty);
-const resAll=pid=>sum(resOf(pid),r=>r.qty);
 const openIn=()=>S.shipments.filter(s=>s.dir==='in'&&!isDone(s));
-const incomingOf=pid=>openIn().flatMap(s=>s.items.filter(i=>i.productId===pid).map(i=>({ship:s,qty:i.qty}))).sort((a,b)=>a.ship.eta-b.ship.eta);
-const incomingQty=pid=>sum(incomingOf(pid),x=>x.qty);
-const freeNow=p=>p.stock-resStock(p.sku);
-const freeAfter=p=>p.stock+incomingQty(p.sku)-resAll(p.sku);
-const shipFree=(sid,pid)=>{const s=ship(sid);const q=s?.items.find(i=>i.productId===pid)?.qty||0;return q-sum(S.reserves.filter(r=>r.src===sid&&r.productId===pid),r=>r.qty)};
+// Остаток товара: onHand, free, freeAfter, incoming… — Stock.summary, единственный расчёт
+const stockOf=pid=>Stock.summary(S,pid,new Date());
+// Единицы измерения в таблицах нет: у настоящих товаров их не показываем, у добавленных вручную — как ввели
+const qtyOf=(n,p)=>num(n)+(p&&p.unit?' '+p.unit:'');
 const byDeal=rs=>{const m=new Map();rs.forEach(r=>{if(!m.has(r.dealId)) m.set(r.dealId,[]);m.get(r.dealId).push(r)});return m};
-const itemsText=list=>list.map(r=>{const p=product(r.productId);return `${low(p.name)} — ${num(r.qty)} ${p.unit}`}).join('; ');
+const itemsText=list=>list.map(r=>{const p=product(r.productId);return `${low(p.name)} — ${qtyOf(r.qty,p)}`}).join('; ');
 function shortItems(s){const c=[...new Set(s.items.map(i=>product(i.productId)?.cat).filter(Boolean))].map(low);return c.length>2?c.slice(0,2).join(', ')+` и ещё ${c.length-2}`:c.join(', ')}
 
 // ——— задачи ———

@@ -44,11 +44,11 @@ function attention(){
   if(can('stock')){
     S.shipments.filter(isLate).forEach(s=>a.push({lvl:'warn',icon:'truck',text:`${s.id} задерживается на ${days(-dd(s.eta))}`,sub:`Последняя отметка: ${shipLast(s).text}`,act:'data-act="go" data-view="logistics"'}));
     S.products.forEach(p=>{
-      const fa=freeAfter(p);
-      if(fa<0) a.push({lvl:'bad',icon:'box',text:`${p.name}: под резервы не хватает ${num(-fa)} ${p.unit}`,sub:'Даже с учётом всех поставок в пути',act:`data-act="open-product" data-sku="${p.sku}"`});
-      else if(p.stock>0&&freeNow(p)<=0&&!incomingQty(p.sku)) a.push({lvl:'warn',icon:'box',text:`${p.name}: свободный остаток закончился`,sub:'Всё, что на складе, в резерве. Поставок нет',act:`data-act="open-product" data-sku="${p.sku}"`});
+      const k=stockOf(p.id);
+      if(k.freeAfter<0) a.push({lvl:'bad',icon:'box',text:`${p.name}: под резервы не хватает ${qtyOf(-k.freeAfter,p)}`,sub:'Даже с учётом всех поставок в пути',act:`data-act="open-product" data-pid="${esc(p.id)}"`});
+      else if(k.onHand>0&&k.free<=0&&!k.incoming) a.push({lvl:'warn',icon:'box',text:`${p.name}: свободный остаток закончился`,sub:'Всё, что на складе, в резерве. Поставок нет',act:`data-act="open-product" data-pid="${esc(p.id)}"`});
     });
-    S.reserves.filter(r=>{const n=dd(r.until);return n>=0&&n<=2}).forEach(r=>{const p=product(r.productId),d=deal(r.dealId);a.push({lvl:'info',icon:'clock',text:`Резерв истекает ${fRel(r.until)}: ${p.name} — ${num(r.qty)} ${p.unit}`,sub:`${r.dealId} · ${d?.client||''}`,act:`data-act="open-product" data-sku="${p.sku}"`})});
+    S.reserves.filter(r=>{const n=dd(r.until);return n>=0&&n<=2}).forEach(r=>{const p=product(r.productId),d=deal(r.dealId);a.push({lvl:'info',icon:'clock',text:`Резерв истекает ${fRel(r.until)}: ${p.name} — ${qtyOf(r.qty,p)}`,sub:`${r.dealId} · ${d?.client||''}`,act:`data-act="open-product" data-pid="${esc(p.id)}"`})});
   }
   return a;
 }

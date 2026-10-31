@@ -18,7 +18,7 @@ function shipCard(s){
   const when=done?L.at:s.eta;
   const etaTxt=done?(s.received?'принято '+fT(s.received.at):'доставлено '+fT(L.at)):n>0?'через '+days(n):n===0?'сегодня'+(s.eta.getHours()?', к '+fT(s.eta):''):'опаздывает на '+days(-n);
   const waits=s.dir==='in'?[...byDeal(S.reserves.filter(r=>r.src===s.id)).keys()]:(s.deal?[s.deal]:[]);
-  const items=s.items.map(it=>{const p=product(it.productId);const t=`${esc(p.name)} <b>× ${num(it.got??it.qty)} ${p.unit}</b>`;return can('stock')?`<button class="chip" data-act="open-product" data-sku="${esc(it.productId)}">${t}</button>`:`<span class="chip">${t}</span>`}).join('');
+  const items=s.items.map(it=>{const p=product(it.productId);const t=`${esc(p.name)} <b>× ${qtyOf(it.got??it.qty,p)}</b>`;return can('stock')?`<button class="chip" data-act="open-product" data-pid="${esc(it.productId)}">${t}</button>`:`<span class="chip">${t}</span>`}).join('');
   let w='';
   if(waits.length) w=`<div class="waits">${ic('users')}<span>${s.dir==='in'?'Ждут этот товар':'Для сделки'}: ${can('clients')?waits.map(id=>`<button class="link" data-act="open-deal" data-id="${id}">${id} · ${esc(deal(id)?.client||'')}</button>`).join(', '):waits.length+' '+pl(waits.length,'сделка','сделки','сделок')}</span></div>`;
   let ph='';

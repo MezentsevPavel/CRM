@@ -489,7 +489,7 @@ test('приёмка кладовщиком: остаток вырос на пр
   const dealOf = id => app.S.deals.find(d => d.id === id);
   const s = app.S.shipments.find(x => x.dir === 'in' && flag(x) === 'arrived' && resOn(x).some(r => dealOf(r.dealId)?.channel !== 'phone'));
   assert.ok(s, 'в демо нет поставки на этапе «прибыло» с резервом под сделку с мессенджером');
-  const onHand = pid => app.product(pid).stock;
+  const onHand = pid => app.Stock.summary(app.S, pid, new Date()).onHand;
   const want = new Map();
   for (const it of s.items) want.set(it.productId, (want.get(it.productId) ?? onHand(it.productId)) + it.qty);
   const resIds = resOn(s).map(r => r.id);

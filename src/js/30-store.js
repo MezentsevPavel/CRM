@@ -4,6 +4,10 @@
 const Store = (() => {
   const KEY = 'ws-crm-v3';
   const VERSION = 3;
+  // Ревизия формы данных внутри схемы v3: пишется в сохранение (dump), при несовпадении load даёт null и запуск берёт seed().
+  // Меняется, когда форма записей меняется так, что сохранённое прежней формы читать нельзя.
+  // 2 — товары каталога (id вместо sku), остатки по юрлицам и городам, юрлица и города в состоянии. Сохранения без rev — ревизия 1.
+  const REV = 2;
   // Браузер даёт сайту около 5 млн символов на всё; берём с запасом.
   const LIMIT = 4500000;
   const NO_SPACE = 'не сохранено — мало места в браузере';
@@ -65,6 +69,10 @@ const Store = (() => {
   // Само состояние не меняется.
   function dump(state, limit = LIMIT) {
     const copy = plain(state, true);
+    // товары снимка каталога в браузер не идут: они константы файла (Catalog.pack), пишется только изменяемое
+    const packed = Catalog.pack(copy.products);
+    if (packed) Object.assign(copy, packed);
+    copy.rev = REV;
     let text = JSON.stringify(copy);
     let droppedPhotos = 0;
     if (text.length > limit) {
@@ -88,8 +96,9 @@ const Store = (() => {
         return v;
       });
     } catch (_) { return null; }
-    if (!st || typeof st !== 'object' || Array.isArray(st) || st.v !== VERSION) return null;
-    return st;
+    if (!st || typeof st !== 'object' || Array.isArray(st) || st.v !== VERSION || st.rev !== REV) return null;
+    delete st.rev;
+    return Catalog.unpack(st);
   }
 
   // Свободный id для новой записи списка: не совпадёт ни с одним сохранённым (общий для ядра).
@@ -100,5 +109,5 @@ const Store = (() => {
     return prefix + n;
   }
 
-  return { KEY, VERSION, LIMIT, NO_SPACE, load, dump, freeId };
+  return { KEY, VERSION, REV, LIMIT, NO_SPACE, load, dump, freeId };
 })();

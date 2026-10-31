@@ -151,7 +151,7 @@ function mStage(s){
   </div>${mFoot('Отметить и уведомить')}</form>`;
 }
 let _ir=0;
-const irow=()=>{_ir++;return `<div class="irow"><select class="inp" id="ns-sku-${_ir}" aria-label="Товар">${S.products.map(p=>`<option value="${esc(p.sku)}">${esc(p.name)}</option>`).join('')}</select><input class="inp" id="ns-qty-${_ir}" type="number" min="1" value="1" aria-label="Количество"></div>`};
+const irow=()=>{_ir++;return `<div class="irow"><select class="inp" id="ns-sku-${_ir}" aria-label="Товар">${S.products.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select><input class="inp" id="ns-qty-${_ir}" type="number" min="1" value="1" aria-label="Количество"></div>`};
 function mShip(){
   // этап новой поставки — любой до «прибыло» (этапы с флагами ставит приёмка)
   const stg=shipPipe('in')?.stages||[],stop=stg.findIndex(x=>x.flag),open=stop<0?stg:stg.slice(0,stop);
@@ -164,9 +164,8 @@ function mShip(){
 }
 function mProduct(){
   return `<form data-form="product" novalidate>${mHead('Новый товар')}<div class="modal-b">
-    <div class="grid2"><div class="field"><label for="np-sku">Артикул</label><input id="np-sku" class="inp mono" placeholder="Например, PV-600M"></div><div class="field"><label for="np-unit">Единица</label><select id="np-unit" class="inp"><option>шт</option><option>м</option><option>пар</option><option>компл.</option></select></div></div>
-    <div class="field"><label for="np-name">Наименование</label><input id="np-name" class="inp" placeholder="Как товар называется в документах"></div>
-    <div class="grid2"><div class="field"><label for="np-cat">Категория</label><select id="np-cat" class="inp">${CATS.map(c=>`<option>${c}</option>`).join('')}</select></div>${can('prices')?'<div class="field"><label for="np-price">Цена, ₽</label><input id="np-price" class="inp" type="number" min="0" placeholder="Пусто — «нет данных»"></div>':''}</div>
+    <div class="grid2"><div class="field"><label for="np-name">Наименование</label><input id="np-name" class="inp" placeholder="Как товар называется в документах"></div><div class="field"><label for="np-unit">Единица</label><select id="np-unit" class="inp"><option>шт</option><option>м</option><option>пар</option><option>компл.</option></select></div></div>
+    <div class="grid2"><div class="field"><label for="np-cat">Категория</label><select id="np-cat" class="inp">${Catalog.cats(S).map(c=>`<option>${esc(c)}</option>`).join('')}</select></div>${can('prices')?'<div class="field"><label for="np-price">Цена, ₽</label><input id="np-price" class="inp" type="number" min="0" placeholder="Пусто — «нет данных»"></div>':''}</div>
     <p class="err" id="np-err" hidden></p></div>${mFoot('Добавить')}</form>`;
 }
 const mReset=()=>`<form data-form="reset" novalidate>${mHead('Сбросить данные прототипа?')}<div class="modal-b">
@@ -208,7 +207,7 @@ function toast(msg,kind){
 function searchRes(q){
   q=q.trim().toLowerCase();if(q.length<2) return [];
   const r=[],has=s=>s.toLowerCase().includes(q);
-  if(can('stock')) S.products.forEach(p=>{if(has(p.name+' '+p.sku)) r.push({type:'Товар',label:p.name,sub:`${p.sku} · свободно ${num(freeNow(p))} ${p.unit}`,act:`data-act="open-product" data-sku="${esc(p.sku)}"`})});
+  if(can('stock')) Catalog.query(S,{q}).slice(0,6).forEach(p=>{const k=stockOf(p.id);r.push({type:'Товар',label:p.name,sub:k.known?`свободно ${qtyOf(k.free,p)}`:'остаток: нет данных',act:`data-act="open-product" data-pid="${esc(p.id)}"`})});
   if(can('clients')) S.deals.forEach(d=>{if(has(d.client+' '+d.id+' '+d.object)) r.push({type:'Сделка',label:d.client,sub:`${d.id} · ${d.object}`,act:`data-act="open-deal" data-id="${d.id}"`})});
   if(can('stock')||can('logistics')) S.shipments.forEach(s=>{if(has(s.id+' '+s.supplier+' '+s.to+' '+s.track)) r.push({type:'Перевозка',label:`${s.id} · ${s.supplier}`,sub:`${stageName(s)} · ${fD(s.eta)}`,act:`data-act="go" data-view="logistics" data-tab="${isDone(s)?'done':s.dir}"`})});
   S.tasks.filter(taskVisible).forEach(t=>{if(has(t.title)) r.push({type:'Задача',label:t.title,sub:`${targetName(t)} · ${fRel(t.due)}`,act:`data-act="open-task" data-id="${t.id}"`})});
@@ -281,7 +280,7 @@ const A={
     pop.innerHTML=`<div class="pop-h"><b>Уведомления · ${esc(m.name)}</b><span class="muted sm">${un.size?'новых: '+un.size:'новых нет'}</span></div><ul class="pop-l notes">${list.map(n=>noteRow(n,un.has(n.id))).join('')||'<li class="empty">Пока пусто</li>'}</ul><div class="pop-f"><button class="btn sm ghost" data-act="go" data-view="notifications">Все уведомления ${ic('arrow')}</button></div>`;
     pop.hidden=false;list.forEach(n=>Notify.markRead(S,S.me,n.id));updBell();renderSide();save();
   },
-  'open-product':el=>openDrawer('product',el.dataset.sku),
+  'open-product':el=>openDrawer('product',el.dataset.pid),
   'open-deal':el=>openDrawer('deal',el.dataset.id),
   'open-task':el=>openDrawer('task',el.dataset.id),
   'close-drawer':()=>closeDrawer(),
@@ -299,11 +298,9 @@ const A={
   'note-scope':el=>{S.ui.noteScope=el.dataset.k;render()},
   'view-as':el=>setMe(el.dataset.id),
   unreserve:el=>{
-    const r=S.reserves.find(x=>x.id===el.dataset.id);if(!r) return;
-    const p=product(r.productId),d=deal(r.dealId),m=me(),now=new Date();
-    S.reserves=S.reserves.filter(x=>x!==r);
-    S.moves.unshift({at:now,productId:r.productId,kind:'Снят резерв',qty:r.qty,doc:r.dealId,by:m.id});
-    Notify.push(S,'reserve',m.id,`Снят резерв: ${p.name} — ${num(r.qty)} ${p.unit} (${r.dealId}, ${d?.client||''}).`,now);
+    const m=me(),now=new Date(),res=Stock.unreserve(S,el.dataset.id,m.id,now);if(!res.ok) return;
+    const r=res.reserve,p=product(r.productId),d=deal(r.dealId);
+    Notify.push(S,'reserve',m.id,`Снят резерв: ${p.name} — ${qtyOf(r.qty,p)} (${r.dealId}, ${d?.client||''}).`,now);
     render();toast('Резерв снят, товар снова свободен.');
   },
   'rcv-start':el=>{initRcv(el.dataset.id);go('receiving')},
@@ -326,17 +323,14 @@ const A={
 const FORMS={
   reset:()=>resetData(),
   reserve:f=>{
-    const p=product(f.dataset.sku),did=byId('rs-deal').value,qty=parseInt(byId('rs-qty').value,10),src=byId('rs-src').value,until=byId('rs-until').value;
+    const p=product(f.dataset.pid),did=byId('rs-deal').value,qty=parseInt(byId('rs-qty').value,10),src=byId('rs-src').value,until=byId('rs-until').value;
     if(!did) return showErr('rs-err','Нет открытых сделок, под которые можно поставить резерв.');
-    if(!qty||qty<1) return showErr('rs-err','Укажите количество — целое число больше нуля.');
-    const avail=src==='stock'?freeNow(p):shipFree(src,p.sku);
-    if(qty>avail) return showErr('rs-err',`Свободно только ${num(Math.max(0,avail))} ${p.unit}. Уменьшите количество или выберите другой источник.`);
     if(!until||dd(fromIso(until))<0) return showErr('rs-err','Дата окончания резерва не может быть в прошлом.');
     const d=deal(did),m=me(),u=fromIso(until),now=new Date();
-    S.reserves.push({id:Store.freeId(S.reserves,'r'),productId:p.sku,dealId:did,qty,src,until:u});
-    S.moves.unshift({at:now,productId:p.sku,kind:'Резерв',qty,doc:did,by:m.id});
-    Notify.push(S,'reserve',m.id,`Резерв: ${low(p.name)} — ${num(qty)} ${p.unit} ${src==='stock'?'со склада':'из поставки '+src} для ${did} (${d.client}) до ${fD(u)}.`,now);
-    render();toast(`Резерв поставлен: ${num(qty)} ${p.unit} для ${did}. Склад и директор получили уведомление.`);
+    const res=Stock.reserve(S,{productId:p.id,qty,entityId:byId('rs-ent').value,cityId:byId('rs-city').value,src,dealId:did,until:u,by:m.id,at:now});
+    if(!res.ok) return showErr('rs-err',res.reason);
+    Notify.push(S,'reserve',m.id,`Резерв: ${low(p.name)} — ${qtyOf(qty,p)} ${src==='stock'?'со склада':'из поставки '+src} для ${did} (${d.client}) до ${fD(u)}.`,now);
+    render();toast(`Резерв поставлен: ${qtyOf(qty,p)} для ${did}. Склад и директор получили уведомление.`);
   },
   stage:f=>{
     const s=ship(f.dataset.id),m=me(),now=new Date();
@@ -367,17 +361,17 @@ const FORMS={
     const eta=byId('ns-eta').value?fromIso(byId('ns-eta').value):day(7,12);
     const stageId=Pipes.stage(S,pipe.id,byId('ns-stage').value)?.id||startStage(pipe.id).id;
     S.shipments.push({id,dir:'in',supplier:from,to:'Наш склад',carrier:byId('ns-car').value,track:byId('ns-doc').value.trim()||'нет данных: номер накладной',pipeId:pipe.id,stageId,eta,history:[{at:now,by:m.id,text:from}],items});
-    Notify.push(S,'ship',m.id,`Новая поставка ${id} из «${from}»: ${items.map(i=>`${low(product(i.productId).name)} ${num(i.qty)} ${product(i.productId).unit}`).join(', ')}. На складе ожидается ${fD(eta)}.`,now);
+    Notify.push(S,'ship',m.id,`Новая поставка ${id} из «${from}»: ${items.map(i=>`${low(product(i.productId).name)} ${qtyOf(i.qty,product(i.productId))}`).join(', ')}. На складе ожидается ${fD(eta)}.`,now);
     closeModal();S.ui.logTab='in';render();toast(`Поставка ${id} создана. Менеджеры уже видят её в остатках как «едет к нам».`);
   },
   product:()=>{
-    const sku=byId('np-sku').value.trim().toUpperCase(),name=byId('np-name').value.trim(),pr=byId('np-price'),m=me();
-    if(!sku||!name) return showErr('np-err','Нужны артикул и наименование.');
-    if(product(sku)) return showErr('np-err',`Артикул ${sku} уже есть в номенклатуре.`);
+    const name=byId('np-name').value.trim(),pr=byId('np-price'),m=me();
+    if(!name) return showErr('np-err','Нужно наименование.');
+    if(S.products.some(p=>Catalog.norm(p.name)===Catalog.norm(name))) return showErr('np-err',`Товар «${name}» уже есть в номенклатуре.`);
     const price=pr&&pr.value!==''?Math.max(0,Number(pr.value)):null;
-    S.products.push({sku,name,cat:byId('np-cat').value,unit:byId('np-unit').value,price,stock:0});
-    Notify.push(S,'arrive',m.id,`В номенклатуру добавлен товар: ${name} (${sku}).`,new Date());
-    closeModal();S.ui.cat='Все';S.ui.sq='';render();toast(`Товар ${sku} добавлен. Остаток 0 — появится после первой приёмки.`);
+    S.products.push({id:Store.freeId(S.products,'u'),name,brand:null,cat:byId('np-cat').value,unit:byId('np-unit').value,price,avail:null,url:null,src:'user',inCatalog:false});
+    Notify.push(S,'arrive',m.id,`В номенклатуру добавлен товар: ${name}.`,new Date());
+    closeModal();S.ui.cat='Все';S.ui.sq='';render();toast('Товар добавлен. Остатка нет — он появится после первой приёмки.');
   },
   msg:f=>{
     const d=deal(f.dataset.id),ta=byId('msg-text'),txt=ta.value.trim();
