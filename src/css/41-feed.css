@@ -1,0 +1,22 @@
+/* ——— лента карточек: комментарии и события (41-feed.js, вид feedHtml) ——— */
+.feed{display:flex;flex-direction:column;gap:14px;min-width:0}
+.feed-add{display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--surface-2)}
+.feed-add textarea{min-height:64px}
+.feed-add .btn{align-self:flex-start}
+.feed-list{display:flex;flex-direction:column;margin:0;padding:0;list-style:none}
+.feed-i{position:relative;display:flex;flex-direction:column;gap:3px;min-width:0;padding:0 0 14px 18px}
+.feed-i:last-child{padding-bottom:0}
+/* нить ленты и точка записи */
+.feed-i::before{content:"";position:absolute;left:4px;top:6px;bottom:-2px;width:2px;background:var(--line)}
+.feed-i:last-child::before{display:none}
+.feed-i::after{content:"";position:absolute;left:0;top:5px;width:10px;height:10px;border:2px solid var(--ink-3);border-radius:50%;background:var(--surface)}
+.feed-i.k-comment::after{border-color:var(--primary);background:var(--primary-soft)}
+.feed-i.k-win::after{border-color:var(--ok);background:var(--ok-soft)}
+.feed-i.k-lose::after{border-color:var(--bad);background:var(--bad-soft)}
+.feed-i.k-reserve::after{border-color:var(--sun);background:var(--sun-soft)}
+.feed-i.k-msg::after{border-color:var(--info);background:var(--info-soft)}
+.feed-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;font-size:13px}
+.feed-h b{font-weight:600}
+.feed-h small{font-size:12px;color:var(--ink-3)}
+.feed-t{margin:0;font-size:13.5px;line-height:1.45;overflow-wrap:anywhere;white-space:pre-wrap}
+.feed-i.k-comment .feed-t{padding:8px 10px;border-radius:12px;background:var(--surface-2)}

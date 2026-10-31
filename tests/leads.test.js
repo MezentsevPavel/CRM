@@ -247,28 +247,28 @@ test('раздел «Сделки»: менеджер видит только с
   // демо: Д-311, Д-318, Д-305, Д-322 — B2C (Анна С. p2, Олег Н. p10); Д-314, Д-320 — B2B (Максим Л. p3)
   app.setMe('p1');
   // директор переключает типы: сперва B2B, кнопкой — B2C; на экране обе кнопки
-  const all = app.vClients();
+  const all = app.vDeals();
   assert.ok(all.includes('data-type="b2b"') && all.includes('data-type="b2c"'), 'у директора нет переключателя B2B / B2C');
   for (const c of ['КФХ Петровых', 'ИП Кузнецов']) assert.ok(all.includes(c), `директору не видно ${c}`);
   assert.ok(!all.includes('Иванов Сергей'), 'на вкладке B2B видны сделки B2C');
   app.A['deal-type']({ dataset: { type: 'b2c' } });
-  const allC = app.vClients();
+  const allC = app.vDeals();
   for (const c of ['Иванов Сергей', 'Волкова Мария']) assert.ok(allC.includes(c), `на вкладке B2C директору не видно ${c}`);
   assert.ok(!allC.includes('КФХ Петровых'), 'на вкладке B2C видны сделки B2B');
   app.setMe('p3');                 // менеджер B2B
-  const b2b = app.vClients();
+  const b2b = app.vDeals();
   assert.ok(b2b.includes('КФХ Петровых') && b2b.includes('ИП Кузнецов'), 'свои сделки B2B не показаны');
   assert.ok(!b2b.includes('Иванов Сергей') && !b2b.includes('Волкова Мария'), 'видны сделки B2C');
   assert.ok(!b2b.includes('Сделки B2C'), 'воронка B2C без видимых сделок показана');
   assert.ok(app.DRAWERS.deal('Д-314'), 'своя карточка не открылась');
   assert.equal(app.DRAWERS.deal('Д-311'), null, 'открылась карточка сделки B2C');
   app.setMe('p2');                 // менеджер B2C
-  assert.ok(!app.vClients().includes('КФХ Петровых'));
+  assert.ok(!app.vDeals().includes('КФХ Петровых'));
   // с правом «все типы» — появляется переключатель и видны сделки B2B
   app.S.roles.find(r => r.id === 'managerB2c').perms.dealsAll = true;
-  assert.ok(app.vClients().includes('data-type="b2b"'));
+  assert.ok(app.vDeals().includes('data-type="b2b"'));
   app.A['deal-type']({ dataset: { type: 'b2b' } });
-  assert.ok(app.vClients().includes('КФХ Петровых'));
+  assert.ok(app.vDeals().includes('КФХ Петровых'));
   assert.ok(app.DRAWERS.deal('Д-314'));
 });
 
@@ -754,12 +754,12 @@ test('кнопки имитации видны в разделе «Лиды» у
   assert.ok(!openLeadsView(app, 'managerB2b').includes('data-act="lead-sim"'));
 });
 
-test('«Настройки → Лиды»: вкладка между «Почтой» и «Складами», только с правом «настройки»; источник запоминается; пояснение про Битрикс24', () => {
+test('«Настройки → Лиды и сделки»: вкладка между «Почтой» и «Складами», только с правом «настройки»; источник запоминается; пояснение про Битрикс24', () => {
   const app = load();
   asRole(app, 'director');
   const labels = app.settingsTabs().map(t => t.label);
-  const i = labels.indexOf('Лиды');
-  assert.ok(i > 0, 'нет вкладки «Лиды»');
+  const i = labels.indexOf('Лиды и сделки');
+  assert.ok(i > 0, 'нет вкладки «Лиды и сделки»');
   assert.equal(labels[i - 1], 'Почта');
   assert.equal(labels[i + 1], 'Склады и юрлица');
   asRole(app, 'managerB2b');
@@ -790,23 +790,25 @@ test('«Настройки → Лиды»: вкладка между «Почт�
 test('раздел «Сделки»: менеджер B2C видит только воронку B2C и только сделки B2C; у сделки видны тип и менеджер', () => {
   const app = load();
   asRole(app, 'managerB2c');
-  app.go('clients');
+  app.go('deals');
   const html = viewHtml(app);
   assert.ok(html.includes('Сделки B2C'), 'нет воронки B2C');
   assert.ok(!html.includes('Сделки B2B'), 'видна воронка B2B');
   assert.ok(!html.includes('data-act="deal-type"'), 'у менеджера есть переключатель типа');
   // число сделок в воронке = сделки B2C из данных (считаем заново)
-  const funnelSum = [...html.matchAll(/<div class="fn [^"]*"><b>(\d+)<\/b>/g)].reduce((s, m) => s + Number(m[1]), 0);
+  // (проваленные сделки из колонок уходят в фильтр «Провалены» — в доске их нет)
+  const funnelSum = [...html.matchAll(/class="dcnt">(\d+) /g)].reduce((s, m) => s + Number(m[1]), 0);
   const b2c = app.S.deals.filter(d => d.type === 'b2c');
-  assert.equal(funnelSum, b2c.length);
+  const open = b2c.filter(d => !d.lostReason);
+  assert.equal(funnelSum, open.length);
   const rows = [...html.matchAll(/data-act="open-deal" data-id="([^"]+)"/g)].map(m => m[1]).sort();
-  assert.deepEqual(rows, idsOf(b2c));
-  // тип и менеджер — в строке и в карточке
-  const d0 = b2c[0];
+  assert.deepEqual(rows, idsOf(open));
+  // тип и менеджер — в доске и в карточке
+  const d0 = open[0];
   const mgrName = app.S.people.find(p => p.id === d0.managerId).name;
-  assert.ok(html.includes(mgrName) && html.includes('>B2C<'));
+  assert.ok(html.includes(mgrName) && html.includes('типа B2C'));
   const card = app.DRAWERS.deal(d0.id).body;
-  assert.ok(card.includes('<dt>Тип</dt><dd>B2C</dd>') && card.includes(`<dd>${mgrName}</dd>`));
+  assert.ok(card.includes('<option value="b2c" selected>B2C</option>') && card.includes(`<option value="${d0.managerId}" selected>${mgrName}</option>`));
   assert.ok(card.includes('Сделки B2C'), 'в карточке не сказано, в какой воронке сделка');
   // сделка из лида ведёт к лиду
   const fromLead = b2c.find(d => d.leadId);
@@ -814,7 +816,7 @@ test('раздел «Сделки»: менеджер B2C видит тольк�
   asRole(app, 'director');
   assert.ok(app.DRAWERS.deal(fromLead.id).body.includes(`data-act="open-lead" data-id="${fromLead.leadId}"`), 'нет ссылки на лид');
   // менеджер B2B — наоборот
-  asRole(app, 'managerB2b'); app.go('clients');
+  asRole(app, 'managerB2b'); app.go('deals');
   const h2 = viewHtml(app);
   assert.ok(h2.includes('Сделки B2B') && !h2.includes('Сделки B2C'));
   // общий поиск не выдаёт сделки чужого типа: «Иванов Сергей» — клиент B2C

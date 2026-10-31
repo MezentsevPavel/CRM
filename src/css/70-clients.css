@@ -1,0 +1,49 @@
+/* ——— клиенты: список, карточка, подсказка о дубле ——— */
+.cbar .search-in{flex:1 1 260px;max-width:380px}
+.c-show-s{display:none}
+.cform{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.cform .field small{font-size:12px;color:var(--ink-3)}
+.cform .field>span:not(.lbl){font-size:14px;overflow-wrap:anywhere}
+
+/* связанные записи в карточке: кнопка-строка с названием, подписью и суммой */
+.crel{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
+.crow{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;width:100%;min-width:0;padding:9px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);font-size:13.5px;text-align:left}
+button.crow{cursor:pointer}
+button.crow:hover{border-color:var(--line-2);background:var(--surface-2)}
+.crow-t{display:flex;flex-direction:column;gap:2px;min-width:0;overflow-wrap:anywhere}
+.crow-t small{font-size:12px;color:var(--ink-3)}
+.crow-s{flex:none;font-weight:700;font-size:13px;font-variant-numeric:tabular-nums;text-align:right}
+.cmsg-t{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;font-size:13px;color:var(--ink-2)}
+
+/* «Похоже, это …»: найденный клиент и кнопка «Выбрать его» */
+.dup{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border:1px solid var(--warn);border-radius:12px;background:var(--warn-soft)}
+.dup-l{display:flex;flex-direction:column;gap:8px;margin:0;padding:0;list-style:none}
+.dup-l li{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;min-width:0}
+.dup-t{display:flex;align-items:flex-start;gap:8px;min-width:0;font-size:13.5px;color:var(--ink)}
+.dup-t>.ic{flex:none;width:16px;height:16px;margin-top:2px;color:var(--warn)}
+.dup-t>span{display:flex;flex-direction:column;gap:1px;min-width:0;overflow-wrap:anywhere}
+.dup-t small{font-size:12px;color:var(--ink-2)}
+.dup .btn{flex:none}
+.dup .hint{color:var(--ink-2)}
+
+@media (max-width:700px){
+  .cbar .search-in{flex-basis:100%;max-width:none}
+  .c-hide-s{display:none}
+  .c-show-s{display:inline}
+  .cform{grid-template-columns:minmax(0,1fr)}
+  .dup-l li{flex-direction:column;align-items:stretch}
+  .dup .btn{align-self:flex-start}
+}
+
+/* «Настройки → Лиды и сделки»: список причин отказа */
+.lreasons{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
+.lreason{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:8px}
+.lreason small{white-space:nowrap}
+.lreason-new{display:flex;gap:8px}
+.lreason-new .inp{flex:1;min-width:0}
+@media (max-width:700px){
+  .lreason{grid-template-columns:minmax(0,1fr) auto}
+  .lreason small{grid-column:1;grid-row:2}
+  .lreason .btn{grid-column:2;grid-row:1}
+  .lreason-new{flex-direction:column;align-items:stretch}
+}

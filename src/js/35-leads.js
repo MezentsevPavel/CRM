@@ -230,7 +230,8 @@ const Leads = (() => {
     return lead;
   }
 
-  // Создать сделку из лида: воронка своего типа, первый этап, тот же менеджер, контакт и текст заявки.
+  // Создать сделку из лида: воронка своего типа, первый этап, тот же менеджер, контакт и текст заявки. Клиент сделки —
+  // уже заведённый с тем же ИНН, телефоном или почтой, иначе новый (Clients.findOrCreate); лид и сделка ссылаются на него.
   // Лид уходит в «Сделка создана» и ссылается на сделку. Возвращает id сделки; null — если нельзя
   // (лид закрыт, сделка уже есть, нет менеджера или тип неизвестен).
   function toDeal(st, leadId, by, now) {
@@ -240,9 +241,14 @@ const Leads = (() => {
     const pipe = type ? dealPipe(type, st) : null, done = stageIn(pipeOf(st, lead), ST_DEAL);
     if (!pipe || !done) return null;
     st.deals = st.deals || [];
+    // Клиент сделки: тот же ИНН, телефон или почта — уже заведённый клиент, иначе новый (Clients.findOrCreate)
+    const { client } = Clients.findOrCreate(st, {
+      name: lead.company || lead.name || 'нет данных: клиент', kind: lead.company || lead.inn ? 'company' : 'person',
+      inn: lead.inn, phone: lead.phone, email: lead.email, managerId: lead.managerId, demo: lead.demo,
+    }, by, now);
     const d = {
       id: nextId(st.deals, 'Д', 300),
-      client: lead.company || lead.name || 'нет данных: клиент',
+      clientId: client.id, client: client.name,
       contact: lead.name || lead.company || 'нет данных: контакт',
       kind: type === 'b2b' ? 'Компания' : 'Частный клиент',
       object: lead.text || 'нет данных: текст заявки',
@@ -250,12 +256,14 @@ const Leads = (() => {
       managerId: lead.managerId,
       // мессенджер клиента из лида неизвестен — связь по телефону; телефон и почта едут в сделку как есть
       channel: 'phone', amount: 0, phone: lead.phone, email: lead.email,
-      leadId: lead.id, demo: lead.demo,
+      items: [], at: now, leadId: lead.id, demo: lead.demo,
     };
     st.deals.push(d);
+    Feed.add(st, { t: 'deal', id: d.id }, { kind: 'create', text: `Сделка создана из лида ${lead.id}`, by, at: now });
     lead.type = type;
     lead.stageId = done.id;
     lead.dealId = d.id;
+    lead.clientId = client.id;
     log(lead, now, by, `Создана сделка ${d.id}`);
     return d.id;
   }
@@ -280,7 +288,7 @@ const Leads = (() => {
     return all.filter(d => d.managerId === personId || (!!scope && d.type === scope));
   }
 
-  return { SOURCE, SOURCES, TYPE, STAGE, title, managers, classify, route, pick, openCount, create, canTake, take, contacted, close, move, canWork, can, fresh, allows, setSource, canTransfer, transfer, toDeal, visible, dealsVisible };
+  return { SOURCE, SOURCES, TYPE, STAGE, nextId, firstOf, title, managers, classify, route, pick, openCount, create, canTake, take, contacted, close, move, canWork, can, fresh, allows, setSource, canTransfer, transfer, toDeal, visible, dealsVisible };
 })();
 
 // Шаг SEEDS: роль РОП и демо-человек с этой ролью. РОП распределяет лиды (право leadsAssign) и сам лидов не получает:

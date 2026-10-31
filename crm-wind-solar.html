@@ -48,6 +48,29 @@ button{cursor:pointer}
 .stack{display:flex;flex-direction:column;gap:16px;min-width:0}
 .stack-s{display:flex;flex-direction:column;gap:14px;min-width:0}
 
+/* ——— лента карточек: комментарии и события (41-feed.js, вид feedHtml) ——— */
+.feed{display:flex;flex-direction:column;gap:14px;min-width:0}
+.feed-add{display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--surface-2)}
+.feed-add textarea{min-height:64px}
+.feed-add .btn{align-self:flex-start}
+.feed-list{display:flex;flex-direction:column;margin:0;padding:0;list-style:none}
+.feed-i{position:relative;display:flex;flex-direction:column;gap:3px;min-width:0;padding:0 0 14px 18px}
+.feed-i:last-child{padding-bottom:0}
+/* нить ленты и точка записи */
+.feed-i::before{content:"";position:absolute;left:4px;top:6px;bottom:-2px;width:2px;background:var(--line)}
+.feed-i:last-child::before{display:none}
+.feed-i::after{content:"";position:absolute;left:0;top:5px;width:10px;height:10px;border:2px solid var(--ink-3);border-radius:50%;background:var(--surface)}
+.feed-i.k-comment::after{border-color:var(--primary);background:var(--primary-soft)}
+.feed-i.k-win::after{border-color:var(--ok);background:var(--ok-soft)}
+.feed-i.k-lose::after{border-color:var(--bad);background:var(--bad-soft)}
+.feed-i.k-reserve::after{border-color:var(--sun);background:var(--sun-soft)}
+.feed-i.k-msg::after{border-color:var(--info);background:var(--info-soft)}
+.feed-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;font-size:13px}
+.feed-h b{font-weight:600}
+.feed-h small{font-size:12px;color:var(--ink-3)}
+.feed-t{margin:0;font-size:13.5px;line-height:1.45;overflow-wrap:anywhere;white-space:pre-wrap}
+.feed-i.k-comment .feed-t{padding:8px 10px;border-radius:12px;background:var(--surface-2)}
+
 /* ——— каркас ——— */
 .app{display:grid;grid-template-columns:252px minmax(0,1fr);height:100%}
 .side{display:flex;flex-direction:column;overflow-y:auto;padding-block:18px 14px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:14px;background:var(--surface);border-right:1px solid var(--line);color:var(--ink)}
@@ -619,12 +642,126 @@ fieldset.ss-f legend{padding:0;margin-bottom:6px;font-size:12.5px;font-weight:50
   .phone-in{border:1px solid var(--line);border-radius:14px}
 }
 
-/* ——— клиенты ——— */
-.funnel{display:grid;grid-template-columns:repeat(8,minmax(92px,1fr));gap:6px;min-width:780px}
-.fn{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
-.fn b{font:800 20px/1 var(--f-display)}
-.fn span{font-size:12px;color:var(--ink-3)}
-.fn.zero b{color:var(--ink-3)}
+/* ——— сделки: доска, таблица, карточка, КП ——— */
+.dbar .search-in{flex:1 1 260px;max-width:380px}
+.dfilt{gap:8px}
+.dfilt .inp{max-width:100%}
+/* доска: колонки — этапы воронки; контейнер листается вбок (data-hscroll) */
+.dkan{display:grid;grid-template-columns:repeat(var(--n),minmax(250px,1fr));gap:12px;min-width:calc(var(--n) * 250px + (var(--n) - 1) * 12px)}
+.dcol{min-height:200px}
+.dcol .col-h{min-height:28px}
+.dplus{width:28px;height:28px;border-radius:9px}
+.dplus .ic{width:15px;height:15px}
+.dcol-s{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 6px;margin:-4px 4px 2px;font-size:12.5px;color:var(--ink-2)}
+.dcol-s b{font:800 14px/1.2 var(--f-display);color:var(--ink);font-variant-numeric:tabular-nums}
+.dcol-s small{width:100%;font-size:11.5px;color:var(--ink-3)}
+.dcard .tc-t small{display:block;margin-top:2px;font-size:11.5px;color:var(--ink-3);overflow-wrap:anywhere}
+.dcard.lost{cursor:pointer;background:var(--surface-2)}
+.dcard.lost .tc-t{color:var(--ink-2)}
+.dc-sum{margin:0;font:800 15px/1.2 var(--f-display);letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.dc-lost{margin:0;font-size:12.5px;color:var(--bad)}
+.dcard .tc-m{flex-wrap:wrap}
+
+/* карточка сделки: полоса этапов, действия, вкладки */
+.dsteps{display:flex;gap:4px;margin:0 -2px;padding:0 2px 2px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.dstep{flex:1 0 84px;display:flex;flex-direction:column;gap:6px;min-width:0;padding:0;border:0;background:transparent;color:var(--ink-3);font-size:11px;line-height:1.25;text-align:left}
+.dstep::before{content:"";height:5px;border-radius:3px;background:var(--sunken);transition:background .15s}
+.dstep span{padding-bottom:2px;overflow-wrap:anywhere}
+.dstep.done::before{background:var(--primary-line)}
+.dstep.cur::before{background:var(--primary)}
+.dstep.lost::before{background:var(--bad)}
+.dstep.cur,.dstep.lost{color:var(--ink);font-weight:600}
+.dstep:not(:disabled):hover::before{background:var(--primary-line)}
+.dstep:not(:disabled):hover{color:var(--ink)}
+.dstep:disabled{cursor:default}
+.dsteps:has(.dstep.lost) .dstep:not(.lost),.dstep:disabled:not(.cur):not(.lost):not(.done){opacity:.7}
+.dact{display:flex;flex-wrap:wrap;gap:8px}
+.dtabs{display:flex;gap:2px;margin:0 -20px;padding:0 20px;border-bottom:1px solid var(--line);overflow-x:auto;-webkit-overflow-scrolling:touch}
+.dtab{flex:none;display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--ink-2);font-size:13.5px;font-weight:500;white-space:nowrap}
+.dtab b{padding:0 6px;border-radius:9px;background:var(--sunken);color:var(--ink-2);font-size:11.5px;font-weight:700}
+.dtab:hover{color:var(--ink)}
+.dtab.on{border-bottom-color:var(--primary);color:var(--primary-deep);font-weight:700}
+.dpane{display:flex;flex-direction:column;gap:18px;min-width:0}
+.dform{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.dform .field small{font-size:12px;color:var(--ink-3)}
+.dform .field>span:not(.lbl){font-size:14px}
+
+/* вкладка «Товары» */
+.dlines{display:flex;flex-direction:column;gap:10px;margin:0;padding:0;list-style:none}
+.dline{display:flex;flex-direction:column;gap:10px;min-width:0;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+.dl-h{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.dl-n{display:flex;flex-direction:column;gap:2px;min-width:0;font-size:13.5px}
+.dl-n b{font-weight:600;overflow-wrap:anywhere}
+.dl-st{font-size:12px;color:var(--ink-3)}
+.dl-in{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.dl-in .field>label,.dl-in .lbl{font-size:11.5px}
+.dl-sum{display:flex;align-items:center;min-height:32px;font:700 13.5px/1.2 var(--f-body);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.dl-f{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.dl-f:empty{display:none}
+.dl-r{flex-wrap:wrap}
+.dl-r .btn.sm{height:24px;padding:0 8px}
+.dtot{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:12px 14px;border-radius:14px;background:var(--surface-2)}
+.dtot span{font-size:13px;color:var(--ink-2)}
+.dtot b{font:800 20px/1.1 var(--f-display);letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.dpres{display:flex;flex-direction:column;gap:4px}
+.dpr{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"n i" "s i";align-items:center;gap:1px 10px;padding:8px 10px;border:1px solid var(--line);border-radius:12px;background:var(--surface);text-align:left}
+.dpr:hover{border-color:var(--line-2);background:var(--surface-2)}
+.dpr-n{grid-area:n;font-size:13.5px;overflow-wrap:anywhere}
+.dpr small{grid-area:s;font-size:12px;color:var(--ink-3)}
+.dpr .ic{grid-area:i;color:var(--primary)}
+
+/* окно «Новая сделка»: выбор клиента */
+.dpicks{display:flex;flex-direction:column;gap:4px}
+.dpick{display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:12px;background:var(--surface);font-size:13.5px;cursor:pointer}
+.dpick:has(input:checked){border-color:var(--primary);background:var(--primary-soft)}
+.dpick input{margin:3px 0 0;accent-color:var(--primary)}
+.dpick span{display:flex;flex-direction:column;gap:1px;min-width:0;overflow-wrap:anywhere}
+.dpick small{font-size:12px;color:var(--ink-3)}
+
+/* коммерческое предложение */
+.modal:has(.kp){width:min(820px,100%)}
+.kp{display:flex;flex-direction:column;gap:16px;color:var(--ink)}
+.kp-top{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+.kp-top .logo img{height:36px}
+.kp-t{text-align:right}
+.kp-t h2{margin:0;font:800 19px/1.2 var(--f-display);letter-spacing:-.015em}
+.kp-t p{margin:4px 0 0;font-size:13px;color:var(--ink-3)}
+.kp-kv{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:6px 16px;margin:0;font-size:13.5px}
+.kp-kv dt{color:var(--ink-3)}
+.kp-kv dd{margin:0;overflow-wrap:anywhere}
+.kp-tbl th,.kp-tbl td{padding:8px 10px}
+.kp-tot{display:flex;align-items:baseline;justify-content:flex-end;gap:14px;margin:0;font-size:14px}
+.kp-tot b{font:800 22px/1.1 var(--f-display);letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+
+@media (max-width:700px){
+  .dbar .search-in{flex-basis:100%;max-width:none}
+  .d-hide-s{display:none}
+  /* телефон: колонки листаются пальцем, по одной на экран */
+  .dkan{grid-template-columns:repeat(var(--n),minmax(78vw,1fr));min-width:calc(var(--n) * 78vw + (var(--n) - 1) * 12px)}
+  .dform{grid-template-columns:minmax(0,1fr)}
+  .dl-in{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .dtabs{margin:0 -16px;padding:0 16px}
+  .dtot b{font-size:18px}
+  .kp-top{flex-direction:column;align-items:flex-start}
+  .kp-t{text-align:left}
+  .kp-kv{grid-template-columns:minmax(0,1fr);gap:2px}
+  .kp-kv dd{margin-bottom:8px}
+}
+
+/* печать: только коммерческое предложение */
+@media print{
+  html,body{height:auto;background:#fff}
+  .app,#drawer-root,.toasts,.no-print,.modal-h{display:none!important}
+  #modal-root .modal-wrap{position:static;display:block;padding:0;background:none;animation:none}
+  #modal-root .modal{width:100%;max-height:none;overflow:visible;border-radius:0;box-shadow:none;background:#fff}
+  #modal-root .modal-b{padding:0}
+  .kp{color:#111;gap:14px}
+  .kp *{color:#111!important;border-color:#999!important}
+  .kp .hint,.kp .muted,.kp-t p,.kp-kv dt{color:#555!important}
+  .kp .tbl th{background:#f0f0f0}
+  .kp .logo{background:#fff}
+  .kp .xs{overflow:visible}
+}
 
 /* ——— переписка ——— */
 .chat{display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:18px;background:var(--sunken)}
@@ -777,6 +914,56 @@ fieldset.ss-f legend{padding:0;margin-bottom:6px;font-size:12.5px;font-weight:50
   .mail-back{display:inline-flex}
   .mail[data-pane="nav"] .mail-back{display:none}
   .mail-rem-f,.mset-row,.mset-box,.mset-add{grid-template-columns:minmax(0,1fr)}
+}
+
+/* ——— клиенты: список, карточка, подсказка о дубле ——— */
+.cbar .search-in{flex:1 1 260px;max-width:380px}
+.c-show-s{display:none}
+.cform{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.cform .field small{font-size:12px;color:var(--ink-3)}
+.cform .field>span:not(.lbl){font-size:14px;overflow-wrap:anywhere}
+
+/* связанные записи в карточке: кнопка-строка с названием, подписью и суммой */
+.crel{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
+.crow{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;width:100%;min-width:0;padding:9px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);font-size:13.5px;text-align:left}
+button.crow{cursor:pointer}
+button.crow:hover{border-color:var(--line-2);background:var(--surface-2)}
+.crow-t{display:flex;flex-direction:column;gap:2px;min-width:0;overflow-wrap:anywhere}
+.crow-t small{font-size:12px;color:var(--ink-3)}
+.crow-s{flex:none;font-weight:700;font-size:13px;font-variant-numeric:tabular-nums;text-align:right}
+.cmsg-t{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;font-size:13px;color:var(--ink-2)}
+
+/* «Похоже, это …»: найденный клиент и кнопка «Выбрать его» */
+.dup{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border:1px solid var(--warn);border-radius:12px;background:var(--warn-soft)}
+.dup-l{display:flex;flex-direction:column;gap:8px;margin:0;padding:0;list-style:none}
+.dup-l li{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;min-width:0}
+.dup-t{display:flex;align-items:flex-start;gap:8px;min-width:0;font-size:13.5px;color:var(--ink)}
+.dup-t>.ic{flex:none;width:16px;height:16px;margin-top:2px;color:var(--warn)}
+.dup-t>span{display:flex;flex-direction:column;gap:1px;min-width:0;overflow-wrap:anywhere}
+.dup-t small{font-size:12px;color:var(--ink-2)}
+.dup .btn{flex:none}
+.dup .hint{color:var(--ink-2)}
+
+@media (max-width:700px){
+  .cbar .search-in{flex-basis:100%;max-width:none}
+  .c-hide-s{display:none}
+  .c-show-s{display:inline}
+  .cform{grid-template-columns:minmax(0,1fr)}
+  .dup-l li{flex-direction:column;align-items:stretch}
+  .dup .btn{align-self:flex-start}
+}
+
+/* «Настройки → Лиды и сделки»: список причин отказа */
+.lreasons{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
+.lreason{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:8px}
+.lreason small{white-space:nowrap}
+.lreason-new{display:flex;gap:8px}
+.lreason-new .inp{flex:1;min-width:0}
+@media (max-width:700px){
+  .lreason{grid-template-columns:minmax(0,1fr) auto}
+  .lreason small{grid-column:1;grid-row:2}
+  .lreason .btn{grid-column:2;grid-row:1}
+  .lreason-new{flex-direction:column;align-items:stretch}
 }
 </style>
 
@@ -1585,7 +1772,8 @@ const Store = (() => {
   // 4 — поставки: маршрут route, положение pos, depart, number, carrier, юрлицо/город; st.shipRules. Прежнее сохранение уходит в пользу демо.
   // 5 — лиды: st.leads, st.leadSource; у сделок из лидов leadId, phone, email. Прежнее сохранение уходит в пользу демо.
   // 6 — роль РОП и право leadsAssign (таск 04): сохранение без них уходит в пользу демо.
-  const REV = 6;
+  // 7 — клиенты и лента (таск 09): st.clients, st.feed, st.lostReasons; у сделок clientId, items, at, wonAt, lostReason; у лидов clientId.
+  const REV = 7;
   // Браузер даёт сайту около 5 млн символов на всё; берём с запасом.
   const LIMIT = 4500000;
   const NO_SPACE = 'не сохранено — мало места в браузере';
@@ -2880,7 +3068,8 @@ const Leads = (() => {
     return lead;
   }
 
-  // Создать сделку из лида: воронка своего типа, первый этап, тот же менеджер, контакт и текст заявки.
+  // Создать сделку из лида: воронка своего типа, первый этап, тот же менеджер, контакт и текст заявки. Клиент сделки —
+  // уже заведённый с тем же ИНН, телефоном или почтой, иначе новый (Clients.findOrCreate); лид и сделка ссылаются на него.
   // Лид уходит в «Сделка создана» и ссылается на сделку. Возвращает id сделки; null — если нельзя
   // (лид закрыт, сделка уже есть, нет менеджера или тип неизвестен).
   function toDeal(st, leadId, by, now) {
@@ -2890,9 +3079,14 @@ const Leads = (() => {
     const pipe = type ? dealPipe(type, st) : null, done = stageIn(pipeOf(st, lead), ST_DEAL);
     if (!pipe || !done) return null;
     st.deals = st.deals || [];
+    // Клиент сделки: тот же ИНН, телефон или почта — уже заведённый клиент, иначе новый (Clients.findOrCreate)
+    const { client } = Clients.findOrCreate(st, {
+      name: lead.company || lead.name || 'нет данных: клиент', kind: lead.company || lead.inn ? 'company' : 'person',
+      inn: lead.inn, phone: lead.phone, email: lead.email, managerId: lead.managerId, demo: lead.demo,
+    }, by, now);
     const d = {
       id: nextId(st.deals, 'Д', 300),
-      client: lead.company || lead.name || 'нет данных: клиент',
+      clientId: client.id, client: client.name,
       contact: lead.name || lead.company || 'нет данных: контакт',
       kind: type === 'b2b' ? 'Компания' : 'Частный клиент',
       object: lead.text || 'нет данных: текст заявки',
@@ -2900,12 +3094,14 @@ const Leads = (() => {
       managerId: lead.managerId,
       // мессенджер клиента из лида неизвестен — связь по телефону; телефон и почта едут в сделку как есть
       channel: 'phone', amount: 0, phone: lead.phone, email: lead.email,
-      leadId: lead.id, demo: lead.demo,
+      items: [], at: now, leadId: lead.id, demo: lead.demo,
     };
     st.deals.push(d);
+    Feed.add(st, { t: 'deal', id: d.id }, { kind: 'create', text: `Сделка создана из лида ${lead.id}`, by, at: now });
     lead.type = type;
     lead.stageId = done.id;
     lead.dealId = d.id;
+    lead.clientId = client.id;
     log(lead, now, by, `Создана сделка ${d.id}`);
     return d.id;
   }
@@ -2930,7 +3126,7 @@ const Leads = (() => {
     return all.filter(d => d.managerId === personId || (!!scope && d.type === scope));
   }
 
-  return { SOURCE, SOURCES, TYPE, STAGE, title, managers, classify, route, pick, openCount, create, canTake, take, contacted, close, move, canWork, can, fresh, allows, setSource, canTransfer, transfer, toDeal, visible, dealsVisible };
+  return { SOURCE, SOURCES, TYPE, STAGE, nextId, firstOf, title, managers, classify, route, pick, openCount, create, canTake, take, contacted, close, move, canWork, can, fresh, allows, setSource, canTransfer, transfer, toDeal, visible, dealsVisible };
 })();
 
 // Шаг SEEDS: роль РОП и демо-человек с этой ролью. РОП распределяет лиды (право leadsAssign) и сам лидов не получает:
@@ -3438,6 +3634,844 @@ SEEDS.push(st => {
   }
 });
 
+// Ядро: клиенты. Клиент — отдельная карточка: человек или компания (ИНН), телефоны, почта, адрес, менеджер.
+// Дубли ищет find: тот же ИНН, телефон (по цифрам) или почта. Лиды и сделки ссылаются на клиента (clientId),
+// related собирает всё, что к нему относится. Права — Perms, видимость сделок и лидов — Leads, события — Feed.
+// Чистые функции над состоянием st; время приходит параметром now (Date). Экран — 70-clients.js.
+
+const Clients = (() => {
+  const KIND = { person: 'человек', company: 'компания' };
+  const str = v => String(v == null ? '' : v).trim();
+  const digits = v => str(v).replace(/\D/g, '');
+
+  // Телефон для сравнения: только цифры; «+7» и «8» в начале одиннадцатизначного номера — одно и то же.
+  function phoneKey(v) {
+    const d = digits(v);
+    return d.length === 11 && (d[0] === '7' || d[0] === '8') ? d.slice(1) : d;
+  }
+  const emailKey = v => str(v).toLowerCase();
+  const innKey = digits;
+
+  // Телефоны из данных: список phones и/или одиночный phone; без пустых и без повторов (по цифрам).
+  function phonesOf(data) {
+    const seen = new Set(), out = [];
+    for (const v of [...(Array.isArray(data.phones) ? data.phones : []), data.phone]) {
+      const s = str(v), k = phoneKey(s);
+      if (k && !seen.has(k)) { seen.add(k); out.push(s); }
+    }
+    return out;
+  }
+
+  const byId = (st, id) => (st.clients || []).find(c => c.id === id) || null;
+  const personOf = (st, id) => (st.people || []).find(p => p.id === id) || null;
+
+  // Насколько запись q совпала с клиентом: ИНН — 3, телефон — 2, почта — 1; 0 — не совпала.
+  // q — {phone, phones, email, inn}: клиент, лид, сделка или то, что ввели в форме.
+  function score(c, q) {
+    const ik = innKey(q.inn), ek = emailKey(q.email), pk = phonesOf(q).map(phoneKey);
+    let s = 0;
+    if (ik && innKey(c.inn) === ik) s = 3;
+    else if (pk.length && (c.phones || []).some(p => pk.includes(phoneKey(p)))) s = 2;
+    else if (ek && emailKey(c.email) === ek) s = 1;
+    return s;
+  }
+
+  // Найденные клиенты с тем же ИНН, телефоном или почтой: сначала совпавшие по ИНН, затем по телефону, затем по почте.
+  function find(st, q = {}) {
+    return (st.clients || []).map(c => ({ c, s: score(c, q) })).filter(x => x.s > 0)
+      .sort((a, b) => b.s - a.s).map(x => x.c);
+  }
+
+  // Вид по данным: есть ИНН или сказано «компания» — компания; иначе человек.
+  const kindOf = data => (KIND[data.kind] ? data.kind : (innKey(data.inn) ? 'company' : 'person'));
+
+  // Завести клиента без проверки прав (его зовут и сами записи: лид → сделка, демо). Без названия — нельзя.
+  function make(st, data, by, now) {
+    const name = str(data.name);
+    if (!name) return { ok: false, id: null, client: null, missing: ['name'], reason: 'Не заполнено: название клиента.' };
+    st.clients = st.clients || [];
+    const c = { id: Leads.nextId(st.clients, 'К', 0), kind: kindOf(data), name, phones: phonesOf(data), demo: !!data.demo };
+    if (innKey(data.inn)) c.inn = str(data.inn);
+    if (str(data.email)) c.email = str(data.email);
+    if (str(data.address)) c.address = str(data.address);
+    if (data.managerId && personOf(st, data.managerId)) c.managerId = data.managerId;
+    st.clients.push(c);
+    Feed.add(st, { t: 'client', id: c.id }, { kind: 'create', text: `Клиент заведён: ${c.name}`, by, at: now });
+    return { ok: true, id: c.id, client: c, missing: [], reason: '' };
+  }
+
+  // Может ли человек заводить и править клиентов: право «клиенты». by пустой — это система (демо, импорт).
+  const canEdit = (st, by) => !by || (!!personOf(st, by) && Perms.can(st, by, 'clients'));
+  const NO_RIGHT = { ok: false, id: null, client: null, missing: [], reason: 'У вашей роли нет права заводить и править клиентов.' };
+
+  // Новый клиент: {name, kind?, inn?, phone | phones?, email?, address?, managerId?, demo?}.
+  // Без названия — {ok:false, missing:['name']}. Дубли здесь не проверяются: «Похоже, это…» показывает форма по find.
+  function create(st, data, by, now) {
+    if (!canEdit(st, by)) return NO_RIGHT;
+    return make(st, data || {}, by, now);
+  }
+
+  // Поля клиента, которые правятся, и их подписи в ленте.
+  const LABEL = { name: 'Название', kind: 'Вид', inn: 'ИНН', phones: 'Телефоны', email: 'Почта', address: 'Адрес', managerId: 'Менеджер' };
+  const show = (st, f, v) => {
+    if (f === 'kind') return KIND[v] || 'нет данных';
+    if (f === 'phones') return (v || []).join(', ') || 'нет данных';
+    if (f === 'managerId') return (personOf(st, v) || {}).name || 'нет данных';
+    return str(v) || 'нет данных';
+  };
+
+  // Правка клиента: patch — любые из name, kind, inn, phones (список целиком, заменяет), email, address, managerId.
+  // Пустое название нельзя. Изменение — запись в ленту клиента; новое название едет в сделки клиента (deal.client).
+  // → {ok, changed:[поле…], reason}
+  function update(st, id, patch, by, now) {
+    const c = byId(st, id), p = patch || {};
+    if (!c) return { ok: false, changed: [], reason: 'Такого клиента нет.' };
+    if (!canEdit(st, by)) return { ok: false, changed: [], reason: NO_RIGHT.reason };
+    const next = {};
+    for (const f of Object.keys(LABEL)) {
+      if (!(f in p)) continue;
+      let v = p[f];
+      if (f === 'name') { v = str(v); if (!v) return { ok: false, changed: [], reason: 'Название клиента не может быть пустым.' }; }
+      else if (f === 'kind') { if (!KIND[v]) return { ok: false, changed: [], reason: 'Вид клиента — человек или компания.' }; }
+      else if (f === 'phones') v = phonesOf({ phones: v });
+      else if (f === 'managerId') { v = v || null; if (v && !personOf(st, v)) return { ok: false, changed: [], reason: 'Такого сотрудника нет.' }; }
+      else v = str(v);
+      const same = f === 'phones' ? v.join('|') === (c.phones || []).join('|') : (c[f] == null ? '' : c[f]) === (v == null ? '' : v);
+      if (!same) next[f] = v;
+    }
+    const changed = Object.keys(next), lines = [], data = [];
+    for (const f of changed) {
+      lines.push(`${LABEL[f]}: ${show(st, f, c[f])} → ${show(st, f, next[f])}`);
+      data.push({ field: f, from: c[f] == null ? null : c[f], to: next[f] });
+      if (next[f] === '' || next[f] === null) delete c[f]; else c[f] = next[f];
+    }
+    if (changed.includes('name')) for (const d of st.deals || []) if (d.clientId === c.id) d.client = c.name;
+    if (changed.length) Feed.add(st, { t: 'client', id: c.id }, { kind: 'field', text: lines.join('; '), by, at: now, data: { changes: data } });
+    return { ok: true, changed, reason: '' };
+  }
+
+  // Найти клиента по ИНН, телефону или почте (первый — самый надёжный по find) или завести нового. → {client, created}.
+  // У найденного дописываются то, чего не хватало: новые телефоны, почта, ИНН, адрес (занятое не затирается).
+  // Без совпадений и без названия клиента не будет: {client:null, created:false}.
+  function findOrCreate(st, data, by, now) {
+    const d = data || {}, found = find(st, d)[0];
+    if (!found) {
+      const r = make(st, d, by, now);
+      return { client: r.client, created: r.ok };
+    }
+    const add = [];
+    const have = new Set((found.phones || []).map(phoneKey));
+    for (const ph of phonesOf(d)) if (!have.has(phoneKey(ph))) { (found.phones = found.phones || []).push(ph); have.add(phoneKey(ph)); add.push(`телефон ${ph}`); }
+    for (const [f, label] of [['email', 'почта'], ['inn', 'ИНН'], ['address', 'адрес']]) {
+      if (!str(found[f]) && str(d[f]) && (f !== 'inn' || innKey(d.inn))) { found[f] = str(d[f]); add.push(`${label} ${found[f]}`); }
+    }
+    if (add.length) Feed.add(st, { t: 'client', id: found.id }, { kind: 'field', text: `Из заявки добавлено: ${add.join(', ')}`, by, at: now });
+    return { client: found, created: false };
+  }
+
+  // Принадлежит ли лид клиенту: привязан явно (clientId) или, пока не привязан, совпал телефоном, почтой или ИНН.
+  const leadBelongs = (c, l) => (l.clientId ? l.clientId === c.id : score(c, l) > 0);
+
+  // Всё, что относится к клиенту: {leads, deals, msgs, dispatches}. personId — только то, что этому человеку видно:
+  // лиды по Leads.visible, сделки по Leads.dealsVisible (сделки чужого типа не видны), сообщения и отправки — по этим сделкам.
+  // Без personId — всё.
+  function related(st, clientId, personId) {
+    const c = byId(st, clientId), none = { leads: [], deals: [], msgs: [], dispatches: [] };
+    if (!c) return none;
+    const deals = (personId ? Leads.dealsVisible(st, personId) : (st.deals || [])).filter(d => d.clientId === c.id);
+    const leads = (personId ? Leads.visible(st, personId) : (st.leads || [])).filter(l => leadBelongs(c, l));
+    const ids = new Set(deals.map(d => d.id));
+    return {
+      leads, deals,
+      msgs: (st.msgs || []).filter(m => ids.has(m.deal)),
+      dispatches: (st.dispatches || []).filter(x => ids.has(x.dealId)),
+    };
+  }
+
+  // Клиенты по строке поиска: название, телефон (по цифрам), ИНН, почта. Пустая строка — все. Для списка «Клиенты».
+  function search(st, q) {
+    const s = str(q).toLowerCase(), pk = phoneKey(q), ik = innKey(q);
+    if (!s) return (st.clients || []).slice();
+    return (st.clients || []).filter(c =>
+      c.name.toLowerCase().includes(s) || emailKey(c.email).includes(s)
+      || (pk.length >= 3 && (c.phones || []).some(p => phoneKey(p).includes(pk)))
+      || (ik.length >= 3 && innKey(c.inn).includes(ik)));
+  }
+
+  return { KIND, phoneKey, byId, find, create, update, findOrCreate, related, search };
+})();
+
+// Шаг SEEDS: демо-клиенты. Каждая сделка получает клиента (clientId) из своего названия, контакта и телефона: сделки из лидов
+// уже получили его при создании, прежние сделки v2 — здесь. Всё помечено «пример» (demo:true и слово в названии),
+// телефоны вида +7 900 000-00-NN, ИНН и почта — условные: настоящих людей и компаний тут нет.
+// У прежних сделок v2 текст deal.client остаётся как был (его читают уведомления приёмки), «(пример)» — в названии клиента.
+// Лиды с тем же телефоном или ИНН привязываются к тому же клиенту: два открытых лида повторно обращаются под данными
+// клиентов Д-311 и Д-314 — это и есть образец «Похоже, это …».
+SEEDS.push(st => {
+  st.clients = st.clients || [];
+  const when = day(-12, 9, 0);
+  // условные данные для прежних сделок v2 (в самих сделках телефонов нет)
+  const CONTACT = {
+    'Д-311': { phone: '+7 900 000-00-31', email: 'primer31@example.com' },
+    'Д-314': { phone: '+7 900 000-00-32', inn: '0000000101' },
+    'Д-318': { phone: '+7 900 000-00-33' },
+    'Д-320': { phone: '+7 900 000-00-34', inn: '0000000102', email: 'primer34@example.com' },
+    'Д-305': { phone: '+7 900 000-00-35' },
+    'Д-322': { phone: '+7 900 000-00-36' },
+  };
+  for (const d of st.deals.filter(x => !x.clientId)) {
+    const c = CONTACT[d.id] || {};
+    const { client } = Clients.findOrCreate(st, {
+      name: `${d.client} (пример)`, kind: d.type === 'b2b' ? 'company' : 'person',
+      phone: d.phone || c.phone, email: d.email || c.email, inn: c.inn, managerId: d.managerId, demo: true,
+    }, null, when);
+    d.clientId = client.id;
+    if (!d.phone && client.phones[0]) d.phone = client.phones[0];
+    if (!d.email && client.email) d.email = client.email;
+  }
+  // два открытых лида повторно пришли под данными клиентов: B2C — под телефоном Д-311, B2B — под ИНН Д-314
+  const open = l => !Pipes.isFinal(st, l.pipeId, l.stageId);
+  const again = (type, key, from) => {
+    const lead = st.leads.find(l => open(l) && l.type === type && !l.dealId && l[key]);
+    const src = Clients.byId(st, st.deals.find(x => x.id === from).clientId);
+    if (!lead || !src) return;
+    if (key === 'phone') lead.phone = src.phones[0]; else lead[key] = src[key];
+  };
+  again('b2c', 'phone', 'Д-311');
+  again('b2b', 'inn', 'Д-314');
+  for (const l of st.leads) {
+    const c = Clients.find(st, l)[0];
+    if (c && !l.clientId) l.clientId = c.id;
+  }
+});
+
+// Ядро и вид: одна лента для всех карточек — сделка, лид, клиент, отправка. Комментарии и события, новые сверху.
+// Лента хранит только свои записи (st.feed); остальное подмешивает of(): историю лида, резервы по сделке,
+// сообщения клиенту, а у клиента — ленты его сделок и лидов. Дела (T10) и отправки (T07) пишут сюда же.
+// Чистые функции над состоянием st; время приходит параметром. Вид feedHtml не меняет состояние.
+
+const Feed = (() => {
+  // Виды записей и подписи. Модули дел и отправок добавляют свои виды сюда же: Feed.KINDS.act = 'Дело'.
+  const KINDS = {
+    comment: 'Комментарий', create: 'Создано', stage: 'Этап', field: 'Изменение', item: 'Товары',
+    reserve: 'Резерв', win: 'Успешно', lose: 'Провалена', msg: 'Сообщение клиенту', history: 'История',
+  };
+  // Что есть ссылка на карточку и как её назвать в ленте клиента.
+  const REF = { deal: 'Сделка', lead: 'Лид', client: 'Клиент', dispatch: 'Отправка' };
+
+  const same = (a, b) => !!a && !!b && a.t === b.t && a.id === b.id;
+  const time = at => { const n = at == null ? NaN : new Date(at).getTime(); return isNaN(n) ? null : n; };
+  const nameOf = (st, id) => ((st.products || []).find(p => p.id === id) || {}).name || 'нет данных: товар';
+
+  // Запись в ленту ref = {t:'deal'|'lead'|'client'|'dispatch', id}: {kind, text, by, at, data?}.
+  // Без ссылки, текста или времени записи не будет (null). Новая запись — в конец st.feed; порядок показа решает of().
+  function add(st, ref, { kind, text, by, at, data } = {}) {
+    const t = String(text == null ? '' : text).trim();
+    if (!ref || !REF[ref.t] || !ref.id || !t || time(at) === null) return null;
+    st.feed = st.feed || [];
+    const e = { id: Store.freeId(st.feed, 'f'), ref: { t: ref.t, id: ref.id }, at, by: by || null, kind: kind || 'comment', text: t };
+    if (data !== undefined) e.data = data;
+    st.feed.push(e);
+    return e;
+  }
+
+  // Где резерв и до какого числа: «со склада (ИП, Иркутск)» или «из поставки П-1043». Единственная фраза о резерве:
+  // её читают лента сделки, уведомление складу и карточка. withDeal — добавить «для Д-311 (клиент)».
+  function reserveText(st, r, withDeal) {
+    const where = r.src === 'stock' || !r.src
+      ? `со склада (${Stock.entityName(st, r.entityId || Stock.ANY) ?? r.entityId}, ${Stock.cityName(st, r.cityId || Stock.ANY) ?? r.cityId})`
+      : `из поставки ${r.src}`;
+    const d = withDeal ? (st.deals || []).find(x => x.id === r.dealId) : null;
+    const forDeal = d ? ` для ${d.id} (${d.client})` : '';
+    return `Резерв: ${low(nameOf(st, r.productId))} — ${num(r.qty)} ${where}${forDeal}${r.until ? ' до ' + fD(r.until) : ''}.`;
+  }
+
+  // Когда и кем поставлен резерв: своя отметка (at, by), иначе запись «Резерв» в журнале движений по той же сделке.
+  function reserveWhen(st, r) {
+    if (time(r.at) !== null) return { at: r.at, by: r.by || null };
+    const m = (st.moves || []).find(x => x.kind === Stock.KINDS.reserve && x.doc === r.dealId && x.productId === r.productId && x.qty === r.qty);
+    return m ? { at: m.at, by: m.by || null } : { at: null, by: null };
+  }
+
+  // Записи, которые лента подмешивает сама, по виду карточки. Каждая — как запись ленты со своей ссылкой ref.
+  function synthetic(st, ref, own) {
+    const out = [];
+    if (ref.t === 'lead') {
+      const l = (st.leads || []).find(x => x.id === ref.id);
+      ((l && l.history) || []).forEach((h, i) => out.push({ id: `h:${ref.id}:${i}`, ref, at: h.at, by: h.by || null, kind: 'history', text: h.text }));
+    }
+    if (ref.t === 'deal') {
+      const done = new Set(own.filter(e => e.data && e.data.reserveId).map(e => e.data.reserveId));
+      for (const r of st.reserves || []) {
+        if (r.dealId !== ref.id || done.has(r.id)) continue;
+        const w = reserveWhen(st, r);
+        out.push({ id: `r:${r.id}`, ref, at: w.at, by: w.by, kind: 'reserve', text: reserveText(st, r), data: { reserveId: r.id, productId: r.productId, qty: r.qty } });
+      }
+      for (const m of st.msgs || []) {
+        if (m.deal !== ref.id) continue;
+        out.push({ id: `m:${m.id}`, ref, at: m.at, by: m.by || null, kind: 'msg', text: m.text, data: { channel: m.channel, inbound: !!m.inbound, auto: !!m.auto } });
+      }
+    }
+    return out;
+  }
+
+  // Лента карточки: записи по времени, новые сверху (при одинаковом времени — позже добавленные выше); без времени — в конце.
+  // personId (необязательно) — у клиента подмешиваются только сделки и лиды, которые этот человек видит.
+  function of(st, ref, personId) {
+    const all = [];
+    const take = r => {
+      const own = (st.feed || []).filter(e => same(e.ref, r));
+      own.forEach(e => all.push(e));
+      synthetic(st, r, own).forEach(e => all.push(e));
+    };
+    take(ref);
+    if (ref.t === 'client') {
+      const rel = Clients.related(st, ref.id, personId);
+      rel.deals.forEach(d => take({ t: 'deal', id: d.id }));
+      rel.leads.forEach(l => take({ t: 'lead', id: l.id }));
+    }
+    return all.map((e, i) => ({ e, i, t: time(e.at) }))
+      .sort((a, b) => (a.t === null) - (b.t === null) || (b.t - a.t) || (b.i - a.i))
+      .map(x => ({ ...x.e }));
+  }
+
+  // Кто может писать в ленту карточки: сделка и клиент — право «клиенты» (сделку человек должен видеть), лид — «лиды»
+  // (и видеть лид), отправка — «вести отправки». Неизвестного права нет ни у кого (Perms.can), так что до отправок — никто.
+  function canComment(st, personId, ref) {
+    if (!ref || !(st.people || []).some(p => p.id === personId)) return false;
+    if (ref.t === 'deal') return Leads.dealsVisible(st, personId).some(d => d.id === ref.id);
+    if (ref.t === 'lead') return Leads.visible(st, personId).some(l => l.id === ref.id);
+    if (ref.t === 'client') return Perms.can(st, personId, 'clients');
+    if (ref.t === 'dispatch') return Perms.can(st, personId, 'dispatch');
+    return false;
+  }
+
+  // Комментарий в ленту: пустой текст и чужая карточка — отказ с причиной. → {ok, entry, reason}
+  function comment(st, ref, text, by, now) {
+    if (!String(text == null ? '' : text).trim()) return { ok: false, entry: null, reason: 'Напишите комментарий.' };
+    if (!canComment(st, by, ref)) return { ok: false, entry: null, reason: 'У вас нет права писать в эту ленту.' };
+    const entry = add(st, ref, { kind: 'comment', text, by, at: now });
+    return entry ? { ok: true, entry, reason: '' } : { ok: false, entry: null, reason: 'Не удалось записать комментарий.' };
+  }
+
+  return { KINDS, REF, add, of, reserveText, reserveWhen, canComment, comment };
+})();
+
+// ——— вид ———
+// Лента карточки и поле «Комментарий»: один вид для лида, сделки, клиента и отправки. Не меняет состояние.
+// st по умолчанию — S; видит человек st.me. Класс feed-add / data-form="feed-comment" — форма комментария (feedCommentForm).
+function feedHtml(ref, st = S) {
+  const me = st.me, who = id => (st.people || []).find(p => p.id === id);
+  const kindLabel = e => e.kind === 'msg' && e.data && e.data.inbound ? 'Сообщение от клиента' : (Feed.KINDS[e.kind] || 'Событие');
+  const rows = Feed.of(st, ref, me).map(e => {
+    const by = e.by ? (who(e.by) ? who(e.by).name : 'нет данных: сотрудник') : (e.kind === 'msg' && e.data && e.data.inbound ? 'Клиент' : 'Система');
+    // запись из другой карточки (в ленте клиента — сделка или лид) подписана, откуда она
+    const from = e.ref.t !== ref.t || e.ref.id !== ref.id ? `<span class="pill sm">${esc((Feed.REF[e.ref.t] || '') + ' ' + e.ref.id)}</span>` : '';
+    const when = e.at ? fWhen(e.at) : 'нет данных: время';
+    return `<li class="feed-i k-${esc(e.kind)}"><div class="feed-h"><b>${esc(kindLabel(e))}</b>${from}<small>${esc(by)} · ${esc(when)}</small></div><p class="feed-t">${esc(e.text)}</p></li>`;
+  }).join('');
+  const form = Feed.canComment(st, me, ref)
+    ? `<form class="feed-add" data-form="feed-comment" data-t="${esc(ref.t)}" data-id="${esc(ref.id)}" novalidate><textarea id="feed-text" class="inp" rows="3" placeholder="Комментарий" aria-label="Комментарий"></textarea><p class="err" id="feed-err" hidden></p><button class="btn pri" type="submit">${ic('chat')}Добавить комментарий</button></form>`
+    : `<p class="lock">${ic('lock')}У вашей роли нет права писать в эту ленту.</p>`;
+  return `<div class="feed" data-ref-t="${esc(ref.t)}" data-ref-id="${esc(ref.id)}">${form}${rows ? `<ol class="feed-list">${rows}</ol>` : '<p class="muted m0">В ленте пока пусто.</p>'}</div>`;
+}
+
+// Отправка формы комментария (data-form="feed-comment"): пишет в ленту от имени S.me. Регистрируется в FORMS экраном
+// раздела: FORMS['feed-comment'] = feedCommentForm (реестр FORMS объявлен в 50-shell, а этот файл читается раньше).
+function feedCommentForm(f) {
+  const ta = byId('feed-text'), txt = ta.value.trim();
+  if (!txt) { ta.focus(); return; }
+  const r = Feed.comment(S, { t: f.dataset.t, id: f.dataset.id }, txt, S.me, new Date());
+  if (!r.ok) { showErr('feed-err', r.reason); return; }
+  ta.value = '';
+  render();
+  toast('Комментарий записан в ленту.');
+}
+
+// Ядро: сделки. Завести, править, двигать по воронке, закрыть («Успешно» или «Провалена» с причиной), строки
+// товаров с ценой и скидкой, резерв строки со склада, колонки канбана. Сумму считает одна функция — total.
+// Права — Perms, видимость сделок — Leads.dealsVisible, остатки и резервы — Stock, события — Feed, клиенты — Clients.
+// Чистые функции над состоянием st; время приходит параметром now (Date), кто делает — by (id сотрудника).
+// Каждое изменение пишет запись в ленту сделки. Экраны — 56-deals.js (канбан, карточка, КП).
+// Стадии «Успешно»: сделка на этапе с флагом final, wonAt. «Провалена»: lostReason и lostAt, этап остаётся тем, где сорвалась.
+
+const Deals = (() => {
+  // Причины отказа по умолчанию; общие для лидов и сделок, правятся в «Настройки → Лиды и сделки» (st.lostReasons).
+  const defaultReasons = () => ['Дорого', 'Выбрали другого', 'Не дозвонились', 'Передумали', 'Другое']
+    .map((name, i) => ({ id: 'lr' + (i + 1), name }));
+
+  const str = v => String(v == null ? '' : v).trim();
+  const toNum = v => (v === null || v === undefined || str(v) === '' ? NaN : Number(str(v).replace(/\s/g, '').replace(',', '.')));
+  const round2 = x => Math.round(x * 100) / 100;
+  const personOf = (st, id) => (st.people || []).find(p => p.id === id) || null;
+  const byId = (st, id) => (st.deals || []).find(d => d.id === id) || null;
+  const productOf = (st, id) => (st.products || []).find(p => p.id === id) || null;
+  const fail = (reason, extra) => Object.assign({ ok: false, reason }, extra);
+
+  const reasons = st => (st.lostReasons || defaultReasons()).map(r => r.name);
+
+  // ——— сумма: единственный расчёт ———
+  // Строка: количество × цена × (1 − скидка/100), до копейки. Цены нет (price: null) — строка в сумму не входит:
+  // это «нет данных: цена», не ноль; сколько таких строк — noPrice.
+  const hasPrice = it => typeof it.price === 'number' && isFinite(it.price);
+  const lineSum = it => (hasPrice(it) ? round2(it.qty * it.price * (100 - (it.disc || 0)) / 100) : 0);
+  // Сумма сделки: есть строки — сумма строк; нет — вписанная amount.
+  function total(deal) {
+    const items = (deal && deal.items) || [];
+    if (items.length) return round2(items.reduce((s, it) => s + lineSum(it), 0));
+    const a = Number(deal && deal.amount);
+    return isFinite(a) && a > 0 ? a : 0;
+  }
+  const noPrice = deal => ((deal && deal.items) || []).map((it, i) => (hasPrice(it) ? -1 : i)).filter(i => i >= 0);
+
+  // ——— состояние ———
+  const lostOf = d => !!(d && d.lostReason);
+  // 'lost' — провалена; 'won' — на этапе «Успешно» (флаг final); иначе 'open'.
+  const state = (st, d) => (lostOf(d) ? 'lost' : Pipes.isFinal(st, d.pipeId, d.stageId) ? 'won' : 'open');
+
+  // ——— права ———
+  const canMake = (st, by) => !!personOf(st, by) && Perms.can(st, by, 'clients');
+  const canEdit = (st, d, by) => !!d && canMake(st, by) && Leads.dealsVisible(st, by).includes(d);
+  // Сделка, с которой человек может работать, или отказ.
+  function open(st, id, by) {
+    const d = byId(st, id);
+    if (!d) return { err: fail('Такой сделки нет.') };
+    if (!canEdit(st, d, by)) return { err: fail('У вас нет права править эту сделку.') };
+    return { d };
+  }
+
+  const log = (st, d, kind, text, by, at, data) => Feed.add(st, { t: 'deal', id: d.id }, { kind, text, by, at, data });
+  const stageName = (st, d, id) => (Pipes.stage(st, d.pipeId, id) || {}).name || 'нет данных: этап';
+
+  // ——— строки товаров ———
+  const itemName = (st, it) => (it.productId ? (productOf(st, it.productId) || {}).name || 'нет данных: товар' : it.text);
+  const priceText = it => (hasPrice(it) ? rub(it.price) : 'нет данных: цена');
+
+  // Строка из введённого: товар из каталога (productId) или своя (text), количество, цена (по умолчанию цена сайта, а нет её —
+  // null), скидка %. → {item} или {reason}.
+  function cleanItem(st, raw) {
+    const r = raw || {}, it = {};
+    let prod = null;
+    if (r.productId) {
+      prod = productOf(st, r.productId);
+      if (!prod) return { reason: 'Такого товара нет в каталоге.' };
+      it.productId = prod.id;
+    } else {
+      if (!str(r.text)) return { reason: 'Выберите товар из каталога или напишите название своей строки.' };
+      it.text = str(r.text);
+    }
+    const qty = r.qty === undefined ? 1 : toNum(r.qty);
+    if (!(qty > 0) || !isFinite(qty)) return { reason: 'Количество — число больше нуля.' };
+    it.qty = qty;
+    if ('price' in r && r.price !== undefined) {
+      const p = toNum(r.price);
+      if (r.price !== null && str(r.price) !== '' && !(p >= 0 && isFinite(p))) return { reason: 'Цена — число не меньше нуля.' };
+      it.price = isNaN(p) ? null : p;
+    } else it.price = prod && typeof prod.price === 'number' ? prod.price : null;
+    const disc = r.disc === undefined || str(r.disc) === '' ? 0 : toNum(r.disc);
+    if (!(disc >= 0 && disc <= 100)) return { reason: 'Скидка — число от 0 до 100 %.' };
+    it.disc = disc;
+    return { item: it };
+  }
+
+  const itemLine = (st, it) => `${itemName(st, it)} — ${num(it.qty)} × ${priceText(it)}${it.disc ? ', скидка ' + num(it.disc) + ' %' : ''}`;
+
+  // Сколько по сделке зарезервировано этого товара (все резервы сделки по нему).
+  const reserved = (st, d, productId) => (st.reserves || []).filter(r => r.dealId === d.id && r.productId === productId).reduce((s, r) => s + r.qty, 0);
+
+  // ——— заведение ———
+  const MISSING = { client: 'клиент', type: 'тип сделки' };
+
+  // Новая сделка: {clientId, type, managerId?, contact?, phone?, email?, kind?, object?, channel?, items?, amount?, leadId?, demo?}.
+  // Без клиента (существующего) или типа — {ok:false, missing:[…]}. Воронка — своего типа, этап — первый.
+  // Менеджер: названный; иначе я, если я менеджер (у роли есть тип); иначе менеджер клиента.
+  // → {ok, id, missing, reason}
+  function create(st, data, by, now) {
+    const d0 = data || {};
+    if (!canMake(st, by)) return fail('У вашей роли нет права заводить сделки.', { id: null, missing: [] });
+    const client = Clients.byId(st, d0.clientId), type = Leads.TYPE[d0.type] ? d0.type : null;
+    const missing = [];
+    if (!client) missing.push('client');
+    if (!type) missing.push('type');
+    if (missing.length) return fail(`Не заполнено: ${missing.map(k => MISSING[k]).join(', ')}.`, { id: null, missing });
+    const pipe = dealPipe(type, st);
+    if (!pipe) return fail('Нет воронки сделок этого типа.', { id: null, missing: [] });
+    const items = [];
+    for (const raw of d0.items || []) {
+      const c = cleanItem(st, raw);
+      if (c.reason) return fail(c.reason, { id: null, missing: [] });
+      items.push(c.item);
+    }
+    const role = Perms.roleOf(st, by);
+    const managerId = d0.managerId && personOf(st, d0.managerId) ? d0.managerId : (role && role.scope ? by : client.managerId || null);
+    const amount = toNum(d0.amount);
+    st.deals = st.deals || [];
+    const d = {
+      id: Leads.nextId(st.deals, 'Д', 300), clientId: client.id, client: client.name,
+      contact: str(d0.contact) || (client.kind === 'person' ? client.name : 'нет данных: контакт'),
+      kind: str(d0.kind) || (type === 'b2b' ? 'Компания' : 'Частный клиент'),
+      object: str(d0.object) || 'нет данных: что продаём',
+      type, pipeId: pipe.id, stageId: Leads.firstOf(pipe).id, managerId,
+      channel: Object.hasOwn(CH, d0.channel) ? d0.channel : 'phone',
+      amount: amount >= 0 && isFinite(amount) ? amount : 0,
+      phone: str(d0.phone) || (client.phones || [])[0] || '', email: str(d0.email) || client.email || '',
+      items, at: now, demo: !!d0.demo,
+    };
+    if (d0.leadId) d.leadId = d0.leadId;
+    st.deals.push(d);
+    log(st, d, 'create', d0.leadId ? `Сделка создана из лида ${d0.leadId}` : 'Сделка создана', by, now);
+    return { ok: true, id: d.id, missing: [], reason: '' };
+  }
+
+  // ——— правка полей ———
+  const LABEL = { clientId: 'Клиент', contact: 'Контакт', phone: 'Телефон', email: 'Почта', kind: 'Вид клиента', object: 'Что продаём',
+    type: 'Тип', managerId: 'Менеджер', channel: 'Связь', amount: 'Сумма' };
+
+  // Правка сделки: patch — любые из clientId, contact, phone, email, kind, object, type, managerId, channel, amount.
+  // Сумму руками вписать нельзя, если в сделке есть строки товаров: она считается по строкам. Смена типа переводит сделку
+  // в воронку нового типа (тот же этап, если он там есть). Всё проверяется до правки: либо всё, либо ничего.
+  // → {ok, changed:[поле…], reason}
+  function update(st, id, patch, by, now) {
+    const { d, err } = open(st, id, by);
+    if (err) return Object.assign(err, { changed: [] });
+    const p = patch || {}, next = {};
+    for (const f of Object.keys(LABEL)) {
+      if (!(f in p)) continue;
+      let v = p[f];
+      if (f === 'clientId') {
+        if (!Clients.byId(st, v)) return fail('Такого клиента нет.', { changed: [] });
+      } else if (f === 'type') {
+        if (!Leads.TYPE[v]) return fail('Тип сделки — B2B или B2C.', { changed: [] });
+      } else if (f === 'managerId') {
+        v = v || null;
+        if (v && !personOf(st, v)) return fail('Такого сотрудника нет.', { changed: [] });
+      } else if (f === 'channel') {
+        if (!Object.hasOwn(CH, v)) return fail('Такого способа связи нет.', { changed: [] });
+      } else if (f === 'amount') {
+        if ((d.items || []).length) return fail('В сделке есть строки товаров — сумма считается по ним, вписать её руками нельзя.', { changed: [] });
+        v = toNum(v);
+        if (!(v >= 0) || !isFinite(v)) return fail('Сумма — число не меньше нуля.', { changed: [] });
+      } else v = str(v);
+      if (v !== (d[f] == null ? (f === 'managerId' ? null : '') : d[f])) next[f] = v;
+    }
+    const changed = Object.keys(next);
+    if (!changed.length) return { ok: true, changed, reason: '' };
+    const shown = (f, v) => {
+      if (f === 'managerId') return (personOf(st, v) || {}).name || 'нет данных';
+      if (f === 'channel') return CH[v] || 'нет данных';
+      if (f === 'type') return Leads.TYPE[v] || 'нет данных';
+      if (f === 'clientId') return (Clients.byId(st, v) || {}).name || 'нет данных';
+      if (f === 'amount') return v ? rub(v) : 'не рассчитана';
+      return str(v) || 'нет данных';
+    };
+    const lines = changed.map(f => `${LABEL[f]}: ${shown(f, d[f])} → ${shown(f, next[f])}`);
+    const data = changed.map(f => ({ field: f, from: d[f] == null ? null : d[f], to: next[f] }));
+    for (const f of changed) d[f] = next[f];
+    if (next.clientId) d.client = Clients.byId(st, d.clientId).name;
+    if (next.type) {
+      const pipe = dealPipe(d.type, st);
+      if (pipe) { d.pipeId = pipe.id; if (!Pipes.stage(st, pipe.id, d.stageId)) d.stageId = Leads.firstOf(pipe).id; }
+    }
+    log(st, d, 'field', lines.join('; '), by, now, { changes: data });
+    return { ok: true, changed, reason: '' };
+  }
+
+  // ——— этапы ———
+  // Двигает по воронке: на любой этап, кроме той же точки; на этап с флагом final — это «Успешно» (win).
+  // Проваленную сделку не двигают, пока не вернут в работу (reopen). → {ok, reason}
+  function move(st, id, stageId, by, now) {
+    const { d, err } = open(st, id, by);
+    if (err) return err;
+    if (lostOf(d)) return fail('Сделка провалена — сначала верните её в работу.');
+    const to = Pipes.stage(st, d.pipeId, stageId);
+    if (!to) return fail('Такого этапа нет в воронке сделки.');
+    if (to.id === d.stageId) return fail('Сделка уже на этом этапе.');
+    if (to.flag === 'final') return win(st, id, by, now);
+    const from = Pipes.stage(st, d.pipeId, d.stageId);
+    d.stageId = to.id;
+    delete d.wonAt;
+    log(st, d, 'stage', `Этап: «${from ? from.name : 'нет данных: этап'}» → «${to.name}»`, by, now, { from: from ? from.id : null, to: to.id });
+    return { ok: true, reason: '' };
+  }
+
+  // «Успешно»: сделка переходит на этап с флагом final, запоминается wonAt. Проваленная и уже успешная — отказ.
+  function win(st, id, by, now) {
+    const { d, err } = open(st, id, by);
+    if (err) return err;
+    if (lostOf(d)) return fail('Сделка провалена — сначала верните её в работу.');
+    const pipe = (st.pipelines || []).find(p => p.id === d.pipeId), fin = pipe && pipe.stages.find(s => s.flag === 'final');
+    if (!fin) return fail('В воронке нет этапа «Успешно».');
+    if (d.stageId === fin.id) return fail('Сделка уже успешно закрыта.');
+    const from = stageName(st, d, d.stageId);
+    d.stageId = fin.id;
+    d.wonAt = now;
+    log(st, d, 'win', `Успешно: сделка закрыта («${from}» → «${fin.name}»)`, by, now);
+    return { ok: true, reason: '' };
+  }
+
+  // «Провалена» с причиной: без причины — отказ. Этап остаётся, где сделка сорвалась. Успешно закрытую не проваливают.
+  function lose(st, id, reason, by, now) {
+    const why = str(reason);
+    if (!why) return fail('Укажите причину отказа.');
+    const { d, err } = open(st, id, by);
+    if (err) return err;
+    if (lostOf(d)) return fail('Сделка уже провалена.');
+    if (state(st, d) === 'won') return fail('Сделка успешно закрыта — провалить её нельзя, сначала верните на другой этап.');
+    d.lostReason = why;
+    d.lostAt = now;
+    log(st, d, 'lose', `Провалена: ${why}`, by, now, { reason: why });
+    return { ok: true, reason: '' };
+  }
+
+  // Вернуть проваленную сделку в работу (ошибка при отказе): причина снимается, этап прежний.
+  function reopen(st, id, by, now) {
+    const { d, err } = open(st, id, by);
+    if (err) return err;
+    if (!lostOf(d)) return fail('Сделка не провалена.');
+    const was = d.lostReason;
+    delete d.lostReason;
+    delete d.lostAt;
+    log(st, d, 'stage', `Возвращена в работу (была провалена: ${was})`, by, now);
+    return { ok: true, reason: '' };
+  }
+
+  // ——— строки товаров ———
+  // Добавить строку: {productId | text, qty?, price?, disc?}. → {ok, idx, reason}
+  function addItem(st, id, raw, by, now) {
+    const { d, err } = open(st, id, by);
+    if (err) return err;
+    const c = cleanItem(st, raw);
+    if (c.reason) return fail(c.reason);
+    d.items = d.items || [];
+    d.items.push(c.item);
+    log(st, d, 'item', `Добавлена строка: ${itemLine(st, c.item)}`, by, now, { idx: d.items.length - 1 });
+    return { ok: true, idx: d.items.length - 1, reason: '' };
+  }
+
+  const ITEM_LABEL = { text: 'Название', qty: 'Количество', price: 'Цена', disc: 'Скидка' };
+  // Правка строки idx: patch — qty, price (null или пусто — «нет данных: цена»), disc, а у своей строки ещё text.
+  function setItem(st, id, idx, patch, by, now) {
+    const { d, err } = open(st, id, by);
+    if (err) return err;
+    const it = (d.items || [])[idx];
+    if (!it) return fail('Такой строки нет.');
+    const p = patch || {}, raw = { qty: it.qty, price: it.price, disc: it.disc };
+    if (it.productId) raw.productId = it.productId; else raw.text = 'text' in p ? p.text : it.text;
+    for (const f of ['qty', 'price', 'disc']) if (f in p) raw[f] = p[f];
+    const c = cleanItem(st, raw);
+    if (c.reason) return fail(c.reason);
+    const lines = [];
+    for (const f of ['text', 'qty', 'price', 'disc']) {
+      if (it.productId && f === 'text') continue;
+      if (c.item[f] !== it[f]) lines.push(`${ITEM_LABEL[f]}: ${f === 'price' ? priceText(it) : it[f]} → ${f === 'price' ? priceText(c.item) : c.item[f]}`);
+    }
+    if (!lines.length) return { ok: true, reason: '' };
+    const name = itemName(st, it);
+    Object.assign(it, c.item);
+    log(st, d, 'item', `Строка «${name}»: ${lines.join('; ')}`, by, now, { idx });
+    return { ok: true, reason: '' };
+  }
+
+  // Убрать строку. Пока по товару строки стоит резерв сделки, убрать нельзя: сначала снять резерв. → {ok, reason}
+  function removeItem(st, id, idx, by, now) {
+    const { d, err } = open(st, id, by);
+    if (err) return err;
+    const it = (d.items || [])[idx];
+    if (!it) return fail('Такой строки нет.');
+    if (it.productId && reserved(st, d, it.productId) > 0 && !d.items.some((x, i) => i !== idx && x.productId === it.productId)) {
+      return fail(`По строке «${itemName(st, it)}» стоит резерв (${num(reserved(st, d, it.productId))}) — сначала снимите его.`);
+    }
+    d.items.splice(idx, 1);
+    log(st, d, 'item', `Убрана строка: ${itemLine(st, it)}`, by, now);
+    return { ok: true, reason: '' };
+  }
+
+  // ——— резерв строки ———
+  // Зарезервировать строку idx со склада под эту сделку: {entityId, cityId, qty?, until?}. Количество по умолчанию — вся
+  // нерезервированная часть строки; не больше неё и не больше свободного в клетке (Stock.canReserve, его причина — наша).
+  // Юрлицо и город не названы — берётся клетка, где больше всего свободного. Срок по умолчанию — 14 дней от now.
+  // Склад и директор получают уведомление «Резерв», как при резерве из карточки товара. → {ok, reserve, reason, max}
+  function reserveItem(st, id, idx, opt, by, now) {
+    const { d, err } = open(st, id, by);
+    if (err) return err;
+    if (!Perms.can(st, by, 'reserve')) return fail('У вашей роли нет права ставить резервы.');
+    const it = (d.items || [])[idx], o = opt || {};
+    if (!it) return fail('Такой строки нет.');
+    if (!it.productId) return fail('Своя строка: такого товара нет в каталоге, резервировать нечего.');
+    const held = reserved(st, d, it.productId), left = it.qty - held;
+    if (!(left > 0)) return fail(`Строка «${itemName(st, it)}» уже зарезервирована целиком (${num(held)}).`);
+    const qty = o.qty === undefined || str(o.qty) === '' ? left : toNum(o.qty);
+    if (qty > left) return fail(`В строке ${num(it.qty)}, уже зарезервировано ${num(held)}: можно ещё ${num(left)}.`, { max: left });
+    const cell = o.entityId === undefined && o.cityId === undefined ? Stock.bestCell(st, it.productId) : { entityId: o.entityId, cityId: o.cityId };
+    const until = o.until || new Date(new Date(now).getTime() + 14 * 864e5);
+    const ask = { productId: it.productId, qty, entityId: cell.entityId, cityId: cell.cityId, src: 'stock' };
+    const chk = Stock.canReserve(st, ask);
+    if (!chk.ok) return fail(chk.reason, { max: chk.max });
+    const res = Stock.reserve(st, Object.assign(ask, { dealId: d.id, until, by, at: now }));
+    if (!res.ok) return fail(res.reason, { max: res.max });
+    res.reserve.at = now;
+    res.reserve.by = by;
+    log(st, d, 'reserve', Feed.reserveText(st, res.reserve), by, now, { reserveId: res.reserve.id, productId: it.productId, qty });
+    Notify.push(st, 'reserve', by, Feed.reserveText(st, res.reserve, true), now);
+    return { ok: true, reserve: res.reserve, reason: '', max: res.max };
+  }
+
+  // Снять резерв сделки: товар возвращается в свободный остаток. → {ok, reason}
+  function unreserve(st, id, reserveId, by, now) {
+    const { d, err } = open(st, id, by);
+    if (err) return err;
+    if (!Perms.can(st, by, 'reserve')) return fail('У вашей роли нет права снимать резервы.');
+    const r = (st.reserves || []).find(x => x.id === reserveId && x.dealId === d.id);
+    if (!r) return fail('Такого резерва в сделке нет.');
+    const res = Stock.unreserve(st, reserveId, by, now);
+    if (!res.ok) return fail(res.reason);
+    log(st, d, 'reserve', `Снят резерв: ${low((productOf(st, r.productId) || {}).name || 'нет данных: товар')} — ${num(r.qty)}`, by, now, { reserveId, productId: r.productId, qty: r.qty, removed: true });
+    Notify.push(st, 'reserve', by, `Снят резерв: ${low((productOf(st, r.productId) || {}).name || 'нет данных: товар')} — ${num(r.qty)} (${d.id}, ${d.client}).`, now);
+    return { ok: true, reason: '' };
+  }
+
+  // ——— выборка и колонки канбана ———
+  // Сделки, которые человек видит (Leads.dealsVisible), по условиям filter: pipeId, type, q (поиск по клиенту, контакту, номеру,
+  // телефону, почте, объекту), mine (мои), managerId, lost (true — вместе с проваленными, 'only' — только они).
+  // Нет personId — все сделки. Один отбор на канбан и таблицу.
+  function query(st, filter, personId) {
+    const f = filter || {}, words = Catalog.norm(f.q).split(' ').filter(Boolean);
+    return (personId ? Leads.dealsVisible(st, personId) : (st.deals || [])).filter(d =>
+      (!f.pipeId || d.pipeId === f.pipeId) && (!f.type || d.type === f.type)
+      && (!f.mine || d.managerId === personId) && (!f.managerId || d.managerId === f.managerId)
+      && (f.lost === 'only' ? lostOf(d) : f.lost ? true : !lostOf(d))
+      && (!words.length || words.every(w => Catalog.norm([d.id, d.client, d.contact, d.phone, d.email, d.object].join(' ')).includes(w))));
+  }
+
+  // Колонки канбана воронки pipeId: [{stage, count, sum, deals}] по порядку этапов. sum — сумма total сделок колонки.
+  // Только видимые человеку сделки; проваленные в колонки не входят (filter.lost — включить).
+  function columns(st, pipeId, filter, personId) {
+    const pipe = (st.pipelines || []).find(p => p.id === pipeId);
+    if (!pipe) return [];
+    const deals = query(st, Object.assign({}, filter, { pipeId }), personId);
+    return pipe.stages.map(stage => {
+      const ds = deals.filter(d => d.stageId === stage.id);
+      return { stage, count: ds.length, sum: round2(ds.reduce((s, d) => s + total(d), 0)), deals: ds };
+    });
+  }
+
+  return {
+    defaultReasons, reasons, lineSum, total, noPrice, state, canEdit, itemName, reserved, byId,
+    create, update, move, win, lose, reopen, addItem, setItem, removeItem, reserveItem, unreserve, query, columns,
+  };
+})();
+
+// Шаг SEEDS: демо-сделки. Список причин отказа; прежние сделки v2 получают историю (воронка проходится теми же move, что и в работе),
+// строки товаров по своим резервам и отметку времени у резервов; к ним добавлено ещё 23 сделки — всего 32 обоих типов на всех
+// этапах воронки, четыре из них провалены с причиной. Строки — из настоящего каталога (товар, цена сайта на снимок 31.10.2026);
+// где цены сайта у товара нет, в строке «нет данных: цена». Новых резервов шаг не ставит: остатки и свободное прежние.
+// Всё помечено «пример» (demo:true и слово в названиях клиентов), телефоны вида +7 900 000-00-NN.
+SEEDS.push(st => {
+  st.lostReasons = Deals.defaultReasons();
+  const DAY = 864e5, STAGES = ['request', 'calc', 'offer', 'contract', 'payment', 'delivery', 'install', 'done'];
+  const pad = (n, w) => String(n).padStart(w, '0');
+  const mgrs = type => Leads.managers(st, type).map(p => p.id);
+  const rot = { b2b: 0, b2c: 0 };
+  const nextMgr = type => { const m = mgrs(type); return m[rot[type]++ % m.length]; };
+  const priced = p => p.inCatalog && typeof p.price === 'number';
+  // позиция каталога: по куску названия, а если такой нет — первая с ценой сайта в категории
+  const pick = (like, cat) => st.products.find(p => priced(p) && p.name.includes(like)) || st.products.find(p => priced(p) && p.cat === cat);
+
+  // Пройти сделку по воронке до этапа stage теми же move/win: шаг по времени равномерный, последнее событие — до сегодняшней полуночи.
+  const walk = (d, stage, ago) => {
+    const path = STAGES.slice(1, STAGES.indexOf(stage) + 1);
+    const start = day(-ago, 9, 0), step = Math.min(2 * DAY, Math.floor((ago * DAY - 9 * 36e5) / (path.length + 1)));
+    d.stageId = STAGES[0];
+    path.forEach((s, i) => Deals.move(st, d.id, s, d.managerId, new Date(start.getTime() + (i + 1) * step)));
+    return { start, step, end: new Date(start.getTime() + path.length * step) };
+  };
+  const COMMENTS = ['Пример: клиент просит рассрочку, уточняем условия.', 'Пример: ждём замер кровли, согласовали выезд.', 'Пример: отправили расчёт на почту, клиент думает.',
+    'Пример: клиент сравнивает с другим предложением.', 'Пример: договорились созвониться после выходных.', 'Пример: клиент уточнил сроки поставки.'];
+  const say = (d, k, at) => Feed.comment(st, { t: 'deal', id: d.id }, COMMENTS[k % COMMENTS.length], d.managerId, at);
+
+  // 1. Прежние сделки v2: история, строки по резервам, отметки резервов
+  const OLD = { 'Д-311': 10, 'Д-314': 16, 'Д-318': 9, 'Д-320': 6, 'Д-305': 25, 'Д-322': 2 };
+  st.deals.filter(d => OLD[d.id]).forEach((d, k) => {
+    const stage = d.stageId, ago = OLD[d.id], start = day(-ago, 9, 0);
+    // «Сделка создана» — до движения по воронке
+    Feed.add(st, { t: 'deal', id: d.id }, { kind: 'create', text: 'Сделка создана', by: d.managerId, at: start });
+    d.at = start;
+    d.items = d.items || [];
+    const mine = st.reserves.filter(r => r.dealId === d.id);
+    for (const pid of [...new Set(mine.map(r => r.productId))]) {
+      const qty = mine.filter(r => r.productId === pid).reduce((s, r) => s + r.qty, 0);
+      Deals.addItem(st, d.id, { productId: pid, qty }, d.managerId, new Date(start.getTime() + 36e5));
+    }
+    if (mine.length && ['Д-311', 'Д-305'].includes(d.id)) Deals.addItem(st, d.id, { text: 'Монтаж и пусконаладка (пример)', qty: 1, price: null }, d.managerId, new Date(start.getTime() + 72e5));
+    const t = walk(d, stage, ago);
+    say(d, k, new Date(start.getTime() + 2 * t.step));
+    mine.forEach((r, i) => {
+      const w = Feed.reserveWhen(st, r);
+      r.at = w.at || new Date(start.getTime() + DAY + (i + 1) * 72e5);
+      r.by = w.by || d.managerId;
+    });
+  });
+
+  // 2. Новые сделки: [тип, этап, дней назад, причина отказа, связь, что продаём, строки, ключ клиента]
+  // строка: L([кусок названия, категория], количество, скидка %) или L(['текст своей строки'], количество)
+  const PAN = ['DAS Solar WH144PA-550W', 'Панели'], PAN150 = ['DELTA PV TOP 150-32', 'Панели'];
+  const INV10 = ['DEYE SUN-10K-SG04LP3', 'Инверторы'], INV12 = ['SUN-12K-SG04LP3-EU (12kW', 'Инверторы'], INV1 = ['ASTERION INV ECO II 1.5', 'Инверторы'];
+  const BAT = ['Dyness DL5.0C', 'Аккумуляторы'], BAT2 = ['DEYE SE-F5 (51,2В 100Ач) 5,12 кВтч', 'Аккумуляторы'];
+  const CAB = ['PV-1F', 'Защита и соединения'], MC4 = ['Коннектор MC4 AB [универсальный', 'Защита и соединения'], MNT = ['Комплект крепления MAX для четырех панелей', 'Защита и соединения'];
+  const WORK = ['Монтаж и пусконаладка (пример)'];
+  const L = (spec, qty, disc = 0) => (spec.length === 1 ? { text: spec[0], qty } : { spec, qty, disc });
+  const ROWS = [
+    ['b2b', 'calc', 6, null, 'phone', 'Сетевая станция 20 кВт на кровлю склада', [L(PAN, 36), L(INV10, 1)], 'a'],
+    ['b2b', 'contract', 14, null, 'telegram', 'Станция с накопителем для фермы', [L(PAN, 40, 5), L(INV12, 1), L(BAT, 4), L(CAB, 200), L(MC4, 40)], 'b'],
+    ['b2b', 'delivery', 22, null, 'max', 'Резервное питание для котельной', [L(PAN, 24), L(INV10, 1), L(BAT2, 3), L(MNT, 6)], 'c'],
+    ['b2b', 'install', 30, null, 'phone', 'Станция на кровлю производственной базы', [L(PAN, 60, 7), L(INV12, 2), L(CAB, 300), L(WORK, 1)], 'd'],
+    ['b2b', 'done', 40, null, 'telegram', 'Станция для автомойки', [L(PAN, 18), L(INV10, 1), L(BAT, 2)], 'e'],
+    ['b2b', 'done', 34, null, 'phone', 'Освещение и насос на удалённом участке', [L(PAN150, 12), L(INV1, 1)], 'f'],
+    ['b2b', 'contract', 12, null, 'telegram', 'Расширение станции: ещё накопители', [L(BAT, 6, 3), L(CAB, 100)], 'b'],
+    ['b2b', 'offer', 8, null, 'max', 'Станция для гостевого дома', [L(PAN, 16), L(INV10, 1), L(BAT2, 2)], 'g'],
+    ['b2b', 'payment', 18, null, 'phone', 'Станция для лесного участка', [L(PAN, 30, 4), L(INV12, 1), L(MC4, 30)], 'h'],
+    ['b2b', 'request', 2, null, 'phone', 'Нужен расчёт по резервному питанию склада', [], 'i'],
+    ['b2b', 'offer', 20, 'Дорого', 'telegram', 'Станция для мастерской', [L(PAN, 22), L(INV10, 1)], 'j'],
+    ['b2b', 'contract', 26, 'Выбрали другого', 'max', 'Станция для овощехранилища', [L(PAN, 28, 5), L(INV12, 1), L(BAT, 3)], 'k'],
+    ['b2c', 'offer', 7, null, 'telegram', 'Станция для дома, 8 кВт', [L(PAN, 14), L(INV10, 1), L(BAT2, 2)], 'l'],
+    ['b2c', 'contract', 11, null, 'max', 'Автономная станция для дачи', [L(PAN150, 10), L(INV1, 1), L(BAT2, 1), L(CAB, 60)], 'm'],
+    ['b2c', 'payment', 15, null, 'phone', 'Станция для загородного дома с накопителем', [L(PAN, 12), L(INV12, 1), L(BAT, 3), L(WORK, 1)], 'n'],
+    ['b2c', 'done', 33, null, 'telegram', 'Станция на крышу гаража', [L(PAN, 8, 3), L(INV1, 1), L(MC4, 16)], 'o'],
+    ['b2c', 'done', 28, null, 'max', 'Резервное питание на случай отключений', [L(INV1, 1), L(BAT2, 1)], 'p'],
+    ['b2c', 'request', 1, null, 'phone', 'Хочу узнать, что нужно для станции', [], 'q'],
+    ['b2c', 'calc', 3, null, 'telegram', 'Станция для бани и участка', [L(PAN150, 6)], 'r'],
+    ['b2c', 'payment', 9, null, 'max', 'Станция для дачи с накопителем', [L(PAN, 10), L(INV10, 1), L(BAT, 2)], 's'],
+    ['b2c', 'install', 19, null, 'telegram', 'Станция для дома на склоне', [L(PAN, 16, 5), L(INV12, 1), L(BAT2, 3), L(CAB, 120), L(MNT, 4)], 't'],
+    ['b2c', 'calc', 10, 'Не дозвонились', 'phone', 'Станция для дачи, расчёт', [L(PAN150, 8)], 'u'],
+    ['b2c', 'offer', 16, 'Передумали', 'max', 'Станция для коттеджа', [L(PAN, 18), L(INV10, 1), L(BAT, 2)], 'v'],
+  ];
+  const clients = {};
+  let phoneNo = 40, innNo = 110, n = 25;
+  const COMPANY = ['ООО „Пример-Лес“', 'ИП Пример-Ферма', 'КФХ „Пример-Поле“', 'ООО „Пример-Тепло“', 'АО „Пример-Свет“', 'ООО „Пример-Мост“',
+    'ООО „Пример-Горы“', 'ИП Пример-Гараж', 'ООО „Пример-Река“', 'ООО „Пример-Север“', 'ООО „Пример-Юг“', 'ООО „Пример-Склон“'];
+  ROWS.forEach(([type, stage, ago, lostWhy, channel, object, lines, key], k) => {
+    const mgr = nextMgr(type), start = day(-ago, 9, 0);
+    if (!clients[key]) {
+      const company = type === 'b2b', no = phoneNo++, i = n++;
+      const data = { name: company ? COMPANY[(i - 25) % COMPANY.length] : `Клиент-пример ${i}`, kind: company ? 'company' : 'person',
+        phone: `+7 900 000-00-${pad(no, 2)}`, managerId: mgr, demo: true };
+      if (company) data.inn = `0000000${pad(innNo++, 3)}`;
+      if (k % 3 === 0) data.email = `primer${no}@example.com`;
+      clients[key] = Clients.create(st, data, null, start).client;
+    }
+    const made = Deals.create(st, { clientId: clients[key].id, type, managerId: mgr, channel, object, demo: true,
+      contact: type === 'b2b' ? `Контакт-пример ${k + 1}` : undefined }, mgr, start);
+    const d = Deals.byId(st, made.id);
+    for (const ln of lines) {
+      const raw = ln.spec ? { productId: pick(...ln.spec).id, qty: ln.qty, disc: ln.disc } : { text: ln.text, qty: ln.qty, price: null };
+      Deals.addItem(st, d.id, raw, mgr, new Date(start.getTime() + 36e5));
+    }
+    const t = walk(d, stage, ago);
+    if (k % 2 === 0) say(d, k, new Date(start.getTime() + Math.floor(1.5 * t.step)));
+    if (lostWhy) Deals.lose(st, d.id, lostWhy, mgr, new Date(t.end.getTime() + 36e5));
+  });
+});
+
 // Оболочка: состояние S и его сохранение, тема, разделы NAV, боковая панель, «Кто я», уведомления, окна,
 // карточка справа, поиск, переходы, render(), действия A, формы FORMS, обработчики событий.
 // Права — Perms.can(S, S.me, …), этапы — по id и флагам Pipes, уведомления — только Notify.push.
@@ -3527,7 +4561,7 @@ const NAV=[
   {id:'stock',label:'Товары и остатки',icon:'box',group:'Товар',order:10,ok:()=>can('stock')},
   {id:'logistics',label:'Поставки и перевозки',icon:'truck',group:'Товар',order:20,ok:()=>can('stock')||can('logistics'),badge:()=>S.shipments.filter(s=>!isDone(s)).length},
   {id:'receiving',label:'Приёмка на складе',icon:'camera',group:'Товар',order:30,ok:()=>can('receive'),badge:()=>S.shipments.filter(awaitsReceipt).length,hot:true},
-  {id:'clients',label:'Клиенты и сделки',icon:'users',group:'Продажи',order:10,ok:()=>can('clients')},
+  {id:'deals',label:'Сделки',icon:'users',group:'Продажи',order:10,ok:()=>can('clients')},
   {id:'messages',label:'Сообщения клиентам',icon:'chat',group:'Продажи',order:20,ok:()=>can('write')||can('auto')},
   {id:'team',label:'Сотрудники и права',icon:'shield',group:'Управление',order:10,ok:()=>can('admin')}
 ];
@@ -3784,7 +4818,7 @@ function hscrollPoint(e){
 function hscrollClearNear(){if(_hsNear){delete _hsNear.dataset.near;_hsNear=null}}
 
 // ——— главный вывод ———
-const VIEWS={home:vHome,tasks:vTasks,notifications:vNotes,stock:vStock,logistics:vLogistics,receiving:vReceiving,clients:vClients,messages:vMessages,team:vTeam};
+const VIEWS={home:vHome,tasks:vTasks,notifications:vNotes,stock:vStock,logistics:vLogistics,receiving:vReceiving,messages:vMessages,team:vTeam};
 // Прямой переход (адрес, сохранённый раздел) туда, где у человека нет права: в меню раздела нет, на экране — это.
 const vNoAccess=n=>`<section class="card deny"><span class="deny-ic">${ic('lock')}</span><h2>Нет доступа к разделу</h2><p>«${esc(n.label)}» закрыт для роли «${esc(roleName(me()))}». Права ролей меняют в разделе «Сотрудники и права».</p><button type="button" class="btn pri" data-act="go" data-view="home">${ic('home')}На главный экран</button></section>`;
 function render(){
@@ -3998,13 +5032,13 @@ function kpiHtml(){
   const open=S.tasks.filter(t=>!isDone(t)),over=open.filter(taskOverdue);
   const inT=openIn(),late=S.shipments.filter(isLate);
   const rd=new Set(S.reserves.map(r=>r.dealId));
-  const act=S.deals.filter(d=>!isDone(d)),total=sum(act,d=>d.amount||0);
+  const act=S.deals.filter(d=>!isDone(d)&&!d.lostReason),total=sum(act,Deals.total);
   const tile=(l,v,s,c,view)=>`<button class="kpi" data-act="go" data-view="${view}"><span class="k-l">${l}</span><b class="k-v">${v}</b><span class="k-s ${c}">${s}</span></button>`;
   return `<div class="kpis">${[
     tile('Задачи в работе',open.length,over.length?`${over.length} ${pl(over.length,'просрочена','просрочены','просрочено')}`:'просроченных нет',over.length?'bad':'ok','tasks'),
     tile('Поставок в пути',inT.length,late.length?`${late.length} ${pl(late.length,'задерживается','задерживаются','задерживаются')}`:'все по графику',late.length?'warn':'ok','logistics'),
     tile('Позиций в резерве',S.reserves.length,`по ${rd.size} ${pl(rd.size,'сделке','сделкам','сделкам')}`,'','stock'),
-    tile('Сделок в работе',act.length,can('prices')?`на ${mln(total)}`:'суммы скрыты для роли','','clients')
+    tile('Сделок в работе',act.length,can('prices')?`на ${mln(total)}`:'суммы скрыты для роли','','deals')
   ].join('')}</div>`;
 }
 function weekHtml(){
@@ -4918,10 +5952,22 @@ ON.change['rcv-city']=t=>{S.rcv.cityId=t.value;render()};
 ON.change['rcv-dmg']=t=>{S.rcv.dmg[t.dataset.pid]=t.checked;updRcvPrev()};
 ON.change['rcv-photo']=t=>{addPhotos(t.files);t.value=''};
 
-// Раздел «Клиенты и сделки»
-// Перенесено из прототипа v2; этапы — воронки сделок B2B и B2C (Pipes), «сдана» — флаг final.
+// Раздел «Сделки»: канбан своей воронки и таблица, быстрая форма «Новая сделка», карточка сделки (полоса этапов,
+// «Успешно», «Провалена» с причиной, вкладки «Детали», «Товары», «Лента»), коммерческое предложение для печати.
+// Всё решает ядро: Deals (42-deals.js) — этапы, сумма, строки, резервы, колонки; Clients — клиенты; Feed — лента;
+// Leads.dealsVisible — какие сделки человеку видны. Здесь — только экран: виды — чистые функции состояния,
+// состояние меняют обработчики внизу файла. Выбор на экране (вид, поиск, фильтры) лежит в S.ui.deals и не сохраняется.
 
-// ——— клиенты и сделки ———
+Object.assign(IC,{print:'<path d="M7 9V4h10v5"/><rect x="4" y="9" width="16" height="8" rx="2"/><path d="M7 14h10v6H7z"/>'});
+
+// ——— выбор на экране ———
+const DEALS_DEF={view:'board',q:'',mine:false,lost:false};
+const dealsU=()=>S.ui.deals||(S.ui.deals=Object.assign({},DEALS_DEF));
+const dealsSel=()=>Object.assign({},DEALS_DEF,S.ui.deals||{});
+const dealNoData=t=>`<span class="muted">нет данных: ${t}</span>`;
+// «нет данных: …» в поле ввода — не значение, а подсказка: поле остаётся пустым
+const dealVal=v=>(/^нет данных/.test(v||'')?'':(v||''));
+
 function dealGoods(d){
   const rs=S.reserves.filter(r=>r.dealId===d.id);
   if(!rs.length) return {lvl:'',text:'не зарезервирован'};
@@ -4939,37 +5985,439 @@ function dealTypes(vis){
   const own=Perms.roleOf(S,S.me)?.scope,t=['b2b','b2c'].filter(x=>x===own||vis.some(d=>d.type===x));
   return t.length?t:['b2b','b2c'];
 }
-function vClients(){
-  const pr=can('prices');
-  // только сделки, которые этому человеку положено видеть (свой тип, а с правом «все типы» — все)
+// Что видит человек сейчас: сделки по праву, доступные ему типы, выбранный тип и воронка этого типа
+// (воронок типа может быть несколько — выбор в S.ui.dealPipe)
+function dealsScope(){
   const vis=Leads.dealsVisible(S,S.me),types=dealTypes(vis),cur=types.includes(S.ui.dealType)?S.ui.dealType:types[0];
-  const mine=vis.filter(d=>d.type===cur);
-  // воронка выбранного типа: этапы со счётчиками (воронок типа может быть несколько — показываем те, где есть сделки)
-  const pipes=Pipes.of(S,'deals',cur),fun=pipes.filter(p=>pipes.length<2||mine.some(d=>d.pipeId===p.id)).map(p=>{const ds=mine.filter(d=>d.pipeId===p.id);return `<h4 class="sh">${esc(p.name)}</h4><div class="xs" data-hscroll><div class="funnel" style="grid-template-columns:repeat(${p.stages.length},minmax(92px,1fr))">${p.stages.map(st=>{const c=ds.filter(d=>d.stageId===st.id).length;return `<div class="fn ${c?'':'zero'}"><b>${c}</b><span>${esc(st.name)}</span></div>`}).join('')}</div></div>`}).join('');
-  const sw=types.length>1?`<div class="bar"><div class="seg" role="group" aria-label="Тип клиентов">${types.map(t=>`<button type="button" class="${cur===t?'on':''}" aria-pressed="${cur===t}" data-act="deal-type" data-type="${t}">${Leads.TYPE[t]}<b>${vis.filter(d=>d.type===t).length}</b></button>`).join('')}</div></div>`:'';
-  const hint=`<p class="hint">Сделки ведутся по менеджерам, у каждого типа клиентов своя воронка. Новая сделка появляется из лида — кнопкой «Создать сделку» в разделе «Лиды». ${types.length>1?'Переключатель показывает сделки выбранного типа.':`Вам видны сделки типа ${Leads.TYPE[cur]}.`}</p>`;
-  const rows=mine.slice().sort((a,b)=>stagePos(b)-stagePos(a)).map(d=>{const g=dealGoods(d);return `<tr class="click" data-act="open-deal" data-id="${d.id}" tabindex="0"><td><div class="pname"><span>${esc(d.client)}</span><small class="mono">${d.id} · ${esc(d.kind)}<span class="pill sm">${Leads.TYPE[d.type]||'нет данных: тип'}</span></small></div></td><td>${esc(d.object)}</td><td><span class="pill ${stageTone(d)}">${esc(stageName(d))}</span></td><td><span class="pill sm ${g.lvl}">${esc(g.text)}</span></td><td class="nowrap">${esc(person(d.managerId)?.name||'нет данных: менеджер')}</td><td>${chPill(d.channel)}</td>${pr?`<td class="num">${d.amount?rub(d.amount):'<span class="muted">не рассчитана</span>'}</td>`:''}</tr>`}).join('');
-  const table=rows?`<section class="card clip"><div class="xs"><table class="tbl"><thead><tr><th>Клиент</th><th>Объект</th><th>Этап</th><th>Товар</th><th>Менеджер</th><th>Связь</th>${pr?'<th class="num">Сумма</th>':''}</tr></thead><tbody>${rows}</tbody></table></div></section>`:`<section class="card"><p class="empty">Сделок типа ${Leads.TYPE[cur]} пока нет. Они появляются из лидов: в разделе «Лиды» у лида — «Создать сделку».</p></section>`;
-  return `${hint}${sw}${fun}${table}`;
+  const pipes=Pipes.of(S,'deals',cur),pipe=pipes.find(p=>p.id===S.ui.dealPipe)||pipes[0]||null;
+  return {vis,types,cur,pipes,pipe};
 }
-function dDeal(d){
-  const fromLead=d.leadId?`<dt>Лид</dt><dd>${Leads.visible(S,S.me).some(l=>l.id===d.leadId)?`<button type="button" class="link" data-act="open-lead" data-id="${esc(d.leadId)}">${esc(d.leadId)}</button>`:esc(d.leadId)}</dd>`:'';
-  const rs=S.reserves.filter(r=>r.dealId===d.id),ts=S.tasks.filter(t=>t.deal===d.id&&taskVisible(t)),ms=S.msgs.filter(x=>x.deal===d.id).slice().sort((a,b)=>a.at-b.at);
-  const goods=rs.length?`<div class="xs"><table class="tbl"><thead><tr><th>Товар</th><th class="num">Кол-во</th><th>Где</th></tr></thead><tbody>${rs.map(r=>{const p=product(r.productId);return `<tr ${can('stock')?`class="click" data-act="open-product" data-pid="${esc(p.id)}"`:''}><td>${esc(p.name)}</td><td class="num">${qtyOf(r.qty,p)}</td><td>${srcPill(r)}</td></tr>`}).join('')}</tbody></table></div>`:'<p class="muted m0">Под сделку ничего не зарезервировано.</p>';
-  const tasks=ts.length?`<ul class="list" style="padding:0">${ts.map(t=>`<li><button class="li" data-act="open-task" data-id="${t.id}"><span class="tdot ${esc(t.stageId)}"></span><span class="li-t">${esc(t.title)}<small>${esc(targetName(t))} · ${esc(stageName(t))}</small></span><span class="due ${taskOverdue(t)?'bad':''}">${fRel(t.due)}</span></button></li>`).join('')}</ul>`:'<p class="muted m0">Задач по сделке нет.</p>';
-  const chat=ms.length?`<div class="chat">${ms.map(x=>`<div class="bub ${x.inbound?'':'out'}">${esc(x.text)}<small>${x.inbound?esc(d.contact):x.auto?'Авто-сообщение':esc(person(x.by)?.name||'')} · ${CH[x.channel]} · ${fWhen(x.at)}</small></div>`).join('')}</div>`:'<p class="muted m0">Переписки пока нет.</p>';
-  const compose=d.channel==='phone'?'<p class="lock">Клиент на связи только по телефону.</p>':can('write')?`<form class="compose" data-form="msg" data-id="${d.id}"><textarea id="msg-text" class="inp" rows="3" placeholder="Сообщение клиенту в ${CH[d.channel]}" aria-label="Сообщение клиенту"></textarea><button class="btn pri" type="submit">${ic('send')}Отправить в ${CH[d.channel]}</button></form>`:`<p class="lock">${ic('lock')}У вашей роли нет права писать клиентам.</p>`;
-  return {kind:'Сделка '+d.id,title:esc(d.client),sub:esc(d.kind+' · '+d.object),body:`
-    <ol class="steps" style="--n:${stagesFor(d).length}">${stagesFor(d).map((x,i)=>`<li class="${i<stagePos(d)?'done':x.id===d.stageId?'cur':''}"><span>${esc(x.name)}</span></li>`).join('')}</ol>
-    <dl class="kv"><dt>Объект</dt><dd>${esc(d.object)}</dd><dt>Тип</dt><dd>${Leads.TYPE[d.type]||'нет данных: тип'}</dd><dt>Воронка</dt><dd>${esc(pipeById(d.pipeId)?.name||'нет данных: воронка')}</dd><dt>Менеджер</dt><dd>${esc(person(d.managerId)?.name||'нет данных: менеджер')}</dd>${fromLead}<dt>Связь</dt><dd>${CH[d.channel]}</dd>${can('prices')?`<dt>Сумма</dt><dd>${d.amount?rub(d.amount):'не рассчитана'}</dd>`:''}</dl>
-    <div><h4 class="sh">Товар под сделку</h4>${goods}</div>
-    <div><h4 class="sh">Задачи</h4>${tasks}</div>
-    <div class="stack-s"><h4 class="sh" style="margin:0">Переписка</h4>${chat}${compose}</div>`};
+// Один отбор на канбан, таблицу и счётчики: тип, поиск, «Мои», «Провалены»
+const dealsFilter=(u,cur)=>({type:cur,q:u.q,mine:u.mine,lost:u.lost?'only':undefined});
+// Сумма сделки: только Deals.total; у кого нет права «цены» — не показывается совсем
+const dealSumText=d=>{const s=Deals.total(d);return s?rub(s):'не рассчитана'};
+const dealWho=id=>person(id)?.name||'нет данных: менеджер';
+
+// ——— карточка в колонке ———
+function dealCardHtml(d){
+  const lost=!!d.lostReason,pr=can('prices'),np=Deals.noPrice(d).length;
+  const mgr=d.managerId?`<span class="who">${av(person(d.managerId),'xs')}${esc(dealWho(d.managerId))}</span>`:'<span class="pill sm warn">нет менеджера</span>';
+  const top=[lost?'<span class="pill sm bad">Провалена</span>':'',d.demo?'<span class="pill sm">пример</span>':'',np?`<span class="pill sm warn">без цены: ${np}</span>`:''].join('');
+  return `<article class="tcard dcard${lost?' lost':''}${Deals.state(S,d)==='won'?' won':''}"${lost?'':` draggable="true" data-drag="${esc(d.id)}"`} data-act="open-deal" data-id="${esc(d.id)}" tabindex="0"><div class="tc-top">${top}</div><p class="tc-t">${esc(d.client)}<small class="mono lc-id">${esc(d.id)} · ${esc(d.object)}</small></p>${pr?`<p class="dc-sum">${esc(dealSumText(d))}</p>`:''}${lost?`<p class="dc-lost">Причина: ${esc(d.lostReason)}</p>`:''}<div class="tc-m">${mgr}<span class="due">${d.at?esc(fRel(d.at)):''}</span></div></article>`;
 }
 
-// ——— регистрация в реестрах оболочки ———
+// ——— канбан: колонки — этапы воронки, в шапке число сделок и сумма (Deals.columns) ———
+function dealsBoard(pipe,cur,u){
+  const cols=Deals.columns(S,pipe.id,dealsFilter(u,cur),S.me),pr=can('prices');
+  return `<div class="xs" data-hscroll><div class="dkan" style="--n:${cols.length}">${cols.map(c=>{
+    const unknown=c.deals.filter(d=>!Deals.total(d)).length;
+    const plus=c.stage.flag==='final'?'':`<button type="button" class="btn ghost icon dplus" data-act="deal-new" data-stage="${esc(c.stage.id)}" aria-label="Новая сделка на этапе «${esc(c.stage.name)}»">${ic('plus')}</button>`;
+    return `<div class="col dcol" data-dcol="${esc(c.stage.id)}"><div class="col-h"><span>${esc(c.stage.name)}</span>${plus}</div><p class="dcol-s"><span class="dcnt">${c.count} ${pl(c.count,'сделка','сделки','сделок')}</span>${pr?` · <b class="dsum" data-sum="${c.sum}">${rub(c.sum)}</b>`:''}${pr&&unknown?`<small>без суммы: ${unknown}</small>`:''}</p>${c.deals.map(dealCardHtml).join('')||'<p class="col-empty">Пусто</p>'}</div>`;
+  }).join('')}</div></div>`;
+}
+
+// ——— таблица: второй вид тех же сделок ———
+function dealsTable(cur,u){
+  const pr=can('prices'),list=Deals.query(S,dealsFilter(u,cur),S.me).sort((a,b)=>stagePos(b)-stagePos(a)||String(b.id).localeCompare(String(a.id)));
+  const rows=list.map(d=>{
+    const g=dealGoods(d),lost=!!d.lostReason;
+    return `<tr class="click" data-act="open-deal" data-id="${esc(d.id)}" tabindex="0"><td><div class="pname"><span>${esc(d.client)}${d.demo?' <span class="pill sm">пример</span>':''}</span><small class="mono">${esc(d.id)} · ${esc(d.object)}</small></div></td><td>${lost?`<span class="pill bad">Провалена: ${esc(d.lostReason)}</span>`:`<span class="pill ${stageTone(d)}">${esc(stageName(d))}</span>`}</td><td class="d-hide-s"><span class="pill sm ${g.lvl}">${esc(g.text)}</span></td><td class="nowrap">${esc(dealWho(d.managerId))}</td><td class="d-hide-s">${chPill(d.channel)}</td>${pr?`<td class="num">${esc(dealSumText(d))}</td>`:''}</tr>`;
+  }).join('');
+  return `<section class="card clip"><div class="xs"><table class="tbl"><thead><tr><th>Клиент</th><th>Этап</th><th class="d-hide-s">Товар</th><th>Менеджер</th><th class="d-hide-s">Связь</th>${pr?'<th class="num">Сумма</th>':''}</tr></thead><tbody>${rows}</tbody></table></div></section>`;
+}
+
+// ——— тело раздела: счёт + доска или таблица (его же перерисовывают поиск и правка в карточке) ———
+function dealsBody(){
+  const u=dealsSel(),{vis,cur,pipe}=dealsScope(),pr=can('prices');
+  if(!vis.length) return '<section class="card"><p class="empty">Сделок пока нет. Заведите первую кнопкой «Новая сделка» или создайте её из лида в разделе «Лиды».</p></section>';
+  if(!pipe) return '<section class="card"><p class="empty">Воронки сделок этого типа нет — её заводят в «Настройки → Воронки».</p></section>';
+  const list=Deals.query(S,dealsFilter(u,cur),S.me),sum=list.reduce((s,d)=>s+Deals.total(d),0);
+  const head=`<p class="count"><span>Сделок: <b>${list.length}</b></span>${pr?`<span>на сумму: <b>${rub(sum)}</b></span>`:''}<span>${esc(pipe.name)}</span></p>`;
+  if(!list.length) return `${head}<section class="card"><p class="empty">${u.q.trim()||u.mine||u.lost?'По этим условиям сделок нет.':`Сделок типа ${Leads.TYPE[cur]} пока нет.`} ${u.q.trim()||u.mine||u.lost?'<button type="button" class="link" data-act="deal-reset">Сбросить поиск и фильтры</button>':'Заведите сделку кнопкой «Новая сделка».'}</p></section>`;
+  return head+(u.view==='table'?dealsTable(cur,u):dealsBoard(pipe,cur,u));
+}
+
+function vDeals(){
+  const u=dealsSel(),{vis,types,cur,pipes,pipe}=dealsScope();
+  const lostN=Deals.query(S,{type:cur,q:u.q,mine:u.mine,lost:'only'},S.me).length;
+  const seg=(act,items,on,aria)=>`<div class="seg" role="group" aria-label="${aria}">${items.map(([k,l,n])=>`<button type="button" class="${on===k?'on':''}" aria-pressed="${on===k}" data-act="${act}" data-${act==='deal-type'?'type':'v'}="${k}">${l}${n===undefined?'':`<b>${n}</b>`}</button>`).join('')}</div>`;
+  const typeSw=types.length>1?seg('deal-type',types.map(t=>[t,Leads.TYPE[t],vis.filter(d=>d.type===t).length]),cur,'Тип клиентов'):'';
+  const pipeSel=pipes.length>1?`<select class="inp sm w-auto" data-on="deal-pipe" aria-label="Воронка">${pipes.map(p=>`<option value="${esc(p.id)}"${pipe&&p.id===pipe.id?' selected':''}>${esc(p.name)}</option>`).join('')}</select>`:'';
+  const dirty=u.q.trim()||u.mine||u.lost;
+  return `<p class="hint">Перетащите карточку на другой этап или откройте сделку. «Успешно», «Провалена» и коммерческое предложение — в карточке. ${types.length>1?'Переключатель показывает сделки выбранного типа.':`Вам видны сделки типа ${Leads.TYPE[cur]}.`}</p>
+  <div class="bar dbar">${typeSw}${seg('deal-view',[['board','Доска'],['table','Таблица']],u.view,'Вид')}${pipeSel}<div class="search-in">${ic('search')}<input id="deal-q" class="inp" type="search" placeholder="Поиск: клиент, номер, телефон, объект" value="${esc(u.q)}" data-on="deal-q" autocomplete="off" aria-label="Поиск по сделкам"></div><span class="grow"></span><button type="button" class="btn pri" data-act="deal-new">${ic('plus')}Новая сделка</button></div>
+  <div class="bar dfilt"><button type="button" class="fchip${u.mine?' on':''}" aria-pressed="${u.mine}" data-act="deal-mine">Мои</button><button type="button" class="fchip${u.lost?' on':''}" aria-pressed="${u.lost}" data-act="deal-lostf">Провалены · ${lostN}</button>${dirty?'<button type="button" class="btn ghost sm" data-act="deal-reset">Сбросить</button>':''}</div>
+  <div id="deal-body" class="stack-s">${dealsBody()}</div>`;
+}
+
+// ——— быстрая форма «Новая сделка» ———
+// Клиент: найти среди существующих (Clients.search) или завести нового тут же; остальное — контакт, телефон, тип, менеджер.
+function dealClientOpts(q,sel){
+  const hits=q.trim()?Clients.search(S,q).slice(0,6):[],pick=sel&&Clients.byId(S,sel);
+  // выбранный клиент («Выбрать его» в подсказке о дубле) остаётся в списке, даже если поиск по имени его не вернул
+  if(pick&&!hits.some(c=>c.id===sel)) hits.unshift(pick);
+  const cur=sel&&hits.some(c=>c.id===sel)?sel:(hits[0]?hits[0].id:'new');
+  const one=(v,html)=>`<label class="dpick"><input type="radio" name="dn-c" value="${esc(v)}" data-on="deal-cs"${cur===v?' checked':''}><span>${html}</span></label>`;
+  return one('new','Новый клиент — заполните ниже')+hits.map(c=>one(c.id,`${esc(c.name)}<small>${esc(c.id)}${(c.phones||[])[0]?' · '+esc(c.phones[0]):''}${c.inn?' · ИНН '+esc(c.inn):''}${c.demo?' · пример':''}</small>`)).join('')
+    +(q.trim()&&!hits.length?'<p class="hint">Такого клиента нет — заведём нового.</p>':'');
+}
+// Менеджеры в форме: я (по умолчанию) и менеджеры типов
+function dealManagers(){
+  const m=me(),list=[m,...Leads.managers(S).filter(p=>p.id!==m.id)];
+  return list.map(p=>`<option value="${esc(p.id)}"${p.id===m.id?' selected':''}>${esc(p.name)}${p.id===m.id?' (я)':''}</option>`).join('');
+}
+MODALS.dealNew=stageId=>{
+  const {types,cur,pipe}=dealsScope(),role=Perms.roleOf(S,S.me),def=types.includes(role&&role.scope)?role.scope:cur;
+  const stg=stageId&&pipe?Pipes.stage(S,pipe.id,stageId):null;
+  return `<form data-form="deal-new" data-stage="${esc(stageId||'')}" novalidate>${mHead('Новая сделка')}<div class="modal-b">
+    <div class="field"><label for="dn-cq">Клиент</label><input id="dn-cq" class="inp" type="search" placeholder="Название, телефон или ИНН — найдём среди клиентов" data-on="deal-cq" autocomplete="off"><div id="dn-cres" class="dpicks">${dealClientOpts('','')}</div></div>
+    <div id="dn-new" class="stack-s"><div class="field"><label for="dn-cname">Имя клиента или название компании</label><input id="dn-cname" class="inp" autocomplete="off"></div>
+      <div class="grid2"><div class="field"><label for="dn-email">Почта</label><input id="dn-email" class="inp" type="email" data-on="deal-dup" autocomplete="off"></div><div class="field"><label for="dn-inn">ИНН (если компания)</label><input id="dn-inn" class="inp" inputmode="numeric" data-on="deal-dup" autocomplete="off"></div></div></div>
+    <div class="grid2"><div class="field"><label for="dn-contact">Контакт</label><input id="dn-contact" class="inp" placeholder="С кем говорим" autocomplete="off"></div><div class="field"><label for="dn-phone">Телефон</label><input id="dn-phone" class="inp" type="tel" data-on="deal-dup" autocomplete="off"></div>
+      <div class="field"><label for="dn-type">Тип</label><select id="dn-type" class="inp">${types.map(t=>`<option value="${t}"${t===def?' selected':''}>${Leads.TYPE[t]}</option>`).join('')}</select></div><div class="field"><label for="dn-mgr">Менеджер</label><select id="dn-mgr" class="inp">${dealManagers()}</select></div>
+      <div class="field"><label for="dn-obj">Что продаём</label><input id="dn-obj" class="inp" placeholder="Например: станция 8 кВт для дома" autocomplete="off"></div><div class="field"><label for="dn-ch">Связь</label><select id="dn-ch" class="inp">${Object.entries(CH).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></div></div>
+    <div id="dn-dup" aria-live="polite"></div>
+    ${stg?`<p class="hint">Сделка встанет на этап «${esc(stg.name)}».</p>`:''}
+    <p class="err" id="dn-err" hidden></p></div>${mFoot('Завести сделку')}</form>`;
+};
+
+// ——— карточка сделки ———
+const DEAL_TABS=[['details','Детали'],['items','Товары'],['feed','Лента']];
+const DEAL_FIELD={contact:'Контакт',phone:'Телефон',email:'Почта',object:'Что продаём',type:'Тип',managerId:'Менеджер',channel:'Связь',amount:'Сумма'};
+
+// Полоса этапов: клик по этапу переводит сделку (Deals.move); последний этап — «Успешно»
+function dealSteps(d,edit){
+  const stg=stagesFor(d),pos=stagePos(d),lost=!!d.lostReason;
+  return `<div class="dsteps" role="group" aria-label="Этапы сделки">${stg.map((x,i)=>{
+    const cls=i<pos?'done':x.id===d.stageId?(lost?'lost':'cur'):'';
+    return `<button type="button" class="dstep ${cls}" data-act="deal-stage" data-id="${esc(d.id)}" data-st="${esc(x.id)}"${x.id===d.stageId||!edit||lost?' disabled':''}${x.id===d.stageId?' aria-current="step"':''}><span>${esc(x.name)}</span></button>`;
+  }).join('')}</div>`;
+}
+// Кнопки действий над сделкой: зависят от состояния (Deals.state) и права
+function dealActions(d,edit){
+  const st=Deals.state(S,d),id=esc(d.id),b=(act,label,cls)=>`<button type="button" class="btn${cls?' '+cls:''}" data-act="${act}" data-id="${id}">${label}</button>`;
+  let h='';
+  if(edit&&st==='open') h+=b('deal-win',ic('check')+'Успешно','pri')+b('deal-lose',ic('x')+'Провалена');
+  if(edit&&st==='lost') h+=b('deal-reopen','Вернуть в работу','pri');
+  if(can('prices')) h+=b('deal-kp',ic('print')+'КП');
+  const note=st==='lost'?`<p class="lock bad-t">${ic('alert')}Провалена: ${esc(d.lostReason)}${d.lostAt?' · '+esc(fWhen(d.lostAt)):''}. Этап не меняется, пока сделку не вернут в работу.</p>`
+    :st==='won'?`<p class="lock ok-t">${ic('check')}Успешно закрыта${d.wonAt?' · '+esc(fWhen(d.wonAt)):''}. Чтобы вернуть в работу, выберите другой этап.</p>`:'';
+  return `${h?`<div class="dact">${h}</div>`:''}${note}${edit?'':`<p class="lock">${ic('lock')}Править сделки могут те, у кого есть право «Видеть клиентов и сделки».</p>`}`;
+}
+// Ссылка на клиента: на карточку клиента (DRAWERS.client — раздел «Клиенты»), пока её нет — просто имя
+function dealClientLink(d){
+  const c=Clients.byId(S,d.clientId);
+  if(!c) return esc(d.client);
+  return Object.hasOwn(DRAWERS,'client')?`<button type="button" class="link" data-act="open-client" data-id="${esc(c.id)}">${esc(c.name)}</button> <small class="muted mono">${esc(c.id)}</small>`:`${esc(c.name)} <small class="muted mono">${esc(c.id)}</small>`;
+}
+function dealDetails(d,edit){
+  const id=esc(d.id);
+  const field=(f,label,html)=>`<div class="field"><label for="df-${f}">${label}</label>${html}</div>`;
+  const text=(f,val,kind,ph)=>edit?`<input id="df-${f}" class="inp" type="${kind||'text'}" data-on="deal-f" data-id="${id}" data-f="${f}" value="${esc(dealVal(val))}" placeholder="нет данных: ${ph}" autocomplete="off">`:(dealVal(val)?`<span>${esc(val)}</span>`:dealNoData(ph));
+  const sel=(f,opts,cur)=>edit?`<select id="df-${f}" class="inp" data-on="deal-f" data-id="${id}" data-f="${f}">${opts.map(([v,l])=>`<option value="${esc(v)}"${v===cur?' selected':''}>${esc(l)}</option>`).join('')}</select>`:esc((opts.find(o=>o[0]===cur)||[0,'нет данных'])[1]);
+  const mgrs=Leads.managers(S).map(p=>[p.id,p.name]);
+  if(d.managerId&&!mgrs.some(m=>m[0]===d.managerId)) mgrs.unshift([d.managerId,dealWho(d.managerId)]);
+  const noItems=!(d.items||[]).length,pr=can('prices');
+  const sum=!pr?'':noItems?field('amount','Сумма, ₽',edit?`<input id="df-amount" class="inp" type="number" min="0" step="any" inputmode="decimal" data-on="deal-f" data-id="${id}" data-f="amount" value="${d.amount?esc(d.amount):''}" placeholder="не рассчитана"><small class="muted">Строк товаров нет — сумма вписана руками. Добавите строки — она посчитается по ним.</small>`:esc(dealSumText(d))):field('sum','Сумма',`<b>${rub(Deals.total(d))}</b><small class="muted">считается по товарам (вкладка «Товары»)</small>`);
+  const lead=d.leadId?`<dt>Лид</dt><dd>${Leads.visible(S,S.me).some(l=>l.id===d.leadId)?`<button type="button" class="link" data-act="open-lead" data-id="${esc(d.leadId)}">${esc(d.leadId)}</button>`:esc(d.leadId)}</dd>`:'';
+  return `<div class="dform"><div class="field span2"><span class="lbl">Клиент</span><span>${dealClientLink(d)}</span></div>
+    ${field('contact','Контакт',text('contact',d.contact,'text','контакт'))}${field('phone','Телефон',text('phone',d.phone,'tel','телефон'))}
+    ${field('email','Почта',text('email',d.email,'email','почта'))}${field('object','Что продаём',text('object',d.object,'text','что продаём'))}
+    ${field('type','Тип',sel('type',Object.entries(Leads.TYPE),d.type))}${field('managerId','Менеджер',sel('managerId',[['','Не назначен'],...mgrs],d.managerId||''))}
+    ${field('channel','Связь',sel('channel',Object.entries(CH),d.channel))}${sum}</div>
+    <dl class="kv"><dt>Воронка</dt><dd>${esc(pipeById(d.pipeId)?.name||'нет данных: воронка')}</dd><dt>Этап</dt><dd>${esc(stageName(d))}</dd><dt>Создана</dt><dd>${d.at?esc(fWhen(d.at)):'нет данных: дата'}${d.demo?' <span class="pill sm">пример</span>':''}</dd>${lead}</dl>`;
+}
+function dealCard(d){
+  const edit=Deals.canEdit(S,d,S.me),tab=DEAL_TABS.some(t=>t[0]===S.ui.dealTab)?S.ui.dealTab:'details';
+  const tabs=`<div class="dtabs" role="tablist" aria-label="Разделы карточки">${DEAL_TABS.map(([k,l])=>`<button type="button" role="tab" class="dtab${tab===k?' on':''}" aria-selected="${tab===k}" data-act="deal-tab" data-tab="${k}">${l}${k==='items'&&(d.items||[]).length?`<b>${d.items.length}</b>`:''}</button>`).join('')}</div>`;
+  const body=tab==='items'?dealItems(d,edit):tab==='feed'?feedHtml({t:'deal',id:d.id}):dealDetails(d,edit);
+  return {kind:'Сделка '+d.id,title:esc(d.client),sub:`${esc(Leads.TYPE[d.type]||'нет данных: тип')} · ${esc(d.object)}`,body:`${dealSteps(d,edit)}${dealActions(d,edit)}${tabs}<div class="dpane">${body}</div>`};
+}
+
+// ——— вкладка «Товары» ———
+// Откуда цена строки: цена сайта (как в каталоге), вписана руками или нет данных
+function dealPriceSrc(it){
+  if(!(typeof it.price==='number')) return '<span class="pill sm warn">нет данных: цена</span>';
+  const p=it.productId?product(it.productId):null;
+  return p&&p.price===it.price?`<span class="pill sm" title="${esc(priceNote())}">цена сайта</span>`:'<span class="pill sm">вписана руками</span>';
+}
+const dealLineSum=it=>(typeof it.price==='number'?rub(Deals.lineSum(it)):'не входит в итог');
+const dealTotalText=d=>{
+  const np=Deals.noPrice(d).length;
+  return np?`В итог не вошли строки без цены: ${np}. Впишите цену — и они посчитаются.`:((d.items||[]).length?'':(Deals.total(d)?'Строк нет: показана сумма, вписанная в «Деталях».':'Строк нет — добавьте товары.'));
+};
+function dealLine(d,it,i,edit,pr){
+  const id=esc(d.id),p=it.productId?product(it.productId):null,name=Deals.itemName(S,it);
+  let info,res='',btn='';
+  if(p){
+    const k=stockOf(p.id),held=Deals.reserved(S,d,p.id),left=it.qty-held;
+    info=`<small class="dl-st">${k.known?`свободно ${qtyOf(Math.max(0,k.free),p)}`:'остаток: нет данных'}${held?` · в резерве по сделке: ${qtyOf(held,p)}`:''}</small>`;
+    res=S.reserves.filter(r=>r.dealId===d.id&&r.productId===p.id).map(r=>`<span class="chip dl-r">${srcPill(r)}<span>${qtyOf(r.qty,p)}${r.src==='stock'?' · '+esc(cellText(r.entityId,r.cityId)):''}${r.until?' · до '+fD(r.until):''}</span>${edit&&can('reserve')?`<button type="button" class="btn sm ghost" data-act="deal-unres" data-id="${id}" data-rid="${esc(r.id)}">Снять</button>`:''}</span>`).join('');
+    if(edit&&can('reserve')&&left>0) btn=`<button type="button" class="btn sm" data-act="deal-res" data-id="${id}" data-i="${i}">${ic('lock')}Зарезервировать</button>`;
+  }else info='<small class="dl-st">своя строка — не из каталога, резерва нет</small>';
+  const numf=(f,label,val,ph)=>edit?`<div class="field"><label for="di-${f}-${i}">${label}</label><input id="di-${f}-${i}" class="inp sm" type="number" min="0" step="any" inputmode="decimal" data-on="deal-i" data-id="${id}" data-i="${i}" data-f="${f}" value="${val===null||val===undefined?'':esc(val)}"${ph?` placeholder="${ph}"`:''}></div>`:`<div class="field"><span class="lbl">${label}</span><span>${val===null||val===undefined||val===''?dealNoData('цена'):esc(val)}</span></div>`;
+  return `<li class="dline"><div class="dl-h"><div class="dl-n"><b>${esc(name)}</b>${info}</div>${edit?`<button type="button" class="btn ghost icon sm" data-act="deal-del-i" data-id="${id}" data-i="${i}" aria-label="Убрать строку «${esc(name)}»">${ic('x')}</button>`:''}</div>
+    <div class="dl-in">${numf('qty','Кол-во',it.qty)}${pr?`${numf('price','Цена, ₽',typeof it.price==='number'?it.price:null,'нет данных: цена')}${numf('disc','Скидка, %',it.disc||0)}<div class="field"><span class="lbl">Сумма</span><output class="dl-sum" id="di-sum-${i}">${esc(dealLineSum(it))}</output></div>`:''}</div>
+    <div class="dl-f">${pr?`<span id="di-src-${i}">${dealPriceSrc(it)}</span>`:''}${res}${btn}</div></li>`;
+}
+// Результаты поиска по каталогу: сначала то, что есть в каталоге; цена и свободный остаток видны сразу
+function dealFound(d,q){
+  const query=String(q||'').trim();
+  if(query.length<2) return '<p class="hint">Введите хотя бы две буквы названия, бренда или артикула.</p>';
+  const list=Catalog.query(S,{q:query}).sort((a,b)=>(b.inCatalog?1:0)-(a.inCatalog?1:0)).slice(0,8);
+  if(!list.length) return '<p class="hint">В каталоге такого нет. Можно добавить свою строку ниже.</p>';
+  const pr=can('prices');
+  return list.map(p=>{const k=stockOf(p.id);return `<button type="button" class="dpr" data-act="deal-add-p" data-id="${esc(d.id)}" data-pid="${esc(p.id)}"><span class="dpr-n">${esc(p.name)}</span><small>${pr?(typeof p.price==='number'?rub(p.price):'нет данных: цена')+' · ':''}${k.known?'свободно '+qtyOf(Math.max(0,k.free),p):'остаток: нет данных'}${p.inCatalog?'':' · нет в каталоге'}</small>${ic('plus')}</button>`}).join('');
+}
+function dealItems(d,edit){
+  const pr=can('prices'),items=d.items||[],id=esc(d.id);
+  const add=edit?`<div class="stack-s"><div class="field"><label for="deal-ps">Добавить товар из каталога</label><input id="deal-ps" class="inp" type="search" placeholder="Название, бренд или артикул" data-on="deal-ps" data-id="${id}" autocomplete="off"></div><div id="deal-pres" class="dpres">${dealFound(d,'')}</div>
+    <form class="rform" data-form="deal-own" data-id="${id}" novalidate><p class="sh">Своя строка — не из каталога</p><div class="grid2"><div class="field span2"><label for="do-name">Название</label><input id="do-name" class="inp" placeholder="Например: монтаж и пусконаладка" autocomplete="off"></div><div class="field"><label for="do-qty">Кол-во</label><input id="do-qty" class="inp" type="number" min="0" step="any" value="1" inputmode="decimal"></div>${pr?'<div class="field"><label for="do-price">Цена, ₽</label><input id="do-price" class="inp" type="number" min="0" step="any" placeholder="нет данных: цена" inputmode="decimal"></div>':''}</div><p class="err" id="do-err" hidden></p><div><button type="submit" class="btn">${ic('plus')}Добавить строку</button></div></form></div>`:'';
+  const total=pr?`<div class="dtot"><span>Итого</span><b id="di-total">${rub(Deals.total(d))}</b></div><p class="hint" id="di-warn">${esc(dealTotalText(d))}</p>`:`<p class="lock">${ic('lock')}Цены и суммы скрыты для вашей роли.</p>`;
+  return `<div class="stack-s">${items.length?`<ul class="dlines">${items.map((it,i)=>dealLine(d,it,i,edit,pr)).join('')}</ul>`:'<p class="muted m0">Товаров в сделке пока нет.</p>'}${total}${add}
+    <p class="hint">Свободно — остаток за вычетом резервов, ${esc(stockNote())}. Цена по умолчанию — ${esc(priceNote())}; скидка считается от цены строки.</p></div>`;
+}
+
+// ——— коммерческое предложение ———
+// Страница для печати. Реквизитов фирмы и срока действия в системе нет: на месте — «нет данных: …».
+// Логотип подставляет обработчик кнопки «КП» (вид не трогает документ).
+function dealKp(d){
+  const items=d.items||[],mgr=person(d.managerId),c=Clients.byId(S,d.clientId),now=new Date();
+  const when=`${now.getDate()} ${MONF[now.getMonth()]} ${now.getFullYear()} г.`;
+  const rows=items.map((it,i)=>`<tr><td>${i+1}</td><td>${esc(Deals.itemName(S,it))}</td><td class="num">${num(it.qty)}</td><td class="num">${typeof it.price==='number'?rub(it.price):'нет данных: цена'}</td><td class="num">${it.disc?num(it.disc)+' %':'0 %'}</td><td class="num">${esc(dealLineSum(it))}</td></tr>`).join('');
+  const np=Deals.noPrice(d).length;
+  return `<div class="kp" id="kp">
+    <div class="kp-top"><span class="logo" id="kp-logo"></span><div class="kp-t"><h2>Коммерческое предложение</h2><p>№ ${esc(d.id)} · ${esc(when)}</p></div></div>
+    <dl class="kp-kv"><dt>Исполнитель</dt><dd>нет данных: реквизиты фирмы (название, ИНН, адрес, банк)</dd>
+      <dt>Заказчик</dt><dd>${esc(d.client)}${c&&c.inn?', ИНН '+esc(c.inn):''}</dd>
+      <dt>Контакт</dt><dd>${dealVal(d.contact)?esc(d.contact):'нет данных: контакт'}${d.phone?', '+esc(d.phone):''}${d.email?', '+esc(d.email):''}</dd>
+      ${dealVal(d.object)?`<dt>Предмет</dt><dd>${esc(d.object)}</dd>`:''}</dl>
+    ${items.length?`<div class="xs"><table class="tbl kp-tbl"><thead><tr><th>№</th><th>Наименование</th><th class="num">Кол-во</th><th class="num">Цена</th><th class="num">Скидка</th><th class="num">Сумма</th></tr></thead><tbody>${rows}</tbody></table></div>`:'<p class="muted">В сделке нет товаров: добавьте строки на вкладке «Товары».</p>'}
+    <p class="kp-tot"><span>Итого</span><b>${rub(Deals.total(d))}</b></p>
+    ${np?`<p class="hint">В итог не вошли строки без цены: ${np}.</p>`:''}
+    <dl class="kp-kv"><dt>Срок действия</dt><dd>нет данных: срок действия предложения</dd><dt>Менеджер</dt><dd>${mgr?esc(mgr.name)+', '+esc(roleName(mgr)):'нет данных: менеджер'}</dd><dt>Дата</dt><dd>${esc(when)}</dd></dl>
+  </div>`;
+}
+MODALS.dealKp=id=>{
+  const d=Leads.dealsVisible(S,S.me).find(x=>x.id===id);
+  return `${mHead('Коммерческое предложение '+esc(id))}<div class="modal-b">${d&&can('prices')?dealKp(d):'<p class="m0">Коммерческое предложение недоступно: нужна сделка, которую вы видите, и право видеть цены.</p>'}</div>
+    <div class="modal-f no-print"><button type="button" class="btn" data-act="close-modal">Закрыть</button><button type="button" class="btn pri" data-act="deal-print">${ic('print')}Печать</button></div>`;
+};
+
+// ——— окна «Провалена» и «Зарезервировать» ———
+MODALS.dealLose=id=>{
+  const d=Deals.byId(S,id),why=Deals.reasons(S);
+  return `<form data-form="deal-lose" data-id="${esc(id)}" novalidate>${mHead('Провалена: сделка '+esc(id))}<div class="modal-b">
+    <p class="m0">${d?esc(d.client):''}</p>
+    <div class="field"><label for="dl-reason">Причина отказа</label>${why.length?`<select id="dl-reason" class="inp">${why.map(r=>`<option value="${esc(r)}">${esc(r)}</option>`).join('')}</select>`:'<input id="dl-reason" class="inp" placeholder="Напишите причину" autocomplete="off">'}</div>
+    <div class="field"><label for="dl-note">Комментарий (необязательно)</label><textarea id="dl-note" class="inp" rows="3" placeholder="Что именно сказал клиент"></textarea></div>
+    <p class="hint">Сделка уйдёт из колонок в фильтр «Провалены», этап останется тем, где она сорвалась. Причина и комментарий запишутся в ленту; сделку можно вернуть в работу.</p>
+    <p class="err" id="dl-err" hidden></p></div>${mFoot('Провалена')}</form>`;
+};
+// Ключ строки в окне резерва: «Д-301:0»
+MODALS.dealReserve=key=>{
+  const [did,i]=String(key).split(':'),d=Deals.byId(S,did),it=d&&(d.items||[])[+i],p=it&&it.productId?product(it.productId):null;
+  if(!d||!it||!p) return `${mHead('Резерв')}<div class="modal-b"><p class="m0">Строка не найдена или это своя строка — резервировать нечего.</p></div>`;
+  const held=Deals.reserved(S,d,p.id),left=it.qty-held,cell=Stock.bestCell(S,p.id),k=stockOf(p.id);
+  const opt=(list,none,cur)=>[...list.map(x=>[x.id,x.name]),[Stock.ANY,none]].map(([v,n])=>`<option value="${esc(v)}"${v===cur?' selected':''}>${esc(n)}</option>`).join('');
+  return `<form data-form="deal-reserve" data-id="${esc(did)}" data-i="${+i}" novalidate>${mHead('Зарезервировать: '+esc(p.name))}<div class="modal-b">
+    <p class="m0">Сделка ${esc(did)} · ${esc(d.client)}. В строке ${qtyOf(it.qty,p)}, уже в резерве ${num(held)}, осталось ${qtyOf(left,p)}. Свободно на складе: ${k.known?qtyOf(Math.max(0,k.free),p):'нет данных'} (${esc(stockNote())}).</p>
+    <div class="grid2"><div class="field"><label for="dr-ent">Юрлицо</label><select id="dr-ent" class="inp" data-on="deal-rs" data-pid="${esc(p.id)}">${opt(S.entities,Stock.NO_ENTITY,cell.entityId)}</select></div><div class="field"><label for="dr-city">Город</label><select id="dr-city" class="inp" data-on="deal-rs" data-pid="${esc(p.id)}">${opt(S.cities,Stock.NO_CITY,cell.cityId)}</select></div>
+      <div class="field"><label for="dr-qty">Сколько</label><input id="dr-qty" class="inp" type="number" min="1" step="any" value="${esc(left)}" inputmode="decimal"></div><div class="field"><label for="dr-until">Резерв до</label><input id="dr-until" class="inp" type="date" value="${iso(day(14))}"></div></div>
+    <p class="hint" id="dr-max">${esc(maxText(p.id,'stock',cell.entityId,cell.cityId))}</p>
+    <p class="err" id="dr-err" hidden></p></div>${mFoot('Зарезервировать')}</form>`;
+};
+
+// ——— действия: каждое — запись в ленту (ядро) и короткое подтверждение ———
+const dealById=id=>Deals.byId(S,id);
+// Перерисовать только тело раздела (счёт и доску) — правка в карточке не сбрасывает фокус в её полях
+function dealsRefresh(){const box=byId('deal-body');if(box) box.innerHTML=dealsBody()}
+// Выполнить действие ядра: отказ — понятная причина, успех — перерисовка и подтверждение
+function dealRun(r,done){
+  if(!r.ok){toast(r.reason,'warn');return null}
+  render();toast(done);return r;
+}
+// Перевести сделку на этап: из доски (перетаскивание) и из полосы этапов. Последний этап — «Успешно» (решает Deals.move)
+function dealMoveTo(id,stageId){
+  const d=dealById(id),to=d&&Pipes.stage(S,d.pipeId,stageId);
+  if(!d||!to||to.id===d.stageId) return null;
+  const r=Deals.move(S,id,stageId,S.me,new Date());
+  return dealRun(r,to.flag==='final'?`Сделка ${id} закрыта успешно: этап «${to.name}». Запись в ленте есть.`:`Сделка ${id} теперь на этапе «${to.name}». Запись в ленте есть.`);
+}
+
+A['open-deal']=el=>{S.ui.dealTab='details';openDrawer('deal',el.dataset.id)};
+A['open-client']=el=>openDrawer('client',el.dataset.id);
 A['deal-type']=el=>{S.ui.dealType=el.dataset.type==='b2c'?'b2c':'b2b';render()};
-DRAWERS.deal=id=>{const d=Leads.dealsVisible(S,S.me).find(x=>x.id===id);return d?dDeal(d):null};
+A['deal-view']=el=>{dealsU().view=el.dataset.v==='table'?'table':'board';render()};
+A['deal-mine']=()=>{const u=dealsU();u.mine=!u.mine;render()};
+A['deal-lostf']=()=>{const u=dealsU();u.lost=!u.lost;render()};
+A['deal-reset']=()=>{S.ui.deals=Object.assign({},DEALS_DEF,{view:dealsSel().view});render()};
+A['deal-new']=el=>openModal('dealNew',el.dataset.stage||'');
+A['deal-tab']=el=>{S.ui.dealTab=el.dataset.tab;render()};
+A['deal-stage']=el=>dealMoveTo(el.dataset.id,el.dataset.st);
+A['deal-win']=el=>dealRun(Deals.win(S,el.dataset.id,S.me,new Date()),`Сделка ${el.dataset.id} закрыта успешно. Запись в ленте есть.`);
+A['deal-lose']=el=>{
+  const d=dealById(el.dataset.id);if(!d) return;
+  if(!Deals.canEdit(S,d,S.me)){toast('У вас нет права править эту сделку.','warn');return}
+  if(Deals.state(S,d)==='won'){toast('Сделка успешно закрыта — провалить её нельзя, сначала верните на другой этап.','warn');return}
+  openModal('dealLose',d.id);
+};
+A['deal-reopen']=el=>dealRun(Deals.reopen(S,el.dataset.id,S.me,new Date()),`Сделка ${el.dataset.id} возвращена в работу. Запись в ленте есть.`);
+A['deal-kp']=el=>{
+  openModal('dealKp',el.dataset.id);
+  // логотип — тот же, что в боковом меню (картинка в странице одна)
+  const box=byId('kp-logo'),src=document.querySelector('.brand .logo img');
+  if(box&&src) box.innerHTML=`<img src="${esc(src.getAttribute('src'))}" alt="wind-solar" width="1393" height="384">`;
+};
+A['deal-print']=()=>{if(typeof window!=='undefined'&&typeof window.print==='function') window.print()};
+A['deal-add-p']=el=>{
+  const id=el.dataset.id,r=Deals.addItem(S,id,{productId:el.dataset.pid},S.me,new Date());
+  if(!r.ok){toast(r.reason,'warn');return}
+  render();toast(`В сделку ${id} добавлено: ${Deals.itemName(S,dealById(id).items[r.idx])}. Количество и цену можно поправить в строке.`);
+};
+A['deal-del-i']=el=>{
+  const id=el.dataset.id,d=dealById(id),it=d&&(d.items||[])[+el.dataset.i];
+  if(!it){toast('Такой строки нет.','warn');return}
+  const name=Deals.itemName(S,it);
+  dealRun(Deals.removeItem(S,id,+el.dataset.i,S.me,new Date()),`Строка «${name}» убрана из сделки ${id}.`);
+};
+A['deal-res']=el=>{
+  if(!can('reserve')){toast('У вашей роли нет права ставить резервы.','warn');return}
+  openModal('dealReserve',el.dataset.id+':'+el.dataset.i);
+};
+A['deal-unres']=el=>{
+  const id=el.dataset.id,rs=S.reserves.find(r=>r.id===el.dataset.rid),p=rs&&product(rs.productId);
+  dealRun(Deals.unreserve(S,id,el.dataset.rid,S.me,new Date()),`Резерв снят${p?`: ${low(p.name)} — ${qtyOf(rs.qty,p)}`:''}. Товар снова свободен.`);
+};
+
+// ——— поля ———
+ON.input['deal-q']=t=>{dealsU().q=t.value;dealsRefresh()};
+ON.change['deal-pipe']=t=>{S.ui.dealPipe=t.value;render()};
+// Поле «Деталей»: одно поле — одна правка Deals.update. Выбор из списка перерисовывает всё (сделка могла сменить воронку),
+// текст — только доску за карточкой, чтобы не сбить ввод в соседнем поле.
+ON.change['deal-f']=t=>{
+  const id=t.dataset.id,f=t.dataset.f,r=Deals.update(S,id,{[f]:t.value},S.me,new Date());
+  if(!r.ok){toast(r.reason,'warn');render();return}
+  if(!r.changed.length) return;
+  if(t.tagName==='SELECT') render();else dealsRefresh();
+  toast(`Сделка ${id}: «${DEAL_FIELD[f]||f}» сохранено. Запись в ленте есть.`);
+};
+// Количество, цена, скидка строки: после правки обновляются сумма строки и итог на месте
+function dealItemSync(d){
+  (d.items||[]).forEach((it,i)=>{
+    const s=byId('di-sum-'+i),src=byId('di-src-'+i);
+    if(s) s.textContent=dealLineSum(it);
+    if(src) src.innerHTML=dealPriceSrc(it);
+  });
+  const tot=byId('di-total'),w=byId('di-warn');
+  if(tot) tot.textContent=rub(Deals.total(d));
+  if(w) w.textContent=dealTotalText(d);
+}
+ON.change['deal-i']=t=>{
+  const id=t.dataset.id,i=+t.dataset.i,f=t.dataset.f,d=dealById(id),it=d&&(d.items||[])[i];
+  const r=Deals.setItem(S,id,i,{[f]:t.value},S.me,new Date());
+  if(!r.ok){toast(r.reason,'warn');if(it) t.value=it[f]===null||it[f]===undefined?'':it[f];return}
+  dealItemSync(d);dealsRefresh();
+  toast(`Строка ${i+1} сделки ${id} сохранена.${can('prices')?` Итого: ${rub(Deals.total(d))}.`:''}`);
+};
+ON.input['deal-ps']=t=>{const d=dealById(t.dataset.id),box=byId('deal-pres');if(d&&box) box.innerHTML=dealFound(d,t.value)};
+// Окно «Новая сделка»: выбранный клиент подставляет телефон, контакт и тип; для нового клиента открыты его поля
+// Подсказка «Похоже, это …» (clientDupHtml, 70-clients.js) — только для нового клиента: у выбранного из списка телефон его собственный
+function dealDupSync(){
+  const box=byId('dn-dup');if(!box) return;
+  const r=document.querySelector('#dn-cres input[name="dn-c"]:checked'),isNew=!r||r.value==='new';
+  box.innerHTML=isNew?clientDupHtml({phone:byId('dn-phone').value,email:byId('dn-email').value,inn:byId('dn-inn').value}):'';
+}
+function dealPickSync(){
+  dealDupSync();
+  const r=document.querySelector('#dn-cres input[name="dn-c"]:checked'),nw=byId('dn-new');
+  if(!r||!nw) return;
+  const c=r.value==='new'?null:Clients.byId(S,r.value);
+  nw.hidden=!!c;
+  if(!c) return;
+  const put=(id,v)=>{const el=byId(id);if(el&&(!el.value||el.value===el.dataset.auto)){el.value=v;el.dataset.auto=v}};
+  put('dn-phone',(c.phones||[])[0]||'');
+  put('dn-contact',c.kind==='person'?c.name:'');
+  const tp=byId('dn-type'),want=c.kind==='company'?'b2b':'b2c';
+  if(tp&&[...tp.options].some(o=>o.value===want)) tp.value=want;
+}
+ON.input['deal-cq']=t=>{const box=byId('dn-cres');if(!box) return;box.innerHTML=dealClientOpts(t.value,'');dealPickSync()};
+ON.change['deal-cs']=()=>dealPickSync();
+ON.input['deal-dup']=()=>dealDupSync();
+ON.change['deal-rs']=t=>{
+  const out=byId('dr-max');
+  if(out) out.textContent=maxText(t.dataset.pid,'stock',byId('dr-ent').value,byId('dr-city').value);
+};
+
+// ——— формы ———
+FORMS['feed-comment']=feedCommentForm;
+FORMS['deal-new']=f=>{
+  const {types}=dealsScope(),type=byId('dn-type').value,now=new Date();
+  const radio=document.querySelector('#dn-cres input[name="dn-c"]:checked'),cid=radio?radio.value:'new';
+  if(!types.includes(type)) return showErr('dn-err','Выберите тип сделки.');
+  if(!dealPipe(type,S)) return showErr('dn-err','Для этого типа нет воронки сделок.');
+  let client=cid==='new'?null:Clients.byId(S,cid);
+  if(cid!=='new'&&!client) return showErr('dn-err','Такого клиента нет — выберите другого.');
+  if(!client){
+    const name=byId('dn-cname').value.trim();
+    if(!name) return showErr('dn-err','Напишите имя клиента или название компании — или выберите клиента из списка.');
+    const inn=byId('dn-inn').value.trim();
+    const cr=Clients.create(S,{name,kind:inn||type==='b2b'?'company':'person',phone:byId('dn-phone').value,email:byId('dn-email').value,inn,managerId:byId('dn-mgr').value||undefined},S.me,now);
+    if(!cr.ok) return showErr('dn-err',cr.reason);
+    client=cr.client;
+  }
+  const r=Deals.create(S,{clientId:client.id,type,managerId:byId('dn-mgr').value||undefined,contact:byId('dn-contact').value,phone:byId('dn-phone').value,object:byId('dn-obj').value,channel:byId('dn-ch').value},S.me,now);
+  if(!r.ok) return showErr('dn-err',r.reason);
+  // «+» в шапке колонки: сделка встаёт на этот этап (того же типа; иначе остаётся на первом)
+  const to=f.dataset.stage,d=dealById(r.id);
+  if(to&&d.stageId!==to&&Pipes.stage(S,d.pipeId,to)) Deals.move(S,r.id,to,S.me,now);
+  closeModal();
+  S.ui.dealType=type;S.ui.dealPipe=d.pipeId;S.ui.dealTab='details';
+  render();openDrawer('deal',r.id);
+  toast(`Сделка ${r.id} заведена: ${client.name}, этап «${stageName(d)}». Запись в ленте есть.`);
+};
+FORMS['deal-lose']=f=>{
+  const id=f.dataset.id,why=byId('dl-reason').value.trim(),note=byId('dl-note').value.trim(),now=new Date();
+  if(!why) return showErr('dl-err','Выберите или напишите причину отказа.');
+  const r=Deals.lose(S,id,why,S.me,now);
+  if(!r.ok) return showErr('dl-err',r.reason);
+  if(note) Feed.comment(S,{t:'deal',id},note,S.me,now);
+  closeModal();render();
+  toast(`Сделка ${id} провалена: ${why}. Причина записана в ленту.`);
+};
+FORMS['deal-reserve']=f=>{
+  const id=f.dataset.id,i=+f.dataset.i,until=byId('dr-until').value;
+  if(!until||dd(fromIso(until))<0) return showErr('dr-err','Дата окончания резерва не может быть в прошлом.');
+  const r=Deals.reserveItem(S,id,i,{entityId:byId('dr-ent').value,cityId:byId('dr-city').value,qty:byId('dr-qty').value,until:fromIso(until)},S.me,new Date());
+  if(!r.ok) return showErr('dr-err',r.reason);
+  const p=product(r.reserve.productId);
+  closeModal();render();
+  toast(`Резерв поставлен: ${low(p.name)} — ${qtyOf(r.reserve.qty,p)} для ${id}. Склад и директор получили уведомление.`);
+};
+FORMS['deal-own']=f=>{
+  const id=f.dataset.id,price=byId('do-price'),raw={text:byId('do-name').value,qty:byId('do-qty').value};
+  if(price) raw.price=price.value;
+  const r=Deals.addItem(S,id,raw,S.me,new Date());
+  if(!r.ok) return showErr('do-err',r.reason);
+  render();toast(`В сделку ${id} добавлена своя строка: ${raw.text.trim()}.`);
+};
+
+// драг и дроп: колонки доски сделок — data-dcol (задачи в оболочке — data-col, лиды — data-lcol, они не пересекаются)
+document.addEventListener('dragover',e=>{
+  const col=e.target.closest?.('[data-dcol]');if(!col) return;
+  e.preventDefault();
+  document.querySelectorAll('.col.drop').forEach(x=>{if(x!==col) x.classList.remove('drop')});col.classList.add('drop');
+});
+document.addEventListener('drop',e=>{
+  const col=e.target.closest?.('[data-dcol]');if(!col) return;
+  e.preventDefault();col.classList.remove('drop');
+  const id=e.dataTransfer.getData('text/plain');
+  if(id&&dealById(id)) dealMoveTo(id,col.dataset.dcol);
+});
+
+// ——— регистрация в реестрах оболочки ———
+VIEWS.deals=vDeals;
+DRAWERS.deal=id=>{const d=Leads.dealsVisible(S,S.me).find(x=>x.id===id);return d?dealCard(d):null};
 
 // Раздел «Сообщения клиентам»
 // Перенесено из прототипа v2 без изменений логики.
@@ -5613,8 +7061,9 @@ FORMS['ship-rule-add']=()=>{
 
 SETTINGS_TABS.push({id:'ships',label:'Поставки',order:70,ok:()=>can('settings'),render:vShipSettings});
 
-// Настройки → «Лиды»: откуда приходят лиды — Битрикс24, сайт напрямую или оба. Выбор лежит в S.leadSource и
-// запоминается вместе с остальными данными. Рядом — что ещё живёт в Битриксе и что нужно, чтобы от него отказаться.
+// Настройки → «Лиды и сделки»: откуда приходят лиды — Битрикс24, сайт напрямую или оба. Выбор лежит в S.leadSource и
+// запоминается вместе с остальными данными. Рядом — что ещё живёт в Битриксе и что нужно, чтобы от него отказаться,
+// и список причин отказа (S.lostReasons): его предлагает окно «Провалена» у сделки.
 // Подключения в прототипе нет: лиды появляются кнопками «Имитация» (они есть и здесь, и в разделе «Лиды»).
 
 // Что сейчас держит Битрикс24 (слова директора из брифа) и есть ли это в CRM уже сейчас.
@@ -5622,13 +7071,70 @@ SETTINGS_TABS.push({id:'ships',label:'Поставки',order:70,ok:()=>can('set
 const LEAD_BITRIX=[
   {what:'Почта, задачи',crm:'В CRM есть разделы «Почта» (ящики закупок и клиентов) и «Задачи». Почта работает как имитация: настоящий ящик не подключён.'},
   {what:'Лиды с сайта',crm:'В CRM есть раздел «Лиды». Настоящего приёма заявок с сайта в прототипе нет — заявки появляются кнопкой «Имитация».'},
-  {what:'Лиды и сделки',crm:'В CRM есть «Лиды» и «Клиенты и сделки»: лид сам уходит менеджеру своего типа, из него создаётся сделка в воронке B2B или B2C.'},
+  {what:'Лиды и сделки',crm:'В CRM есть «Лиды» и «Сделки»: лид сам уходит менеджеру своего типа, из него создаётся сделка в воронке B2B или B2C.'},
   {what:'Телефония или чаты',crm:'В CRM этого нет: телефонии нет, а сообщения клиентам в Telegram и MAX — имитация, наружу ничего не уходит.'},
 ];
 
 function leadSettingsCounts(){
   const all=S.leads||[],by=k=>all.filter(l=>l.source===k).length;
   return {all:all.length,site:by('site'),bitrix:by('bitrix')};
+}
+
+// ——— причины отказа ———
+// Список — S.lostReasons = [{id, name}]. Сделка и лид хранят сам текст причины (lostReason, reason), а не ссылку на список:
+// удалить или переименовать причину можно, уже проваленные записи от этого не меняются.
+const lostReasonList=st=>st.lostReasons||Deals.defaultReasons();
+const lostReasonKey=s=>String(s==null?'':s).trim().toLowerCase();
+// Сколько раз причина записана в проваленных сделках и закрытых лидах (по тексту)
+const lostReasonUsed=(st,name)=>(st.deals||[]).filter(d=>d.lostReason===name).length+(st.leads||[]).filter(l=>l.reason===name).length;
+// Проверка имени: не пустое и не повторяет другую причину (без учёта регистра). → текст ошибки или ''
+function lostReasonCheck(st,name,selfId){
+  const n=String(name==null?'':name).trim();
+  if(!n) return 'Напишите причину отказа.';
+  if(lostReasonList(st).some(r=>r.id!==selfId&&lostReasonKey(r.name)===lostReasonKey(n))) return `Причина «${n}» уже есть в списке.`;
+  return '';
+}
+// Добавить причину. → {ok, id, reason}
+function lostReasonAdd(st,name){
+  const bad=lostReasonCheck(st,name);
+  if(bad) return {ok:false,id:null,reason:bad};
+  st.lostReasons=lostReasonList(st);
+  const r={id:Store.freeId(st.lostReasons,'lr'),name:String(name).trim()};
+  st.lostReasons.push(r);
+  return {ok:true,id:r.id,reason:''};
+}
+// Переименовать причину. Тот же текст — ничего не менялось (changed:false). → {ok, changed, reason}
+function lostReasonRename(st,id,name){
+  const r=lostReasonList(st).find(x=>x.id===id);
+  if(!r) return {ok:false,changed:false,reason:'Такой причины нет.'};
+  const bad=lostReasonCheck(st,name,id);
+  if(bad) return {ok:false,changed:false,reason:bad};
+  const n=String(name).trim();
+  if(n===r.name) return {ok:true,changed:false,reason:''};
+  st.lostReasons=lostReasonList(st);
+  st.lostReasons.find(x=>x.id===id).name=n;
+  return {ok:true,changed:true,reason:''};
+}
+// Убрать причину из списка. Проваленные записи с этим текстом остаются как были. → {ok, name, reason}
+function lostReasonRemove(st,id){
+  const r=lostReasonList(st).find(x=>x.id===id);
+  if(!r) return {ok:false,name:'',reason:'Такой причины нет.'};
+  st.lostReasons=lostReasonList(st).filter(x=>x.id!==id);
+  return {ok:true,name:r.name,reason:''};
+}
+
+function lostReasonsCard(){
+  const list=lostReasonList(S);
+  const rows=list.map(r=>{
+    const n=lostReasonUsed(S,r.name);
+    return `<li class="lreason"><input class="inp" value="${esc(r.name)}" data-on="reason-name" data-id="${esc(r.id)}" aria-label="Причина отказа: ${esc(r.name)}" autocomplete="off"><small class="muted">${n?`записана: ${n}`:'пока не использована'}</small><button type="button" class="btn ghost icon sm" data-act="reason-del" data-id="${esc(r.id)}" aria-label="Удалить причину «${esc(r.name)}»">${ic('x')}</button></li>`;
+  }).join('');
+  return `<section class="card"><div class="card-h"><h3>Причины отказа</h3></div><div class="card-b stack-s">
+    <p class="m0">Этот список предлагает окно «Провалена» у сделки. Причин сейчас: <b>${list.length}</b>.</p>
+    ${list.length?`<ul class="lreasons">${rows}</ul>`:'<p class="hint">Список пуст: при «Провалена» причину придётся писать своими словами.</p>'}
+    <form class="rform" data-form="reason-add" novalidate><p class="sh">Новая причина</p><div class="lreason-new"><input id="lr-new" class="inp" placeholder="Например: не устроил срок поставки" aria-label="Новая причина отказа" autocomplete="off"><button type="submit" class="btn">${ic('plus')}Добавить</button></div><p class="err" id="lr-err" hidden></p></form>
+    <p class="hint">Удалить или переименовать причину можно в любой момент: у уже проваленных сделок остаётся тот текст, который был записан.</p>
+  </div></section>`;
 }
 
 function vLeadSettings(){
@@ -5646,6 +7152,7 @@ function vLeadSettings(){
     <div class="bar"><button type="button" class="btn sm" data-act="lead-sim" data-source="site">${ic('plus')}Имитация: пришёл лид с сайта</button><button type="button" class="btn sm" data-act="lead-sim" data-source="bitrix">${ic('plus')}Имитация: пришёл лид из Битрикса24</button></div>
     <p class="hint">Если источник выключен, его кнопка лид не создаёт и сообщает, что источник сейчас не используется.</p>
   </div></section>
+  ${lostReasonsCard()}
   <section class="card"><div class="card-h"><h3>Что ещё живёт в Битриксе24</h3></div><div class="card-b stack-s">
     <p class="m0">Сейчас в Битриксе24: «почта, задачи», лиды с сайта, лиды и сделки, телефония или чаты.</p>
     <ul class="lset-list">${rows}</ul>
@@ -5662,7 +7169,32 @@ ON.change['lead-source']=t=>{
   toast(was===S.leadSource?`Источник лидов: «${Leads.SOURCES[S.leadSource]}».`:`Источник лидов теперь «${Leads.SOURCES[S.leadSource]}». Выбор сохранён.`);
 };
 
-SETTINGS_TABS.push({id:'leads',label:'Лиды',order:50,ok:()=>can('settings'),render:vLeadSettings});
+// Причины отказа: добавить, переименовать, убрать. Каждое действие — короткое подтверждение; права — как у вкладки («Настройки»)
+FORMS['reason-add']=()=>{
+  if(!can('settings')){toast('Менять список причин могут те, у кого есть право на «Настройки».','warn');return}
+  const inp=byId('lr-new'),r=lostReasonAdd(S,inp.value);
+  if(!r.ok) return showErr('lr-err',r.reason);
+  const name=lostReasonList(S).find(x=>x.id===r.id).name;
+  render();
+  toast(`Причина «${name}» добавлена: теперь она есть в окне «Провалена».`);
+};
+ON.change['reason-name']=t=>{
+  if(!can('settings')){toast('Менять список причин могут те, у кого есть право на «Настройки».','warn');render();return}
+  const was=(lostReasonList(S).find(x=>x.id===t.dataset.id)||{}).name,r=lostReasonRename(S,t.dataset.id,t.value);
+  if(!r.ok){toast(r.reason,'warn');render();return}
+  if(!r.changed) return;
+  render();
+  toast(`Причина «${was}» теперь называется «${t.value.trim()}». Уже проваленные сделки сохраняют прежний текст.`);
+};
+A['reason-del']=el=>{
+  if(!can('settings')){toast('Менять список причин могут те, у кого есть право на «Настройки».','warn');return}
+  const r=lostReasonRemove(S,el.dataset.id);
+  if(!r.ok){toast(r.reason,'warn');return}
+  render();
+  toast(`Причина «${r.name}» убрана из списка. У уже проваленных сделок её текст остаётся.`);
+};
+
+SETTINGS_TABS.push({id:'leads',label:'Лиды и сделки',order:50,ok:()=>can('settings'),render:vLeadSettings});
 
 // Настройки → «Почта»: ящики (добавить, адрес, кто видит) и поставщики (добавить, переименовать, правила-адреса,
 // удалить). Данные лежат в S.mail, раздел «Почта» читает их оттуда же, поэтому правка видна там сразу.
@@ -5836,6 +7368,192 @@ function vMailSettings(){
   </div></section>`;
 }
 SETTINGS_TABS.push({id:'mail',label:'Почта',order:40,ok:()=>can('settings'),render:vMailSettings});
+
+// Раздел «Клиенты»: список с поиском по имени, телефону и ИНН, карточка клиента справа (данные правятся на месте,
+// связанные сделки, лиды и сообщения, лента), окно «Новый клиент» и подсказка «Похоже, это …» против дублей.
+// Всё решает ядро: Clients (40-clients.js) — поиск, дубли, заведение, правка, связанное; Feed — лента; Leads — видимость.
+// Здесь — только экран: виды — чистые функции состояния, состояние меняют обработчики внизу файла.
+// Выбор на экране (вид, поиск) лежит в S.ui.clients и не сохраняется. Сделки и лиды в карточке — только видимые
+// текущему человеку (Clients.related с S.me): сделки чужого типа без права «Видеть сделки всех типов» не показываются.
+
+Object.assign(IC,{person:'<circle cx="12" cy="8" r="3.6"/><path d="M5 20c.7-3.8 3.4-6 7-6s6.3 2.2 7 6"/>'});
+
+// ——— выбор на экране ———
+const CLIENTS_DEF={q:'',kind:''};
+const clientsU=()=>S.ui.clients||(S.ui.clients=Object.assign({},CLIENTS_DEF));
+const clientsSel=()=>Object.assign({},CLIENTS_DEF,S.ui.clients||{});
+const clientNoData=t=>`<span class="muted">нет данных: ${t}</span>`;
+const clientWho=id=>person(id)?.name||'нет данных: менеджер';
+const clientKindPill=c=>`<span class="pill sm${c.kind==='company'?' info':''}">${esc(Clients.KIND[c.kind]||'нет данных: вид')}</span>`;
+// Телефоны из одной строки: через запятую, точку с запятой или с новой строки
+const clientPhonesOf=s=>String(s||'').split(/[,;\n]+/).map(x=>x.trim()).filter(Boolean);
+
+// ——— подсказка «Похоже, это …» ———
+// Совпадения с заведёнными клиентами по тому, что ввели в форме: q = {phone | phones, email, inn}. Нет совпадений — пустая строка.
+// Показывает, по чему совпало; кнопка «Выбрать его» — dup-pick, ссылка на имя — dup-open. Дубль всё равно можно сохранить.
+function clientDupHtml(q){
+  const found=Clients.find(S,q||{}).slice(0,3);
+  if(!found.length) return '';
+  const ids=x=>new Set(Clients.find(S,x).map(c=>c.id));
+  const by=[['ИНН',ids({inn:(q||{}).inn})],['телефон',ids({phone:(q||{}).phone,phones:(q||{}).phones})],['почта',ids({email:(q||{}).email})]];
+  const why=c=>by.filter(x=>x[1].has(c.id)).map(x=>x[0]).join(', ');
+  return `<div class="dup" role="status"><ul class="dup-l">${found.map(c=>`<li><span class="dup-t">${ic('alert')}<span>Похоже, это <button type="button" class="link" data-act="dup-open" data-id="${esc(c.id)}">${esc(c.name)}</button><small>${esc(c.id)} · совпало: ${esc(why(c))}${c.demo?' · пример':''}</small></span></span><button type="button" class="btn sm" data-act="dup-pick" data-id="${esc(c.id)}">Выбрать его</button></li>`).join('')}</ul><p class="hint">Если это другой человек или другая компания — просто сохраните: дубль завести можно.</p></div>`;
+}
+
+// ——— список ———
+function clientsList(u){
+  return Clients.search(S,u.q).filter(c=>!u.kind||c.kind===u.kind).sort((a,b)=>a.name.localeCompare(b.name,'ru'));
+}
+function clientsTable(list){
+  const rows=list.map(c=>{
+    const n=Clients.related(S,c.id,S.me).deals.length,ph=c.phones||[];
+    return `<tr class="click" data-act="open-client" data-id="${esc(c.id)}" tabindex="0"><td><div class="pname"><span>${esc(c.name)}${c.demo?' <span class="pill sm">пример</span>':''}</span><small class="mono">${esc(c.id)}${c.inn?' · ИНН '+esc(c.inn):''}<span class="c-show-s"> · ${esc(Clients.KIND[c.kind]||'')}${c.managerId?' · '+esc(clientWho(c.managerId)):''}</span></small></div></td><td class="c-hide-s">${clientKindPill(c)}</td><td class="c-hide-s nowrap">${ph[0]?esc(ph[0])+(ph.length>1?` <span class="muted">+${ph.length-1}</span>`:''):clientNoData('телефон')}</td><td class="c-hide-s nowrap">${c.managerId?esc(clientWho(c.managerId)):'<span class="pill sm warn">нет менеджера</span>'}</td><td class="num">${n}</td></tr>`;
+  }).join('');
+  return `<section class="card clip"><div class="xs"><table class="tbl"><thead><tr><th>Клиент</th><th class="c-hide-s">Вид</th><th class="c-hide-s">Телефон</th><th class="c-hide-s">Менеджер</th><th class="num">Сделок</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+}
+// Тело раздела: счёт и таблица (его же перерисовывает поиск)
+function clientsBody(){
+  const u=clientsSel(),all=S.clients||[],list=clientsList(u),dirty=u.q.trim()||u.kind;
+  if(!all.length) return '<section class="card"><p class="empty">Клиентов пока нет. Они появляются, когда из лида создают сделку, или кнопкой «Новый клиент».</p></section>';
+  const comp=list.filter(c=>c.kind==='company').length;
+  const head=`<p class="count"><span>Клиентов: <b>${list.length}</b>${list.length!==all.length?` из ${all.length}`:''}</span><span>компаний: <b>${comp}</b> · людей: <b>${list.length-comp}</b></span></p>`;
+  if(!list.length) return `${head}<section class="card"><p class="empty">По этим условиям клиентов нет. ${dirty?'<button type="button" class="link" data-act="client-reset">Сбросить поиск и фильтры</button>':''}</p></section>`;
+  return head+clientsTable(list);
+}
+function vClients(){
+  const u=clientsSel(),dirty=u.q.trim()||u.kind;
+  const kinds=[['','Все'],['person','Люди'],['company','Компании']];
+  return `<p class="hint">Клиент — одна карточка на человека или компанию: в ней все его сделки, лиды, сообщения и лента. Ищите по имени, телефону или ИНН. В столбце «Сделок» и в карточке — только те сделки, которые видны вам.</p>
+  <div class="bar cbar"><div class="seg" role="group" aria-label="Вид клиента">${kinds.map(([k,l])=>`<button type="button" class="${u.kind===k?'on':''}" aria-pressed="${u.kind===k}" data-act="client-kind" data-k="${k}">${l}</button>`).join('')}</div>
+    <div class="search-in">${ic('search')}<input id="client-q" class="inp" type="search" placeholder="Поиск: имя, телефон, ИНН, почта" value="${esc(u.q)}" data-on="client-q" autocomplete="off" aria-label="Поиск по клиентам"></div>
+    ${dirty?'<button type="button" class="btn ghost sm" data-act="client-reset">Сбросить</button>':''}<span class="grow"></span><button type="button" class="btn pri" data-act="client-new">${ic('plus')}Новый клиент</button></div>
+  <div id="client-body" class="stack-s">${clientsBody()}</div>`;
+}
+
+// ——— окно «Новый клиент» ———
+// Менеджеры в списке: менеджеры типов; текущий выбор остаётся, даже если он уже не менеджер
+function clientManagers(cur){
+  const list=Leads.managers(S).map(p=>[p.id,p.name]);
+  if(cur&&!list.some(m=>m[0]===cur)) list.unshift([cur,clientWho(cur)]);
+  return [['','Не назначен'],...list].map(([v,l])=>`<option value="${esc(v)}"${v===(cur||'')?' selected':''}>${esc(l)}</option>`).join('');
+}
+MODALS.clientNew=()=>{
+  const m=Leads.managers(S).some(p=>p.id===S.me)?S.me:'';
+  return `<form data-form="client-new" novalidate>${mHead('Новый клиент')}<div class="modal-b">
+    <div class="grid2"><div class="field"><label for="cn-kind">Вид</label><select id="cn-kind" class="inp">${Object.entries(Clients.KIND).map(([k,l])=>`<option value="${k}">${esc(l)}</option>`).join('')}</select></div>
+      <div class="field"><label for="cn-name">Имя или название компании</label><input id="cn-name" class="inp" autocomplete="off"></div>
+      <div class="field"><label for="cn-inn">ИНН (если компания)</label><input id="cn-inn" class="inp" inputmode="numeric" data-on="client-dup" autocomplete="off"></div>
+      <div class="field"><label for="cn-phones">Телефоны</label><input id="cn-phones" class="inp" type="tel" placeholder="Несколько — через запятую" data-on="client-dup" autocomplete="off"></div>
+      <div class="field"><label for="cn-email">Почта</label><input id="cn-email" class="inp" type="email" data-on="client-dup" autocomplete="off"></div>
+      <div class="field"><label for="cn-mgr">Менеджер</label><select id="cn-mgr" class="inp">${clientManagers(m)}</select></div>
+      <div class="field span2"><label for="cn-addr">Адрес</label><input id="cn-addr" class="inp" autocomplete="off"></div></div>
+    <div id="cn-dup" aria-live="polite"></div>
+    <p class="hint">Если указан ИНН, клиент станет компанией. Телефон, почту и ИНН мы сверим с уже заведёнными клиентами.</p>
+    <p class="err" id="cn-err" hidden></p></div>${mFoot('Завести клиента')}</form>`;
+};
+
+// ——— карточка клиента ———
+const CLIENT_FIELD={name:'Название',kind:'Вид',inn:'ИНН',phones:'Телефоны',email:'Почта',address:'Адрес',managerId:'Менеджер'};
+
+function clientFields(c,edit){
+  const id=esc(c.id);
+  const field=(f,label,html,cls)=>`<div class="field${cls?' '+cls:''}"><label for="cf-${f}">${label}</label>${html}</div>`;
+  const text=(f,val,type,ph)=>edit?`<input id="cf-${f}" class="inp" type="${type||'text'}" data-on="client-f" data-id="${id}" data-f="${f}" value="${esc(val||'')}" placeholder="нет данных: ${ph}" autocomplete="off">`:(val?`<span>${esc(val)}</span>`:clientNoData(ph));
+  const sel=(f,opts,cur)=>edit?`<select id="cf-${f}" class="inp" data-on="client-f" data-id="${id}" data-f="${f}">${opts}</select>`:esc((cur&&f==='kind'?Clients.KIND[cur]:cur&&person(cur)?.name)||'нет данных');
+  const kinds=Object.entries(Clients.KIND).map(([k,l])=>`<option value="${k}"${k===c.kind?' selected':''}>${esc(l)}</option>`).join('');
+  return `<div class="cform">${field('name','Имя или название компании',text('name',c.name,'text','название'),'span2')}
+    ${field('kind','Вид',sel('kind',kinds,c.kind))}${field('inn','ИНН',text('inn',c.inn,'text','ИНН'))}
+    ${field('phones','Телефоны',text('phones',(c.phones||[]).join(', '),'tel','телефон')+(edit?'<small class="muted">Несколько — через запятую</small>':''))}${field('email','Почта',text('email',c.email,'email','почта'))}
+    ${field('managerId','Менеджер',sel('managerId',clientManagers(c.managerId||''),c.managerId))}${field('address','Адрес',text('address',c.address,'text','адрес'))}</div>`;
+}
+// Строка связанной записи: кнопка, по которой открывается её карточка
+const clientRow=(act,id,title,sub,side)=>`<li><button type="button" class="crow" data-act="${act}" data-id="${esc(id)}"><span class="crow-t">${title}<small>${sub}</small></span>${side?`<span class="crow-s">${side}</span>`:''}</button></li>`;
+function clientDeals(list){
+  if(!list.length) return '<p class="muted m0">Сделок, которые вам видны, у этого клиента нет.</p>';
+  const pr=can('prices');
+  return `<ul class="crel">${list.slice().sort((a,b)=>String(b.id).localeCompare(String(a.id))).map(d=>clientRow('open-deal',d.id,`<span><b>${esc(d.id)}</b> ${esc(d.object||'нет данных: что продаём')}</span>`,
+    `${d.lostReason?'Провалена: '+esc(d.lostReason):esc(stageName(d))} · ${esc(Leads.TYPE[d.type]||'нет данных: тип')} · ${esc(clientWho(d.managerId))}`,pr?esc(dealSumText(d)):'')).join('')}</ul>`;
+}
+function clientLeads(list){
+  if(!list.length) return '<p class="muted m0">Лидов, которые вам видны, у этого клиента нет.</p>';
+  return `<ul class="crel">${list.slice().sort((a,b)=>b.at-a.at).map(l=>clientRow('open-lead',l.id,`<span><b>${esc(l.id)}</b> ${esc(Leads.title(l))}</span>`,
+    `${esc(stageName(l))} · ${esc(Leads.SOURCE[l.source]||l.source)} · ${esc(fWhen(l.at))}`,'')).join('')}</ul>`;
+}
+const CLIENT_MSGS=5;
+function clientMsgs(list){
+  if(!list.length) return '<p class="muted m0">Сообщений клиенту по видимым вам сделкам пока нет.</p>';
+  const sorted=list.slice().sort((a,b)=>new Date(b.at)-new Date(a.at)),more=sorted.length-CLIENT_MSGS;
+  return `<ul class="crel">${sorted.slice(0,CLIENT_MSGS).map(m=>`<li><div class="crow cmsg"><span class="crow-t"><span><b>${esc(CH[m.channel]||'нет данных: канал')}</b> · ${esc(m.deal)}${m.auto?' · автоматическое':''}${m.sim?' · имитация':''}</span><small>${esc(fWhen(m.at))}</small><span class="cmsg-t">${esc(m.text)}</span></span></div></li>`).join('')}</ul>${more>0?`<p class="hint">и ещё ${more} — все они в ленте ниже.</p>`:''}`;
+}
+function dClient(c){
+  const edit=can('clients'),rel=Clients.related(S,c.id,S.me);
+  const sec=(t,n,html)=>`<div><h4 class="sh">${t}${n===null?'':' · '+n}</h4>${html}</div>`;
+  const locked=edit?'':`<p class="lock">${ic('lock')}Править клиентов могут те, у кого есть право «Видеть клиентов и сделки».</p>`;
+  return {kind:'Клиент '+c.id,title:esc(c.name),sub:`${esc(Clients.KIND[c.kind]||'нет данных: вид')}${c.demo?' · пример':''}`,body:`${locked}${clientFields(c,edit)}
+    ${sec('Сделки',rel.deals.length,clientDeals(rel.deals))}${sec('Лиды',rel.leads.length,clientLeads(rel.leads))}${sec('Сообщения',rel.msgs.length,clientMsgs(rel.msgs))}
+    ${sec('Лента',null,feedHtml({t:'client',id:c.id}))}`};
+}
+
+// ——— действия ———
+function clientsRefresh(){const box=byId('client-body');if(box&&S.view==='clients') box.innerHTML=clientsBody()}
+A['client-new']=()=>openModal('clientNew');
+A['client-kind']=el=>{clientsU().kind=Clients.KIND[el.dataset.k]?el.dataset.k:'';render()};
+A['client-reset']=()=>{S.ui.clients=Object.assign({},CLIENTS_DEF);render()};
+// «Похоже, это …»: имя — открыть карточку найденного (окно закрывается: оно лежит поверх карточки)
+A['dup-open']=el=>{
+  if(!Clients.byId(S,el.dataset.id)) return;
+  closeModal();openDrawer('client',el.dataset.id);
+};
+// «Выбрать его»: в быстрой форме сделки — клиент выбирается в списке, в окне «Новый клиент» — открывается его карточка
+A['dup-pick']=el=>{
+  const c=Clients.byId(S,el.dataset.id);if(!c) return;
+  if(S.ui.modal&&S.ui.modal.type==='dealNew'){
+    const q=byId('dn-cq'),box=byId('dn-cres');
+    if(q) q.value=c.name;
+    if(box){box.innerHTML=dealClientOpts(c.name,c.id);dealPickSync()}
+    toast(`Выбран существующий клиент ${c.id}: ${c.name}. Новый не заводится.`);
+    return;
+  }
+  closeModal();openDrawer('client',c.id);
+  toast(`Открыт существующий клиент ${c.id}: ${c.name}. Новый не заводится.`);
+};
+
+// ——— поля ———
+ON.input['client-q']=t=>{clientsU().q=t.value;clientsRefresh()};
+ON.input['client-dup']=()=>{
+  const box=byId('cn-dup');
+  if(box) box.innerHTML=clientDupHtml({phones:clientPhonesOf(byId('cn-phones').value),email:byId('cn-email').value,inn:byId('cn-inn').value});
+};
+// Поле карточки: одно поле — одна правка Clients.update. Выбор из списка перерисовывает всё,
+// текст — только название в шапке, ленту и список за карточкой, чтобы не сбить ввод в соседнем поле.
+ON.change['client-f']=t=>{
+  const id=t.dataset.id,f=t.dataset.f,r=Clients.update(S,id,{[f]:f==='phones'?clientPhonesOf(t.value):t.value},S.me,new Date());
+  if(!r.ok){toast(r.reason,'warn');render();return}
+  if(!r.changed.length) return;
+  if(t.tagName==='SELECT') render();
+  else{
+    const c=Clients.byId(S,id),ttl=document.getElementById('dr-t'),fd=document.querySelector('#drawer-root .feed');
+    if(ttl&&c) ttl.textContent=c.name;
+    if(fd) fd.outerHTML=feedHtml({t:'client',id});
+    clientsRefresh();
+  }
+  toast(`Клиент ${id}: «${CLIENT_FIELD[f]||f}» сохранено. Запись в ленте есть.`);
+};
+
+// ——— формы ———
+FORMS['client-new']=()=>{
+  const name=byId('cn-name').value.trim(),inn=byId('cn-inn').value.trim();
+  if(!name) return showErr('cn-err','Напишите имя клиента или название компании.');
+  const r=Clients.create(S,{name,kind:inn?'company':byId('cn-kind').value,inn,phones:clientPhonesOf(byId('cn-phones').value),email:byId('cn-email').value,address:byId('cn-addr').value,managerId:byId('cn-mgr').value||undefined},S.me,new Date());
+  if(!r.ok) return showErr('cn-err',r.reason);
+  closeModal();render();openDrawer('client',r.id);
+  toast(`Клиент ${r.id} заведён: ${r.client.name}. Запись в ленте есть.`);
+};
+
+// ——— регистрация в реестрах оболочки ———
+NAV.push({id:'clients',label:'Клиенты',icon:'person',group:'Продажи',order:15,ok:()=>can('clients')});
+VIEWS.clients=vClients;
+DRAWERS.client=id=>{const c=can('clients')?Clients.byId(S,id):null;return c?dClient(c):null};
 
 // Запуск: состояние из браузера (localStorage[Store.KEY]); нет или битое — демо seed(). Затем первая отрисовка.
 

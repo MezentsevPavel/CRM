@@ -87,7 +87,7 @@ const NAV=[
   {id:'stock',label:'Товары и остатки',icon:'box',group:'Товар',order:10,ok:()=>can('stock')},
   {id:'logistics',label:'Поставки и перевозки',icon:'truck',group:'Товар',order:20,ok:()=>can('stock')||can('logistics'),badge:()=>S.shipments.filter(s=>!isDone(s)).length},
   {id:'receiving',label:'Приёмка на складе',icon:'camera',group:'Товар',order:30,ok:()=>can('receive'),badge:()=>S.shipments.filter(awaitsReceipt).length,hot:true},
-  {id:'clients',label:'Клиенты и сделки',icon:'users',group:'Продажи',order:10,ok:()=>can('clients')},
+  {id:'deals',label:'Сделки',icon:'users',group:'Продажи',order:10,ok:()=>can('clients')},
   {id:'messages',label:'Сообщения клиентам',icon:'chat',group:'Продажи',order:20,ok:()=>can('write')||can('auto')},
   {id:'team',label:'Сотрудники и права',icon:'shield',group:'Управление',order:10,ok:()=>can('admin')}
 ];
@@ -344,7 +344,7 @@ function hscrollPoint(e){
 function hscrollClearNear(){if(_hsNear){delete _hsNear.dataset.near;_hsNear=null}}
 
 // ——— главный вывод ———
-const VIEWS={home:vHome,tasks:vTasks,notifications:vNotes,stock:vStock,logistics:vLogistics,receiving:vReceiving,clients:vClients,messages:vMessages,team:vTeam};
+const VIEWS={home:vHome,tasks:vTasks,notifications:vNotes,stock:vStock,logistics:vLogistics,receiving:vReceiving,messages:vMessages,team:vTeam};
 // Прямой переход (адрес, сохранённый раздел) туда, где у человека нет права: в меню раздела нет, на экране — это.
 const vNoAccess=n=>`<section class="card deny"><span class="deny-ic">${ic('lock')}</span><h2>Нет доступа к разделу</h2><p>«${esc(n.label)}» закрыт для роли «${esc(roleName(me()))}». Права ролей меняют в разделе «Сотрудники и права».</p><button type="button" class="btn pri" data-act="go" data-view="home">${ic('home')}На главный экран</button></section>`;
 function render(){

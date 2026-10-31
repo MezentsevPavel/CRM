@@ -18,13 +18,13 @@ function kpiHtml(){
   const open=S.tasks.filter(t=>!isDone(t)),over=open.filter(taskOverdue);
   const inT=openIn(),late=S.shipments.filter(isLate);
   const rd=new Set(S.reserves.map(r=>r.dealId));
-  const act=S.deals.filter(d=>!isDone(d)),total=sum(act,d=>d.amount||0);
+  const act=S.deals.filter(d=>!isDone(d)&&!d.lostReason),total=sum(act,Deals.total);
   const tile=(l,v,s,c,view)=>`<button class="kpi" data-act="go" data-view="${view}"><span class="k-l">${l}</span><b class="k-v">${v}</b><span class="k-s ${c}">${s}</span></button>`;
   return `<div class="kpis">${[
     tile('Задачи в работе',open.length,over.length?`${over.length} ${pl(over.length,'просрочена','просрочены','просрочено')}`:'просроченных нет',over.length?'bad':'ok','tasks'),
     tile('Поставок в пути',inT.length,late.length?`${late.length} ${pl(late.length,'задерживается','задерживаются','задерживаются')}`:'все по графику',late.length?'warn':'ok','logistics'),
     tile('Позиций в резерве',S.reserves.length,`по ${rd.size} ${pl(rd.size,'сделке','сделкам','сделкам')}`,'','stock'),
-    tile('Сделок в работе',act.length,can('prices')?`на ${mln(total)}`:'суммы скрыты для роли','','clients')
+    tile('Сделок в работе',act.length,can('prices')?`на ${mln(total)}`:'суммы скрыты для роли','','deals')
   ].join('')}</div>`;
 }
 function weekHtml(){

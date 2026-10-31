@@ -12,7 +12,7 @@ const { cssFiles } = require('../tools/build.js');
 const BOARDS = [
   { name: 'задачи', view: 'tasks', cols: 'data-col=', prep: () => {} },
   { name: 'поставки', view: 'logistics', cols: 'data-scol=', prep: app => { app.S.prefs.ship.view = 'funnel'; } },
-  { name: 'сделки', view: 'clients', cols: 'class="funnel"', prep: () => {} },
+  { name: 'сделки', view: 'deals', cols: 'data-dcol=', prep: () => {} },
   { name: 'лиды', view: 'leads', cols: 'data-lcol=', prep: app => { app.leadU().view = 'funnel'; } },
 ];
 
