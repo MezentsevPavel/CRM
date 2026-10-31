@@ -1,0 +1,71 @@
+/* ——— отправки: список, воронка, карточка, форма ——— */
+.dspbar .search-in{flex:1 1 260px;max-width:380px}
+.dspfilt{gap:8px}
+.dspfilt .inp{max-width:100%}
+.dsp-show-s{display:none}
+/* воронка: колонки — этапы, контейнер листается вбок (data-hscroll), страница — нет */
+.dspkan{display:grid;grid-template-columns:repeat(var(--n),minmax(240px,1fr));gap:12px;min-width:calc(var(--n) * 240px + (var(--n) - 1) * 12px)}
+.dspkan .col{min-height:200px}
+.dspcard .tc-t small{display:block;margin-top:2px;font-size:11.5px;color:var(--ink-3)}
+.dspcard .dsp-ad{margin:0;overflow-wrap:anywhere;font-size:12.5px;line-height:1.4;color:var(--ink-2)}
+.dspcard .tc-m{flex-wrap:wrap}
+.dspcard.done{opacity:.8}
+/* блок «Назначены мне» */
+.dsp-mine-l{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+.dsp-mi{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:0;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--surface);font-size:13.5px;cursor:pointer}
+.dsp-mi:hover{border-color:var(--line-2);background:var(--surface-2)}
+.dsp-mi b{overflow-wrap:anywhere}
+.dsp-mi span{overflow-wrap:anywhere}
+
+/* карточка заявки: один столбец, крупные кнопки */
+.dsp-stages,.dsp-quick{display:flex;flex-direction:column;gap:8px}
+.dsp-stages:empty{display:none}
+.dsp-stg{height:auto;min-height:52px;padding:10px 14px;font-size:16px;line-height:1.25;white-space:normal;text-align:center}
+.dsp-cancel{color:var(--bad)}
+.dsp-call{text-decoration:none}
+.dsp-route{display:flex;flex-direction:column;gap:6px;padding:12px;border-radius:14px;background:var(--surface-2)}
+.dsp-route .ic{width:16px;height:16px;vertical-align:-3px}
+.dsp-assign{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.dsp-assign .inp{flex:1 1 180px;min-width:0}
+.dsp-lines{display:flex;flex-direction:column;margin:0;padding:0;list-style:none}
+.dsp-lines li{border-top:1px solid var(--line)}
+.dsp-lines li:first-child{border-top:0}
+.dsp-line{display:flex;align-items:flex-start;gap:12px;min-height:44px;padding:10px 0;cursor:pointer}
+.dsp-line input{flex:none;width:22px;height:22px;margin:0;accent-color:var(--primary)}
+.dsp-line span{min-width:0;overflow-wrap:anywhere;font-size:14px}
+.dsp-sold{display:block;margin-top:2px;font-size:12px;color:var(--ink-3)}
+.dsp-sell{margin:0 0 10px 34px}
+.dsp-files{display:flex;flex-wrap:wrap;gap:8px}
+.dsp-files>p{width:100%}
+.dsp-th{position:relative;display:flex;flex-direction:column;gap:4px;width:96px;margin:0;padding:0;border:0;background:transparent;text-align:left}
+.dsp-th img{width:96px;height:96px;border-radius:10px;object-fit:cover;background:var(--sunken)}
+.dsp-th small{max-width:96px;overflow:hidden;font-size:11.5px;color:var(--ink-3);text-overflow:ellipsis;white-space:nowrap}
+.dsp-fl{position:relative;display:flex;align-items:center;gap:8px;min-width:0;max-width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);font-size:13px;text-decoration:none}
+.dsp-fl .ic{flex:none;width:18px;height:18px;color:var(--ink-3)}
+.dsp-fl span{display:flex;flex-direction:column;min-width:0;overflow-wrap:anywhere}
+.dsp-fl small{font-size:11.5px;color:var(--ink-3)}
+.dsp-fl small.warn-t{color:var(--warn)}
+.dsp-fl.bad{border-color:var(--warn)}
+.dsp-th .dsp-rm{position:absolute;top:2px;right:2px;width:26px;height:26px;background:var(--surface)}
+.dsp-big{display:block;max-width:100%;max-height:70vh;margin:0 auto;border-radius:12px;object-fit:contain}
+
+/* форма */
+.dsp-form .dsp-addfile{align-self:flex-start;cursor:pointer}
+.dsp-form [aria-invalid="true"]{border-color:var(--bad);outline:1px solid var(--bad)}
+.dsp-its,.dsp-pres{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
+.dsp-it{display:grid;grid-template-columns:minmax(0,1fr) 84px 36px;align-items:center;gap:8px}
+.dsp-it-n{display:flex;flex-direction:column;gap:2px;min-width:0;font-size:13.5px}
+.dsp-it-n b{font-weight:600;overflow-wrap:anywhere}
+.dsp-it-n small{font-size:12px;color:var(--ink-3)}
+.dsp-q{padding:0 6px;text-align:right}
+.dsp-own{display:flex;gap:8px}
+.dsp-own .inp{flex:1 1 auto;min-width:0}
+
+@media (max-width:700px){
+  .dsp-hide-s{display:none}
+  .dsp-show-s{display:block}
+  .dspbar .search-in{flex-basis:100%;max-width:none}
+  .dsp-own{flex-wrap:wrap}
+  .dsp-own .btn{width:100%}
+  .dsp-mine-l{grid-template-columns:minmax(0,1fr)}
+}

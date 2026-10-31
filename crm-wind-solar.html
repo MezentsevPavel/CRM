@@ -441,6 +441,10 @@ td.free b{font-weight:700}
 .mx td.tot{font-weight:700}
 .mx tfoot th,.mx tfoot td{border-top:1px solid var(--line-2);border-bottom:0}
 .mv .pill{align-self:center}
+.rbtns{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}
+.sell-l li>span{flex:1 1 140px;min-width:0}
+.sell-l small{order:3;flex:1 0 100%;margin-left:0}
+.sell-l .btn{margin-left:auto}
 /* настройки: склады и юрлица */
 .wh-row{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
 .wh-row.city{grid-template-columns:minmax(0,1fr) minmax(0,2fr)}
@@ -964,6 +968,78 @@ td>.lead-wait{margin-top:4px}
   .mail-back{display:inline-flex}
   .mail[data-pane="nav"] .mail-back{display:none}
   .mail-rem-f,.mset-row,.mset-box,.mset-add{grid-template-columns:minmax(0,1fr)}
+}
+
+/* ——— отправки: список, воронка, карточка, форма ——— */
+.dspbar .search-in{flex:1 1 260px;max-width:380px}
+.dspfilt{gap:8px}
+.dspfilt .inp{max-width:100%}
+.dsp-show-s{display:none}
+/* воронка: колонки — этапы, контейнер листается вбок (data-hscroll), страница — нет */
+.dspkan{display:grid;grid-template-columns:repeat(var(--n),minmax(240px,1fr));gap:12px;min-width:calc(var(--n) * 240px + (var(--n) - 1) * 12px)}
+.dspkan .col{min-height:200px}
+.dspcard .tc-t small{display:block;margin-top:2px;font-size:11.5px;color:var(--ink-3)}
+.dspcard .dsp-ad{margin:0;overflow-wrap:anywhere;font-size:12.5px;line-height:1.4;color:var(--ink-2)}
+.dspcard .tc-m{flex-wrap:wrap}
+.dspcard.done{opacity:.8}
+/* блок «Назначены мне» */
+.dsp-mine-l{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+.dsp-mi{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:0;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--surface);font-size:13.5px;cursor:pointer}
+.dsp-mi:hover{border-color:var(--line-2);background:var(--surface-2)}
+.dsp-mi b{overflow-wrap:anywhere}
+.dsp-mi span{overflow-wrap:anywhere}
+
+/* карточка заявки: один столбец, крупные кнопки */
+.dsp-stages,.dsp-quick{display:flex;flex-direction:column;gap:8px}
+.dsp-stages:empty{display:none}
+.dsp-stg{height:auto;min-height:52px;padding:10px 14px;font-size:16px;line-height:1.25;white-space:normal;text-align:center}
+.dsp-cancel{color:var(--bad)}
+.dsp-call{text-decoration:none}
+.dsp-route{display:flex;flex-direction:column;gap:6px;padding:12px;border-radius:14px;background:var(--surface-2)}
+.dsp-route .ic{width:16px;height:16px;vertical-align:-3px}
+.dsp-assign{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.dsp-assign .inp{flex:1 1 180px;min-width:0}
+.dsp-lines{display:flex;flex-direction:column;margin:0;padding:0;list-style:none}
+.dsp-lines li{border-top:1px solid var(--line)}
+.dsp-lines li:first-child{border-top:0}
+.dsp-line{display:flex;align-items:flex-start;gap:12px;min-height:44px;padding:10px 0;cursor:pointer}
+.dsp-line input{flex:none;width:22px;height:22px;margin:0;accent-color:var(--primary)}
+.dsp-line span{min-width:0;overflow-wrap:anywhere;font-size:14px}
+.dsp-sold{display:block;margin-top:2px;font-size:12px;color:var(--ink-3)}
+.dsp-sell{margin:0 0 10px 34px}
+.dsp-files{display:flex;flex-wrap:wrap;gap:8px}
+.dsp-files>p{width:100%}
+.dsp-th{position:relative;display:flex;flex-direction:column;gap:4px;width:96px;margin:0;padding:0;border:0;background:transparent;text-align:left}
+.dsp-th img{width:96px;height:96px;border-radius:10px;object-fit:cover;background:var(--sunken)}
+.dsp-th small{max-width:96px;overflow:hidden;font-size:11.5px;color:var(--ink-3);text-overflow:ellipsis;white-space:nowrap}
+.dsp-fl{position:relative;display:flex;align-items:center;gap:8px;min-width:0;max-width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);font-size:13px;text-decoration:none}
+.dsp-fl .ic{flex:none;width:18px;height:18px;color:var(--ink-3)}
+.dsp-fl span{display:flex;flex-direction:column;min-width:0;overflow-wrap:anywhere}
+.dsp-fl small{font-size:11.5px;color:var(--ink-3)}
+.dsp-fl small.warn-t{color:var(--warn)}
+.dsp-fl.bad{border-color:var(--warn)}
+.dsp-th .dsp-rm{position:absolute;top:2px;right:2px;width:26px;height:26px;background:var(--surface)}
+.dsp-big{display:block;max-width:100%;max-height:70vh;margin:0 auto;border-radius:12px;object-fit:contain}
+
+/* форма */
+.dsp-form .dsp-addfile{align-self:flex-start;cursor:pointer}
+.dsp-form [aria-invalid="true"]{border-color:var(--bad);outline:1px solid var(--bad)}
+.dsp-its,.dsp-pres{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
+.dsp-it{display:grid;grid-template-columns:minmax(0,1fr) 84px 36px;align-items:center;gap:8px}
+.dsp-it-n{display:flex;flex-direction:column;gap:2px;min-width:0;font-size:13.5px}
+.dsp-it-n b{font-weight:600;overflow-wrap:anywhere}
+.dsp-it-n small{font-size:12px;color:var(--ink-3)}
+.dsp-q{padding:0 6px;text-align:right}
+.dsp-own{display:flex;gap:8px}
+.dsp-own .inp{flex:1 1 auto;min-width:0}
+
+@media (max-width:700px){
+  .dsp-hide-s{display:none}
+  .dsp-show-s{display:block}
+  .dspbar .search-in{flex-basis:100%;max-width:none}
+  .dsp-own{flex-wrap:wrap}
+  .dsp-own .btn{width:100%}
+  .dsp-mine-l{grid-template-columns:minmax(0,1fr)}
 }
 
 /* ——— клиенты: список, карточка, подсказка о дубле ——— */
@@ -1824,7 +1900,9 @@ const Store = (() => {
   // 6 — роль РОП и право leadsAssign (таск 04): сохранение без них уходит в пользу демо.
   // 7 — клиенты и лента (таск 09): st.clients, st.feed, st.lostReasons; у сделок clientId, items, at, wonAt, lostReason; у лидов clientId.
   // 8 — дела (таск 10): st.acts; лента подмешивает выполненные дела.
-  const REV = 9;
+  // 9 — лиды заводятся руками, время реакции (таск 10).
+  // 10 — отправки (таск 07): st.dispatches, права dispatch и sell, роль «Водитель», вид воронки dispatch.
+  const REV = 10;
   // Браузер даёт сайту около 5 млн символов на всё; берём с запасом.
   const LIMIT = 4500000;
   const NO_SPACE = 'не сохранено — мало места в браузере';
@@ -1881,8 +1959,21 @@ const Store = (() => {
     return total;
   }
 
-  // Состояние → {text, droppedPhotos, fits}. Не влезает в limit — фото выкидываются
-  // (droppedPhotos — сколько), их записи помечаются «не сохранено — мало места в браузере».
+  // Файлы заявок на отправку (таск 07): dispatches[].files[].data — строка data:… любого вида, не только картинка.
+  // Выкидывает данные файла (data → null) и помечает сам файл unsaved:true. Возвращает, сколько файлов выкинуто.
+  function dropFiles(node) {
+    let total = 0;
+    for (const d of (node && node.dispatches) || []) {
+      for (const f of (d && d.files) || []) {
+        if (f && typeof f.data === 'string' && f.data) { f.data = null; f.unsaved = true; total++; }
+      }
+    }
+    return total;
+  }
+
+  // Состояние → {text, droppedPhotos, droppedFiles, fits}. Не влезает в limit — выкидываются фото приёмки
+  // (droppedPhotos — сколько) и вместе с ними файлы заявок на отправку (droppedFiles — сколько); их записи помечаются
+  // «не сохранено — мало места в браузере»: у фото unsaved:{photos, text}, у файла unsaved:true. Остальное сохраняется.
   // Само состояние не меняется.
   function dump(state, limit = LIMIT) {
     const copy = plain(state, true);
@@ -1891,12 +1982,17 @@ const Store = (() => {
     if (packed) Object.assign(copy, packed);
     copy.rev = REV;
     let text = JSON.stringify(copy);
-    let droppedPhotos = 0;
+    let droppedPhotos = 0, droppedFiles = 0;
     if (text.length > limit) {
+      // картинка, приложенная к заявке, — файл заявки, а не фото приёмки: заявки на время отбора фото убираем из копии
+      const dispatches = copy.dispatches;
+      delete copy.dispatches;
       droppedPhotos = dropPhotos(copy);
-      if (droppedPhotos) text = JSON.stringify(copy);
+      if (dispatches) copy.dispatches = dispatches;
+      droppedFiles = dropFiles(copy);
+      if (droppedPhotos || droppedFiles) text = JSON.stringify(copy);
     }
-    return { text, droppedPhotos, fits: text.length <= limit };
+    return { text, droppedPhotos, droppedFiles, fits: text.length <= limit };
   }
 
   // Строка из localStorage → состояние с живыми датами; пусто, мусор или чужая версия схемы → null
@@ -1953,6 +2049,8 @@ const Perms = (() => {
     ['leadsAssign', 'Распределять и передавать лиды'],
     ['dealsAll', 'Видеть сделки всех типов'],
     ['settings', 'Менять настройки фирмы'],
+    ['dispatch', 'Вести отправки'],
+    ['sell', 'Списывать при продаже'],
   ];
   const KEYS = LIST.map(p => p[0]);
 
@@ -1961,10 +2059,10 @@ const Perms = (() => {
   const ENGINEER = ['tasksAssign', 'stock', 'clients', 'dealsAll'];
   const DEFAULTS = [
     { id: 'director', name: 'Директор', all: true, on: KEYS },
-    { id: 'managerB2b', name: 'Менеджер B2B', scope: 'b2b', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'write', 'mail'] },
-    { id: 'managerB2c', name: 'Менеджер B2C', scope: 'b2c', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'write', 'mail'] },
-    { id: 'logist', name: 'Логист', on: ['stock', 'logistics', 'mail', 'tasksAssign'] },
-    { id: 'warehouse', name: 'Кладовщик', on: ['stock', 'receive'] },
+    { id: 'managerB2b', name: 'Менеджер B2B', scope: 'b2b', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'write', 'mail', 'sell'] },
+    { id: 'managerB2c', name: 'Менеджер B2C', scope: 'b2c', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'write', 'mail', 'sell'] },
+    { id: 'logist', name: 'Логист', on: ['stock', 'logistics', 'mail', 'tasksAssign', 'dispatch'] },
+    { id: 'warehouse', name: 'Кладовщик', on: ['stock', 'receive', 'dispatch'] },
     // Главный инженер и инженер — одна матрица (R30).
     { id: 'chiefEngineer', name: 'Главный инженер', on: ENGINEER },
     { id: 'engineer', name: 'Инженер', on: ENGINEER },
@@ -2040,13 +2138,14 @@ const Perms = (() => {
 // «Сделано/закрыто» — флаг final у этапа, «прибыло, ждёт приёмки» — флаг arrived.
 
 const Pipes = (() => {
-  const KINDS = ['tasks', 'deals', 'leads', 'ships'];
+  const KINDS = ['tasks', 'deals', 'leads', 'ships', 'dispatch'];
   // Где лежат записи вида и в каком поле id воронки.
   const STORE = {
     tasks: { list: 'tasks', field: 'boardId' },
     deals: { list: 'deals', field: 'pipeId' },
     leads: { list: 'leads', field: 'pipeId' },
     ships: { list: 'shipments', field: 'pipeId' },
+    dispatch: { list: 'dispatches', field: 'pipeId' },
   };
 
   const S_ = (id, name, flag) => (flag ? { id, name, flag } : { id, name });
@@ -2151,9 +2250,11 @@ const Pipes = (() => {
   function addPipe(st, kind, name, scope) {
     const n = clean(name);
     if (!KINDS.includes(kind) || !n) return null;
-    const base = defaults().find(p => p.kind === kind);
+    // воронки отправок по умолчанию в defaults() нет (её кладёт шаг SEEDS в 39-dispatch.js): берём этапы первой такой воронки
+    const base = defaults().find(p => p.kind === kind) || pipes(st).find(p => p.kind === kind);
+    if (!base) return null;
     st.pipelines = pipes(st);
-    const p = { id: Store.freeId(st.pipelines, kind), kind, name: n, stages: base.stages };
+    const p = { id: Store.freeId(st.pipelines, kind), kind, name: n, stages: base.stages.map(s => ({ ...s })) };
     if (scope) p.scope = scope;
     st.pipelines.push(p);
     return p;
@@ -2245,12 +2346,17 @@ const Stock = (() => {
   }
 
   // ——— поставки в пути ———
-  // Входящая поставка, ещё не принятая на склад (этап без флага final), по возрастанию ожидаемой даты.
+  // Приход, который ещё не лёг на склад: входящая поставка, не принятая на склад (этап без флага final), и перемещение
+  // между складами, уже ушедшее из клетки «откуда» (Dispatch.transit — единственное определение «в пути»).
+  // По возрастанию ожидаемой даты. У перемещения shipId — номер заявки (ОТ-NNN), плюс dispatchId и клетка-получатель
+  // entityId/cityId: это не поставка, под неё резерв не ставится (freeIn даёт 0).
   function incomingOf(st, productId) {
-    return (st.shipments || [])
+    const ships = (st.shipments || [])
       .filter(s => s.dir === 'in' && !Pipes.isFinal(st, s.pipeId, s.stageId))
-      .flatMap(s => (s.items || []).filter(i => i.productId === productId).map(i => ({ shipId: s.id, qty: i.qty, eta: s.eta })))
-      .sort((a, b) => a.eta - b.eta);
+      .flatMap(s => (s.items || []).filter(i => i.productId === productId).map(i => ({ shipId: s.id, qty: i.qty, eta: s.eta })));
+    const moves = Dispatch.transit(st, productId)
+      .map(t => ({ shipId: t.number, dispatchId: t.dispatchId, qty: t.qty, eta: t.eta, entityId: t.entityId, cityId: t.cityId }));
+    return [...ships, ...moves].sort((a, b) => a.eta - b.eta);
   }
 
   // Сколько в поставке ещё не отдано под резервы (для резерва «из поставки»).
@@ -2402,7 +2508,63 @@ const Stock = (() => {
     return { ok: true, reserve: r };
   }
 
-  return { ANY, KINDS, NO_ENTITY, NO_CITY, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, canReserve, bestCell, move, reserve, unreserve };
+  // Снять с резерва q штук: весь резерв — unreserve(), часть — резерв уменьшается, в журнале «Снят резерв» на q.
+  function release(st, r, q, by, at) {
+    if (q >= r.qty) return unreserve(st, r.id, by, at);
+    r.qty -= q;
+    log(st, { at, productId: r.productId, kind: KINDS.unreserve, qty: q, entityId: r.entityId || ANY, cityId: r.cityId || ANY, doc: r.dealId, by });
+    return { ok: true, reserve: r };
+  }
+
+  // Сколько можно списать при продаже. По резерву (reserveId) — сколько в нём осталось и лежит в его клетке; без резерва —
+  // остаток клетки минус резервы со склада на эту клетку (зарезервированное под другого клиента списывать нельзя).
+  // Резерв «под поставку» клетку не занимает: на складе этого товара ещё нет. Единственное место правила: Stock.sell и экран.
+  function sellMax(st, { productId, entityId, cityId, reserveId } = {}) {
+    if (reserveId) {
+      const r = (st.reserves || []).find(x => x.id === reserveId);
+      if (!r || r.productId !== productId || r.src !== 'stock') return 0;
+      return Math.max(0, Math.min(r.qty, grid(st, productId).cell(r.entityId || ANY, r.cityId || ANY) ?? 0));
+    }
+    const e = entityId || ANY, c = cityId || ANY;
+    const held = sum((st.reserves || []).filter(r => r.productId === productId && r.src === 'stock' && cellKey(r) === e + '|' + c), r => r.qty);
+    return Math.max(0, (grid(st, productId).cell(e, c) ?? 0) - held);
+  }
+
+  // Списать проданное: {productId, qty, entityId, cityId, reserveId?, doc} → «Отгрузка» из клетки (через move) и,
+  // если есть reserveId, снятие этого количества с резерва — одним действием, поэтому свободный остаток
+  // (годный остаток − резервы) не меняется. Клетка по резерву — та, где он стоит. Нужно право sell.
+  // Без reserveId — не больше sellMax: остаток клетки минус резервы на неё; с reserveId — в пределах своего резерва.
+  // → {ok, move, reserve} | {ok:false, reason}; при отказе ничего не меняется.
+  function sell(st, { productId, qty, entityId, cityId, reserveId, doc } = {}, by, now) {
+    if (!Perms.can(st, by, 'sell')) return { ok: false, reason: 'У вас нет права списывать товар при продаже.' };
+    const q = Number(qty);
+    if (!Number.isInteger(q) || q < 1) return { ok: false, reason: 'Укажите количество — целое число больше нуля.' };
+    let e = entityId || ANY, c = cityId || ANY, r = null;
+    if (reserveId) {
+      r = (st.reserves || []).find(x => x.id === reserveId) || null;
+      if (!r) return { ok: false, reason: 'Такого резерва нет.' };
+      if (r.productId !== productId) return { ok: false, reason: 'Этот резерв поставлен на другой товар.' };
+      if (r.src !== 'stock') return { ok: false, reason: `Резерв стоит под поставку ${r.src}: на складе этого товара ещё нет.` };
+      if (q > r.qty) return { ok: false, reason: `В резерве только ${r.qty}, а списать нужно ${q}.` };
+      const re = r.entityId || ANY, rc = r.cityId || ANY;
+      if ((entityId || cityId) && (e !== re || c !== rc)) {
+        return { ok: false, reason: `Резерв лежит в клетке «${entityName(st, re) ?? re}, ${cityName(st, rc) ?? rc}» — списать можно только оттуда.` };
+      }
+      e = re; c = rc;
+    } else {
+      // лежит достаточно, но часть занята чужим резервом — отказ с числом; если не лежит вовсе, скажет move
+      const have = grid(st, productId).cell(e, c) ?? 0, free = sellMax(st, { productId, entityId: e, cityId: c });
+      if (q <= have && q > free) {
+        return { ok: false, reason: `В клетке «${entityName(st, e) ?? e}, ${cityName(st, c) ?? c}» лежит ${have}, из них под резервом ${have - free}: без резерва можно списать только ${free}, а нужно ${q}. Зарезервированное списывают по его резерву.` };
+      }
+    }
+    const m = move(st, { kind: KINDS.ship, productId, qty: q, entityId: e, cityId: c, doc, by, at: now });
+    if (!m.ok) return { ok: false, reason: m.reason + ' Списать больше, чем лежит в клетке, нельзя.' };
+    if (r) release(st, r, q, by, now);
+    return { ok: true, move: m.move, reserve: r };
+  }
+
+  return { ANY, KINDS, NO_ENTITY, NO_CITY, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, canReserve, bestCell, move, reserve, unreserve, sellMax, sell };
 })();
 
 // Ядро: поставки и маршрут. Чистые функции, без DOM; текущее время приходит аргументом now.
@@ -3535,6 +3697,8 @@ const Notify = (() => {
     lead: ['director', 'rop'],                                 // новый лид — директору и РОП, плюс менеджер, кому он ушёл (extraPersons)
     mail: [],                                                  // новое письмо — те, кто видит ящик (extraPersons)
     act: [],                                                   // напоминание о деле — ответственный (extraPersons)
+    dispatch: ['logist', 'warehouse'],                         // новая заявка на отправку — логист и кладовщик
+    dispatchStep: [],                                          // этап и водитель заявки — автор или водитель (extraPersons), исполнителям не рассылаем
     leadWait: ['rop'],                                         // новый лид долго без действий — РОП
   };
 
@@ -3758,6 +3922,530 @@ SEEDS.push(st => {
   }
 });
 
+// Ядро: заявки на отправку. Кому, куда, телефон, когда и что именно — их создаёт любой сотрудник, исполняют логист,
+// кладовщик и водитель (право dispatch). Этап хранится по id этапа воронки отправок (вид dispatch), ход заявки пишется
+// в общую ленту (Feed), уведомления — через Notify. Склад трогают только два действия:
+//   • перемещение между складами (цель transfer): товар уходит из клетки «откуда» при «В пути» и приходит в клетку «куда»
+//     при «Доставлена»; пока он в пути, Stock.incomingOf считает его приходом на склад-получатель (Dispatch.transit);
+//   • списание проданного (Dispatch.sell → Stock.sell) — по праву sell, с отметкой на строке заявки.
+// «Продажа» и «Другое» смена этапа склад не меняет.
+// Чистые функции над состоянием st; время приходит параметром now (Date), кто делает — by (id сотрудника). Без DOM и S.
+//
+// Заявка st.dispatches[]: {id, number (оба — 'ОТ-NNN'), at, by, purpose:'sale'|'transfer'|'other', to:{name, phone}, address,
+//   when:{date (Date, начало дня), from?, till? ('ЧЧ:ММ')}, items:[{productId?|text, qty, picked?, sold?:{at, by, entityId, cityId}}],
+//   files:[{id, name, type, size, data|null, unsaved?}], note, driverId?, dealId?, pipeId, stageId, demo?,
+//   у перемещения: from:{entityId, cityId}, toCell:{entityId, cityId}, moved? (списано из «откуда»), landed? (пришло в «куда»)}.
+// Груз перемещения: moved && !landed — «в пути»; landed — лежит в «куда»; иначе лежит в «откуда».
+
+const Dispatch = (() => {
+  const PIPE = 'dispatch';
+  // Id этапов воронки отправок по умолчанию. Логика ходит по этим id и по порядку этапов, не по названиям.
+  const ST = { new: 'new', picking: 'picking', ready: 'ready', onWay: 'onWay', delivered: 'delivered', cancelled: 'cancelled' };
+  const PURPOSE = { sale: 'Продажа', transfer: 'Перемещение между складами', other: 'Другое' };
+  // Что не заполнено: ключ в missing → как назвать на экране.
+  const MISSING = { name: 'получатель', address: 'адрес', phone: 'телефон', date: 'дата', items: 'список (хотя бы одна строка)', from: 'склад «откуда»', toCell: 'склад «куда»' };
+  const NO_ADDRESS = 'нет данных: адрес';
+  // Вид уведомления о ходе заявки (этап, водитель): получатель задан при отправке, постоянных адресатов нет.
+  const STEP_KIND = 'dispatchStep';
+
+  const str = v => String(v == null ? '' : v).trim();
+  const fail = (reason, extra) => Object.assign({ ok: false, reason }, extra);
+  const personOf = (st, id) => (st.people || []).find(p => p.id === id) || null;
+  const personName = (st, id) => (personOf(st, id) || {}).name || 'нет данных: сотрудник';
+  const byId = (st, id) => (st.dispatches || []).find(d => d.id === id) || null;
+  const productOf = (st, id) => (st.products || []).find(p => p.id === id) || null;
+  const lineName = (st, it) => (it.productId ? (productOf(st, it.productId) || {}).name || 'нет данных: товар' : it.text);
+  const ref = d => ({ t: 'dispatch', id: d.id });
+  const dateKey = v => { const n = new Date(v); return isNaN(n.getTime()) ? '' : n.getFullYear() + '-' + (n.getMonth() + 1) + '-' + n.getDate(); };
+  const sum = (list, f) => list.reduce((a, x) => a + f(x), 0);
+
+  // ——— воронка ———
+  const pipeOf = (st, d) => (st.pipelines || []).find(p => p.id === d.pipeId) || null;
+  const stagesOf = (st, d) => (pipeOf(st, d) || { stages: [] }).stages;
+  const posOf = (st, d, stageId) => stagesOf(st, d).findIndex(s => s.id === stageId);
+  const stageName = (st, d, stageId) => (Pipes.stage(st, d.pipeId, stageId) || {}).name || 'нет данных: этап';
+  // С чего заявка начинает: первый этап воронки («Новая»).
+  const firstStage = (st, d) => (stagesOf(st, d)[0] || {}).id;
+  // Номер этапа, с которого груз «в пути»: «В пути»; нет такого этапа (директор удалил) — «Доставлена».
+  function wayPos(st, d) {
+    const w = posOf(st, d, ST.onWay);
+    return w >= 0 ? w : (posOf(st, d, ST.delivered) >= 0 ? posOf(st, d, ST.delivered) : stagesOf(st, d).length);
+  }
+  const isFinal = (st, d) => Pipes.isFinal(st, d.pipeId, d.stageId);
+
+  // ——— права ———
+  // Вести отправки: двигать этапы, назначать водителя, отмечать «собрано». Только по праву dispatch.
+  const canWork = (st, personId) => !!personOf(st, personId) && Perms.can(st, personId, 'dispatch');
+  const isAuthor = (d, personId) => !!d && !!personId && d.by === personId;
+  // Править заявку: с правом — всегда, автор без права — пока этап первый («Новая»).
+  const canEdit = (st, personId, d) => !!d && (canWork(st, personId) || (isAuthor(d, personId) && d.stageId === firstStage(st, d)));
+  // Отменить: с правом — пока не отменена, автор без права — до «В пути».
+  const canCancel = (st, personId, d) => !!d && d.stageId !== ST.cancelled
+    && (canWork(st, personId) || (isAuthor(d, personId) && !isFinal(st, d) && posOf(st, d, d.stageId) < wayPos(st, d)));
+  // Писать в ленту заявки: любой сотрудник — раздел видят все, значит и обсуждать заявку может каждый, кто её видит.
+  const canComment = (st, personId, d) => !!d && !!personOf(st, personId);
+  const canSell = (st, personId) => !!personOf(st, personId) && Perms.can(st, personId, 'sell');
+
+  // ——— перемещение: где груз ———
+  const isTransfer = d => d.purpose === 'transfer';
+  // Груз перемещения уже ушёл из «откуда» и ещё не пришёл в «куда».
+  const inTransit = d => isTransfer(d) && d.moved === true && d.landed !== true;
+  // Единственное определение «в пути» для остатков: Stock.incomingOf берёт отсюда.
+  // → [{dispatchId, number, qty, eta (дата отправки заявки), entityId, cityId (склад-получатель)}], по одной записи на заявку.
+  function transit(st, productId) {
+    const out = [];
+    for (const d of st.dispatches || []) {
+      if (!inTransit(d) || !d.toCell) continue;
+      const qty = sum((d.items || []).filter(i => i.productId === productId), i => i.qty);
+      if (qty > 0) out.push({ dispatchId: d.id, number: d.number, qty, eta: d.when && d.when.date, entityId: d.toCell.entityId, cityId: d.toCell.cityId });
+    }
+    return out;
+  }
+  const cellText = (st, c) => `«${Stock.entityName(st, c.entityId) ?? c.entityId}, ${Stock.cityName(st, c.cityId) ?? c.cityId}»`;
+  // Строки каталога, по продуктам (две строки одного товара складываются).
+  function needs(d) {
+    const m = new Map();
+    for (const it of d.items || []) if (it.productId) m.set(it.productId, (m.get(it.productId) || 0) + it.qty);
+    return m;
+  }
+  // Адрес склада-получателя: адрес города, а нет его — «нет данных: адрес».
+  function warehouseAddress(st, cell) {
+    const c = (st.cities || []).find(x => x.id === (cell && cell.cityId));
+    return (c && str(c.address)) || NO_ADDRESS;
+  }
+
+  // Движение товара перемещения. Все три — через Stock.move; журнал пишет doc = номер заявки.
+  // Уйти из «откуда»: сначала проверка по всем товарам, потом списание — отказ ничего не меняет.
+  function withdraw(st, d, by, now) {
+    const short = [];
+    for (const [productId, need] of needs(d)) {
+      const have = Stock.grid(st, productId).cell(d.from.entityId, d.from.cityId) ?? 0;
+      if (need > have) short.push({ productId, name: (productOf(st, productId) || {}).name || 'нет данных: товар', need, have });
+    }
+    if (short.length) {
+      const list = short.map(x => `${x.name} — нужно ${x.need}, есть ${x.have}`).join('; ');
+      return fail(`Не хватает на складе ${cellText(st, d.from)}: ${list}. Этап не изменён.`, { short });
+    }
+    for (const it of d.items) {
+      if (!it.productId) continue;
+      Stock.move(st, { kind: Stock.KINDS.ship, productId: it.productId, qty: it.qty, entityId: d.from.entityId, cityId: d.from.cityId, doc: d.number, by, at: now });
+    }
+    d.moved = true;
+    return { ok: true };
+  }
+  // Положить груз в клетку: «куда» (пришёл) или «откуда» (вернули).
+  function putBack(st, d, cell, by, now) {
+    for (const it of d.items) {
+      if (!it.productId) continue;
+      Stock.move(st, { kind: Stock.KINDS.receive, productId: it.productId, qty: it.qty, entityId: cell.entityId, cityId: cell.cityId, doc: d.number, by, at: now });
+    }
+  }
+
+  // Что должно стать с грузом перемещения при переходе на этап: 'cell' (в «откуда»), 'way' (в пути), 'dest' (в «куда»).
+  const placeNow = d => (d.landed ? 'dest' : d.moved ? 'way' : 'cell');
+  function placeFor(st, d, stageId) {
+    if (stageId === ST.cancelled) return placeNow(d) === 'dest' ? 'dest' : 'cell';
+    if (stageId === ST.delivered) return 'dest';
+    return posOf(st, d, stageId) >= wayPos(st, d) ? 'way' : 'cell';
+  }
+
+  // Применить этап к грузу перемещения. → {ok, note?} | {ok:false, reason, short?}. Заявку не трогает, кроме moved/landed.
+  function moveGoods(st, d, stageId, by, now) {
+    if (!isTransfer(d)) return { ok: true };
+    const from = placeNow(d), to = placeFor(st, d, stageId);
+    const after = !!d.landed && stageId === ST.cancelled;
+    if (from === 'dest' && to !== 'dest') {
+      return fail(`Товар уже доставлен на склад ${cellText(st, d.toCell)}: вернуть его можно только обратной заявкой.`);
+    }
+    if (from === to) return { ok: true, note: after ? 'Товар уже на складе: движение не откатывается — нужна обратная заявка.' : '' };
+    if (from === 'cell') {
+      const w = withdraw(st, d, by, now);
+      if (!w.ok) return w;
+    }
+    if (to === 'dest') { putBack(st, d, d.toCell, by, now); d.landed = true; return { ok: true, note: `Товар пришёл на склад ${cellText(st, d.toCell)}.` }; }
+    if (to === 'cell') { putBack(st, d, d.from, by, now); d.moved = false; return { ok: true, note: `Товар вернулся на склад ${cellText(st, d.from)}.` }; }
+    return { ok: true, note: `Товар ушёл со склада ${cellText(st, d.from)} и числится в пути на склад ${cellText(st, d.toCell)}.` };
+  }
+
+  // ——— разбор введённых данных ———
+  const toDate = v => {
+    if (v == null || v === '') return null;
+    const m = typeof v === 'string' && v.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+    const n = new Date(v);
+    return isNaN(n.getTime()) ? null : new Date(n.getFullYear(), n.getMonth(), n.getDate());
+  };
+  const hhmm = v => (/^([01]\d|2[0-3]):[0-5]\d$/.test(str(v)) ? str(v) : '');
+  // Клетка склада из введённого. «Откуда» может быть клеткой с «нет данных» ('_' — юрлицо или город в таблице остатков не указаны):
+  // в таблице менеджеров города у остатков нет. «Куда» — всегда настоящие юрлицо и город из справочника.
+  const cellOf = (st, c, anyOk) => {
+    const e = str(c && c.entityId), k = str(c && c.cityId);
+    const okE = (st.entities || []).some(x => x.id === e) || (anyOk && e === Stock.ANY);
+    const okK = (st.cities || []).some(x => x.id === k) || (anyOk && k === Stock.ANY);
+    return okE && okK ? { entityId: e, cityId: k } : null;
+  };
+
+  // Строки списка: товар каталога (productId) или свой текст (text), у каждой целое количество ≥ 1.
+  // Пустая строка формы (ни товара, ни текста) пропускается; строка с товаром без количества — ошибка всего списка.
+  function cleanItems(st, list) {
+    const items = [];
+    let bad = false;
+    for (const it of Array.isArray(list) ? list : []) {
+      const pid = str(it && it.productId), text = str(it && it.text);
+      if (!pid && !text) continue;
+      const qty = Number(it.qty);
+      if (!Number.isInteger(qty) || qty < 1 || (pid && !productOf(st, pid))) { bad = true; continue; }
+      const row = pid ? { productId: pid, qty } : { text, qty };
+      if (it.picked === true) row.picked = true;
+      if (it.sold) row.sold = it.sold;
+      items.push(row);
+    }
+    return { items, bad };
+  }
+  function cleanFiles(st, list, existing) {
+    const used = [...(existing || [])];
+    const out = [];
+    for (const f of Array.isArray(list) ? list : []) {
+      if (!f || !str(f.name)) continue;
+      const file = { id: f.id || Store.freeId(used, 'fl'), name: str(f.name), type: str(f.type), size: Number(f.size) || 0, data: typeof f.data === 'string' && f.data ? f.data : null };
+      if (f.unsaved) file.unsaved = true;
+      used.push(file);
+      out.push(file);
+    }
+    return out;
+  }
+
+  // Введённое → запись заявки без служебных полей. → {rec} | {missing:[ключ…], reason}
+  function normalize(st, data, current) {
+    const d = data || {};
+    const purpose = d.purpose == null || d.purpose === '' ? 'sale' : d.purpose;
+    if (!PURPOSE[purpose]) return { missing: [], reason: 'Неизвестная цель отправки.' };
+    const missing = [];
+    const name = str(d.to && d.to.name), phone = str(d.to && d.to.phone);
+    if (!name) missing.push('name');
+    let address = str(d.address);
+    const date = toDate(d.when && d.when.date);
+    const it = cleanItems(st, d.items);
+    let from = null, toCell = null, reason = '';
+    if (purpose === 'transfer') {
+      from = cellOf(st, d.from, true); toCell = cellOf(st, d.toCell, false);
+      if (!from) missing.push('from');
+      if (!toCell) missing.push('toCell');
+      if (from && toCell && from.entityId === toCell.entityId && from.cityId === toCell.cityId) {
+        missing.push('toCell'); reason = 'Склад «откуда» и склад «куда» совпадают.';
+      }
+      // адрес перемещения — адрес склада-получателя; без него — «нет данных: адрес»
+      if (!address && toCell) address = warehouseAddress(st, toCell);
+      if (!address) address = NO_ADDRESS;
+    } else if (!address) missing.push('address');
+    if (phone.replace(/\D/g, '').length < 5) missing.push('phone');
+    if (!date) missing.push('date');
+    if (!it.items.length || it.bad) { missing.push('items'); if (it.bad) reason = reason || 'В списке есть строка без количества или с неизвестным товаром.'; }
+    let dealId = str(d.dealId);
+    if (dealId && !(st.deals || []).some(x => x.id === dealId)) return { missing: [], reason: `Сделки ${dealId} нет.` };
+    if (missing.length) {
+      return { missing, reason: reason || `Не заполнено: ${missing.map(k => MISSING[k]).join(', ')}.` };
+    }
+    const when = { date };
+    if (hhmm(d.when && d.when.from)) when.from = hhmm(d.when.from);
+    if (hhmm(d.when && d.when.till)) when.till = hhmm(d.when.till);
+    const rec = {
+      purpose, to: { name, phone }, address, when, items: it.items,
+      files: cleanFiles(st, d.files, current && current.files), note: str(d.note),
+    };
+    if (purpose === 'transfer') { rec.from = from; rec.toCell = toCell; }
+    if (dealId) rec.dealId = dealId;
+    return { rec };
+  }
+
+  // ——— заявки ———
+  // Следующий номер: больше всех выданных (удалять заявки нельзя, но номер от длины списка не берём).
+  function nextNumber(st) {
+    const used = (st.dispatches || []).map(d => Number(String(d.number).replace(/\D/g, '')) || 0);
+    return 'ОТ-' + String(Math.max(0, ...used) + 1).padStart(3, '0');
+  }
+  function firstPipe(st) {
+    const p = Pipes.of(st, PIPE)[0];
+    return p ? { pipe: p, stage: p.stages.find(s => !s.flag) || p.stages[0] } : null;
+  }
+
+  // Создать заявку. Любой сотрудник может создать. data: {purpose, to:{name, phone}, address, when:{date, from?, till?},
+  // items:[{productId?|text, qty}], files?, note?, from?, toCell? (перемещение), dealId?, demo?}.
+  // Нет получателя, адреса, телефона, даты или списка — {ok:false, missing:[name|address|phone|date|items…]} и ничего не сохраняется.
+  // opts.silent — без уведомлений (демо-данные). → {ok, id, missing, reason}
+  function create(st, data, by, now, opts) {
+    if (!personOf(st, by)) return fail('Нет такого сотрудника.', { id: null, missing: [] });
+    const n = normalize(st, data, null);
+    if (!n.rec) return fail(n.reason, { id: null, missing: n.missing });
+    const start = firstPipe(st);
+    if (!start) return fail('Нет воронки отправок.', { id: null, missing: [] });
+    const number = nextNumber(st);
+    const d = Object.assign({ id: number, number, at: now, by }, n.rec, { pipeId: start.pipe.id, stageId: start.stage.id });
+    if (data && data.demo) d.demo = true;
+    st.dispatches = st.dispatches || [];
+    st.dispatches.push(d);
+    const what = `${PURPOSE[d.purpose]}, кому: ${d.to.name}, на ${fD(d.when.date)}, ${d.items.length} ${pl(d.items.length, 'позиция', 'позиции', 'позиций')}`;
+    Feed.add(st, ref(d), { kind: 'create', text: `Заявка создана: ${what}.`, by, at: now });
+    if (!(opts && opts.silent)) Notify.push(st, 'dispatch', by, `Новая заявка на отправку ${d.number}: ${what}. Создал: ${personName(st, by)}.`, now);
+    return { ok: true, id: d.id, missing: [], reason: '' };
+  }
+
+  // Заявка → данные в форме create (для правки и для проверки того, что менять нельзя).
+  const snapshot = d => ({
+    purpose: d.purpose, to: { ...d.to }, address: d.address, when: { ...d.when }, items: d.items.map(i => ({ ...i })),
+    files: d.files.map(f => ({ ...f })), note: d.note, from: d.from, toCell: d.toCell, dealId: d.dealId,
+  });
+
+  // Править заявку: data сливается с тем, что уже есть, и проверяется как при создании. Нужно canEdit.
+  // Пока товар перемещения не вернулся на склад «откуда» (он в пути или доставлен), цель, склады и товары менять нельзя.
+  // → {ok, missing, reason}
+  function update(st, id, data, by, now) {
+    const d = byId(st, id);
+    if (!d) return fail('Такой заявки нет.', { missing: [] });
+    if (!canEdit(st, by, d)) return fail('Править заявку нельзя: она уже в работе, а у вас нет права вести отправки.', { missing: [] });
+    const merged = Object.assign(snapshot(d), data || {});
+    const n = normalize(st, merged, d);
+    if (!n.rec) return fail(n.reason, { missing: n.missing });
+    if (d.moved && (n.rec.purpose !== d.purpose || JSON.stringify(n.rec.items.map(i => [i.productId, i.text, i.qty])) !== JSON.stringify(d.items.map(i => [i.productId, i.text, i.qty]))
+      || JSON.stringify(n.rec.from) !== JSON.stringify(d.from) || JSON.stringify(n.rec.toCell) !== JSON.stringify(d.toCell))) {
+      return fail('Товар перемещения уже списан со склада: цель, склады и список менять нельзя. Верните заявку на этап до «В пути» или отмените её.', { missing: [] });
+    }
+    // отметки «собрано» и «списано» остаются у тех строк, что не менялись
+    n.rec.items.forEach((row, i) => {
+      const old = d.items[i];
+      if (old && old.productId === row.productId && old.text === row.text) {
+        if (old.picked) row.picked = true;
+        if (old.sold) row.sold = old.sold;
+      }
+    });
+    Object.assign(d, n.rec);
+    if (d.purpose !== 'transfer') { delete d.from; delete d.toCell; }
+    if (!n.rec.dealId) delete d.dealId;
+    Feed.add(st, ref(d), { kind: 'field', text: `Заявка изменена: ${personName(st, by)}.`, by, at: now });
+    return { ok: true, missing: [], reason: '' };
+  }
+
+  // ——— ход заявки ———
+  // Перевести заявку на этап. Двигать этапы можно с правом dispatch; отменить — ещё и автору до «В пути».
+  // У перемещения склад меняется вместе с этапом (см. шапку); не хватает товара в «откуда» — этап не меняется,
+  // в ответе short:[{productId, name, need, have}]. → {ok, from, to, note} | {ok:false, reason, short?}
+  // opts.silent — без уведомлений (демо-данные).
+  function setStage(st, id, stageId, by, now, opts) {
+    const d = byId(st, id);
+    if (!d) return fail('Такой заявки нет.');
+    if (!Pipes.stage(st, d.pipeId, stageId)) return fail('Такого этапа в воронке нет.');
+    if (d.stageId === stageId) return fail('Заявка уже на этом этапе.');
+    if (stageId === ST.cancelled ? !canCancel(st, by, d) : !canWork(st, by)) {
+      return fail(stageId === ST.cancelled ? 'Отменить заявку может автор до «В пути» или тот, кто ведёт отправки.' : 'Двигать этапы могут только те, кто ведёт отправки.');
+    }
+    const g = moveGoods(st, d, stageId, by, now);
+    if (!g.ok) return g;
+    const from = d.stageId;
+    d.stageId = stageId;
+    const text = `Этап: «${stageName(st, d, from)}» → «${stageName(st, d, stageId)}».${g.note ? ' ' + g.note : ''}`;
+    Feed.add(st, ref(d), { kind: 'stage', text, by, at: now, data: { from, to: stageId } });
+    if (!(opts && opts.silent)) {
+      // автору — каждая смена этапа его заявки, кроме тех, что он сделал сам. Вид STEP_KIND без постоянных адресатов
+      // (Notify.RECIPIENTS): логист и кладовщик новую заявку получают, а ход каждой — нет. Некому слать — записи нет.
+      const extra = d.by && d.by !== by ? [d.by] : [];
+      if (extra.length) Notify.push(st, STEP_KIND, by, `${d.number} (${d.to.name}): ${personName(st, by)} перевёл заявку на этап «${stageName(st, d, stageId)}».${g.note ? ' ' + g.note : ''}`, now, extra);
+    }
+    return { ok: true, from, to: stageId, note: g.note || '' };
+  }
+
+  // Назначить водителя (driverId пустой — снять). Водитель — любой сотрудник с правом dispatch. Нужно canWork.
+  // Водителю приходит уведомление. → {ok, reason}
+  function assign(st, id, driverId, by, now, opts) {
+    const d = byId(st, id);
+    if (!d) return fail('Такой заявки нет.');
+    if (!canWork(st, by)) return fail('Назначать водителя могут только те, кто ведёт отправки.');
+    const to = str(driverId);
+    if (to && !canWork(st, to)) return fail('Водителем можно назначить только сотрудника, который ведёт отправки.');
+    if ((d.driverId || '') === to) return fail(to ? 'Этот водитель уже назначен.' : 'Водитель и так не назначен.');
+    if (to) d.driverId = to; else delete d.driverId;
+    Feed.add(st, ref(d), { kind: 'field', text: to ? `Водитель: ${personName(st, to)}.` : 'Водитель снят.', by, at: now });
+    if (to && !(opts && opts.silent)) {
+      Notify.push(st, STEP_KIND, by, `Вам назначена отправка ${d.number}: ${d.to.name}, ${d.address}, на ${fD(d.when.date)}.`, now, [to]);
+    }
+    return { ok: true, reason: '' };
+  }
+
+  // Водители: сотрудники с ролью «Водитель» (роль встроенная). Для списка выбора и фильтра.
+  const drivers = st => (st.people || []).filter(p => p.role === 'driver');
+
+  // Отметить строку собранной (done=true) или снять отметку. Нужно canWork; закрытую заявку не трогаем.
+  function pick(st, id, lineIdx, done, by, now) {
+    const d = byId(st, id);
+    if (!d) return fail('Такой заявки нет.');
+    if (!canWork(st, by)) return fail('Отмечать «собрано» могут только те, кто ведёт отправки.');
+    const it = d.items[lineIdx];
+    if (!it) return fail('Такой строки нет.');
+    if (isFinal(st, d)) return fail('Заявка закрыта: отметки менять нельзя.');
+    if (!!it.picked === !!done) return { ok: true, reason: '' };
+    if (done) it.picked = true; else delete it.picked;
+    const p = picked(d);
+    Feed.add(st, ref(d), { kind: 'item', text: `${done ? 'Собрано' : 'Снята отметка'}: ${lineName(st, it)} — ${num(it.qty)}. Собрано ${p.done} из ${p.total}.`, by, at: now });
+    return { ok: true, reason: '' };
+  }
+  // «Собрано N из M»: строк с отметкой и всего строк. Единственный счёт для карточки и таблицы.
+  const picked = d => ({ done: (d.items || []).filter(i => i.picked).length, total: (d.items || []).length });
+
+  // Комментарий в ленту заявки: любой сотрудник. → {ok, entry, reason}
+  function comment(st, id, text, by, now) {
+    const d = byId(st, id);
+    if (!d) return fail('Такой заявки нет.', { entry: null });
+    if (!str(text)) return fail('Напишите комментарий.', { entry: null });
+    if (!canComment(st, by, d)) return fail('Писать в ленту могут только сотрудники.', { entry: null });
+    const entry = Feed.add(st, ref(d), { kind: 'comment', text, by, at: now });
+    return entry ? { ok: true, entry, reason: '' } : fail('Не удалось записать комментарий.', { entry: null });
+  }
+
+  // Списать при продаже строку заявки «Продажа»: Stock.sell из клетки {entityId, cityId} (или по резерву reserveId),
+  // на строке — отметка «списано: кто, когда, откуда». Нужно право sell. → то же, что Stock.sell
+  function sell(st, id, lineIdx, opt, by, now) {
+    const d = byId(st, id);
+    if (!d) return fail('Такой заявки нет.');
+    if (d.purpose !== 'sale') return fail('Списывать при продаже можно только в заявке с целью «Продажа».');
+    const it = d.items[lineIdx];
+    if (!it) return fail('Такой строки нет.');
+    if (!it.productId) return fail('Строка своим текстом склад не трогает: списывать нечего.');
+    if (it.sold) return fail('Эта строка уже списана.');
+    const o = opt || {};
+    const r = Stock.sell(st, { productId: it.productId, qty: it.qty, entityId: o.entityId, cityId: o.cityId, reserveId: o.reserveId, doc: d.number }, by, now);
+    if (!r.ok) return r;
+    it.sold = { at: now, by, entityId: r.move.entityId, cityId: r.move.cityId };
+    Feed.add(st, ref(d), { kind: 'item', text: `Списано при продаже: ${lineName(st, it)} — ${num(it.qty)} со склада ${cellText(st, it.sold)}.`, by, at: now });
+    return r;
+  }
+  // «списано: кто, когда, откуда» — одна фраза для карточки и таблицы
+  const soldText = (st, it) => (it.sold ? `списано: ${personName(st, it.sold.by)}, ${fWhen(it.sold.at)}, ${cellText(st, it.sold)}` : '');
+
+  // ——— отбор для списка и воронки ———
+  // filter: {q (номер, получатель, адрес), stage (id), mine (автор или водитель personId), today (на сегодня по now), driver (id), personId, now}.
+  // Сначала открытые — по дате отправки, ближайшие первыми; затем закрытые — свежие первыми.
+  function query(st, filter) {
+    const f = filter || {};
+    const words = Catalog.norm(f.q).split(' ').filter(Boolean);
+    const rows = (st.dispatches || []).filter(d =>
+      (!f.stage || d.stageId === f.stage)
+      && (!f.mine || d.by === f.personId || d.driverId === f.personId)
+      && (!f.today || (f.now && dateKey(d.when.date) === dateKey(f.now)))
+      && (!f.driver || d.driverId === f.driver)
+      && (!words.length || words.every(w => Catalog.norm([d.number, d.to.name, d.address].join(' ')).includes(w))));
+    const t = d => new Date(d.when.date).getTime();
+    return rows.map(d => ({ d, fin: isFinal(st, d) }))
+      .sort((a, b) => (a.fin - b.fin) || (a.fin ? t(b.d) - t(a.d) : t(a.d) - t(b.d)) || (a.d.number < b.d.number ? -1 : 1))
+      .map(x => x.d);
+  }
+
+  return {
+    PIPE, ST, STEP_KIND, PURPOSE, MISSING, NO_ADDRESS, byId, create, update, canWork, canEdit, canCancel, canComment, canSell,
+    setStage, assign, drivers, pick, picked, comment, sell, soldText, query, transit, inTransit, warehouseAddress, lineName,
+  };
+})();
+
+// ——— демо-данные ———
+// Подпись и значок вида уведомлений «Отправки» (KIND объявлен в 20-model.js).
+KIND.dispatch = { l: 'Отправки', ic: 'truck', c: 'info' };
+KIND.dispatchStep = { l: 'Ход отправок', ic: 'truck', c: 'info' };
+
+// Шаг SEEDS: встроенная роль «Водитель» (право dispatch; цен, сделок и остатков ей не положено), два демо-водителя,
+// воронка отправок и 20 демо-заявок «пример» на разных этапах и с разными целями. Получатели, адреса и телефоны явно
+// выдуманные («Клиент-пример 3», «(пример)», +7 900 000-00-NN). Строки — настоящие товары каталога.
+// У перемещений в пути склад уже согласован: товар ушёл из «откуда» и числится в пути — это делает та же setStage, что и в работе.
+// Заявки заводятся теми же функциями, что и в работе, но без уведомлений (silent).
+SEEDS.push(st => {
+  const perms = on => Object.fromEntries(Perms.LIST.map(([k]) => [k, on.includes(k)]));
+  st.roles.push({ id: 'driver', name: 'Водитель', builtin: true, perms: perms(['dispatch']) });
+  // РОП (роль заводит шаг лидов, 35-leads.js) списывает при продаже, как менеджеры
+  const rop = st.roles.find(r => r.id === 'rop');
+  if (rop) rop.perms.sell = true;
+  const driverIds = ['Роман Е.', 'Василий Т.'].map(name => {
+    const p = { id: Store.freeId(st.people, 'p'), name, role: 'driver', dept: 'logistics', demo: true };
+    st.people.push(p);
+    return p.id;
+  });
+  st.pipelines.push({ id: Dispatch.PIPE, kind: 'dispatch', name: 'Отправки', stages: [
+    { id: 'new', name: 'Новая' }, { id: 'picking', name: 'Собирается' }, { id: 'ready', name: 'Готова к отправке' },
+    { id: 'onWay', name: 'В пути' }, { id: 'delivered', name: 'Доставлена', flag: 'final' }, { id: 'cancelled', name: 'Отменена', flag: 'final' },
+  ] });
+  st.dispatches = [];
+
+  const pad = (n, w) => String(n).padStart(w, '0');
+  const catalog = st.products.filter(p => p.inCatalog);
+  // клетка для перемещений: «ИП, город не указан» (так лежит большинство остатков в таблице менеджеров);
+  // берём товары, у которых там не меньше 6, сначала товары каталога, потом позиции таблицы менеджеров
+  const FROM = { entityId: 'ip', cityId: Stock.ANY };
+  const have = p => Stock.grid(st, p.id).cell(FROM.entityId, FROM.cityId) ?? 0;
+  // позиции с небольшим остатком (от 6): большие партии из таблицы менеджеров демо-перемещения не трогают
+  const movable = [...catalog, ...st.products.filter(p => !p.inCatalog)].filter(p => have(p) >= 6 && have(p) <= 30).sort((x, y) => have(x) - have(y));
+  let used = 0;
+  const TO = [{ entityId: 'ip', cityId: 'msk' }, { entityId: 'ip', cityId: 'krd' }, { entityId: 'npp', cityId: 'irk' }, { entityId: 'ip', cityId: 'irk' }];
+  const TOWNS = ['г. Иркутск', 'г. Москва', 'г. Краснодар'];
+  const NOTES = ['Пример примечания: позвонить за час до приезда.', 'Пример примечания: хрупкое, не кантовать.', 'Пример примечания: нужна машина с бортом.', ''];
+  const DOC = text => ({ id: 'fl1', name: 'накладная-пример.txt', type: 'text/plain', size: text.length, data: 'data:text/plain;charset=utf-8,' + encodeURIComponent(text) });
+  const path = ['new', 'picking', 'ready', 'onWay', 'delivered'];
+
+  // [цель, автор, создана дней назад, этап, отправка через дней (0 — сегодня), водитель (номер в driverIds или -1), окно]
+  const ROWS = [
+    ['sale', 'p2', 6, 'delivered', -4, 0, ['10:00', '14:00']], ['sale', 'p3', 5, 'delivered', -3, 1, null],
+    ['sale', 'p9', 4, 'cancelled', -2, -1, null], ['sale', 'p10', 3, 'onWay', 0, 0, ['09:00', '12:00']],
+    ['sale', 'p2', 3, 'onWay', 0, 1, null], ['sale', 'p3', 2, 'ready', 0, 0, ['14:00', '18:00']],
+    ['sale', 'p9', 2, 'picking', 0, -1, null], ['sale', 'p10', 1, 'picking', 1, -1, null],
+    ['sale', 'p2', 1, 'new', 0, -1, ['11:00', '13:00']], ['sale', 'p3', 0, 'new', 2, -1, null],
+    ['transfer', 'p6', 4, 'delivered', -2, 0, null], ['transfer', 'p6', 3, 'onWay', 0, 0, null],
+    ['transfer', 'p5', 2, 'onWay', 1, 1, null], ['transfer', 'p6', 2, 'ready', 1, -1, null],
+    ['transfer', 'p5', 1, 'new', 3, -1, null], ['transfer', 'p6', 1, 'cancelled', -1, 0, null],
+    ['other', 'p4', 3, 'delivered', -1, 1, null], ['other', 'p7', 1, 'ready', 0, 0, null],
+    ['other', 'p1', 0, 'new', 1, -1, null], ['sale', 'p2', 0, 'picking', 0, -1, null],
+  ];
+  ROWS.forEach(([purpose, author, back, stage, off, drv, win], i) => {
+    const k = i + 1, n = pad(k, 2);
+    const at = day(-back, 9 + (k % 5), (k * 7) % 60);
+    const later = j => new Date(at.getTime() + j * 7200000);
+    const data = {
+      purpose, demo: true,
+      to: { name: `Клиент-пример ${k}`, phone: `+7 900 000-00-${n}` },
+      address: `${TOWNS[k % TOWNS.length]}, ул. Примерная, ${k} (пример)`,
+      when: { date: day(off, 0, 0) },
+      items: [], note: NOTES[k % NOTES.length], files: k % 6 === 0 ? [DOC(`Накладная-пример к заявке ${k}. Демонстрационный файл.`)] : [],
+    };
+    if (win) { data.when.from = win[0]; data.when.till = win[1]; }
+    if (purpose === 'transfer') {
+      const to = TO[k % TO.length];
+      data.from = FROM; data.toCell = to;
+      data.to = { name: `Склад: ${Stock.entityName(st, to.entityId)}, ${Stock.cityName(st, to.cityId)}`, phone: `+7 900 000-00-${n}` };
+      data.address = '';
+      for (let j = 0; j < 2 && movable.length; j++) {
+        const p = movable[used++ % movable.length];
+        data.items.push({ productId: p.id, qty: Math.max(1, Math.min(2 + ((k + j) % 4), Math.floor(have(p) / 2))) });
+      }
+    } else if (purpose === 'other') {
+      data.items.push({ text: `Образцы и документы (пример ${k})`, qty: 1 }, { text: 'Упаковка (пример)', qty: 2 });
+    } else {
+      const lines = 1 + (k % 3);
+      for (let j = 0; j < lines; j++) data.items.push({ productId: catalog[(k * 17 + j * 29) % catalog.length].id, qty: [1, 2, 3, 4, 6, 10][(k + j) % 6] });
+      // две заявки на продажу — из сделок: Clients.related показывает отправки клиента
+      if (k === 4) data.dealId = 'Д-311';
+      if (k === 5) data.dealId = 'Д-305';
+    }
+    const made = Dispatch.create(st, data, author, at, { silent: true });
+    if (!made.ok) return;
+    const driver = drv >= 0 ? driverIds[drv] : null;
+    if (driver) Dispatch.assign(st, made.id, driver, 'p6', later(1), { silent: true });
+    const d = Dispatch.byId(st, made.id);
+    // отменённая продажа не дошла дальше «Собирается», отменённое перемещение дошло до «В пути» и вернуло товар
+    const steps = stage === 'cancelled' ? (purpose === 'transfer' ? 3 : 1) : path.indexOf(stage);
+    for (let j = 1; j <= steps; j++) {
+      if (j === 2) d.items.forEach((_, idx) => Dispatch.pick(st, d.id, idx, true, 'p5', later(j)));
+      if (!Dispatch.setStage(st, d.id, path[j], j <= 2 ? 'p5' : (driver || 'p6'), later(j + 1), { silent: true }).ok) break;
+      // кладовщик начал собирать: отмечена половина строк
+      if (j === 1) d.items.slice(0, Math.floor(d.items.length / 2)).forEach((_, idx) => Dispatch.pick(st, d.id, idx, true, 'p5', later(j + 1)));
+    }
+    if (stage === 'cancelled') Dispatch.setStage(st, d.id, 'cancelled', purpose === 'transfer' ? 'p6' : author, later(6), { silent: true });
+  });
+});
+
 // Ядро: клиенты. Клиент — отдельная карточка: человек или компания (ИНН), телефоны, почта, адрес, менеджер.
 // Дубли ищет find: тот же ИНН, телефон (по цифрам) или почта. Лиды и сделки ссылаются на клиента (clientId),
 // related собирает всё, что к нему относится. Права — Perms, видимость сделок и лидов — Leads, события — Feed.
@@ -3897,18 +4585,20 @@ const Clients = (() => {
   const leadBelongs = (c, l) => (l.clientId ? l.clientId === c.id : score(c, l) > 0);
 
   // Всё, что относится к клиенту: {leads, deals, msgs, dispatches}. personId — только то, что этому человеку видно:
-  // лиды по Leads.visible, сделки по Leads.dealsVisible (сделки чужого типа не видны), сообщения и отправки — по этим сделкам.
-  // Без personId — всё.
+  // лиды по Leads.visible, сделки по Leads.dealsVisible (сделки чужого типа не видны), сообщения — по этим сделкам.
+  // Отправки — по этим сделкам и те заявки, где телефон получателя совпал с телефоном клиента (phoneKey; раздел видят все,
+  // поэтому совпавшие по телефону показываются без проверки видимости), каждая один раз. Без personId — всё.
   function related(st, clientId, personId) {
     const c = byId(st, clientId), none = { leads: [], deals: [], msgs: [], dispatches: [] };
     if (!c) return none;
     const deals = (personId ? Leads.dealsVisible(st, personId) : (st.deals || [])).filter(d => d.clientId === c.id);
     const leads = (personId ? Leads.visible(st, personId) : (st.leads || [])).filter(l => leadBelongs(c, l));
     const ids = new Set(deals.map(d => d.id));
+    const phones = new Set((c.phones || []).map(phoneKey).filter(Boolean));
     return {
       leads, deals,
       msgs: (st.msgs || []).filter(m => ids.has(m.deal)),
-      dispatches: (st.dispatches || []).filter(x => ids.has(x.dealId)),
+      dispatches: (st.dispatches || []).filter(x => ids.has(x.dealId) || phones.has(phoneKey(x.to && x.to.phone))),
     };
   }
 
@@ -3971,7 +4661,7 @@ SEEDS.push(st => {
 
 // Ядро и вид: одна лента для всех карточек — сделка, лид, клиент, отправка. Комментарии и события, новые сверху.
 // Лента хранит только свои записи (st.feed); остальное подмешивает of(): историю лида, резервы по сделке,
-// сообщения клиенту, а у клиента — ленты его сделок и лидов. Дела (T10) и отправки (T07) пишут сюда же.
+// сообщения клиенту, а у клиента — ленты его сделок и лидов; у сделки — ленты её отправок. Дела (T10) и отправки (T07) пишут сюда же.
 // Чистые функции над состоянием st; время приходит параметром. Вид feedHtml не меняет состояние.
 
 const Feed = (() => {
@@ -3979,6 +4669,7 @@ const Feed = (() => {
   const KINDS = {
     comment: 'Комментарий', create: 'Создано', stage: 'Этап', field: 'Изменение', item: 'Товары',
     reserve: 'Резерв', win: 'Успешно', lose: 'Провалена', msg: 'Сообщение клиенту', history: 'История', act: 'Дело выполнено', actmove: 'Дела из лида',
+    dispatch: 'Отправка',
   };
   // Что есть ссылка на карточку и как её назвать в ленте клиента.
   const REF = { deal: 'Сделка', lead: 'Лид', client: 'Клиент', dispatch: 'Отправка' };
@@ -4048,12 +4739,16 @@ const Feed = (() => {
   // personId (необязательно) — у клиента подмешиваются только сделки и лиды, которые этот человек видит.
   function of(st, ref, personId) {
     const all = [];
-    const take = r => {
+    const take = (r, wrap) => {
       const own = (st.feed || []).filter(e => same(e.ref, r));
-      own.forEach(e => all.push(e));
-      synthetic(st, r, own).forEach(e => all.push(e));
+      own.forEach(e => all.push(wrap ? wrap(e) : e));
+      synthetic(st, r, own).forEach(e => all.push(wrap ? wrap(e) : e));
     };
     take(ref);
+    // у сделки — ещё ленты её отправок (заявки с этим dealId), с подписью «Отправка ОТ-NNN». Их записи идут видом 'dispatch'
+    // (прежний вид — в data.was), чтобы этапы заявки не путались с этапами самой сделки.
+    const asDispatch = e => ({ ...e, kind: 'dispatch', data: { ...(e.data || {}), was: e.kind } });
+    if (ref.t === 'deal') (st.dispatches || []).filter(d => d.dealId === ref.id).forEach(d => take({ t: 'dispatch', id: d.id }, asDispatch));
     if (ref.t === 'client') {
       const rel = Clients.related(st, ref.id, personId);
       rel.deals.forEach(d => take({ t: 'deal', id: d.id }));
@@ -4065,13 +4760,13 @@ const Feed = (() => {
   }
 
   // Кто может писать в ленту карточки: сделка и клиент — право «клиенты» (сделку человек должен видеть), лид — «лиды»
-  // (и видеть лид), отправка — «вести отправки». Неизвестного права нет ни у кого (Perms.can), так что до отправок — никто.
+  // (и видеть лид), отправка — Dispatch.canComment: любой сотрудник (раздел видят все).
   function canComment(st, personId, ref) {
     if (!ref || !(st.people || []).some(p => p.id === personId)) return false;
     if (ref.t === 'deal') return Leads.dealsVisible(st, personId).some(d => d.id === ref.id);
     if (ref.t === 'lead') return Leads.visible(st, personId).some(l => l.id === ref.id);
     if (ref.t === 'client') return Perms.can(st, personId, 'clients');
-    if (ref.t === 'dispatch') return Perms.can(st, personId, 'dispatch');
+    if (ref.t === 'dispatch') return Dispatch.canComment(st, personId, Dispatch.byId(st, ref.id));
     return false;
   }
 
@@ -4139,7 +4834,7 @@ function actNextHtml(ref, st = S, now = new Date()) {
 
 function feedHtml(ref, st = S, now = new Date()) {
   const me = st.me, who = id => (st.people || []).find(p => p.id === id);
-  const kindLabel = e => e.kind === 'msg' && e.data && e.data.inbound ? 'Сообщение от клиента' : (Feed.KINDS[e.kind] || 'Событие');
+  const kindLabel = e => e.kind === 'msg' && e.data && e.data.inbound ? 'Сообщение от клиента' : (Feed.KINDS[e.kind === 'dispatch' && e.data && e.data.was ? e.data.was : e.kind] || 'Событие');
   const rows = Feed.of(st, ref, me).map(e => {
     const by = e.by ? (who(e.by) ? who(e.by).name : 'нет данных: сотрудник') : (e.kind === 'msg' && e.data && e.data.inbound ? 'Клиент' : 'Система');
     // запись из другой карточки (в ленте клиента — сделка или лид) подписана, откуда она
@@ -4723,7 +5418,7 @@ SEEDS.push(st => {
 // feedHtml над лентой, метки «нет следующего шага» и счётчики меню берутся отсюда же.
 // Чистые функции над состоянием st; время приходит параметром now (Date), кто делает — by (id сотрудника).
 // Дело: {id, ref:{t,id}, type, title, due, ownerId, by, at, remind (минут до срока или null), remindedAt?, doneAt?, doneBy?, result?}.
-// Дело считается «живым», пока жива его карточка: лид не закрыт, сделка не провалена и не закрыта успешно. Дела закрытых
+// Дело считается «живым», пока жива его карточка: лид не закрыт, сделка не провалена и не закрыта успешно, заявка на отправку не в финальном этапе. Дела закрытых
 // карточек не попадают ни в счётчики, ни в «нет следующего шага», ни в напоминания: гасить их по одному никто не обязан.
 
 const Acts = (() => {
@@ -4733,7 +5428,7 @@ const Acts = (() => {
   // Быстрые сроки в форме
   const QUICK = { today: 'Сегодня', tomorrow: 'Завтра', week: 'Через неделю' };
   // Карточки, к которым ставят дела
-  const REFS = ['deal', 'lead', 'client'];
+  const REFS = ['deal', 'lead', 'client', 'dispatch'];
   const MISSING = { type: 'вид дела', due: 'срок' };
 
   const str = v => String(v == null ? '' : v).trim();
@@ -4751,6 +5446,7 @@ const Acts = (() => {
     if (ref.t === 'deal') { const d = (st.deals || []).find(x => x.id === ref.id); return !!d && Deals.state(st, d) === 'open'; }
     if (ref.t === 'lead') { const l = (st.leads || []).find(x => x.id === ref.id); return !!l && !Pipes.isFinal(st, l.pipeId, l.stageId); }
     if (ref.t === 'client') return !!Clients.byId(st, ref.id);
+    if (ref.t === 'dispatch') { const d = Dispatch.byId(st, ref.id); return !!d && !Pipes.isFinal(st, d.pipeId, d.stageId); }
     return false;
   }
   // Как назвать карточку в тексте: «Сделка Д-311 (ООО …)».
@@ -4759,6 +5455,7 @@ const Acts = (() => {
     if (ref.t === 'deal') name = ((st.deals || []).find(x => x.id === ref.id) || {}).client;
     else if (ref.t === 'lead') { const l = (st.leads || []).find(x => x.id === ref.id); name = l ? Leads.title(l) : ''; }
     else if (ref.t === 'client') name = (Clients.byId(st, ref.id) || {}).name;
+    else if (ref.t === 'dispatch') name = ((Dispatch.byId(st, ref.id) || {}).to || {}).name;
     return `${Feed.REF[ref.t] || 'Карточка'} ${ref.id}${name ? ` (${name})` : ''}`;
   }
   // Карточки, чьи дела видны в этой: у клиента — ещё его сделки и лиды (те, что видит personId), как в его ленте.
@@ -4978,8 +5675,8 @@ function save(){
     try{localStorage.setItem(Store.KEY,r.text)}catch(_){ok=false}
   }
   if(!ok) toast('Изменения не сохранены — мало места в браузере','warn');
-  else if(r.droppedPhotos&&r.droppedPhotos!==_photoWarn) toast('Фото не сохранены — мало места в браузере','warn');
-  _photoWarn=r.droppedPhotos;
+  else if((r.droppedPhotos||r.droppedFiles)&&(r.droppedPhotos+r.droppedFiles)!==_photoWarn) toast((r.droppedPhotos?'Фото':'Файлы заявок')+(r.droppedPhotos&&r.droppedFiles?' и файлы заявок':'')+' не сохранены — мало места в браузере','warn');
+  _photoWarn=(r.droppedPhotos||0)+(r.droppedFiles||0);
   return {ok,droppedPhotos:r.droppedPhotos,fits:r.fits&&ok};
 }
 // Для ввода с клавиатуры — не на каждую букву
@@ -5707,15 +6404,33 @@ function gridHtml(p){
   const n=v=>v===null?'':num(v),cell=v=>v===null?'<td class="num e"></td>':`<td class="num">${num(v)}</td>`;
   return `<div class="xs"><table class="tbl mx"><thead><tr><th>Юрлицо / город</th>${g.cols.map(c=>`<th class="num">${esc(c.name)}</th>`).join('')}<th class="num">Итого</th></tr></thead><tbody>${g.rows.map(r=>`<tr><th scope="row">${esc(r.name)}</th>${g.cols.map(c=>cell(g.cell(r.id,c.id))).join('')}<td class="num tot">${n(g.totals.rows[r.id])}</td></tr>`).join('')}</tbody><tfoot><tr><th scope="row">Итого</th>${g.cols.map(c=>`<td class="num tot">${n(g.totals.cols[c.id])}</td>`).join('')}<td class="num tot">${n(g.totals.all)}</td></tr></tfoot></table></div>`;
 }
+// Блок «Списать при продаже»: каждая клетка «юрлицо × город» с остатком — строка с кнопкой (право sell). Сколько можно списать
+// без резерва — Stock.sellMax; зарезервированное списывают по резерву (кнопка в таблице «Резервы»).
+function sellCells(p){
+  if(!can('sell')) return '';
+  const g=Stock.grid(S,p.id),rows=g.rows.flatMap(r=>g.cols.map(c=>({r,c,n:g.cell(r.id,c.id)}))).filter(x=>x.n>0);
+  if(!rows.length) return '';
+  return `<div><h4 class="sh">Списать при продаже</h4><ul class="mv sell-l">${rows.map(({r,c,n})=>{
+    const free=Stock.sellMax(S,{productId:p.id,entityId:r.id,cityId:c.id});
+    return `<li><span>${esc(cellText(r.id,c.id))}</span><b>${qtyOf(n,p)}</b><small>без резерва можно ${num(free)}</small><button type="button" class="btn sm" data-act="stock-sell" data-pid="${esc(p.id)}" data-e="${esc(r.id)}" data-c="${esc(c.id)}">Списать</button></li>`;
+  }).join('')}</ul></div>`;
+}
 // «Можно поставить» — тем же Stock.canReserve, что проверяет сама постановка
 const maxText=(pid,src,ent,city)=>`Можно поставить: ${num(Stock.canReserve(S,{productId:pid,qty:1,entityId:ent,cityId:city,src}).max)}`;
 function reserveForm(p,k,inc){
   if(!can('reserve')) return `<p class="lock">${ic('lock')}Резервы ставит менеджер или директор. Вам придёт уведомление, когда резерв появится.</p>`;
   const deals=S.deals.filter(d=>!isDone(d));
-  const src=[`<option value="stock">Со склада — свободно ${qtyOf(Math.max(0,k.free),p)}</option>`,...inc.map(x=>`<option value="${esc(x.shipId)}">Из поставки ${esc(x.shipId)}, ${fD(x.eta)} — свободно ${qtyOf(Math.max(0,Stock.freeIn(S,x.shipId,p.id)),p)}</option>`)].join('');
+  const src=[`<option value="stock">Со склада — свободно ${qtyOf(Math.max(0,k.free),p)}</option>`,...inc.filter(x=>!x.dispatchId).map(x=>`<option value="${esc(x.shipId)}">Из поставки ${esc(x.shipId)}, ${fD(x.eta)} — свободно ${qtyOf(Math.max(0,Stock.freeIn(S,x.shipId,p.id)),p)}</option>`)].join('');
   // откуда на складе: юрлицо и город; по умолчанию — клетка, где свободного больше всего
   const cell=Stock.bestCell(S,p.id),opt=(list,none,cur)=>[...list.map(x=>[x.id,x.name]),[Stock.ANY,none]].map(([id,n])=>`<option value="${esc(id)}"${id===cur?' selected':''}>${esc(n)}</option>`).join('');
   return `<form class="rform" data-form="reserve" data-pid="${esc(p.id)}" novalidate><h4 class="sh">Поставить резерв</h4><div class="grid2"><div class="field"><label for="rs-deal">Сделка</label><select id="rs-deal" class="inp">${deals.map(d=>`<option value="${d.id}">${d.id} · ${esc(d.client)}</option>`).join('')}</select></div><div class="field"><label for="rs-qty">Количество${p.unit?', '+esc(p.unit):''}</label><input id="rs-qty" class="inp" type="number" min="1" value="1" inputmode="numeric"></div><div class="field span2"><label for="rs-src">Откуда</label><select id="rs-src" class="inp" data-on="rsmax">${src}</select></div><div class="field"><label for="rs-ent">Юрлицо (со склада)</label><select id="rs-ent" class="inp" data-on="rsmax">${opt(S.entities,Stock.NO_ENTITY,cell.entityId)}</select></div><div class="field"><label for="rs-city">Город (со склада)</label><select id="rs-city" class="inp" data-on="rsmax">${opt(S.cities,Stock.NO_CITY,cell.cityId)}</select></div><div class="field"><label for="rs-until">Резерв до</label><input id="rs-until" class="inp" type="date" value="${iso(day(7))}"></div><div class="field end"><button class="btn pri" type="submit">${ic('lock')}Зарезервировать</button></div></div><p class="hint" id="rs-max">${maxText(p.id,'stock',cell.entityId,cell.cityId)}</p><p class="err" id="rs-err" hidden></p></form>`;
+}
+// Строка «Едет к нам»: поставка (этап и срок из карточки поставки) или груз перемещения между складами — «в пути: N, ОТ-NNN»
+// со ссылкой на заявку; у груза поставки нет, поэтому ни этапа поставки, ни резерва под него
+function iRow(x,p){
+  if(x.dispatchId) return `<li><span class="pill sm info">перемещение</span><span>в пути: ${qtyOf(x.qty,p)}, <button type="button" class="link" data-act="open-dispatch" data-id="${esc(x.dispatchId)}">${esc(x.shipId)}</button></span><small>на склад ${esc(cellText(x.entityId,x.cityId))} · ожидается ${fD(x.eta)}</small></li>`;
+  const s=ship(x.shipId),late=isLate(s);
+  return `<li><b class="mono">${esc(x.shipId)}</b><span>${qtyOf(x.qty,p)}</span><span class="pill sm ${late?'bad':'info'}">${late?'задерживается':esc(stageName(s).toLowerCase())}</span><small>ожидается ${fD(x.eta)}</small></li>`;
 }
 function dProduct(p){
   const k=stockOf(p.id),rs=resOf(p.id),inc=Stock.incomingOf(S,p.id),all=S.moves.filter(m=>m.productId===p.id),mv=all.slice(0,10),unk=stockUnknown(k);
@@ -5730,8 +6445,8 @@ function dProduct(p){
     kv('Наличие',p.avail?esc(p.avail):noData('наличие')),url?kv('Ссылка',url):''
   ].join('');
   const where=r=>cellText(r.entityId,r.cityId);
-  const rTbl=rs.length?`<div class="xs"><table class="tbl"><thead><tr><th>Сделка</th><th class="num">Кол-во</th><th>Где товар</th><th>До</th>${can('reserve')?'<th></th>':''}</tr></thead><tbody>${rs.map(r=>{const d=deal(r.dealId),n=dd(r.until);return `<tr><td>${can('clients')?`<button class="link" data-act="open-deal" data-id="${r.dealId}">${r.dealId}</button>`:r.dealId}<small class="muted">${esc(d?.client||'')}</small></td><td class="num">${num(r.qty)}</td><td>${srcPill(r)}${r.src==='stock'?`<small class="muted">${esc(where(r))}</small>`:''}</td><td class="nowrap ${n<=2?'warn-t':''}">${fD(r.until)}</td>${can('reserve')?`<td class="num"><button class="btn sm ghost" data-act="unreserve" data-id="${r.id}">Снять</button></td>`:''}</tr>`}).join('')}</tbody></table></div>`:'<p class="muted m0">Резервов нет.</p>';
-  const iList=inc.length?`<ul class="mv">${inc.map(x=>`<li><b class="mono">${esc(x.shipId)}</b><span>${qtyOf(x.qty,p)}</span><span class="pill sm ${isLate(ship(x.shipId))?'bad':'info'}">${isLate(ship(x.shipId))?'задерживается':esc(stageName(ship(x.shipId)).toLowerCase())}</span><small>ожидается ${fD(x.eta)}</small></li>`).join('')}</ul>`:'<p class="muted m0">Поставок с этим товаром нет.</p>';
+  const rTbl=rs.length?`<div class="xs"><table class="tbl"><thead><tr><th>Сделка</th><th class="num">Кол-во</th><th>Где товар</th><th>До</th>${can('reserve')||can('sell')?'<th></th>':''}</tr></thead><tbody>${rs.map(r=>{const d=deal(r.dealId),n=dd(r.until);return `<tr><td>${can('clients')?`<button class="link" data-act="open-deal" data-id="${r.dealId}">${r.dealId}</button>`:r.dealId}<small class="muted">${esc(d?.client||'')}</small></td><td class="num">${num(r.qty)}</td><td>${srcPill(r)}${r.src==='stock'?`<small class="muted">${esc(where(r))}</small>`:''}</td><td class="nowrap ${n<=2?'warn-t':''}">${fD(r.until)}</td>${can('reserve')||can('sell')?`<td class="num"><div class="rbtns">${r.src==='stock'&&can('sell')?`<button type="button" class="btn sm" data-act="stock-sell" data-pid="${esc(r.productId)}" data-rid="${esc(r.id)}">Списать</button>`:''}${can('reserve')?`<button class="btn sm ghost" data-act="unreserve" data-id="${r.id}">Снять</button>`:''}</div></td>`:''}</tr>`}).join('')}</tbody></table></div>`:'<p class="muted m0">Резервов нет.</p>';
+  const iList=inc.length?`<ul class="mv">${inc.map(x=>iRow(x,p)).join('')}</ul>`:'<p class="muted m0">Поставок с этим товаром нет.</p>';
   const mList=mv.length?`<ul class="mv">${mv.map(m=>`<li>${movePill(m)}<b>${moveSign(m)}${qtyOf(m.qty,p)}</b><span>${esc(moveWhere(m))}</span><span class="mono muted">${esc(m.doc||'')}</span><small>${fWhen(m.at)} · ${esc(whoName(m.by)||'нет данных: кто')}</small></li>`).join('')}</ul><p class="m0"><button type="button" class="btn sm" data-act="stock-journal" data-pid="${esc(p.id)}">Весь журнал по товару${all.length>mv.length?` (${all.length})`:''}</button></p>`:'<p class="muted m0">Движений пока нет.</p>';
   return {kind:p.cat,title:esc(p.name),sub:`${p.inCatalog?`<span class="mono">${esc(p.id)}</span>`:'нет в каталоге'}${p.brand?' · '+esc(p.brand):''}`,body:`
     <div><h4 class="sh">Карточка каталога</h4><dl class="kv">${info}</dl></div>
@@ -5741,9 +6456,50 @@ function dProduct(p){
     <div><h4 class="sh">Не входит в свободный остаток</h4><div class="pst">${st('Ответхранение',aside(k.custody),'','считать ли в свободном — нет данных')}${st('В пути (из таблицы)',aside(k.transitNoShip),'','без поставки в CRM')}${st('Бой',aside(k.damaged))}</div></div>
     ${reserveForm(p,k,inc)}
     <div><h4 class="sh">Резервы</h4>${rTbl}</div>
+    ${sellCells(p)}
     <div><h4 class="sh">Едет к нам</h4>${iList}</div>
     <div><h4 class="sh">Журнал движений</h4>${mList}</div>`};
 }
+
+// ——— «Списать при продаже» ———
+// Из карточки товара (клетка или резерв) и из строки товара в сделке. o: {pid, e?, c? (клетка), rid? (резерв), did? (сделка)}.
+// Всё решает Stock.sell: право sell, остаток клетки за вычетом чужих резервов, резерв; здесь — окно и подсказка.
+// Откуда списывать: резерв (его клетка) или клетка «юрлицо × город» с остатком. Значение выбора: 'r:<резерв>' или 'c:<юрлицо>|<город>'.
+function sellSources(o){
+  const out=[],rs=S.reserves.filter(r=>r.productId===o.pid&&r.src==='stock'&&(o.rid?r.id===o.rid:!!o.did&&r.dealId===o.did));
+  rs.forEach(r=>out.push(['r:'+r.id,`Резерв ${r.dealId||r.id}: ${num(r.qty)} · ${cellText(r.entityId,r.cityId)}`]));
+  if(!o.rid){const g=Stock.grid(S,o.pid);g.rows.forEach(r=>g.cols.forEach(c=>{const n=g.cell(r.id,c.id);if(n>0) out.push(['c:'+r.id+'|'+c.id,`Из клетки ${r.name} · ${c.name}: лежит ${num(n)}`])}))}
+  return out;
+}
+function sellArg(pid,v){
+  const s=String(v||''),i=s.indexOf(':'),k=s.slice(0,i),x=s.slice(i+1);
+  if(k==='r') return {productId:pid,reserveId:x};
+  const [e,c]=x.split('|');
+  return {productId:pid,entityId:e,cityId:c};
+}
+function sellMaxText(pid,v){
+  const a=sellArg(pid,v),max=Stock.sellMax(S,a);
+  if(a.reserveId) return `Можно списать: ${num(max)} — столько осталось в резерве.`;
+  const have=Stock.grid(S,pid).cell(a.entityId||Stock.ANY,a.cityId||Stock.ANY)??0;
+  return `Можно списать: ${num(max)}${have>max?` — ещё ${num(have-max)} в клетке занято резервами, их списывают по резерву`:''}.`;
+}
+MODALS.stockSell=o=>{
+  const p=product(o.pid),src=p?sellSources(o):[];
+  if(!p||!src.length) return `${mHead('Списать при продаже')}<div class="modal-b"><p class="m0">${p?'Списать нечего: на складе этого товара нет остатка и резерва со склада.':'Такого товара нет.'}</p></div>`;
+  const dealRs=o.did?src.find(x=>x[0][0]==='r'):null;
+  const want=o.rid?'r:'+o.rid:dealRs?dealRs[0]:o.e!==undefined?`c:${o.e}|${o.c}`:'c:'+Stock.bestCell(S,o.pid).entityId+'|'+Stock.bestCell(S,o.pid).cityId;
+  const cur=src.some(x=>x[0]===want)?want:src[0][0],a=sellArg(o.pid,cur),r=a.reserveId?S.reserves.find(x=>x.id===a.reserveId):null;
+  const d=o.did?Deals.byId(S,o.did):null,max=Stock.sellMax(S,a);
+  const qty=Math.max(1,Math.min(max,r?r.qty:d?Deals.lined(d,o.pid):1));
+  const doc=r?(r.dealId||''):(o.did||'');
+  return `<form data-form="stock-sell" data-pid="${esc(o.pid)}" data-did="${esc(o.did||'')}" novalidate>${mHead('Списать при продаже: '+esc(p.name))}<div class="modal-b">
+    <p class="m0">${o.did?`Сделка ${esc(o.did)}${d?' · '+esc(d.client):''}. `:''}Товар уходит со склада, в журнале движений появится «Отгрузка».</p>
+    <div class="field"><label for="ps-src">Откуда</label><select id="ps-src" class="inp" data-on="sellsrc" data-pid="${esc(o.pid)}">${optionsHtml(src,cur)}</select></div>
+    <div class="grid2"><div class="field"><label for="ps-qty">Сколько${p.unit?', '+esc(p.unit):''}</label><input id="ps-qty" class="inp" type="number" min="1" step="1" value="${esc(qty)}" inputmode="numeric"></div>
+      <div class="field"><label for="ps-doc">Документ</label><input id="ps-doc" class="inp" value="${esc(doc)}" placeholder="Номер сделки или накладной" autocomplete="off"></div></div>
+    <p class="hint" id="ps-max">${esc(sellMaxText(o.pid,cur))}</p>
+    <p class="err" id="ps-err" hidden></p></div>${mFoot('Списать')}</form>`;
+};
 
 // ——— регистрация в реестрах оболочки ———
 DRAWERS.product=id=>{const p=can('stock')?product(id):null;return p?dProduct(p):null};
@@ -5759,6 +6515,23 @@ ON.change.rsmax=()=>{
   const d=S.ui.drawer,out=byId('rs-max');
   if(!d||d.type!=='product'||!out) return;
   out.textContent=maxText(d.id,byId('rs-src').value,byId('rs-ent').value,byId('rs-city').value);
+};
+A['stock-sell']=el=>{
+  if(!can('sell')){toast('У вашей роли нет права списывать товар при продаже.','warn');return}
+  const d=el.dataset;
+  openModal('stockSell',{pid:d.pid,e:d.e,c:d.c,rid:d.rid,did:d.did});
+};
+// Выбрали другую клетку или резерв в окне списания — подсказка «можно списать» пересчитывается
+ON.change.sellsrc=t=>{const out=byId('ps-max');if(out) out.textContent=sellMaxText(t.dataset.pid,t.value)};
+FORMS['stock-sell']=f=>{
+  const pid=f.dataset.pid,did=f.dataset.did||'',now=new Date();
+  const r=Stock.sell(S,{...sellArg(pid,byId('ps-src').value),qty:byId('ps-qty').value,doc:byId('ps-doc').value.trim()},S.me,now);
+  if(!r.ok) return showErr('ps-err',r.reason);
+  const p=product(pid),m=r.move,what=`${low(p.name)} — ${qtyOf(m.qty,p)} со склада ${cellText(m.entityId,m.cityId)}`;
+  // из сделки: в её ленте остаётся запись о списании
+  if(did) Feed.add(S,{t:'deal',id:did},{kind:'item',text:`Списано при продаже: ${what}${r.reserve?' (по резерву)':''}.`,by:S.me,at:now});
+  closeModal();render();
+  toast(`Списано при продаже: ${what}. Запись в журнале есть.`);
 };
 A['stock-tab']=el=>{S.ui.stockTab=el.dataset.tab;render()};
 A['stock-cat']=el=>{S.ui.cat=el.dataset.cat;S.ui.page=0;render()};
@@ -6570,6 +7343,7 @@ function dealActions(d,edit){
   if(edit&&st==='open') h+=b('deal-win',ic('check')+'Успешно','pri')+b('deal-lose',ic('x')+'Провалена');
   if(edit&&st==='lost') h+=b('deal-reopen','Вернуть в работу','pri');
   if(can('prices')) h+=b('deal-kp',ic('print')+'КП');
+  if(st!=='lost') h+=b('deal-dispatch',ic('truck')+'Создать отправку');
   const note=st==='lost'?`<p class="lock bad-t">${ic('alert')}Провалена: ${esc(d.lostReason)}${d.lostAt?' · '+esc(fWhen(d.lostAt)):''}. Этап не меняется, пока сделку не вернут в работу.</p>`
     :st==='won'?`<p class="lock ok-t">${ic('check')}Успешно закрыта${d.wonAt?' · '+esc(fWhen(d.wonAt)):''}. Чтобы вернуть в работу, выберите другой этап.</p>`:'';
   return `${h?`<div class="dact">${h}</div>`:''}${note}${edit?'':`<p class="lock">${ic('lock')}Править сделки могут те, у кого есть право «Видеть клиентов и сделки».</p>`}`;
@@ -6627,6 +7401,8 @@ function dealLine(d,it,i,edit,pr){
     info=`<small class="dl-st">${k.known?`свободно ${qtyOf(Math.max(0,k.free),p)}`:'остаток: нет данных'}${held?` · в резерве по сделке: ${qtyOf(held,p)}`:''}</small>`;
     res=S.reserves.filter(r=>r.dealId===d.id&&r.productId===p.id).map(r=>`<span class="chip dl-r">${srcPill(r)}<span>${qtyOf(r.qty,p)}${r.src==='stock'?' · '+esc(cellText(r.entityId,r.cityId)):''}${r.until?' · до '+fD(r.until):''}</span>${edit&&can('reserve')?`<button type="button" class="btn sm ghost" data-act="deal-unres" data-id="${id}" data-rid="${esc(r.id)}">Снять</button>`:''}</span>`).join('');
     if(edit&&can('reserve')&&left>0) btn=`<button type="button" class="btn sm" data-act="deal-res" data-id="${id}" data-i="${i}">${ic('lock')}Зарезервировать</button>`;
+    // списание — окно склада (53-stock.js): сначала резерв этой сделки, если он есть; право sell
+    if(can('sell')) btn+=`<button type="button" class="btn sm" data-act="stock-sell" data-pid="${esc(p.id)}" data-did="${id}">Списать при продаже</button>`;
   }else info='<small class="dl-st">своя строка — не из каталога, резерва нет</small>';
   const numf=(f,label,val,ph)=>edit?`<div class="field"><label for="di-${f}-${i}">${label}</label><input id="di-${f}-${i}" class="inp sm" type="number" min="0" step="any" inputmode="decimal" data-on="deal-i" data-id="${id}" data-i="${i}" data-f="${f}" value="${val===null||val===undefined?'':esc(val)}"${ph?` placeholder="${ph}"`:''}></div>`:`<div class="field"><span class="lbl">${label}</span><span>${val===null||val===undefined||val===''?dealNoData('цена'):esc(val)}</span></div>`;
   return `<li class="dline"><div class="dl-h"><div class="dl-n"><b>${esc(name)}</b>${info}</div>${edit?`<button type="button" class="btn ghost icon sm" data-act="deal-del-i" data-id="${id}" data-i="${i}" aria-label="Убрать строку «${esc(name)}»">${ic('x')}</button>`:''}</div>
@@ -6743,6 +7519,14 @@ A['deal-kp']=el=>{
   const box=byId('kp-logo'),src=document.querySelector('.brand .logo img');
   if(box&&src) box.innerHTML=`<img src="${esc(src.getAttribute('src'))}" alt="wind-solar" width="1393" height="384">`;
 };
+// «Создать отправку»: форма заявки (openDispatchNew, 69-dispatch.js) с данными сделки — клиент, телефон, адрес клиента
+// (нет в карточке клиента — пусто, не выдумываем), товары сделки и dealId. Телефон — сделки, а нет его — первый у клиента.
+function dealDispatchPre(d){
+  const c=Clients.byId(S,d.clientId);
+  return {purpose:'sale',dealId:d.id,to:{name:c?c.name:d.client,phone:dealVal(d.phone)||(c&&(c.phones||[])[0])||''},address:(c&&c.address)||'',
+    items:(d.items||[]).map(it=>it.productId?{productId:it.productId,qty:it.qty}:{text:it.text,qty:it.qty})};
+}
+A['deal-dispatch']=el=>{const d=dealById(el.dataset.id);if(d) openDispatchNew(dealDispatchPre(d))};
 A['deal-print']=()=>{if(typeof window!=='undefined'&&typeof window.print==='function') window.print()};
 A['deal-add-p']=el=>{
   const id=el.dataset.id,r=Deals.addItem(S,id,{productId:el.dataset.pid},S.me,new Date());
@@ -7934,6 +8718,426 @@ function vMailSettings(){
 }
 SETTINGS_TABS.push({id:'mail',label:'Почта',order:40,ok:()=>can('settings'),render:vMailSettings});
 
+// Раздел «Отправки»: таблица и воронка заявок, форма «Новая отправка», карточка заявки справа.
+// Всё решает ядро Dispatch (39-dispatch.js): кто что может — canWork, canEdit, canCancel, смена этапа — setStage,
+// «собрано» — pick, отбор — query, склад-получатель — warehouseAddress. Свободный остаток — Stock.summary (stockOf).
+// Здесь — только экран: виды — чистые функции состояния, состояние меняют обработчики внизу файла.
+// Выбор на экране (вид, поиск, фильтры) лежит в S.ui.dispatch, черновик формы — в S.ui.dspDraft; оба не сохраняются.
+// Снаружи (кнопка «Создать отправку» в сделке): openDispatchNew(данные как у Dispatch.create) и openDrawer('dispatch', id).
+
+Object.assign(IC,{
+  copy:'<rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5v-2a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"/>',
+  file:'<path d="M7 3.5h6.5L18 8v12.5H7z"/><path d="M13.5 3.5V8H18"/>'
+});
+
+const DSP_DEF={view:'list',q:'',mine:false,today:false,stage:'',driver:''};
+const dspU=()=>S.ui.dispatch||(S.ui.dispatch=Object.assign({},DSP_DEF));
+const dspSel=()=>Object.assign({},DSP_DEF,S.ui.dispatch||{});
+const dspWho=id=>person(id)?.name||'нет данных: сотрудник';
+const dspNoData=t=>`<span class="muted">нет данных: ${t}</span>`;
+const dspPipe=()=>Pipes.of(S,Dispatch.PIPE)[0]||null;
+const dspStages=d=>(Pipes.of(S,Dispatch.PIPE).find(p=>p.id===d.pipeId)||{stages:[]}).stages;
+const dspStageName=d=>(Pipes.stage(S,d.pipeId,d.stageId)||{}).name||'нет данных: этап';
+const dspIsOpen=(st,d)=>!Pipes.isFinal(st,d.pipeId,d.stageId);
+const dspTone=d=>d.stageId===Dispatch.ST.cancelled?'bad':d.stageId===Dispatch.ST.delivered?'ok':d.stageId===Dispatch.ST.onWay?'info':d.stageId===Dispatch.ST.new?'':'sun';
+const dspStagePill=d=>`<span class="pill sm ${dspTone(d)}">${esc(dspStageName(d))}</span>`;
+// «сегодня, 10:00–14:00»: дата и окно, если оно задано
+const dspWhen=d=>{const w=d.when||{};return fRel(w.date)+(w.from?', '+w.from+(w.till?'–'+w.till:''):'')};
+const dspTel=p=>String(p||'').replace(/[^\d+]/g,'');
+const dspSize=n=>n<1024?n+' Б':n<1048576?Math.round(n/1024)+' КБ':(n/1048576).toFixed(1).replace('.',',')+' МБ';
+const dspCell=c=>`${Stock.entityName(S,c.entityId)??c.entityId}, ${Stock.cityName(S,c.cityId)??c.cityId}`;
+const dspPicked=d=>{const p=Dispatch.picked(d);return `собрано ${p.done} из ${p.total}`};
+// Подсказка «свободно N» у товара из каталога: число берёт Stock.summary (stockOf), своего расчёта нет
+function dspFreeText(productId){
+  const p=product(productId),k=stockOf(productId);
+  return k.known?`свободно ${qtyOf(k.free,p)}`:'остаток: нет данных';
+}
+// Число на пункте меню: открытые заявки, назначенные мне, и — у тех, кто ведёт отправки — открытые на сегодня
+function dspBadge(st=S,personId=S.me,now=new Date()){
+  const ids=new Set(Dispatch.query(st,{driver:personId}).filter(d=>dspIsOpen(st,d)).map(d=>d.id));
+  if(Dispatch.canWork(st,personId)) Dispatch.query(st,{today:true,now}).filter(d=>dspIsOpen(st,d)).forEach(d=>ids.add(d.id));
+  return ids.size;
+}
+
+// ——— файлы ———
+const dspIsImage=f=>/^image\//.test(f.type||'')&&typeof f.data==='string'&&f.data.startsWith('data:image/');
+// Файл заявки в карточке: картинка — миниатюра, открывается крупно; остальное — название, размер, «скачать».
+// Не поместился в браузер (unsaved) — пометка вместо файла.
+function dspFileHtml(d,f){
+  const size=dspSize(f.size||0);
+  if(f.unsaved||!f.data) return `<div class="dsp-fl bad">${ic('file')}<span>${esc(f.name)}<small>${size}</small><small class="warn-t">${f.unsaved?'не сохранено — мало места в браузере':'нет данных: файл'}</small></span></div>`;
+  if(dspIsImage(f)) return `<button type="button" class="dsp-th" data-act="dsp-file" data-key="${esc(d.id+'|'+f.id)}" aria-label="Открыть: ${esc(f.name)}"><img src="${esc(f.data)}" alt="${esc(f.name)}"><small>${esc(f.name)}</small></button>`;
+  return `<a class="dsp-fl" href="${esc(f.data)}" download="${esc(f.name)}">${ic('file')}<span>${esc(f.name)}<small>${size} · скачать</small></span></a>`;
+}
+
+// ——— отбор: одни условия на список, воронку и блок «Назначены мне» ———
+function dspList(u,funnel){
+  return Dispatch.query(S,{q:u.q,stage:funnel?'':u.stage,mine:u.mine,personId:S.me,today:u.today,now:new Date(),driver:u.driver});
+}
+
+// ——— список ———
+function dspTable(list){
+  const rows=list.map(d=>`<tr class="click" data-act="open-dispatch" data-id="${esc(d.id)}" tabindex="0"><td><div class="pname"><span>${esc(d.to.name)}${d.demo?' <span class="pill sm">пример</span>':''}</span><small class="mono">${esc(d.number)} · ${esc(Dispatch.PURPOSE[d.purpose])}</small><small class="dsp-show-s">${esc(d.address)}</small></div></td><td class="dsp-hide-s">${esc(d.address)}</td><td class="nowrap">${esc(dspWhen(d))}</td><td>${dspStagePill(d)}</td><td class="dsp-hide-s nowrap">${esc(dspPicked(d))}</td><td class="dsp-hide-s">${d.driverId?esc(dspWho(d.driverId)):'<span class="muted">не назначен</span>'}</td></tr>`).join('');
+  return `<section class="card clip"><div class="xs"><table class="tbl"><thead><tr><th>Заявка</th><th class="dsp-hide-s">Куда</th><th>Когда</th><th>Этап</th><th class="dsp-hide-s">Список</th><th class="dsp-hide-s">Водитель</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+}
+
+// ——— воронка ———
+function dspCard(d){
+  const drv=d.driverId?`<span class="who">${av(person(d.driverId),'xs')}${esc(dspWho(d.driverId))}</span>`:'<span class="muted">водитель не назначен</span>';
+  return `<article class="tcard dspcard${dspIsOpen(S,d)?'':' done'}" draggable="true" data-drag="${esc(d.id)}" data-act="open-dispatch" data-id="${esc(d.id)}" tabindex="0"><div class="tc-top"><span class="pill sm">${esc(Dispatch.PURPOSE[d.purpose])}</span>${d.demo?'<span class="pill sm">пример</span>':''}</div><p class="tc-t">${esc(d.to.name)}<small class="mono">${esc(d.number)}</small></p><p class="dsp-ad">${esc(d.address)}</p><div class="tc-m"><span class="due">${esc(dspWhen(d))}</span><span class="due">${esc(dspPicked(d))}</span></div><div class="tc-m">${drv}</div></article>`;
+}
+function dspFunnel(list){
+  const pipe=dspPipe();
+  if(!pipe) return '<section class="card"><p class="empty">Воронки отправок нет — её заводят в «Настройки → Воронки».</p></section>';
+  return `<div class="xs" data-hscroll><div class="dspkan" style="--n:${pipe.stages.length}">${pipe.stages.map(s=>{
+    const c=list.filter(d=>d.pipeId===pipe.id&&d.stageId===s.id);
+    return `<div class="col" data-dspcol="${esc(s.id)}"><div class="col-h"><span>${esc(s.name)}</span><span class="cnt-s">${c.length}</span></div>${c.map(dspCard).join('')||'<p class="col-empty">Пусто</p>'}</div>`;
+  }).join('')}</div></div>`;
+}
+
+// ——— блок «Назначены мне» (у водителя всегда, у остальных — когда им что-то назначено) ———
+function dspMineHtml(){
+  const open=Dispatch.query(S,{driver:S.me}).filter(d=>dspIsOpen(S,d));
+  if(me().role!=='driver'&&!open.length) return '';
+  const item=d=>`<div class="dsp-mi" role="button" tabindex="0" data-act="open-dispatch" data-id="${esc(d.id)}"><b>${esc(d.to.name)}</b><span class="mono">${esc(d.number)}</span><span>${esc(d.address)}</span><span class="due">${esc(dspWhen(d))}</span>${dspStagePill(d)}</div>`;
+  return `<section class="card dsp-mine"><div class="card-h"><h3>Назначены мне</h3><span class="cnt-s">${open.length}</span></div><div class="card-b dsp-mine-l">${open.length?open.map(item).join(''):'<p class="muted m0">Пока вам ничего не назначено.</p>'}</div></section>`;
+}
+
+// ——— тело раздела: счёт + список или воронка (его же перерисовывает поиск) ———
+function dspBody(){
+  const u=dspSel(),all=S.dispatches||[],funnel=u.view==='funnel',list=dspList(u,funnel);
+  const head=`<p class="count"><span>Заявок: <b>${list.length}</b>${list.length!==all.length?` из ${all.length}`:''}</span></p>`;
+  if(!all.length) return `${head}<section class="card"><p class="empty">Заявок на отправку пока нет. Любой сотрудник заводит её кнопкой «Новая отправка».</p></section>`;
+  if(!list.length) return `${head}<section class="card"><p class="empty">По этим условиям заявок нет. <button type="button" class="link" data-act="dsp-reset">Сбросить поиск и фильтры</button></p></section>`;
+  return head+(funnel?`<p class="hint">Перетащите карточку на другой этап или откройте заявку и нажмите кнопку. Двигать этапы могут логист, кладовщик и водитель; автор может отменить свою заявку до «В пути».</p>${dspFunnel(list)}`:dspTable(list));
+}
+
+function vDispatch(){
+  const u=dspSel(),funnel=u.view==='funnel',pipe=dspPipe();
+  const opt=(v,l,cur)=>`<option value="${esc(v)}"${cur===v?' selected':''}>${esc(l)}</option>`;
+  const sel=(k,label,opts)=>`<select class="inp sm w-auto" data-on="dsp-f" data-k="${k}" aria-label="${label}">${opts}</select>`;
+  // водители в фильтре: сотрудники с ролью «Водитель» и все, кому заявки уже назначены
+  const drv=[...Dispatch.drivers(S),...(S.dispatches||[]).map(d=>person(d.driverId)).filter(Boolean)].filter((p,i,a)=>a.findIndex(x=>x.id===p.id)===i);
+  const filters=(funnel?'':sel('stage','Этап',opt('','Все этапы',u.stage)+(pipe?pipe.stages.map(s=>opt(s.id,s.name,u.stage)).join(''):'')))
+    +sel('driver','Водитель',opt('','Все водители',u.driver)+drv.map(p=>opt(p.id,p.name,u.driver)).join(''));
+  const dirty=u.q.trim()||u.mine||u.today||u.stage||u.driver;
+  const nowD=new Date(),count=f=>Dispatch.query(S,{...f,personId:S.me,now:nowD}).length;
+  return `${dspMineHtml()}
+  <p class="hint">Заявка на отправку: кому, куда, телефон, когда и что везти. Завести её может любой сотрудник, исполняют логист, кладовщик и водитель.</p>
+  <div class="bar dspbar"><div class="seg" role="group" aria-label="Вид">${[['list','Список'],['funnel','Воронка']].map(([k,l])=>`<button type="button" class="${u.view===k?'on':''}" aria-pressed="${u.view===k}" data-act="dsp-view" data-v="${k}">${l}</button>`).join('')}</div>
+    <div class="search-in">${ic('search')}<input id="dsp-q" class="inp" type="search" placeholder="Поиск: номер, получатель, адрес" value="${esc(u.q)}" data-on="dsp-q" autocomplete="off" aria-label="Поиск по заявкам"></div><button type="button" class="btn pri" data-act="dsp-new">${ic('plus')}Новая отправка</button></div>
+  <div class="bar dspfilt"><button type="button" class="fchip${u.mine?' on':''}" aria-pressed="${u.mine}" data-act="dsp-mine">Мои · ${count({mine:true})}</button><button type="button" class="fchip${u.today?' on':''}" aria-pressed="${u.today}" data-act="dsp-today">На сегодня · ${count({today:true})}</button>${filters}${dirty?'<button type="button" class="btn ghost sm" data-act="dsp-reset">Сбросить</button>':''}</div>
+  <div id="dsp-body" class="stack-s">${dspBody()}</div>`;
+}
+
+// ——— карточка заявки ———
+function dDispatch(d){
+  const work=Dispatch.canWork(S,S.me),stages=dspStages(d),pos=stages.findIndex(s=>s.id===d.stageId);
+  const flow=stages.filter(s=>s.id!==Dispatch.ST.cancelled),fpos=flow.findIndex(s=>s.id===d.stageId);
+  const cancelled=d.stageId===Dispatch.ST.cancelled;
+  const steps=cancelled?`<p class="lock">${ic('lock')}Заявка отменена.</p>`
+    :`<ol class="steps" style="--n:${flow.length}">${flow.map((s,i)=>`<li class="${i<fpos?'done':s.id===d.stageId?'cur':''}"><span>${esc(s.name)}</span></li>`).join('')}</ol>`;
+  // кнопки этапов — крупные, во всю ширину; ближайший этап — главная
+  const nextId=(stages.slice(pos+1).find(s=>s.id!==Dispatch.ST.cancelled)||{}).id;
+  const stageBtn=s=>{const back=stages.findIndex(x=>x.id===s.id)<pos;return `<button type="button" class="btn big dsp-stg${s.id===nextId?' pri':''}" data-act="dsp-stage" data-id="${esc(d.id)}" data-stage="${esc(s.id)}">${s.id===nextId?ic('arrow'):''}${back?'Вернуть на':'Перевести на'} «${esc(s.name)}»</button>`};
+  const canCancel=Dispatch.canCancel(S,S.me,d);
+  const moves=(work?stages.filter(s=>s.id!==d.stageId&&s.id!==Dispatch.ST.cancelled).map(stageBtn).join(''):'')
+    +(canCancel?`<button type="button" class="btn big dsp-stg dsp-cancel" data-act="dsp-cancel-ask" data-id="${esc(d.id)}">${ic('x')}Отменить заявку</button>`:'');
+  const lock=!work&&!canCancel?`<p class="lock">${ic('lock')}Двигать этапы могут те, кто ведёт отправки: логист, кладовщик и водитель. Автор заявки может отменить её до «В пути».</p>`:'';
+  // водитель: назначает тот, кто ведёт отправки
+  const people=S.people.filter(p=>Dispatch.canWork(S,p.id)),isDrv=p=>p.role==='driver';
+  const popt=p=>`<option value="${esc(p.id)}"${p.id===d.driverId?' selected':''}>${esc(p.name)}</option>`;
+  const assign=work?`<form class="dsp-assign" data-form="dsp-assign" data-id="${esc(d.id)}" novalidate><label class="sr" for="dsp-drv">Водитель</label><select id="dsp-drv" class="inp"><option value="">Не назначен</option><optgroup label="Водители">${people.filter(isDrv).map(popt).join('')}</optgroup><optgroup label="Другие, кто ведёт отправки">${people.filter(p=>!isDrv(p)).map(popt).join('')}</optgroup></select><button type="submit" class="btn">Назначить</button></form>`:'';
+  const tel=dspTel(d.to.phone);
+  const hasAddr=d.address&&d.address!==Dispatch.NO_ADDRESS;
+  const quick=`<div class="dsp-quick">${tel?`<a class="btn big pri dsp-call" href="tel:${esc(tel)}">${ic('phone')}Позвонить · ${esc(d.to.phone)}</a>`:''}${hasAddr?`<button type="button" class="btn big" data-act="dsp-copy" data-id="${esc(d.id)}">${ic('copy')}Скопировать адрес</button>`:''}</div>`;
+  const route=d.purpose==='transfer'&&d.from&&d.toCell?`<div class="dsp-route"><p class="m0"><b>${esc(dspCell(d.from))}</b> ${ic('arrow')} <b>${esc(dspCell(d.toCell))}</b></p><p class="hint">${Dispatch.inTransit(d)?`Товар ушёл со склада «${esc(dspCell(d.from))}» и числится в пути на склад «${esc(dspCell(d.toCell))}».`:d.landed?`Товар пришёл на склад «${esc(dspCell(d.toCell))}».`:`Товар пока лежит на складе «${esc(dspCell(d.from))}»: со склада он уйдёт на этапе «В пути».`}</p></div>`:'';
+  const p=Dispatch.picked(d),canPick=work&&dspIsOpen(S,d);
+  // «Списать при продаже»: право sell, цель «Продажа», товар из каталога, ещё не списан; списанной строке — «списано: кто, когда, откуда»
+  const canSell=Dispatch.canSell(S,S.me)&&d.purpose==='sale';
+  const lines=d.items.map((it,i)=>{
+    const pr=it.productId?product(it.productId):null,sold=Dispatch.soldText(S,it);
+    const sellBtn=canSell&&it.productId&&!it.sold?`<button type="button" class="btn sm dsp-sell" data-act="dsp-sell" data-id="${esc(d.id)}" data-i="${i}">Списать при продаже</button>`:'';
+    return `<li><label class="dsp-line"><input type="checkbox"${it.picked?' checked':''}${canPick?'':' disabled'} data-on="dsp-pick" data-id="${esc(d.id)}" data-i="${i}"><span><b>${esc(Dispatch.lineName(S,it))}</b> — ${esc(qtyOf(it.qty,pr))}${it.productId?'':' <small class="muted">своя строка</small>'}${sold?`<small class="dsp-sold">${esc(sold)}</small>`:''}</span></label>${sellBtn}</li>`;
+  }).join('');
+  const files=d.files.length?`<div class="dsp-files">${d.files.map(f=>dspFileHtml(d,f)).join('')}</div>`:'<p class="muted m0">Файлов нет.</p>';
+  const deal=d.dealId?(S.deals||[]).find(x=>x.id===d.dealId):null;
+  const edit=Dispatch.canEdit(S,S.me,d)?`<div><button type="button" class="btn" data-act="dsp-edit" data-id="${esc(d.id)}">Изменить заявку</button></div>`:'';
+  return {kind:'Отправка '+d.number,title:esc(d.to.name),sub:`${esc(Dispatch.PURPOSE[d.purpose])} · ${esc(dspWhen(d))}${d.demo?' · пример':''}`,body:`
+    ${steps}<div class="dsp-stages">${moves}</div>${lock}
+    <dl class="kv"><dt>Этап</dt><dd>${dspStagePill(d)}</dd><dt>Получатель</dt><dd>${esc(d.to.name)}</dd><dt>Телефон</dt><dd>${esc(d.to.phone)}</dd><dt>Адрес</dt><dd>${hasAddr?esc(d.address):dspNoData('адрес')}</dd><dt>Когда</dt><dd>${esc(dspWhen(d))}</dd>${deal?`<dt>Сделка</dt><dd><button type="button" class="link" data-act="open-deal" data-id="${esc(deal.id)}">${esc(deal.id)} · ${esc(deal.client)}</button></dd>`:d.dealId?`<dt>Сделка</dt><dd>${esc(d.dealId)}</dd>`:''}<dt>Создал</dt><dd>${esc(dspWho(d.by))}, ${esc(fWhen(d.at))}</dd></dl>
+    ${quick}${route}
+    <div><h4 class="sh">Водитель</h4>${d.driverId?`<p class="m0"><span class="who">${av(person(d.driverId),'xs')}${esc(dspWho(d.driverId))}</span></p>`:'<p class="muted m0">Не назначен.</p>'}${assign}</div>
+    <div><h4 class="sh">Список · ${esc(dspPicked(d))}</h4><ul class="dsp-lines">${lines}</ul>${canPick?'':work?'':'<p class="hint">Отмечают «собрано» кладовщик, логист и водитель.</p>'}</div>
+    <div><h4 class="sh">Файлы</h4>${files}</div>
+    <div><h4 class="sh">Примечание</h4>${d.note?`<p class="prose">${esc(d.note)}</p>`:'<p class="muted m0">Примечания нет.</p>'}</div>
+    ${edit}
+    <div><h4 class="sh">Лента</h4>${feedHtml({t:'dispatch',id:d.id})}</div>`};
+}
+
+// ——— форма «Новая отправка» / правка заявки ———
+// Черновик лежит в S.ui.dspDraft: поля пишут в него по мере ввода (data-on="dsp-f"), при отправке значения ещё раз берутся из полей.
+const dspDraft=()=>S.ui.dspDraft||null;
+function dspDraftFrom(pre,editId){
+  const p=pre||{},w=p.when||{},cell=(c,e,k)=>({e:(c&&c.entityId)||e,k:(c&&c.cityId)||k});
+  const f=cell(p.from,(S.entities[0]||{}).id||'',(S.cities[0]||{}).id||''),t=cell(p.toCell,(S.entities[0]||{}).id||'',(S.cities[1]||S.cities[0]||{}).id||'');
+  return {editId:editId||'',purpose:p.purpose||'sale',name:(p.to&&p.to.name)||'',phone:(p.to&&p.to.phone)||'',
+    address:p.address&&p.address!==Dispatch.NO_ADDRESS&&p.purpose!=='transfer'?p.address:'',
+    date:w.date?iso(w.date):'',from:w.from||'',till:w.till||'',note:p.note||'',dealId:p.dealId||'',
+    fromE:f.e,fromC:f.k,toE:t.e,toC:t.k,
+    items:(p.items||[]).map(i=>i.productId?{productId:i.productId,qty:i.qty}:{text:i.text,qty:i.qty}),
+    files:(p.files||[]).map(x=>({...x}))};
+}
+// Открыть форму новой заявки. pre — те же поля, что у Dispatch.create: purpose, to, address, when, items, files, note, dealId.
+function openDispatchNew(pre){S.ui.dspDraft=dspDraftFrom(pre,'');openModal('dispatchForm')}
+function openDispatchEdit(id){
+  const d=Dispatch.byId(S,id);if(!d) return;
+  if(!Dispatch.canEdit(S,S.me,d)){toast('Править заявку нельзя: она уже в работе, а у вас нет права вести отправки.','warn');return}
+  S.ui.dspDraft=dspDraftFrom(d,id);openModal('dispatchForm');
+}
+
+const dspOpts=(list,cur,extra)=>list.map(x=>`<option value="${esc(x.id)}"${x.id===cur?' selected':''}>${esc(x.name)}</option>`).join('')+(extra||'');
+// Склад «откуда»: юрлицо и город могут быть «не указано» — так лежит часть остатков; «куда» — только настоящие
+function dspCellSel(key,label,e,c,anyOk){
+  const any=(id,cur,name)=>anyOk?`<option value="${Stock.ANY}"${cur===Stock.ANY?' selected':''}>${esc(name)}</option>`:'';
+  return `<div class="field"><span class="lbl">${label}</span><div class="grid2"><select id="dsp-${key}-e" class="inp" data-on="dsp-f" data-k="${key}E" aria-label="${label}: юрлицо">${dspOpts(S.entities,e,any('',e,Stock.entityName(S,Stock.ANY)))}</select><select id="dsp-${key}-c" class="inp" data-on="dsp-f" data-k="${key}C" aria-label="${label}: город">${dspOpts(S.cities,c,any('',c,Stock.cityName(S,Stock.ANY)))}</select></div></div>`;
+}
+// Подсказка про адрес перемещения: адрес склада-получателя из справочника городов или честное «нет данных»
+function dspAddrHint(x){
+  const a=Dispatch.warehouseAddress(S,{entityId:x.toE,cityId:x.toC});
+  return a===Dispatch.NO_ADDRESS?'Адрес склада-получателя в справочнике городов не заполнен: в заявке будет «'+a+'».':'Адрес склада-получателя подставится сам: '+a+'.';
+}
+// Блок формы под цель: у перемещения — склады и адрес склада-получателя, у остальных — поле «Адрес»
+function dspTransferHtml(x){
+  if(x.purpose!=='transfer') return `<div class="field"><label for="dsp-address">Адрес</label><input id="dsp-address" class="inp" value="${esc(x.address)}" data-on="dsp-f" data-k="address" autocomplete="off" placeholder="Город, улица, дом"></div>`;
+  return `${dspCellSel('from','Склад «откуда»',x.fromE,x.fromC,true)}${dspCellSel('to','Склад «куда»',x.toE,x.toC,false)}<p class="hint" id="dsp-ad-hint">${esc(dspAddrHint(x))}</p>`;
+}
+function dspItemsHtml(x){
+  if(!x.items.length) return '<p class="muted m0">Список пуст: найдите товар в каталоге или добавьте свою строку.</p>';
+  return `<ul class="dsp-its">${x.items.map((it,i)=>{
+    const name=it.productId?(product(it.productId)||{}).name||'нет данных: товар':it.text;
+    return `<li class="dsp-it"><div class="dsp-it-n"><b>${esc(name)}</b><small>${it.productId?esc(dspFreeText(it.productId)):'своя строка — склад не трогает'}</small></div><input class="inp dsp-q" type="number" min="1" step="1" inputmode="numeric" value="${esc(it.qty)}" data-on="dsp-qty" data-i="${i}" aria-label="Количество: ${esc(name)}"><button type="button" class="btn ghost icon" data-act="dsp-line-del" data-i="${i}" aria-label="Убрать строку: ${esc(name)}">${ic('x')}</button></li>`;
+  }).join('')}</ul>`;
+}
+// Результаты поиска по каталогу: название и «свободно N» из Stock.summary
+function dspPresHtml(q){
+  if(Catalog.norm(q).length<2) return '';
+  const hits=Catalog.query(S,{q}).slice(0,6);
+  if(!hits.length) return '<p class="hint">В каталоге такого нет — добавьте свою строку.</p>';
+  return `<ul class="dsp-pres">${hits.map(p=>`<li><button type="button" class="dpr" data-act="dsp-add" data-pid="${esc(p.id)}"><span class="dpr-n">${esc(p.name)}</span><small>${esc(dspFreeText(p.id))}</small>${ic('plus')}</button></li>`).join('')}</ul>`;
+}
+function dspFilesEditHtml(x){
+  if(!x.files.length) return '<p class="muted m0">Файлов нет.</p>';
+  return x.files.map((f,i)=>{
+    const rm=`<button type="button" class="btn ghost icon dsp-rm" data-act="dsp-file-del" data-i="${i}" aria-label="Убрать файл: ${esc(f.name)}">${ic('x')}</button>`;
+    return dspIsImage(f)?`<figure class="dsp-th"><img src="${esc(f.data)}" alt="${esc(f.name)}"><small>${esc(f.name)}</small>${rm}</figure>`
+      :`<div class="dsp-fl">${ic('file')}<span>${esc(f.name)}<small>${dspSize(f.size||0)}${f.unsaved?' · не сохранено — мало места в браузере':''}</small></span>${rm}</div>`;
+  }).join('');
+}
+MODALS.dispatchForm=()=>{
+  const x=dspDraft()||dspDraftFrom({},'');
+  const f=(id,label,html,cls)=>`<div class="field${cls?' '+cls:''}"><label for="dsp-${id}">${label}</label>${html}</div>`;
+  const inp=(id,k,val,type,extra)=>`<input id="dsp-${id}" class="inp" type="${type||'text'}" value="${esc(val)}" data-on="dsp-f" data-k="${k}" autocomplete="off"${extra||''}>`;
+  return `<form data-form="dispatch" novalidate>${mHead(x.editId?'Заявка '+esc(x.editId):'Новая отправка')}<div class="modal-b dsp-form">
+    ${f('purpose','Цель',`<select id="dsp-purpose" class="inp" data-on="dsp-purpose">${Object.entries(Dispatch.PURPOSE).map(([k,l])=>`<option value="${k}"${x.purpose===k?' selected':''}>${esc(l)}</option>`).join('')}</select>`)}
+    <div class="grid2">${f('name','Получатель',inp('name','name',x.name,'text',' placeholder="Кому везём"'))}${f('phone','Телефон',inp('phone','phone',x.phone,'tel',' inputmode="tel" placeholder="+7 …"'))}</div>
+    <div id="dsp-tr" class="stack-s">${dspTransferHtml(x)}</div>
+    <div class="grid2">${f('date','Дата',inp('date','date',x.date,'date'))}<div class="field"><span class="lbl">Время (по желанию)</span><div class="grid2"><input id="dsp-from" class="inp" type="time" value="${esc(x.from)}" data-on="dsp-f" data-k="from" aria-label="Время с"><input id="dsp-till" class="inp" type="time" value="${esc(x.till)}" data-on="dsp-f" data-k="till" aria-label="Время до"></div></div></div>
+    <div class="field"><span class="lbl">Что отправляем</span><div id="dsp-items">${dspItemsHtml(x)}</div>
+      <input id="dsp-pq" class="inp" type="search" placeholder="Найти товар в каталоге" data-on="dsp-pq" autocomplete="off" aria-label="Поиск товара в каталоге"><div id="dsp-pres">${dspPresHtml('')}</div>
+      <div class="dsp-own"><input id="dsp-own" class="inp" placeholder="Или своя строка: например, образцы и документы" autocomplete="off" aria-label="Своя строка"><button type="button" class="btn" data-act="dsp-own-add">Добавить</button></div></div>
+    <div class="field"><span class="lbl">Файлы</span><div id="dsp-files" class="dsp-files">${dspFilesEditHtml(x)}</div><label class="btn dsp-addfile" for="dsp-file">${ic('plus')}Прикрепить файлы<input id="dsp-file" class="sr" type="file" multiple data-on="dsp-file"></label><small class="hint">Фото и документы любого типа. Большие файлы могут не поместиться в браузер: тогда у них будет пометка.</small></div>
+    ${f('note','Примечание',`<textarea id="dsp-note" class="inp" rows="3" data-on="dsp-f" data-k="note" placeholder="Например: позвонить за час до приезда">${esc(x.note)}</textarea>`)}
+    <p class="err" id="dsp-err" hidden></p></div>${mFoot(x.editId?'Сохранить':'Создать заявку')}</form>`;
+};
+MODALS.dspCancel=id=>{
+  const d=Dispatch.byId(S,id);
+  return `<form data-form="dsp-cancel" data-id="${esc(id)}" novalidate>${mHead('Отменить заявку '+esc(d?d.number:id))}<div class="modal-b">
+    <p class="m0">${d?esc(d.to.name):''}</p>
+    <p class="hint">Заявка уйдёт на этап «Отменена», в ленте останется, кто её отменил.${d&&d.purpose==='transfer'&&d.moved&&!d.landed?' Товар, который уже ушёл в путь, вернётся на склад «откуда».':''}</p>
+  </div>${mFoot('Отменить заявку')}</form>`;
+};
+// Окно «Списать при продаже» для строки заявки. Откуда — те же варианты, что в окне карточки товара (sellSources из 53-stock.js):
+// резерв сделки заявки (он первый и выбран) и клетки «юрлицо × город» с остатком. Количество — из строки, не вводится.
+// «Можно списать N» — sellMaxText → Stock.sellMax; само списание и все отказы — Dispatch.sell → Stock.sell.
+MODALS.dspSell=o=>{
+  const d=Dispatch.byId(S,o.id),it=d&&d.items[o.i],p=it&&it.productId?product(it.productId):null;
+  const head=mHead('Списать при продаже');
+  if(!p) return `${head}<div class="modal-b"><p class="m0">Такой строки в заявке нет.</p></div>`;
+  const src=sellSources({pid:p.id,did:d.dealId});
+  if(!src.length) return `${head}<div class="modal-b"><p class="m0">Списать нечего: на складе этого товара нет остатка и резерва со склада.</p></div>`;
+  const dealRs=src.find(x=>x[0][0]==='r'),best=Stock.bestCell(S,p.id);
+  const want=dealRs?dealRs[0]:`c:${best.entityId}|${best.cityId}`,cur=src.some(x=>x[0]===want)?want:src[0][0];
+  return `<form data-form="dsp-sell" data-id="${esc(d.id)}" data-i="${esc(o.i)}" novalidate>${mHead('Списать при продаже: '+esc(p.name))}<div class="modal-b">
+    <p class="m0">Заявка ${esc(d.number)}, ${esc(d.to.name)}. Списывается вся строка: ${esc(qtyOf(it.qty,p))}.${d.dealId?` Сделка ${esc(d.dealId)}.`:''} В журнале движений появится «Отгрузка».</p>
+    <div class="field"><label for="ps-src">Откуда</label><select id="ps-src" class="inp" data-on="sellsrc" data-pid="${esc(p.id)}">${optionsHtml(src,cur)}</select></div>
+    <p class="hint" id="ps-max">${esc(sellMaxText(p.id,cur))}</p>
+    <p class="err" id="ps-err" hidden></p></div>${mFoot('Списать')}</form>`;
+};
+MODALS.dspFile=key=>{
+  const [id,fid]=String(key).split('|'),d=Dispatch.byId(S,id),f=d&&d.files.find(x=>x.id===fid);
+  if(!f) return `<div>${mHead('Файл')}<div class="modal-b"><p class="m0">Файла нет.</p></div></div>`;
+  return `<div>${mHead(esc(f.name))}<div class="modal-b">${dspIsImage(f)?`<img class="dsp-big" src="${esc(f.data)}" alt="${esc(f.name)}">`:''}<a class="btn" href="${esc(f.data)}" download="${esc(f.name)}">${ic('file')}Скачать · ${esc(dspSize(f.size||0))}</a></div></div>`;
+};
+
+// ——— действия ———
+// Перевести заявку на этап: из воронки (перетаскивание) и из кнопок карточки. Всё — через Dispatch.setStage
+function dspMove(id,stageId){
+  const d=Dispatch.byId(S,id);
+  if(!d||d.stageId===stageId) return null;
+  const r=Dispatch.setStage(S,id,stageId,S.me,new Date());
+  if(!r.ok){toast(r.reason,'warn');return null}
+  render();
+  toast(`${d.number}: этап «${dspStageName(d)}». Запись в ленте есть.${r.note?' '+r.note:''}`);
+  return r;
+}
+// Адрес в буфер: современный способ, а где его нет — через временное поле
+function dspCopy(text,done){
+  const fail=()=>toast('Не получилось скопировать: выделите адрес и скопируйте вручную.','warn');
+  const old=()=>{try{const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();const ok=document.execCommand('copy');ta.remove();ok?done():fail()}catch(_){fail()}};
+  try{if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done,old);return}}catch(_){}
+  old();
+}
+
+A['open-dispatch']=el=>openDrawer('dispatch',el.dataset.id);
+A['dsp-new']=()=>openDispatchNew();
+A['dsp-edit']=el=>openDispatchEdit(el.dataset.id);
+A['dsp-view']=el=>{dspU().view=el.dataset.v==='funnel'?'funnel':'list';render()};
+A['dsp-mine']=()=>{const u=dspU();u.mine=!u.mine;render()};
+A['dsp-today']=()=>{const u=dspU();u.today=!u.today;render()};
+A['dsp-reset']=()=>{S.ui.dispatch=Object.assign({},DSP_DEF,{view:dspSel().view});render()};
+A['dsp-stage']=el=>dspMove(el.dataset.id,el.dataset.stage);
+A['dsp-cancel-ask']=el=>openModal('dspCancel',el.dataset.id);
+A['dsp-copy']=el=>{const d=Dispatch.byId(S,el.dataset.id);if(d) dspCopy(d.address,()=>toast(`Адрес скопирован: ${d.address}`))};
+A['dsp-file']=el=>openModal('dspFile',el.dataset.key);
+A['dsp-sell']=el=>{
+  if(!Dispatch.canSell(S,S.me)){toast('У вашей роли нет права списывать товар при продаже.','warn');return}
+  openModal('dspSell',{id:el.dataset.id,i:+el.dataset.i});
+};
+// форма
+A['dsp-add']=el=>{
+  const x=dspDraft();if(!x) return;
+  const row=x.items.find(i=>i.productId===el.dataset.pid);
+  if(row) row.qty=(Number(row.qty)||0)+1;else x.items.push({productId:el.dataset.pid,qty:1});
+  byId('dsp-items').innerHTML=dspItemsHtml(x);
+};
+A['dsp-own-add']=()=>{
+  const x=dspDraft(),inp=byId('dsp-own'),text=inp.value.trim();
+  if(!x||!text){if(inp.focus) inp.focus();return}
+  x.items.push({text,qty:1});inp.value='';byId('dsp-items').innerHTML=dspItemsHtml(x);
+};
+A['dsp-line-del']=el=>{const x=dspDraft();if(!x) return;x.items.splice(+el.dataset.i,1);byId('dsp-items').innerHTML=dspItemsHtml(x)};
+A['dsp-file-del']=el=>{const x=dspDraft();if(!x) return;x.files.splice(+el.dataset.i,1);byId('dsp-files').innerHTML=dspFilesEditHtml(x)};
+
+ON.input['dsp-q']=t=>{dspU().q=t.value;const box=byId('dsp-body');if(box) box.innerHTML=dspBody()};
+ON.change['dsp-f']=t=>{
+  const k=t.dataset.k;
+  if(Object.hasOwn(DSP_DEF,k)&&k!=='view'&&k!=='q'){dspU()[k]=t.value;render();return}
+  dspField(t);
+};
+// Поле формы → черновик. Смена склада «куда» обновляет подсказку про адрес.
+function dspField(t){
+  const x=dspDraft(),k=t.dataset.k;if(!x||!Object.hasOwn(x,k)) return;
+  x[k]=t.value;
+  if(k==='toE'||k==='toC'){const h=byId('dsp-ad-hint');if(h) h.textContent=dspAddrHint(x)}
+}
+ON.input['dsp-f']=t=>{if(!(t.dataset.k in DSP_DEF)) dspField(t)};
+ON.change['dsp-purpose']=t=>{
+  const x=dspDraft();if(!x) return;
+  x.purpose=t.value;byId('dsp-tr').innerHTML=dspTransferHtml(x);
+  // у перемещения получатель — склад: подставим, если поле пустое
+  if(x.purpose==='transfer'&&!x.name.trim()){x.name=`Склад: ${dspCell({entityId:x.toE,cityId:x.toC})}`;const n=byId('dsp-name');if(n) n.value=x.name}
+};
+ON.input['dsp-qty']=t=>{const x=dspDraft();if(x&&x.items[+t.dataset.i]) x.items[+t.dataset.i].qty=t.value};
+ON.input['dsp-pq']=t=>{const box=byId('dsp-pres');if(box) box.innerHTML=dspPresHtml(t.value)};
+ON.change['dsp-file']=t=>{dspReadFiles(t.files);t.value=''};
+// Выбранные файлы читаются в data-URL и встают в черновик; в сохранение они попадают вместе с заявкой (Store.dump)
+function dspReadFiles(files){
+  const x=dspDraft();if(!x||typeof FileReader==='undefined') return;
+  [...files].forEach(f=>{
+    const fr=new FileReader();
+    fr.onload=()=>{
+      if(dspDraft()!==x) return;
+      x.files.push({name:f.name,type:f.type||'',size:f.size,data:String(fr.result)});
+      const box=byId('dsp-files');if(box) box.innerHTML=dspFilesEditHtml(x);
+    };
+    fr.onerror=()=>toast(`Файл «${f.name}» не прочитался.`,'warn');
+    fr.readAsDataURL(f);
+  });
+}
+// «Собрано»: галочка строки → Dispatch.pick; не вышло — вернуть галочку и сказать почему
+ON.change['dsp-pick']=t=>{
+  const r=Dispatch.pick(S,t.dataset.id,+t.dataset.i,t.checked,S.me,new Date());
+  if(!r.ok) toast(r.reason,'warn');
+  render();
+};
+
+// Поля, которые не назвали: подсветить в форме
+const DSP_MISS_ID={name:'dsp-name',address:'dsp-address',phone:'dsp-phone',date:'dsp-date',items:'dsp-pq',from:'dsp-from-e',toCell:'dsp-to-e'};
+function dspMark(missing){
+  Object.values(DSP_MISS_ID).forEach(id=>{const e=byId(id);if(e&&e.removeAttribute) e.removeAttribute('aria-invalid')});
+  (missing||[]).forEach(k=>{const e=byId(DSP_MISS_ID[k]);if(e&&e.setAttribute) e.setAttribute('aria-invalid','true')});
+}
+FORMS.dispatch=()=>{
+  const x=dspDraft();
+  if(!x) return closeModal();
+  // значения полей — из формы (автозаполнение браузера события ввода не шлёт)
+  const v=(id,k)=>{const e=byId(id);if(e&&typeof e.value==='string') x[k]=e.value};
+  v('dsp-name','name');v('dsp-phone','phone');v('dsp-date','date');v('dsp-from','from');v('dsp-till','till');v('dsp-note','note');
+  if(x.purpose!=='transfer') v('dsp-address','address');
+  const data={purpose:x.purpose,to:{name:x.name,phone:x.phone},address:x.purpose==='transfer'?'':x.address,when:{date:x.date,from:x.from,till:x.till},items:x.items,files:x.files,note:x.note,dealId:x.dealId||undefined};
+  if(x.purpose==='transfer'){data.from={entityId:x.fromE,cityId:x.fromC};data.toCell={entityId:x.toE,cityId:x.toC}}
+  const now=new Date(),r=x.editId?Dispatch.update(S,x.editId,data,S.me,now):Dispatch.create(S,data,S.me,now);
+  if(!r.ok){dspMark(r.missing);showErr('dsp-err',r.reason);return}
+  const id=x.editId||r.id,got=!x.editId&&S.notes[0]&&S.notes[0].kind==='dispatch'?S.notes[0].to.length:0;
+  S.ui.dspDraft=null;closeModal();render();openDrawer('dispatch',id);
+  toast(x.editId?`Заявка ${id} изменена. Запись в ленте есть.`:`Заявка ${id} создана. Уведомление получили: ${got}.`);
+};
+FORMS['dsp-assign']=f=>{
+  const id=f.dataset.id,to=byId('dsp-drv').value,r=Dispatch.assign(S,id,to,S.me,new Date());
+  if(!r.ok){toast(r.reason,'warn');return}
+  render();toast(to?`Водитель ${dspWho(to)} назначен, ему ушло уведомление.`:'Водитель снят.');
+};
+// Списание строки: «откуда» из окна → Dispatch.sell; отказ ядра (нет права, не хватает, чужой резерв) — причиной в окне
+FORMS['dsp-sell']=f=>{
+  const id=f.dataset.id,i=+f.dataset.i,d=Dispatch.byId(S,id),it=d&&d.items[i];
+  if(!it||!it.productId) return showErr('ps-err','Такой строки в заявке нет.');
+  const r=Dispatch.sell(S,id,i,sellArg(it.productId,byId('ps-src').value),S.me,new Date());
+  if(!r.ok) return showErr('ps-err',r.reason);
+  closeModal();render();
+  toast(`${d.number}: ${Dispatch.soldText(S,it)}. Запись в журнале склада и в ленте есть.`);
+};
+FORMS['dsp-cancel']=f=>{
+  const id=f.dataset.id;
+  closeModal();
+  dspMove(id,Dispatch.ST.cancelled);
+};
+
+// Enter в строке поиска товара и в своей строке не отправляет форму: в своей строке он добавляет строку
+document.addEventListener('keydown',e=>{
+  const id=e.key==='Enter'&&e.target&&e.target.id;
+  if(id==='dsp-own'){e.preventDefault();A['dsp-own-add']()}
+  else if(id==='dsp-pq') e.preventDefault();
+});
+
+// драг и дроп: столбцы воронки отправок — data-dspcol
+document.addEventListener('dragover',e=>{
+  const col=e.target.closest?.('[data-dspcol]');if(!col) return;
+  e.preventDefault();
+  document.querySelectorAll('.col.drop').forEach(x=>{if(x!==col) x.classList.remove('drop')});col.classList.add('drop');
+});
+document.addEventListener('drop',e=>{
+  const col=e.target.closest?.('[data-dspcol]');if(!col) return;
+  e.preventDefault();col.classList.remove('drop');
+  const id=e.dataTransfer.getData('text/plain');
+  if(id&&Dispatch.byId(S,id)) dspMove(id,col.dataset.dspcol);
+});
+
+// ——— регистрация в реестрах оболочки ———
+NAV.push({id:'dispatch',label:'Отправки',icon:'truck',group:'Товар',order:40,ok:()=>true,badge:()=>dspBadge(),hot:true});
+VIEWS.dispatch=vDispatch;
+DRAWERS.dispatch=id=>{const d=Dispatch.byId(S,id);return d?dDispatch(d):null};
+
 // Раздел «Клиенты»: список с поиском по имени, телефону и ИНН, карточка клиента справа (данные правятся на месте,
 // связанные сделки, лиды и сообщения, лента), окно «Новый клиент» и подсказка «Похоже, это …» против дублей.
 // Всё решает ядро: Clients (40-clients.js) — поиск, дубли, заведение, правка, связанное; Feed — лента; Leads — видимость.
@@ -8044,6 +9248,12 @@ function clientLeads(list){
   return `<ul class="crel">${list.slice().sort((a,b)=>b.at-a.at).map(l=>clientRow('open-lead',l.id,`<span><b>${esc(l.id)}</b> ${esc(Leads.title(l))}</span>`,
     `${esc(stageName(l))} · ${esc(Leads.SOURCE[l.source]||l.source)} · ${esc(fWhen(l.at))}`,'')).join('')}</ul>`;
 }
+// Отправки клиента (Clients.related): по его сделкам и по телефону получателя; строка открывает карточку заявки
+function clientDispatches(list){
+  if(!list.length) return '<p class="muted m0">Отправок у этого клиента нет.</p>';
+  return `<ul class="crel">${list.slice().sort((a,b)=>String(b.id).localeCompare(String(a.id))).map(d=>clientRow('open-dispatch',d.id,`<span><b>${esc(d.number)}</b> ${esc(d.to.name)}</span>`,
+    `${esc(stageName(d))} · ${esc(Dispatch.PURPOSE[d.purpose]||'нет данных: цель')} · ${esc(fD(d.when.date))}`,'')).join('')}</ul>`;
+}
 const CLIENT_MSGS=5;
 function clientMsgs(list){
   if(!list.length) return '<p class="muted m0">Сообщений клиенту по видимым вам сделкам пока нет.</p>';
@@ -8056,6 +9266,7 @@ function dClient(c){
   const locked=edit?'':`<p class="lock">${ic('lock')}Править клиентов могут те, у кого есть право «Видеть клиентов и сделки».</p>`;
   return {kind:'Клиент '+c.id,title:esc(c.name),sub:`${esc(Clients.KIND[c.kind]||'нет данных: вид')}${c.demo?' · пример':''}`,body:`${locked}${clientFields(c,edit)}
     ${sec('Сделки',rel.deals.length,clientDeals(rel.deals))}${sec('Лиды',rel.leads.length,clientLeads(rel.leads))}${sec('Сообщения',rel.msgs.length,clientMsgs(rel.msgs))}
+    ${sec('Отправки',rel.dispatches.length,clientDispatches(rel.dispatches))}
     ${sec('Лента',null,feedHtml({t:'client',id:c.id}))}`};
 }
 

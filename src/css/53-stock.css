@@ -36,6 +36,10 @@ td.free b{font-weight:700}
 .mx td.tot{font-weight:700}
 .mx tfoot th,.mx tfoot td{border-top:1px solid var(--line-2);border-bottom:0}
 .mv .pill{align-self:center}
+.rbtns{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}
+.sell-l li>span{flex:1 1 140px;min-width:0}
+.sell-l small{order:3;flex:1 0 100%;margin-left:0}
+.sell-l .btn{margin-left:auto}
 /* настройки: склады и юрлица */
 .wh-row{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
 .wh-row.city{grid-template-columns:minmax(0,1fr) minmax(0,2fr)}

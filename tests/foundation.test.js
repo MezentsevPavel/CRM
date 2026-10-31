@@ -136,9 +136,10 @@ test('seed(): резервы, движения и поставки — ключ�
 const SPEC_ROLES = {
   director: 'Директор', managerB2b: 'Менеджер B2B', managerB2c: 'Менеджер B2C', logist: 'Логист',
   warehouse: 'Кладовщик', chiefEngineer: 'Главный инженер', engineer: 'Инженер', rop: 'РОП (руководитель отдела продаж)',
+  driver: 'Водитель',
 };
 
-test('seed(): схема v3 — восемь ролей в демо-команде (с РОП), этапы записей — по id существующих этапов', () => {
+test('seed(): схема v3 — девять ролей в демо-команде (с РОП и водителем), этапы записей — по id существующих этапов', () => {
   const { seed, SEEDS, Pipes, Perms } = load();
   const st = seed();
   assert.equal(st.v, 3);
@@ -230,12 +231,12 @@ test('Store: не влезает в лимит — фото выкинуты и 
 
 // Права по умолчанию — spec.md, «Решения по реализации» и истории R28–R30.
 const ROLE_NAMES = ['Директор', 'Менеджер B2B', 'Менеджер B2C', 'Логист', 'Кладовщик', 'Главный инженер', 'Инженер'];
-const MANAGER = ['stock', 'prices', 'reserve', 'leads', 'clients', 'write', 'mail'];
+const MANAGER = ['stock', 'prices', 'reserve', 'leads', 'clients', 'write', 'mail', 'sell'];
 const DEFAULT_ON = {
   'Менеджер B2B': MANAGER,
   'Менеджер B2C': MANAGER,
-  'Логист': ['stock', 'logistics', 'mail', 'tasksAssign'],
-  'Кладовщик': ['stock', 'receive'],
+  'Логист': ['stock', 'logistics', 'mail', 'tasksAssign', 'dispatch'],
+  'Кладовщик': ['stock', 'receive', 'dispatch'],
   'Главный инженер': ['tasksAssign', 'stock', 'clients', 'dealsAll'],
   'Инженер': ['tasksAssign', 'stock', 'clients', 'dealsAll'],
 };
@@ -255,7 +256,7 @@ function team(Perms) {
 test('Perms: список прав — v2 и новые; семь встроенных ролей с правами по спецификации', () => {
   const { Perms } = load();
   const keys = Array.from(Perms.LIST, p => p[0]);
-  assert.deepEqual(keys, [...V2_PERMS, 'mail', 'leads', 'leadsAssign', 'dealsAll', 'settings']);
+  assert.deepEqual(keys, [...V2_PERMS, 'mail', 'leads', 'leadsAssign', 'dealsAll', 'settings', 'dispatch', 'sell']);
   assert.equal(Perms.LIST.find(p => p[0] === 'dealsAll')[1], 'Видеть сделки всех типов');
   const roles = Perms.defaultRoles();
   assert.deepEqual(Array.from(roles, r => r.name), ROLE_NAMES);
@@ -327,7 +328,7 @@ const flagged = (p, flag) => p.stages.filter(s => s.flag === flag).map(s => s.na
 
 test('Pipes: воронки по умолчанию — как в interfaces.md, с флагами arrived и final', () => {
   const { Pipes } = load();
-  assert.deepEqual(Array.from(Pipes.KINDS), ['tasks', 'deals', 'leads', 'ships']);
+  assert.deepEqual(Array.from(Pipes.KINDS), ['tasks', 'deals', 'leads', 'ships', 'dispatch']);
   const st = { pipelines: Pipes.defaults() };
   for (const [kind, lists] of Object.entries(DEFAULT_PIPES)) {
     assert.deepEqual(plain(Pipes.of(st, kind).map(p => p.stages.map(s => s.name))), lists, `этапы: ${kind}`);

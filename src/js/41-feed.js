@@ -1,6 +1,6 @@
 // Ядро и вид: одна лента для всех карточек — сделка, лид, клиент, отправка. Комментарии и события, новые сверху.
 // Лента хранит только свои записи (st.feed); остальное подмешивает of(): историю лида, резервы по сделке,
-// сообщения клиенту, а у клиента — ленты его сделок и лидов. Дела (T10) и отправки (T07) пишут сюда же.
+// сообщения клиенту, а у клиента — ленты его сделок и лидов; у сделки — ленты её отправок. Дела (T10) и отправки (T07) пишут сюда же.
 // Чистые функции над состоянием st; время приходит параметром. Вид feedHtml не меняет состояние.
 
 const Feed = (() => {
@@ -8,6 +8,7 @@ const Feed = (() => {
   const KINDS = {
     comment: 'Комментарий', create: 'Создано', stage: 'Этап', field: 'Изменение', item: 'Товары',
     reserve: 'Резерв', win: 'Успешно', lose: 'Провалена', msg: 'Сообщение клиенту', history: 'История', act: 'Дело выполнено', actmove: 'Дела из лида',
+    dispatch: 'Отправка',
   };
   // Что есть ссылка на карточку и как её назвать в ленте клиента.
   const REF = { deal: 'Сделка', lead: 'Лид', client: 'Клиент', dispatch: 'Отправка' };
@@ -77,12 +78,16 @@ const Feed = (() => {
   // personId (необязательно) — у клиента подмешиваются только сделки и лиды, которые этот человек видит.
   function of(st, ref, personId) {
     const all = [];
-    const take = r => {
+    const take = (r, wrap) => {
       const own = (st.feed || []).filter(e => same(e.ref, r));
-      own.forEach(e => all.push(e));
-      synthetic(st, r, own).forEach(e => all.push(e));
+      own.forEach(e => all.push(wrap ? wrap(e) : e));
+      synthetic(st, r, own).forEach(e => all.push(wrap ? wrap(e) : e));
     };
     take(ref);
+    // у сделки — ещё ленты её отправок (заявки с этим dealId), с подписью «Отправка ОТ-NNN». Их записи идут видом 'dispatch'
+    // (прежний вид — в data.was), чтобы этапы заявки не путались с этапами самой сделки.
+    const asDispatch = e => ({ ...e, kind: 'dispatch', data: { ...(e.data || {}), was: e.kind } });
+    if (ref.t === 'deal') (st.dispatches || []).filter(d => d.dealId === ref.id).forEach(d => take({ t: 'dispatch', id: d.id }, asDispatch));
     if (ref.t === 'client') {
       const rel = Clients.related(st, ref.id, personId);
       rel.deals.forEach(d => take({ t: 'deal', id: d.id }));
@@ -94,13 +99,13 @@ const Feed = (() => {
   }
 
   // Кто может писать в ленту карточки: сделка и клиент — право «клиенты» (сделку человек должен видеть), лид — «лиды»
-  // (и видеть лид), отправка — «вести отправки». Неизвестного права нет ни у кого (Perms.can), так что до отправок — никто.
+  // (и видеть лид), отправка — Dispatch.canComment: любой сотрудник (раздел видят все).
   function canComment(st, personId, ref) {
     if (!ref || !(st.people || []).some(p => p.id === personId)) return false;
     if (ref.t === 'deal') return Leads.dealsVisible(st, personId).some(d => d.id === ref.id);
     if (ref.t === 'lead') return Leads.visible(st, personId).some(l => l.id === ref.id);
     if (ref.t === 'client') return Perms.can(st, personId, 'clients');
-    if (ref.t === 'dispatch') return Perms.can(st, personId, 'dispatch');
+    if (ref.t === 'dispatch') return Dispatch.canComment(st, personId, Dispatch.byId(st, ref.id));
     return false;
   }
 
@@ -168,7 +173,7 @@ function actNextHtml(ref, st = S, now = new Date()) {
 
 function feedHtml(ref, st = S, now = new Date()) {
   const me = st.me, who = id => (st.people || []).find(p => p.id === id);
-  const kindLabel = e => e.kind === 'msg' && e.data && e.data.inbound ? 'Сообщение от клиента' : (Feed.KINDS[e.kind] || 'Событие');
+  const kindLabel = e => e.kind === 'msg' && e.data && e.data.inbound ? 'Сообщение от клиента' : (Feed.KINDS[e.kind === 'dispatch' && e.data && e.data.was ? e.data.was : e.kind] || 'Событие');
   const rows = Feed.of(st, ref, me).map(e => {
     const by = e.by ? (who(e.by) ? who(e.by).name : 'нет данных: сотрудник') : (e.kind === 'msg' && e.data && e.data.inbound ? 'Клиент' : 'Система');
     // запись из другой карточки (в ленте клиента — сделка или лид) подписана, откуда она

@@ -56,12 +56,17 @@ const Stock = (() => {
   }
 
   // ——— поставки в пути ———
-  // Входящая поставка, ещё не принятая на склад (этап без флага final), по возрастанию ожидаемой даты.
+  // Приход, который ещё не лёг на склад: входящая поставка, не принятая на склад (этап без флага final), и перемещение
+  // между складами, уже ушедшее из клетки «откуда» (Dispatch.transit — единственное определение «в пути»).
+  // По возрастанию ожидаемой даты. У перемещения shipId — номер заявки (ОТ-NNN), плюс dispatchId и клетка-получатель
+  // entityId/cityId: это не поставка, под неё резерв не ставится (freeIn даёт 0).
   function incomingOf(st, productId) {
-    return (st.shipments || [])
+    const ships = (st.shipments || [])
       .filter(s => s.dir === 'in' && !Pipes.isFinal(st, s.pipeId, s.stageId))
-      .flatMap(s => (s.items || []).filter(i => i.productId === productId).map(i => ({ shipId: s.id, qty: i.qty, eta: s.eta })))
-      .sort((a, b) => a.eta - b.eta);
+      .flatMap(s => (s.items || []).filter(i => i.productId === productId).map(i => ({ shipId: s.id, qty: i.qty, eta: s.eta })));
+    const moves = Dispatch.transit(st, productId)
+      .map(t => ({ shipId: t.number, dispatchId: t.dispatchId, qty: t.qty, eta: t.eta, entityId: t.entityId, cityId: t.cityId }));
+    return [...ships, ...moves].sort((a, b) => a.eta - b.eta);
   }
 
   // Сколько в поставке ещё не отдано под резервы (для резерва «из поставки»).
@@ -213,5 +218,61 @@ const Stock = (() => {
     return { ok: true, reserve: r };
   }
 
-  return { ANY, KINDS, NO_ENTITY, NO_CITY, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, canReserve, bestCell, move, reserve, unreserve };
+  // Снять с резерва q штук: весь резерв — unreserve(), часть — резерв уменьшается, в журнале «Снят резерв» на q.
+  function release(st, r, q, by, at) {
+    if (q >= r.qty) return unreserve(st, r.id, by, at);
+    r.qty -= q;
+    log(st, { at, productId: r.productId, kind: KINDS.unreserve, qty: q, entityId: r.entityId || ANY, cityId: r.cityId || ANY, doc: r.dealId, by });
+    return { ok: true, reserve: r };
+  }
+
+  // Сколько можно списать при продаже. По резерву (reserveId) — сколько в нём осталось и лежит в его клетке; без резерва —
+  // остаток клетки минус резервы со склада на эту клетку (зарезервированное под другого клиента списывать нельзя).
+  // Резерв «под поставку» клетку не занимает: на складе этого товара ещё нет. Единственное место правила: Stock.sell и экран.
+  function sellMax(st, { productId, entityId, cityId, reserveId } = {}) {
+    if (reserveId) {
+      const r = (st.reserves || []).find(x => x.id === reserveId);
+      if (!r || r.productId !== productId || r.src !== 'stock') return 0;
+      return Math.max(0, Math.min(r.qty, grid(st, productId).cell(r.entityId || ANY, r.cityId || ANY) ?? 0));
+    }
+    const e = entityId || ANY, c = cityId || ANY;
+    const held = sum((st.reserves || []).filter(r => r.productId === productId && r.src === 'stock' && cellKey(r) === e + '|' + c), r => r.qty);
+    return Math.max(0, (grid(st, productId).cell(e, c) ?? 0) - held);
+  }
+
+  // Списать проданное: {productId, qty, entityId, cityId, reserveId?, doc} → «Отгрузка» из клетки (через move) и,
+  // если есть reserveId, снятие этого количества с резерва — одним действием, поэтому свободный остаток
+  // (годный остаток − резервы) не меняется. Клетка по резерву — та, где он стоит. Нужно право sell.
+  // Без reserveId — не больше sellMax: остаток клетки минус резервы на неё; с reserveId — в пределах своего резерва.
+  // → {ok, move, reserve} | {ok:false, reason}; при отказе ничего не меняется.
+  function sell(st, { productId, qty, entityId, cityId, reserveId, doc } = {}, by, now) {
+    if (!Perms.can(st, by, 'sell')) return { ok: false, reason: 'У вас нет права списывать товар при продаже.' };
+    const q = Number(qty);
+    if (!Number.isInteger(q) || q < 1) return { ok: false, reason: 'Укажите количество — целое число больше нуля.' };
+    let e = entityId || ANY, c = cityId || ANY, r = null;
+    if (reserveId) {
+      r = (st.reserves || []).find(x => x.id === reserveId) || null;
+      if (!r) return { ok: false, reason: 'Такого резерва нет.' };
+      if (r.productId !== productId) return { ok: false, reason: 'Этот резерв поставлен на другой товар.' };
+      if (r.src !== 'stock') return { ok: false, reason: `Резерв стоит под поставку ${r.src}: на складе этого товара ещё нет.` };
+      if (q > r.qty) return { ok: false, reason: `В резерве только ${r.qty}, а списать нужно ${q}.` };
+      const re = r.entityId || ANY, rc = r.cityId || ANY;
+      if ((entityId || cityId) && (e !== re || c !== rc)) {
+        return { ok: false, reason: `Резерв лежит в клетке «${entityName(st, re) ?? re}, ${cityName(st, rc) ?? rc}» — списать можно только оттуда.` };
+      }
+      e = re; c = rc;
+    } else {
+      // лежит достаточно, но часть занята чужим резервом — отказ с числом; если не лежит вовсе, скажет move
+      const have = grid(st, productId).cell(e, c) ?? 0, free = sellMax(st, { productId, entityId: e, cityId: c });
+      if (q <= have && q > free) {
+        return { ok: false, reason: `В клетке «${entityName(st, e) ?? e}, ${cityName(st, c) ?? c}» лежит ${have}, из них под резервом ${have - free}: без резерва можно списать только ${free}, а нужно ${q}. Зарезервированное списывают по его резерву.` };
+      }
+    }
+    const m = move(st, { kind: KINDS.ship, productId, qty: q, entityId: e, cityId: c, doc, by, at: now });
+    if (!m.ok) return { ok: false, reason: m.reason + ' Списать больше, чем лежит в клетке, нельзя.' };
+    if (r) release(st, r, q, by, now);
+    return { ok: true, move: m.move, reserve: r };
+  }
+
+  return { ANY, KINDS, NO_ENTITY, NO_CITY, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, canReserve, bestCell, move, reserve, unreserve, sellMax, sell };
 })();

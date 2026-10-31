@@ -147,6 +147,7 @@ function dealActions(d,edit){
   if(edit&&st==='open') h+=b('deal-win',ic('check')+'Успешно','pri')+b('deal-lose',ic('x')+'Провалена');
   if(edit&&st==='lost') h+=b('deal-reopen','Вернуть в работу','pri');
   if(can('prices')) h+=b('deal-kp',ic('print')+'КП');
+  if(st!=='lost') h+=b('deal-dispatch',ic('truck')+'Создать отправку');
   const note=st==='lost'?`<p class="lock bad-t">${ic('alert')}Провалена: ${esc(d.lostReason)}${d.lostAt?' · '+esc(fWhen(d.lostAt)):''}. Этап не меняется, пока сделку не вернут в работу.</p>`
     :st==='won'?`<p class="lock ok-t">${ic('check')}Успешно закрыта${d.wonAt?' · '+esc(fWhen(d.wonAt)):''}. Чтобы вернуть в работу, выберите другой этап.</p>`:'';
   return `${h?`<div class="dact">${h}</div>`:''}${note}${edit?'':`<p class="lock">${ic('lock')}Править сделки могут те, у кого есть право «Видеть клиентов и сделки».</p>`}`;
@@ -204,6 +205,8 @@ function dealLine(d,it,i,edit,pr){
     info=`<small class="dl-st">${k.known?`свободно ${qtyOf(Math.max(0,k.free),p)}`:'остаток: нет данных'}${held?` · в резерве по сделке: ${qtyOf(held,p)}`:''}</small>`;
     res=S.reserves.filter(r=>r.dealId===d.id&&r.productId===p.id).map(r=>`<span class="chip dl-r">${srcPill(r)}<span>${qtyOf(r.qty,p)}${r.src==='stock'?' · '+esc(cellText(r.entityId,r.cityId)):''}${r.until?' · до '+fD(r.until):''}</span>${edit&&can('reserve')?`<button type="button" class="btn sm ghost" data-act="deal-unres" data-id="${id}" data-rid="${esc(r.id)}">Снять</button>`:''}</span>`).join('');
     if(edit&&can('reserve')&&left>0) btn=`<button type="button" class="btn sm" data-act="deal-res" data-id="${id}" data-i="${i}">${ic('lock')}Зарезервировать</button>`;
+    // списание — окно склада (53-stock.js): сначала резерв этой сделки, если он есть; право sell
+    if(can('sell')) btn+=`<button type="button" class="btn sm" data-act="stock-sell" data-pid="${esc(p.id)}" data-did="${id}">Списать при продаже</button>`;
   }else info='<small class="dl-st">своя строка — не из каталога, резерва нет</small>';
   const numf=(f,label,val,ph)=>edit?`<div class="field"><label for="di-${f}-${i}">${label}</label><input id="di-${f}-${i}" class="inp sm" type="number" min="0" step="any" inputmode="decimal" data-on="deal-i" data-id="${id}" data-i="${i}" data-f="${f}" value="${val===null||val===undefined?'':esc(val)}"${ph?` placeholder="${ph}"`:''}></div>`:`<div class="field"><span class="lbl">${label}</span><span>${val===null||val===undefined||val===''?dealNoData('цена'):esc(val)}</span></div>`;
   return `<li class="dline"><div class="dl-h"><div class="dl-n"><b>${esc(name)}</b>${info}</div>${edit?`<button type="button" class="btn ghost icon sm" data-act="deal-del-i" data-id="${id}" data-i="${i}" aria-label="Убрать строку «${esc(name)}»">${ic('x')}</button>`:''}</div>
@@ -320,6 +323,14 @@ A['deal-kp']=el=>{
   const box=byId('kp-logo'),src=document.querySelector('.brand .logo img');
   if(box&&src) box.innerHTML=`<img src="${esc(src.getAttribute('src'))}" alt="wind-solar" width="1393" height="384">`;
 };
+// «Создать отправку»: форма заявки (openDispatchNew, 69-dispatch.js) с данными сделки — клиент, телефон, адрес клиента
+// (нет в карточке клиента — пусто, не выдумываем), товары сделки и dealId. Телефон — сделки, а нет его — первый у клиента.
+function dealDispatchPre(d){
+  const c=Clients.byId(S,d.clientId);
+  return {purpose:'sale',dealId:d.id,to:{name:c?c.name:d.client,phone:dealVal(d.phone)||(c&&(c.phones||[])[0])||''},address:(c&&c.address)||'',
+    items:(d.items||[]).map(it=>it.productId?{productId:it.productId,qty:it.qty}:{text:it.text,qty:it.qty})};
+}
+A['deal-dispatch']=el=>{const d=dealById(el.dataset.id);if(d) openDispatchNew(dealDispatchPre(d))};
 A['deal-print']=()=>{if(typeof window!=='undefined'&&typeof window.print==='function') window.print()};
 A['deal-add-p']=el=>{
   const id=el.dataset.id,r=Deals.addItem(S,id,{productId:el.dataset.pid},S.me,new Date());

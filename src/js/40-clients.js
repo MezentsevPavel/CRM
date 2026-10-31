@@ -137,18 +137,20 @@ const Clients = (() => {
   const leadBelongs = (c, l) => (l.clientId ? l.clientId === c.id : score(c, l) > 0);
 
   // Всё, что относится к клиенту: {leads, deals, msgs, dispatches}. personId — только то, что этому человеку видно:
-  // лиды по Leads.visible, сделки по Leads.dealsVisible (сделки чужого типа не видны), сообщения и отправки — по этим сделкам.
-  // Без personId — всё.
+  // лиды по Leads.visible, сделки по Leads.dealsVisible (сделки чужого типа не видны), сообщения — по этим сделкам.
+  // Отправки — по этим сделкам и те заявки, где телефон получателя совпал с телефоном клиента (phoneKey; раздел видят все,
+  // поэтому совпавшие по телефону показываются без проверки видимости), каждая один раз. Без personId — всё.
   function related(st, clientId, personId) {
     const c = byId(st, clientId), none = { leads: [], deals: [], msgs: [], dispatches: [] };
     if (!c) return none;
     const deals = (personId ? Leads.dealsVisible(st, personId) : (st.deals || [])).filter(d => d.clientId === c.id);
     const leads = (personId ? Leads.visible(st, personId) : (st.leads || [])).filter(l => leadBelongs(c, l));
     const ids = new Set(deals.map(d => d.id));
+    const phones = new Set((c.phones || []).map(phoneKey).filter(Boolean));
     return {
       leads, deals,
       msgs: (st.msgs || []).filter(m => ids.has(m.deal)),
-      dispatches: (st.dispatches || []).filter(x => ids.has(x.dealId)),
+      dispatches: (st.dispatches || []).filter(x => ids.has(x.dealId) || phones.has(phoneKey(x.to && x.to.phone))),
     };
   }
 

@@ -22,6 +22,8 @@ const Perms = (() => {
     ['leadsAssign', 'Распределять и передавать лиды'],
     ['dealsAll', 'Видеть сделки всех типов'],
     ['settings', 'Менять настройки фирмы'],
+    ['dispatch', 'Вести отправки'],
+    ['sell', 'Списывать при продаже'],
   ];
   const KEYS = LIST.map(p => p[0]);
 
@@ -30,10 +32,10 @@ const Perms = (() => {
   const ENGINEER = ['tasksAssign', 'stock', 'clients', 'dealsAll'];
   const DEFAULTS = [
     { id: 'director', name: 'Директор', all: true, on: KEYS },
-    { id: 'managerB2b', name: 'Менеджер B2B', scope: 'b2b', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'write', 'mail'] },
-    { id: 'managerB2c', name: 'Менеджер B2C', scope: 'b2c', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'write', 'mail'] },
-    { id: 'logist', name: 'Логист', on: ['stock', 'logistics', 'mail', 'tasksAssign'] },
-    { id: 'warehouse', name: 'Кладовщик', on: ['stock', 'receive'] },
+    { id: 'managerB2b', name: 'Менеджер B2B', scope: 'b2b', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'write', 'mail', 'sell'] },
+    { id: 'managerB2c', name: 'Менеджер B2C', scope: 'b2c', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'write', 'mail', 'sell'] },
+    { id: 'logist', name: 'Логист', on: ['stock', 'logistics', 'mail', 'tasksAssign', 'dispatch'] },
+    { id: 'warehouse', name: 'Кладовщик', on: ['stock', 'receive', 'dispatch'] },
     // Главный инженер и инженер — одна матрица (R30).
     { id: 'chiefEngineer', name: 'Главный инженер', on: ENGINEER },
     { id: 'engineer', name: 'Инженер', on: ENGINEER },

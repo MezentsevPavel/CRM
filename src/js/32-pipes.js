@@ -4,13 +4,14 @@
 // «Сделано/закрыто» — флаг final у этапа, «прибыло, ждёт приёмки» — флаг arrived.
 
 const Pipes = (() => {
-  const KINDS = ['tasks', 'deals', 'leads', 'ships'];
+  const KINDS = ['tasks', 'deals', 'leads', 'ships', 'dispatch'];
   // Где лежат записи вида и в каком поле id воронки.
   const STORE = {
     tasks: { list: 'tasks', field: 'boardId' },
     deals: { list: 'deals', field: 'pipeId' },
     leads: { list: 'leads', field: 'pipeId' },
     ships: { list: 'shipments', field: 'pipeId' },
+    dispatch: { list: 'dispatches', field: 'pipeId' },
   };
 
   const S_ = (id, name, flag) => (flag ? { id, name, flag } : { id, name });
@@ -115,9 +116,11 @@ const Pipes = (() => {
   function addPipe(st, kind, name, scope) {
     const n = clean(name);
     if (!KINDS.includes(kind) || !n) return null;
-    const base = defaults().find(p => p.kind === kind);
+    // воронки отправок по умолчанию в defaults() нет (её кладёт шаг SEEDS в 39-dispatch.js): берём этапы первой такой воронки
+    const base = defaults().find(p => p.kind === kind) || pipes(st).find(p => p.kind === kind);
+    if (!base) return null;
     st.pipelines = pipes(st);
-    const p = { id: Store.freeId(st.pipelines, kind), kind, name: n, stages: base.stages };
+    const p = { id: Store.freeId(st.pipelines, kind), kind, name: n, stages: base.stages.map(s => ({ ...s })) };
     if (scope) p.scope = scope;
     st.pipelines.push(p);
     return p;

@@ -108,6 +108,12 @@ function clientLeads(list){
   return `<ul class="crel">${list.slice().sort((a,b)=>b.at-a.at).map(l=>clientRow('open-lead',l.id,`<span><b>${esc(l.id)}</b> ${esc(Leads.title(l))}</span>`,
     `${esc(stageName(l))} · ${esc(Leads.SOURCE[l.source]||l.source)} · ${esc(fWhen(l.at))}`,'')).join('')}</ul>`;
 }
+// Отправки клиента (Clients.related): по его сделкам и по телефону получателя; строка открывает карточку заявки
+function clientDispatches(list){
+  if(!list.length) return '<p class="muted m0">Отправок у этого клиента нет.</p>';
+  return `<ul class="crel">${list.slice().sort((a,b)=>String(b.id).localeCompare(String(a.id))).map(d=>clientRow('open-dispatch',d.id,`<span><b>${esc(d.number)}</b> ${esc(d.to.name)}</span>`,
+    `${esc(stageName(d))} · ${esc(Dispatch.PURPOSE[d.purpose]||'нет данных: цель')} · ${esc(fD(d.when.date))}`,'')).join('')}</ul>`;
+}
 const CLIENT_MSGS=5;
 function clientMsgs(list){
   if(!list.length) return '<p class="muted m0">Сообщений клиенту по видимым вам сделкам пока нет.</p>';
@@ -120,6 +126,7 @@ function dClient(c){
   const locked=edit?'':`<p class="lock">${ic('lock')}Править клиентов могут те, у кого есть право «Видеть клиентов и сделки».</p>`;
   return {kind:'Клиент '+c.id,title:esc(c.name),sub:`${esc(Clients.KIND[c.kind]||'нет данных: вид')}${c.demo?' · пример':''}`,body:`${locked}${clientFields(c,edit)}
     ${sec('Сделки',rel.deals.length,clientDeals(rel.deals))}${sec('Лиды',rel.leads.length,clientLeads(rel.leads))}${sec('Сообщения',rel.msgs.length,clientMsgs(rel.msgs))}
+    ${sec('Отправки',rel.dispatches.length,clientDispatches(rel.dispatches))}
     ${sec('Лента',null,feedHtml({t:'client',id:c.id}))}`};
 }
 

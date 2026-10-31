@@ -13,7 +13,9 @@ const Store = (() => {
   // 6 — роль РОП и право leadsAssign (таск 04): сохранение без них уходит в пользу демо.
   // 7 — клиенты и лента (таск 09): st.clients, st.feed, st.lostReasons; у сделок clientId, items, at, wonAt, lostReason; у лидов clientId.
   // 8 — дела (таск 10): st.acts; лента подмешивает выполненные дела.
-  const REV = 9;
+  // 9 — лиды заводятся руками, время реакции (таск 10).
+  // 10 — отправки (таск 07): st.dispatches, права dispatch и sell, роль «Водитель», вид воронки dispatch.
+  const REV = 10;
   // Браузер даёт сайту около 5 млн символов на всё; берём с запасом.
   const LIMIT = 4500000;
   const NO_SPACE = 'не сохранено — мало места в браузере';
@@ -70,8 +72,21 @@ const Store = (() => {
     return total;
   }
 
-  // Состояние → {text, droppedPhotos, fits}. Не влезает в limit — фото выкидываются
-  // (droppedPhotos — сколько), их записи помечаются «не сохранено — мало места в браузере».
+  // Файлы заявок на отправку (таск 07): dispatches[].files[].data — строка data:… любого вида, не только картинка.
+  // Выкидывает данные файла (data → null) и помечает сам файл unsaved:true. Возвращает, сколько файлов выкинуто.
+  function dropFiles(node) {
+    let total = 0;
+    for (const d of (node && node.dispatches) || []) {
+      for (const f of (d && d.files) || []) {
+        if (f && typeof f.data === 'string' && f.data) { f.data = null; f.unsaved = true; total++; }
+      }
+    }
+    return total;
+  }
+
+  // Состояние → {text, droppedPhotos, droppedFiles, fits}. Не влезает в limit — выкидываются фото приёмки
+  // (droppedPhotos — сколько) и вместе с ними файлы заявок на отправку (droppedFiles — сколько); их записи помечаются
+  // «не сохранено — мало места в браузере»: у фото unsaved:{photos, text}, у файла unsaved:true. Остальное сохраняется.
   // Само состояние не меняется.
   function dump(state, limit = LIMIT) {
     const copy = plain(state, true);
@@ -80,12 +95,17 @@ const Store = (() => {
     if (packed) Object.assign(copy, packed);
     copy.rev = REV;
     let text = JSON.stringify(copy);
-    let droppedPhotos = 0;
+    let droppedPhotos = 0, droppedFiles = 0;
     if (text.length > limit) {
+      // картинка, приложенная к заявке, — файл заявки, а не фото приёмки: заявки на время отбора фото убираем из копии
+      const dispatches = copy.dispatches;
+      delete copy.dispatches;
       droppedPhotos = dropPhotos(copy);
-      if (droppedPhotos) text = JSON.stringify(copy);
+      if (dispatches) copy.dispatches = dispatches;
+      droppedFiles = dropFiles(copy);
+      if (droppedPhotos || droppedFiles) text = JSON.stringify(copy);
     }
-    return { text, droppedPhotos, fits: text.length <= limit };
+    return { text, droppedPhotos, droppedFiles, fits: text.length <= limit };
   }
 
   // Строка из localStorage → состояние с живыми датами; пусто, мусор или чужая версия схемы → null

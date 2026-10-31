@@ -3,7 +3,7 @@
 // feedHtml над лентой, метки «нет следующего шага» и счётчики меню берутся отсюда же.
 // Чистые функции над состоянием st; время приходит параметром now (Date), кто делает — by (id сотрудника).
 // Дело: {id, ref:{t,id}, type, title, due, ownerId, by, at, remind (минут до срока или null), remindedAt?, doneAt?, doneBy?, result?}.
-// Дело считается «живым», пока жива его карточка: лид не закрыт, сделка не провалена и не закрыта успешно. Дела закрытых
+// Дело считается «живым», пока жива его карточка: лид не закрыт, сделка не провалена и не закрыта успешно, заявка на отправку не в финальном этапе. Дела закрытых
 // карточек не попадают ни в счётчики, ни в «нет следующего шага», ни в напоминания: гасить их по одному никто не обязан.
 
 const Acts = (() => {
@@ -13,7 +13,7 @@ const Acts = (() => {
   // Быстрые сроки в форме
   const QUICK = { today: 'Сегодня', tomorrow: 'Завтра', week: 'Через неделю' };
   // Карточки, к которым ставят дела
-  const REFS = ['deal', 'lead', 'client'];
+  const REFS = ['deal', 'lead', 'client', 'dispatch'];
   const MISSING = { type: 'вид дела', due: 'срок' };
 
   const str = v => String(v == null ? '' : v).trim();
@@ -31,6 +31,7 @@ const Acts = (() => {
     if (ref.t === 'deal') { const d = (st.deals || []).find(x => x.id === ref.id); return !!d && Deals.state(st, d) === 'open'; }
     if (ref.t === 'lead') { const l = (st.leads || []).find(x => x.id === ref.id); return !!l && !Pipes.isFinal(st, l.pipeId, l.stageId); }
     if (ref.t === 'client') return !!Clients.byId(st, ref.id);
+    if (ref.t === 'dispatch') { const d = Dispatch.byId(st, ref.id); return !!d && !Pipes.isFinal(st, d.pipeId, d.stageId); }
     return false;
   }
   // Как назвать карточку в тексте: «Сделка Д-311 (ООО …)».
@@ -39,6 +40,7 @@ const Acts = (() => {
     if (ref.t === 'deal') name = ((st.deals || []).find(x => x.id === ref.id) || {}).client;
     else if (ref.t === 'lead') { const l = (st.leads || []).find(x => x.id === ref.id); name = l ? Leads.title(l) : ''; }
     else if (ref.t === 'client') name = (Clients.byId(st, ref.id) || {}).name;
+    else if (ref.t === 'dispatch') name = ((Dispatch.byId(st, ref.id) || {}).to || {}).name;
     return `${Feed.REF[ref.t] || 'Карточка'} ${ref.id}${name ? ` (${name})` : ''}`;
   }
   // Карточки, чьи дела видны в этой: у клиента — ещё его сделки и лиды (те, что видит personId), как в его ленте.

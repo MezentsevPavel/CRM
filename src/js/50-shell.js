@@ -38,8 +38,8 @@ function save(){
     try{localStorage.setItem(Store.KEY,r.text)}catch(_){ok=false}
   }
   if(!ok) toast('Изменения не сохранены — мало места в браузере','warn');
-  else if(r.droppedPhotos&&r.droppedPhotos!==_photoWarn) toast('Фото не сохранены — мало места в браузере','warn');
-  _photoWarn=r.droppedPhotos;
+  else if((r.droppedPhotos||r.droppedFiles)&&(r.droppedPhotos+r.droppedFiles)!==_photoWarn) toast((r.droppedPhotos?'Фото':'Файлы заявок')+(r.droppedPhotos&&r.droppedFiles?' и файлы заявок':'')+' не сохранены — мало места в браузере','warn');
+  _photoWarn=(r.droppedPhotos||0)+(r.droppedFiles||0);
   return {ok,droppedPhotos:r.droppedPhotos,fits:r.fits&&ok};
 }
 // Для ввода с клавиатуры — не на каждую букву
