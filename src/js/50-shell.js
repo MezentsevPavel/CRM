@@ -365,7 +365,7 @@ function render(){
   byId('ttl').textContent=n.label;
   byId('role').innerHTML=whoOptions();
   byId('theme-sw').innerHTML=themeSwitch(true);
-  updBell();renderDrawer();save();
+  chimeCheck();updBell();renderDrawer();save();
 }
 
 // ——— реестры полей и имитаций ———

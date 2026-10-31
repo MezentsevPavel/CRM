@@ -17,7 +17,7 @@ const SEEDS=[];
 function seed(){
   const st={
     v:3,me:'p1',view:'home',
-    prefs:{theme:'auto',sound:{on:false,kind:'bell'},notify:{},ship:{}},
+    prefs:{theme:'auto',sound:{},notify:{},ship:{}},
     roles:Perms.defaultRoles(),
     depts:[{id:'mgmt',name:'Руководство'},{id:'sales',name:'Продажи'},{id:'eng',name:'Инженерный'},{id:'stock',name:'Склад'},{id:'logistics',name:'Логистика'}],
     // демо-команда: все семь ролей, по два менеджера B2B и B2C; имена — примеры

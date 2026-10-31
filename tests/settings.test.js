@@ -497,3 +497,320 @@ test('«Настройки → Воронки»: «+ воронка» у сде�
   assert.equal(app.S.ui.modal, null);
   assert.ok(app.Pipes.stage(app.S, 'dealsB2b', 'request'));
 });
+
+// ——— таск 06, второй кусок: уведомления, звук, роли и права, порядок вкладок ———
+// Ожидаемое — из таска, спецификации (истории 64–66) и разобранных вручную примеров, не из кода под тестом.
+
+// Тосты страницы: что показал бы экран. Заглушка DOM их не хранит, поэтому подменяем appendChild.
+const toasts = app => { const list = []; app.document.getElementById('toasts').appendChild = el => list.push(el.innerHTML); return list; };
+const tabLabels = app => plain(app.settingsTabs().map(t => t.label));
+const noteTo = (app, kind, by) => app.Notify.push(app.S, kind, by, 'проверка', new Date()).to;
+// Переключатель или галочка с этим id включены (атрибут checked внутри того же тега)
+const isOn = (html, id) => new RegExp(`id="${id}"[^>]*? checked`).test(html);
+
+test('«Настройки → Уведомления»: выключенный вид не приходит этому сотруднику, другим приходит; включил обратно — приходит', () => {
+  const app = load();
+  // 'ship' (поставки) идёт всем сотрудникам: p2 — Анна, p3 — Максим
+  assert.ok(noteTo(app, 'ship', 'p1').includes('p2') && noteTo(app, 'ship', 'p1').includes('p3'));
+  app.setMe('p2');
+  const said = toasts(app);
+  app.ON.change['note-kind']({ dataset: { kind: 'ship' }, checked: false });
+  assert.equal(app.S.prefs.notify.p2.ship, false, 'выбор не записан в S.prefs.notify[me]');
+  const to = noteTo(app, 'ship', 'p1');
+  assert.ok(!to.includes('p2'), 'выключенный вид пришёл тому, кто его выключил');
+  assert.ok(to.includes('p3') && to.includes('p1'), 'выключенный у Анны вид пропал и у других');
+  assert.ok(said.some(t => t.includes('Поставки') && t.includes('выключен')), `нет сообщения о выключении: ${JSON.stringify(said)}`);
+  // другие виды Анне по-прежнему приходят: задача ей лично
+  assert.ok(app.Notify.push(app.S, 'task', 'p1', 'задача', new Date(), ['p2']).to.includes('p2'));
+  // включил обратно
+  app.ON.change['note-kind']({ dataset: { kind: 'ship' }, checked: true });
+  assert.ok(noteTo(app, 'ship', 'p1').includes('p2'), 'после включения вид снова не приходит');
+  // неизвестный вид настройку не пишет
+  app.ON.change['note-kind']({ dataset: { kind: 'выдуманный' }, checked: false });
+  assert.equal(app.Notify.setWanted(app.S, 'p2', 'выдуманный', false), false);
+  assert.ok(!('выдуманный' in (app.S.prefs.notify.p2 || {})));
+});
+
+test('«Настройки → Уведомления»: каждый вид из Notify.RECIPIENTS подписан по-русски ровно один раз, у каждого свой переключатель', () => {
+  const app = load();
+  const ids = app.NOTIFY_KINDS.map(k => k.id);
+  assert.deepEqual([...ids].sort(), Object.keys(app.Notify.RECIPIENTS).sort(), 'виды в настройках и в Notify.RECIPIENTS расходятся');
+  assert.equal(new Set(ids).size, ids.length, 'вид перечислен дважды');
+  for (const k of app.NOTIFY_KINDS) {
+    assert.match(k.name, /[а-яё]/i, `${k.id}: нет русской подписи`);
+    assert.ok(k.what.length > 10, `${k.id}: нет пояснения`);
+  }
+  // слова из таска: задачи, поставки, приёмка, лиды, почта, резервы, сообщения, отправки
+  const names = app.NOTIFY_KINDS.map(k => k.name).join(' | ');
+  for (const w of ['Задачи', 'Поставки', 'Приёмка', 'Лиды', 'Почта', 'Резервы', 'Сообщения', 'Отправки']) assert.ok(names.includes(w), `нет вида «${w}»`);
+  // вкладка есть у всех (и у кладовщика без права settings), переключатель включён, пока вид не выключили
+  for (const me of ['p1', 'p5']) {
+    app.setMe(me);
+    app.S.ui.setTab = 'notify';
+    const html = app.VIEWS.settings();
+    for (const id of ids) {
+      assert.ok(html.includes(`data-kind="${id}"`), `${me}: нет переключателя ${id}`);
+      assert.ok(isOn(html, 'nk-' + id), `${me}: вид ${id} показан выключенным, хотя по умолчанию включён`);
+    }
+  }
+  // выключили — переключатель погас, и только у того, кто выключил
+  app.setMe('p5');
+  app.ON.change['note-kind']({ dataset: { kind: 'dispatch' }, checked: false });
+  assert.ok(!isOn(app.VIEWS.settings(), 'nk-dispatch'), 'переключатель остался включённым');
+  app.setMe('p6');
+  assert.ok(isOn(app.VIEWS.settings(), 'nk-dispatch'), 'выбор кладовщика виден логисту');
+});
+
+test('Notify.soundFor: звук есть при новом уведомлении, нет при выключенном звуке, без нового и при первом взгляде', () => {
+  const { Notify, seed } = load();
+  const st = seed();
+  Notify.setSound(st, 'p2', { on: true });
+  // новое уведомление: было [n1], стало [n1, n2]
+  assert.equal(Notify.soundFor(st, 'p2', ['n1'], ['n1', 'n2']), 'bell');
+  // ничего нового: то же самое или стало меньше (прочитал)
+  assert.equal(Notify.soundFor(st, 'p2', ['n1', 'n2'], ['n1', 'n2']), null);
+  assert.equal(Notify.soundFor(st, 'p2', ['n1', 'n2'], ['n2']), null);
+  // страница только открылась: «до» не было — старые уведомления не звенят
+  assert.equal(Notify.soundFor(st, 'p2', null, ['n1', 'n2']), null);
+  // выбранный звук возвращается как есть
+  Notify.setSound(st, 'p2', { kind: 'drop' });
+  assert.equal(Notify.soundFor(st, 'p2', [], ['n7']), 'drop');
+  // звук выключен — тишина, даже если новое пришло
+  Notify.setSound(st, 'p2', { on: false });
+  assert.equal(Notify.soundFor(st, 'p2', [], ['n7']), null);
+  // звук у каждого свой: у p3 он не включался
+  assert.equal(Notify.soundFor(st, 'p3', [], ['n7']), null);
+});
+
+test('звук: вкл/выкл и выбор из нескольких звуков — свои у каждого сотрудника; неизвестный звук не принимается', () => {
+  const app = load();
+  assert.ok(app.Notify.SOUNDS.length >= 3, 'звуков меньше трёх');
+  assert.deepEqual(plain(app.Notify.SOUNDS.map(s => s[1])), ['Колокольчик', 'Капля', 'Двойной сигнал', 'Мягкий']);
+  app.setMe('p2');
+  assert.deepEqual(plain(app.Notify.soundPref(app.S, 'p2')), { on: false, kind: 'bell' }, 'по умолчанию звук должен быть выключен');
+  app.ON.change['sound-on']({ checked: true });
+  app.A['sound-pick']({ dataset: { kind: 'double' } });
+  assert.deepEqual(plain(app.S.prefs.sound.p2), { on: true, kind: 'double' });
+  assert.deepEqual(plain(app.Notify.soundPref(app.S, 'p3')), { on: false, kind: 'bell' }, 'выбор Анны попал к Максиму');
+  // экран показывает выбор: переключатель включён, выбран «Двойной сигнал», есть «Проверить»
+  app.S.ui.setTab = 'notify';
+  const html = app.VIEWS.settings();
+  assert.ok(isOn(html, 'snd-on'));
+  assert.match(html, /aria-checked="true" class="on" data-act="sound-pick" data-kind="double"/);
+  assert.match(html, /data-act="sound-test">[\s\S]*?Проверить<\/button>/);
+  // неизвестный звук — отказ, прежний выбор остаётся
+  app.A['sound-pick']({ dataset: { kind: 'пушечный-выстрел' } });
+  assert.equal(app.S.prefs.sound.p2.kind, 'double');
+  assert.equal(app.Notify.setSound(app.S, 'нет-такого', { on: true }), null);
+});
+
+test('звук синтезируется в браузере: у каждого звука свои ноты; без WebAudio тишина и ошибки нет', () => {
+  const app = load();
+  const ids = app.Notify.SOUNDS.map(s => s[0]);
+  const seen = new Set();
+  for (const id of ids) {
+    const notes = app.SOUND_NOTES[id];
+    assert.ok(notes && notes.length, `у звука ${id} нет нот`);
+    for (const n of notes) assert.ok(n.f > 100 && n.f < 5000 && n.dur > 0 && n.vol > 0 && n.vol <= 1, `${id}: странная нота ${JSON.stringify(n)}`);
+    seen.add(JSON.stringify(plain(notes)));
+  }
+  assert.equal(seen.size, ids.length, 'два звука звучат одинаково');
+  // в node нет AudioContext: «Проверить» не падает и честно говорит, что не сыграло
+  const said = toasts(app);
+  assert.equal(app.playSound('bell'), false);
+  assert.doesNotThrow(() => app.A['sound-test']());
+  assert.ok(said.some(t => t.includes('Не удалось сыграть')), `нет сообщения: ${JSON.stringify(said)}`);
+  // с подставным AudioContext: на каждую ноту один осциллятор, он запущен и остановлен, звук идёт на выход
+  const log = { osc: [], toOut: 0, starts: 0, stops: 0 };
+  class FakeCtx {
+    constructor() { this.currentTime = 10; this.state = 'running'; this.destination = { out: true }; }
+    createOscillator() {
+      const o = { type: '', frequency: { setValueAtTime(v) { o.f = v; }, exponentialRampToValueAtTime(v) { o.f2 = v; } }, connect() {}, start() { log.starts++; }, stop() { log.stops++; } };
+      log.osc.push(o);
+      return o;
+    }
+    createGain() { return { gain: { setValueAtTime() {}, exponentialRampToValueAtTime() {} }, connect(d) { if (d && d.out) log.toOut++; } }; }
+  }
+  assert.equal(app.playSound('drop', FakeCtx), true);
+  assert.equal(log.osc.length, app.SOUND_NOTES.drop.length);
+  assert.equal(log.osc[0].f, 1100);
+  assert.equal(log.osc[0].f2, 380, '«Капля» должна скользить вниз');
+  assert.equal(log.starts, 1);
+  assert.equal(log.stops, 1);
+  assert.equal(log.toOut, 1, 'звук не подключён к выходу');
+  assert.equal(app.playSound('нет-такого', FakeCtx), false);
+});
+
+test('новое уведомление текущему сотруднику играет звук при отрисовке; при выключенном звуке, на чужое и на своё действие — тишина', () => {
+  const app = load();
+  app.setMe('p2');                               // отрисовка запомнила, что непрочитано сейчас
+  app.Notify.setSound(app.S, 'p2', { on: true, kind: 'soft' });
+  app.render();
+  assert.equal(app.chimes, 0, 'зазвенели старые уведомления');
+  // Анне приходит задача от директора — после отрисовки звучит «Мягкий»
+  app.Notify.push(app.S, 'task', 'p1', 'Новая задача', new Date(), ['p2']);
+  app.render();
+  assert.equal(app.chimes, 1, 'новое уведомление не сыграло звук');
+  assert.equal(app.chimeLast, 'soft');
+  // повторная отрисовка без нового — тишины не нарушает
+  app.render();
+  assert.equal(app.chimes, 1, 'тот же список зазвенел второй раз');
+  // уведомление другому человеку (p3) Анне звука не даёт
+  app.Notify.push(app.S, 'task', 'p1', 'Для Максима', new Date(), ['p3']);
+  app.render();
+  assert.equal(app.chimes, 1, 'чужое уведомление зазвенело');
+  // своё действие: автор своё уже прочитал
+  app.Notify.push(app.S, 'task', 'p2', 'Я сама поставила', new Date(), ['p2']);
+  app.render();
+  assert.equal(app.chimes, 1, 'звук на собственное действие');
+  // звук выключен — новое приходит молча
+  app.Notify.setSound(app.S, 'p2', { on: false });
+  app.Notify.push(app.S, 'task', 'p1', 'Ещё задача', new Date(), ['p2']);
+  app.render();
+  assert.equal(app.chimes, 1, 'звук играет при выключенном');
+  // смена «кто я» новым не считается
+  app.Notify.setSound(app.S, 'p3', { on: true });
+  app.setMe('p3');
+  assert.equal(app.chimes, 1, 'смена человека зазвенела');
+});
+
+// ——— роли и права ———
+
+test('«Настройки → Роли и права»: вкладка только с правом settings; в таблице все роли и все права', () => {
+  const app = load();
+  app.setMe('p1');
+  assert.ok(app.settingsTabs().some(t => t.id === 'roles' && t.label === 'Роли и права'));
+  app.S.ui.setTab = 'roles';
+  const html = app.VIEWS.settings();
+  for (const r of app.S.roles) for (const [k] of app.Perms.LIST) assert.ok(html.includes(`id="pm-${r.id}-${k}"`), `нет галочки ${r.name} / ${k}`);
+  assert.ok(html.includes('data-form="role-add"') && html.includes('id="ra-name"'), 'нет формы «Добавить роль»');
+  for (const [k] of app.Perms.LIST) assert.ok(html.includes(`id="ra-${k}"`), `в форме роли нет права ${k}`);
+  // менеджер вкладки не видит, даже если она выбрана в S.ui
+  app.setMe('p2');
+  assert.ok(!app.settingsTabs().some(t => t.id === 'roles'));
+  app.S.ui.setTab = 'roles';
+  assert.ok(!app.VIEWS.settings().includes('data-form="role-add"'), 'менеджеру открыта форма новой роли');
+});
+
+test('«Добавить роль»: имя и галочки; роль сразу в таблице, в выборе роли сотрудника, а галочка меняет право сразу', () => {
+  const app = load();
+  app.setMe('p1');
+  const said = toasts(app);
+  app.byId('ra-name').value = '  Бухгалтер ';
+  for (const [k] of app.Perms.LIST) app.byId('ra-' + k).checked = ['prices', 'firm'].includes(k);
+  app.FORMS['role-add']({});
+  const role = app.S.roles.find(r => r.name === 'Бухгалтер');
+  assert.ok(role, 'роль не создана');
+  assert.equal(role.builtin, false);
+  assert.deepEqual(plain(app.Perms.LIST.map(p => p[0]).filter(k => role.perms[k])), ['firm', 'prices'], 'права роли не те, что отмечены');
+  assert.ok(said.some(t => t.includes('Бухгалтер') && t.includes('2 права')), `нет сообщения: ${JSON.stringify(said)}`);
+  // в таблице прав: колонка есть, отмеченное право стоит, неотмеченное — нет
+  app.S.ui.setTab = 'roles';
+  const html = app.VIEWS.settings();
+  assert.ok(isOn(html, `pm-${role.id}-prices`), 'роли нет в таблице или право не отмечено');
+  assert.ok(html.includes(`id="pm-${role.id}-catalog"`) && !isOn(html, `pm-${role.id}-catalog`), 'неотмеченное право показано включённым');
+  // в выборе роли сотрудника
+  assert.match(app.VIEWS.team(), new RegExp(`<option value="${role.id}"[^>]*>Бухгалтер</option>`), 'роли нет в выборе роли сотрудника');
+  // назначили человеку — права работают; галочка меняет право сразу, с сообщением
+  app.ON.change['person-role']({ dataset: { id: 'p5' }, value: role.id });
+  assert.equal(app.Perms.can(app.S, 'p5', 'prices'), true);
+  assert.equal(app.Perms.can(app.S, 'p5', 'catalog'), false);
+  said.length = 0;
+  app.ON.change.perm({ dataset: { role: role.id, perm: 'catalog' }, checked: true });
+  assert.equal(app.Perms.can(app.S, 'p5', 'catalog'), true, 'галочка не изменила право');
+  assert.ok(said.some(t => t.includes('Бухгалтер') && t.includes('разрешено')), `нет сообщения: ${JSON.stringify(said)}`);
+  // у директора права не снимаются
+  app.ON.change.perm({ dataset: { role: 'director', perm: 'firm' }, checked: false });
+  assert.equal(app.Perms.can(app.S, 'p1', 'firm'), true);
+});
+
+test('«Добавить роль»: пустое и занятое название не принимаются, форма говорит почему', () => {
+  const app = load();
+  app.setMe('p1');
+  const n = app.S.roles.length, shown = [];
+  for (const name of ['   ', 'логист']) {                 // «логист» занято встроенной ролью «Логист»
+    app.byId('ra-err').hidden = true;
+    app.byId('ra-name').value = name;
+    for (const [k] of app.Perms.LIST) app.byId('ra-' + k).checked = false;
+    app.FORMS['role-add']({});
+    shown.push(app.byId('ra-err').textContent);
+    assert.equal(app.byId('ra-err').hidden, false, `«${name}»: ошибка не показана`);
+    assert.equal(app.S.roles.length, n, `роль «${name}» всё равно создана`);
+  }
+  assert.match(shown[0], /Впишите название/);
+  assert.match(shown[1], /«логист» уже есть/);
+});
+
+test('Perms.removeRole: встроенную нельзя, с людьми нельзя (в ошибке — сколько), пустую можно', () => {
+  const { Perms, seed } = load();
+  const st = seed();
+  // встроенная: у «Инженера» трое (p7, p8, p11) — отказ за то, что она встроенная
+  const eng = Perms.removeRole(st, 'engineer');
+  assert.equal(eng.ok, false);
+  assert.match(eng.reason, /встроенная/);
+  // своя роль с двумя сотрудниками
+  const acc = Perms.addRole(st, 'Бухгалтер', ['prices']);
+  st.people.find(p => p.id === 'p7').role = acc.id;
+  st.people.find(p => p.id === 'p8').role = acc.id;
+  const busy = Perms.removeRole(st, acc.id);
+  assert.equal(busy.ok, false);
+  assert.match(busy.reason, /2 сотрудника/, `в ошибке нет числа людей: ${busy.reason}`);
+  assert.ok(st.roles.some(r => r.id === acc.id), 'роль с людьми удалена');
+  // один сотрудник — другое слово
+  st.people.find(p => p.id === 'p8').role = 'engineer';
+  assert.match(Perms.removeRole(st, acc.id).reason, /1 сотрудник /);
+  // переназначили — удалилась
+  st.people.find(p => p.id === 'p7').role = 'engineer';
+  assert.deepEqual(plain(Perms.removeRole(st, acc.id)), { ok: true, reason: '' });
+  assert.ok(!st.roles.some(r => r.id === acc.id));
+  assert.equal(Perms.removeRole(st, acc.id).ok, false, 'удалить дважды');
+});
+
+test('удаление своей роли в настройках: с людьми — отказ с числом, пустую спрашивает и удаляет; у встроенной «×» нет', () => {
+  const app = load();
+  app.setMe('p1');
+  const role = app.Perms.addRole(app.S, 'Бухгалтер', []);
+  app.S.people.find(p => p.id === 'p7').role = role.id;
+  app.S.ui.setTab = 'roles';
+  const html = app.VIEWS.settings();
+  assert.ok(html.includes(`data-act="role-del" data-id="${role.id}"`), 'у своей роли нет кнопки удаления');
+  assert.ok(!html.includes('data-act="role-del" data-id="engineer"') && !html.includes('data-act="role-del" data-id="director"'), 'у встроенной роли есть «×»');
+  const said = toasts(app);
+  app.A['role-del']({ dataset: { id: role.id } });
+  assert.equal(app.S.ui.modal, null, 'для роли с людьми открыто окно удаления');
+  assert.ok(said.some(t => t.includes('1 сотрудник')), `ошибка не называет число людей: ${JSON.stringify(said)}`);
+  assert.ok(app.S.roles.some(r => r.id === role.id));
+  // переназначили → окно → удаление
+  app.ON.change['person-role']({ dataset: { id: 'p7' }, value: 'engineer' });
+  app.A['role-del']({ dataset: { id: role.id } });
+  assert.equal(app.S.ui.modal && app.S.ui.modal.type, 'roleDel');
+  app.FORMS['role-del']({ dataset: { id: role.id } });
+  assert.ok(!app.S.roles.some(r => r.id === role.id), 'роль не удалилась');
+  assert.ok(!app.VIEWS.team().includes(`value="${role.id}"`), 'удалённая роль осталась в выборе роли сотрудника');
+});
+
+// ——— порядок вкладок ———
+
+test('«Настройки»: у директора все вкладки по порядку истории 64; у менеджера без права settings — только «Внешний вид» и «Уведомления»', () => {
+  const app = load();
+  const full = ['Внешний вид', 'Уведомления', 'Воронки', 'Почта', 'Лиды и сделки', 'Склады и юрлица', 'Поставки', 'Роли и права', 'Данные'];
+  app.setMe('p1');
+  assert.deepEqual(tabLabels(app), full);
+  // на экране кнопки идут в том же порядке
+  app.S.ui.setTab = 'look';
+  const shown = [...app.VIEWS.settings().matchAll(/data-act="set-tab" data-tab="[^"]+">([^<]+)</g)].map(m => m[1]);
+  assert.deepEqual(shown, full, 'порядок кнопок на экране другой');
+  for (const me of ['p2', 'p5']) {
+    app.setMe(me);
+    assert.equal(app.Perms.can(app.S, me, 'settings'), false);
+    assert.deepEqual(tabLabels(app), ['Внешний вид', 'Уведомления'], `${me}: вкладки не те`);
+  }
+  // чужая вкладка, выбранная раньше, у менеджера не открывается
+  app.S.ui.setTab = 'pipes';
+  assert.equal(app.settingsTab().id, 'look');
+  // право settings у своей роли открывает остальные вкладки
+  const role = app.Perms.addRole(app.S, 'Настройщик', ['settings']);
+  app.S.people.find(p => p.id === 'p5').role = role.id;
+  app.setMe('p5');
+  assert.deepEqual(tabLabels(app), full);
+});

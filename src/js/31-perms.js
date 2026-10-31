@@ -76,13 +76,19 @@ const Perms = (() => {
     return !!(role.perms && role.perms[perm] === true);
   }
 
-  // Своя роль директора: имя и права. Пустое или занятое имя → null.
-  function addRole(st, name, perms) {
+  // Почему такую роль завести нельзя ('' — можно): имя пустое или уже занято.
+  function addBlock(st, name) {
     const n = String(name || '').trim();
-    if (!n) return null;
+    if (!n) return 'Впишите название роли.';
+    if ((st.roles || []).some(r => r.name.trim().toLowerCase() === n.toLowerCase())) return `Роль «${n}» уже есть — назовите по-другому.`;
+    return '';
+  }
+
+  // Своя роль директора: имя и права. Пустое или занятое имя → null (причину говорит addBlock).
+  function addRole(st, name, perms) {
+    if (addBlock(st, name)) return null;
     st.roles = st.roles || [];
-    if (st.roles.some(r => r.name.trim().toLowerCase() === n.toLowerCase())) return null;
-    const role = { id: Store.freeId(st.roles, 'role'), name: n, builtin: false, perms: matrix(perms) };
+    const role = { id: Store.freeId(st.roles, 'role'), name: String(name).trim(), builtin: false, perms: matrix(perms) };
     st.roles.push(role);
     return role;
   }
@@ -90,17 +96,22 @@ const Perms = (() => {
   const staff = n => n % 10 === 1 && n % 100 !== 11 ? 'сотрудник'
     : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'сотрудника' : 'сотрудников';
 
+  // Почему роль удалить нельзя ('' — можно): встроенная, или на ней есть люди — пока их не переназначат.
+  function removeBlock(st, roleId) {
+    const role = (st.roles || []).find(r => r.id === roleId);
+    if (!role) return 'Роль не найдена';
+    if (role.builtin) return `Роль «${role.name}» встроенная — её нельзя удалить`;
+    const n = (st.people || []).filter(p => p.role === roleId).length;
+    return n ? `На роли «${role.name}» ${n} ${staff(n)} — сначала назначьте им другую роль` : '';
+  }
+
   // Удалить роль: встроенную нельзя, роль с людьми нельзя, пока их не переназначат.
   function removeRole(st, roleId) {
-    const roles = st.roles || [];
-    const role = roles.find(r => r.id === roleId);
-    if (!role) return { ok: false, reason: 'Роль не найдена' };
-    if (role.builtin) return { ok: false, reason: `Роль «${role.name}» встроенная — её нельзя удалить` };
-    const n = (st.people || []).filter(p => p.role === roleId).length;
-    if (n) return { ok: false, reason: `На роли «${role.name}» ${n} ${staff(n)} — сначала назначьте им другую роль` };
-    st.roles = roles.filter(r => r.id !== roleId);
+    const reason = removeBlock(st, roleId);
+    if (reason) return { ok: false, reason };
+    st.roles = st.roles.filter(r => r.id !== roleId);
     return { ok: true, reason: '' };
   }
 
-  return { LIST, defaultRoles, roleOf, can, addRole, removeRole };
+  return { LIST, defaultRoles, roleOf, can, addBlock, addRole, removeBlock, removeRole };
 })();

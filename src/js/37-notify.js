@@ -1,6 +1,7 @@
 // Ядро: уведомления. Адресаты — люди (to:[personId]), прочитанность — у каждого своя (read:[personId]).
 // Кому что приходит — только карта RECIPIENTS; человек может выключить вид у себя:
 // prefs.notify[personId][kind] === false — этот вид ему не приходит.
+// Звук нового уведомления — у каждого свой: prefs.sound[personId] = {on, kind}; когда играть, решает soundFor.
 
 const Notify = (() => {
   // Событие → кому: 'all' — все сотрудники, иначе id встроенных ролей (их нельзя удалить, id не меняются).
@@ -25,6 +26,37 @@ const Notify = (() => {
     const p = st.prefs && st.prefs.notify && st.prefs.notify[personId];
     return !(p && p[kind] === false);
   };
+
+  // Включить или выключить вид этому человеку. Включённый — это отсутствие записи (по умолчанию приходят все виды).
+  // Возвращает false, если такого вида или человека нет.
+  function setWanted(st, personId, kind, on) {
+    if (!Object.hasOwn(RECIPIENTS, kind) || !(st.people || []).some(p => p.id === personId)) return false;
+    st.prefs = st.prefs || {};
+    st.prefs.notify = st.prefs.notify || {};
+    const mine = st.prefs.notify[personId] = st.prefs.notify[personId] || {};
+    if (on) delete mine[kind]; else mine[kind] = false;
+    return true;
+  }
+
+  // Звуки на выбор: id и подпись. Как они звучат — в 63-settings-notify.js (синтез в браузере, файлов нет).
+  const SOUNDS = [['bell', 'Колокольчик'], ['drop', 'Капля'], ['double', 'Двойной сигнал'], ['soft', 'Мягкий']];
+
+  // Звук этого человека: {on, kind}. По умолчанию выключен; неизвестный звук заменяется первым из списка.
+  function soundPref(st, personId) {
+    const p = st.prefs && st.prefs.sound && st.prefs.sound[personId];
+    return { on: !!(p && p.on), kind: p && SOUNDS.some(s => s[0] === p.kind) ? p.kind : SOUNDS[0][0] };
+  }
+
+  // Изменить звук человека: patch = {on?, kind?}. Возвращает новые настройки или null (нет такого человека или звука).
+  function setSound(st, personId, patch) {
+    if (!(st.people || []).some(p => p.id === personId)) return null;
+    if (patch.kind !== undefined && !SOUNDS.some(s => s[0] === patch.kind)) return null;
+    const next = Object.assign(soundPref(st, personId), patch.on === undefined ? {} : { on: !!patch.on }, patch.kind === undefined ? {} : { kind: patch.kind });
+    st.prefs = st.prefs || {};
+    st.prefs.sound = Object.assign({}, st.prefs.sound);
+    st.prefs.sound[personId] = next;
+    return Object.assign({}, next);
+  }
 
   // Кому придёт уведомление этого вида: по карте, плюс extraPersons, без тех, кто выключил вид.
   function recipients(st, kind, extraPersons) {
@@ -58,5 +90,20 @@ const Notify = (() => {
     return list.length;
   }
 
-  return { RECIPIENTS, recipients, push, unread, markRead };
+  // Номера непрочитанных этим человеком — по ним видно, пришло ли что-то новое между двумя отрисовками.
+  function unreadIds(st, personId) {
+    return unread(st, personId).map(n => n.id);
+  }
+
+  // Какой звук сыграть человеку: before и after — unreadIds до и после. Звук есть, только если он включён
+  // и среди after появился номер, которого не было в before. before = null («смотрим впервые») — тишина,
+  // иначе при каждом запуске страницы звенели бы старые уведомления. Возвращает id звука или null.
+  function soundFor(st, personId, before, after) {
+    const pref = soundPref(st, personId);
+    if (!pref.on || !before) return null;
+    const had = new Set(before);
+    return (after || []).some(id => !had.has(id)) ? pref.kind : null;
+  }
+
+  return { RECIPIENTS, SOUNDS, wants, setWanted, soundPref, setSound, soundFor, recipients, push, unread, unreadIds, markRead };
 })();
