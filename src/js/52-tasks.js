@@ -13,6 +13,12 @@ function curBoard(){
 const boardEditing=()=>!!S.ui.boardEdit&&can('settings')&&!!curBoard();
 // Цвет точки задачи — по флагу и месту этапа в воронке (stageTone), а не по номеру или id этапа: этапы можно переименовать и добавить
 const taskDot=t=>stageTone(t);
+// Мои задачи сегодня и просроченные: {today — срок сегодня, overdue — taskOverdue}. Открытые, мои или моего отдела (taskMine).
+// Единственный счёт для плитки главного экрана; «просрочена» — taskOverdue, второго определения нет.
+const taskCounts=()=>{
+  const mine=S.tasks.filter(t=>taskMine(t)&&!isDone(t));
+  return {today:mine.filter(t=>dd(t.due)===0).length,overdue:mine.filter(taskOverdue).length};
+};
 // Задача отдела, которую может взять человек из этого отдела
 const taskTakable=t=>t.to.t==='d'&&t.to.id===me().dept&&!isDone(t);
 
@@ -20,6 +26,7 @@ const taskTakable=t=>t.to.t==='d'&&t.to.id===me().dept&&!isDone(t);
 function vTasks(){
   const m=me(),F=S.ui.taskF,boards=Pipes.of(S,'tasks'),board=curBoard(),cols=board?.stages||[],edit=boardEditing();
   let list=S.tasks.filter(t=>taskVisible(t)&&t.boardId===board?.id);
+  const onBoard=list.length;
   if(F==='mine') list=list.filter(taskMine);
   else if(F==='byme') list=list.filter(t=>t.from===m.id);
   else if(F==='over') list=list.filter(taskOverdue);
@@ -38,6 +45,7 @@ function vTasks(){
   h+='</div>';
   if(edit) h+=pipeBoardHead(board);
   else h+=`<p class="hint">Перетаскивайте карточки между колонками или откройте задачу и смените статус. Тот, кто поставил задачу, получит уведомление. Задачу отдела видят все в отделе: нажмите «Взять», и она станет вашей.</p>`;
+  if(!edit&&!list.length) h+=onBoard?emptyState('Под этот фильтр задач нет.','Показать все','task-f','data-f="all"'):emptyState('Задач нет. Поставьте первую — кнопка «Поставить задачу».','Поставить задачу','new-task');
   const colHead=st=>edit?pipeStageCtl(board,st,false):`<span>${esc(st.name)}</span>`;
   const colHtml=st=>{
     const c=list.filter(t=>t.stageId===st.id).sort((a,b)=>a.due-b.due);
@@ -74,6 +82,7 @@ function taskTake(id){
 
 // ——— регистрация в реестрах оболочки ———
 DRAWERS.task=id=>{const t=S.tasks.find(x=>x.id===id);return t&&taskVisible(t)?dTask(t):null};
+SEARCH.push({kind:'task',label:'Задача',order:70,find:q=>S.tasks.filter(t=>taskVisible(t)&&searchHas(q,t.title)).map(t=>({title:t.title,sub:`${targetName(t)} · ${fRel(t.due)}`,open:`data-act="open-task" data-id="${esc(t.id)}"`}))});
 ON.change['task-dept']=t=>{S.ui.taskDept=t.value;render()};
 A['task-take']=el=>taskTake(el.dataset.id);
 A['task-board']=el=>{S.ui.taskBoard=el.dataset.id;render()};

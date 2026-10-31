@@ -343,15 +343,33 @@ button.chip:disabled{opacity:.5;cursor:not-allowed}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 
 /* ——— «Сегодня» ——— */
+/* строка «что здесь и зачем» под заголовком раздела: оболочка кладёт её из NAV.hint */
+.sec-hint{margin:-6px 0 0;font-size:13.5px;line-height:1.45;color:var(--ink-2);max-width:80ch}
+/* пустой список: что это, как наполнить, и кнопка (emptyState в оболочке) */
+.empty-st{display:flex;flex-direction:column;align-items:flex-start;gap:12px;padding:6px 16px 18px}
+.empty-st .empty{padding:12px 0 0;max-width:62ch}
 .hello h2{margin:0;font:800 22px/1.2 var(--f-display);letter-spacing:-.02em;text-wrap:balance}
 .hello p{margin:6px 0 0;color:var(--ink-3)}
 .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
-.kpi{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:14px 16px;border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow-1);background:var(--surface);color:var(--ink);text-align:left}
-.kpi:hover{border-color:var(--line-2)}
+.kpi,.ttile{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:14px 16px;border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow-1);background:var(--surface);color:var(--ink);text-align:left}
+.kpi:hover,.ttile:hover{border-color:var(--line-2)}
 .k-l{font-size:12.5px;color:var(--ink-2)}
 .k-v{font:800 30px/1 var(--f-display);letter-spacing:-.02em}
 .k-s{font-size:12.5px;color:var(--ink-3)}
 .k-s.bad{color:var(--bad)}.k-s.warn{color:var(--warn)}.k-s.ok{color:var(--ok)}
+/* плитки «что сделать сегодня»: нулевая — спокойная, красная только при просрочке */
+.today{display:flex;flex-direction:column;gap:10px}
+.today-h{margin:0;font:800 15px/1.2 var(--f-display);letter-spacing:-.01em}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+.ttile{min-width:0}
+.ttile .k-l{overflow-wrap:anywhere}
+.ttile.bad .k-v,.ttile.bad .k-s{color:var(--bad)}
+.ttile.warn .k-s{color:var(--warn)}
+.ttile.calm .k-v{color:var(--ink-3)}
+/* «Пульт проверки»: карточка на каждую имитацию, под кнопкой — что вышло и куда посмотреть */
+.sims{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr));gap:12px}
+.sim .card-h{flex-wrap:wrap;gap:8px}
+.sim-out{display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:10px 12px;border-radius:12px;background:var(--sunken);min-width:0;overflow-wrap:anywhere}
 .week{display:grid;grid-template-columns:repeat(var(--n),minmax(108px,1fr));gap:8px;min-width:calc(var(--n) * 116px)}
 .wd{display:flex;flex-direction:column;gap:6px;min-height:118px;padding:9px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2)}
 .wd.today{border-color:var(--primary);background:var(--surface);box-shadow:inset 0 0 0 1px var(--primary)}
@@ -375,8 +393,6 @@ button.chip:disabled{opacity:.5;cursor:not-allowed}
 .due{font-size:12.5px;color:var(--ink-3);white-space:nowrap}
 .due.bad{color:var(--bad);font-weight:500}
 .tdot{width:10px;height:10px;flex:none;margin-top:5px;border:2px solid var(--ink-3);border-radius:50%}
-.tdot.work{border-color:var(--primary);background:var(--primary-soft)}
-.tdot.review{border-color:var(--sun);background:var(--sun-soft)}
 
 @media (max-width:1100px){
   .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -2629,6 +2645,13 @@ const Stock = (() => {
     return { ok: true, reserve: r };
   }
 
+  // Резервы с истёкшим сроком: день «до» раньше дня now. В последний день срока резерв ещё действует. Единственное определение
+  // «срок резерва вышел»: плитка главного экрана и «Требует внимания» зовут его, а не считают сами.
+  function expired(st, now) {
+    const today = sod(now);
+    return (st.reserves || []).filter(r => r.until && sod(r.until) < today);
+  }
+
   // Снять с резерва q штук: весь резерв — unreserve(), часть — резерв уменьшается, в журнале «Снят резерв» на q.
   function release(st, r, q, by, at) {
     if (q >= r.qty) return unreserve(st, r.id, by, at);
@@ -2685,7 +2708,7 @@ const Stock = (() => {
     return { ok: true, move: m.move, reserve: r };
   }
 
-  return { ANY, KINDS, NO_ENTITY, NO_CITY, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, canReserve, bestCell, move, reserve, unreserve, sellMax, sell };
+  return { ANY, KINDS, NO_ENTITY, NO_CITY, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, canReserve, bestCell, move, reserve, unreserve, expired, sellMax, sell };
 })();
 
 // Ядро: поставки и маршрут. Чистые функции, без DOM; текущее время приходит аргументом now.
@@ -5129,6 +5152,8 @@ const Deals = (() => {
     const a = Number(deal && deal.amount);
     return isFinite(a) && a > 0 ? a : 0;
   }
+  // Сумма по списку сделок — единственная: колонка доски, шапка «Сделок» и плитка главного экрана зовут её.
+  const sumOf = deals => round2((deals || []).reduce((s, d) => s + total(d), 0));
   const noPrice = deal => ((deal && deal.items) || []).map((it, i) => (hasPrice(it) ? -1 : i)).filter(i => i >= 0);
 
   // ——— состояние ———
@@ -5482,12 +5507,12 @@ const Deals = (() => {
     const deals = query(st, Object.assign({}, filter, { pipeId }), personId);
     return pipe.stages.map(stage => {
       const ds = deals.filter(d => d.stageId === stage.id);
-      return { stage, count: ds.length, sum: round2(ds.reduce((s, d) => s + total(d), 0)), deals: ds };
+      return { stage, count: ds.length, sum: sumOf(ds), deals: ds };
     });
   }
 
   return {
-    defaultReasons, reasons, lineSum, total, noPrice, state, canEdit, itemName, reserved, lined, byId,
+    defaultReasons, reasons, lineSum, total, sumOf, noPrice, state, canEdit, itemName, reserved, lined, byId,
     create, update, move, win, lose, reopen, addItem, setItem, removeItem, reserveItem, unreserve, query, columns,
   };
 })();
@@ -5905,22 +5930,31 @@ function setTheme(t){
 const themeSwitch=compact=>`<div class="seg theme-seg${compact?' compact':''}" role="group" aria-label="Тема">${THEMES.map(([k,l,i])=>{const on=themePref()===k;return `<button type="button" class="${on?'on':''}" data-act="theme" data-theme="${k}" aria-pressed="${on}" title="${l}">${ic(i)}<span>${l}</span></button>`}).join('')}</div>`;
 
 // ——— разделы ———
-// Раздел: {id, label, icon, group, order, ok:()=>bool, badge?:()=>n}. Группа — одна из GROUPS (по порядку
-// сверху вниз), внутри группы — по order. Следующие таски добавляют раздел в своём файле: NAV.push({…}).
+// Раздел: {id, label, icon, group, order, hint, ok:()=>bool, badge?:()=>n}. Группа — одна из GROUPS (по порядку
+// сверху вниз), внутри группы — по order, в группе не больше MAX_GROUP пунктов. hint — строка «что здесь и зачем»:
+// одна короткая фраза без жаргона, оболочка сама ставит её под заголовком (navHint в render()).
+// Следующие таски добавляют раздел в своём файле: NAV.push({…}).
 const NAV=[
-  {id:'home',label:'Сегодня',icon:'home',group:'Работа',order:10,ok:()=>true},
-  {id:'tasks',label:'Задачи',icon:'tasks',group:'Работа',order:20,ok:()=>true,badge:()=>S.tasks.filter(t=>!isDone(t)&&taskMine(t)).length},
-  {id:'notifications',label:'Уведомления',icon:'bell',group:'Работа',order:30,ok:()=>true,badge:()=>unread().length,hot:true},
-  {id:'stock',label:'Товары и остатки',icon:'box',group:'Товар',order:10,ok:()=>can('stock')},
-  {id:'logistics',label:'Поставки и перевозки',icon:'truck',group:'Товар',order:20,ok:()=>can('stock')||can('logistics'),badge:()=>S.shipments.filter(s=>!isDone(s)).length},
-  {id:'receiving',label:'Приёмка на складе',icon:'camera',group:'Товар',order:30,ok:()=>can('receive'),badge:()=>S.shipments.filter(awaitsReceipt).length,hot:true},
-  {id:'deals',label:'Сделки',icon:'users',group:'Продажи',order:10,ok:()=>can('clients')},
-  {id:'messages',label:'Сообщения клиентам',icon:'chat',group:'Продажи',order:20,ok:()=>can('write')||can('auto')},
-  {id:'team',label:'Сотрудники и права',icon:'shield',group:'Управление',order:10,ok:()=>can('admin')}
+  {id:'home',label:'Сегодня',icon:'home',group:'Работа',order:10,ok:()=>true,hint:'Что нужно сделать сегодня именно вам. Нажмите на плитку — откроется список.'},
+  {id:'tasks',label:'Задачи',icon:'tasks',group:'Работа',order:20,ok:()=>true,hint:'Поручения людям и отделам. Сдвигайте карточку вправо, когда работа продвинулась.',badge:()=>S.tasks.filter(t=>!isDone(t)&&taskMine(t)).length},
+  {id:'notifications',label:'Уведомления',icon:'bell',group:'Работа',order:30,ok:()=>true,hint:'Всё, что произошло и касается вас: поставки, лиды, задачи, резервы. Новое подсвечено.',badge:()=>unread().length,hot:true},
+  {id:'stock',label:'Товары и остатки',icon:'box',group:'Товар',order:10,ok:()=>can('stock'),hint:'Сколько чего лежит на складах, что в резерве и что ещё едет. Нажмите на товар — откроется карточка.'},
+  {id:'logistics',label:'Поставки и перевозки',icon:'truck',group:'Товар',order:20,ok:()=>can('stock')||can('logistics'),hint:'Поставки от поставщиков: где сейчас груз, когда будет на складе и что опаздывает.',badge:()=>S.shipments.filter(s=>!isDone(s)).length},
+  {id:'receiving',label:'Приёмка на складе',icon:'camera',group:'Товар',order:30,ok:()=>can('receive'),hint:'Здесь принимают приехавший груз: сверяют количество, прикладывают фото и ставят на склад.',badge:()=>S.shipments.filter(awaitsReceipt).length,hot:true},
+  {id:'deals',label:'Сделки',icon:'users',group:'Продажи',order:10,ok:()=>can('clients'),hint:'Все сделки с клиентами — от заявки до монтажа. Нажмите на сделку, чтобы увидеть сумму, товар и следующий шаг.'},
+  {id:'messages',label:'Сообщения клиентам',icon:'chat',group:'Продажи',order:20,ok:()=>can('write')||can('auto'),hint:'Что и когда мы пишем клиентам в мессенджеры: текст сообщения и правила, по которым оно уходит.'},
+  {id:'team',label:'Сотрудники и права',icon:'shield',group:'Управление',order:10,ok:()=>can('admin'),hint:'Кто в фирме на какой роли и что этой роли разрешено. Права меняет директор.'}
 ];
 // Разделы, открытые текущему человеку: только они попадают в меню
 const navItems=()=>NAV.filter(n=>n.ok());
 const GROUPS=['Работа','Товар','Продажи','Управление','Настройки'];
+// В группе меню — не больше стольких пунктов у любой роли (тест проверяет каждую встроенную роль)
+const MAX_GROUP=6;
+// Строка «что здесь и зачем» под заголовком раздела — одна на все разделы, берётся из NAV.hint
+const navHint=n=>n&&n.hint?`<p class="sec-hint">${esc(n.hint)}</p>`:'';
+// Пустой список: что это значит, как его наполнить, и кнопка. action — имя в A (data-act), attrs — готовые data-атрибуты
+// кнопки. Нет кнопки или действия — только текст. Один вид во всех разделах.
+const emptyState=(text,btnLabel,action,attrs)=>`<div class="empty-st"><p class="empty">${esc(text)}</p>${btnLabel&&action?`<button type="button" class="btn pri" data-act="${esc(action)}"${attrs?' '+attrs:''}>${esc(btnLabel)}</button>`:''}</div>`;
 
 function renderSide(){
   const vis=navItems(),m=me();
@@ -5946,7 +5980,7 @@ function vNotes(){
   const un=new Set(unread().map(n=>n.id));
   let h=`<div class="bar"><div class="seg">${[['all','Все'],...Object.entries(KIND).map(([k,v])=>[k,v.l])].map(([k,l])=>`<button class="${S.ui.noteK===k?'on':''}" data-act="note-k" data-k="${k}">${l}</button>`).join('')}</div>${firm?`<div class="seg">${[['mine','Мне'],['all','Вся фирма']].map(([k,l])=>`<button class="${S.ui.noteScope===k?'on':''}" data-act="note-scope" data-k="${k}">${l}</button>`).join('')}</div>`:''}</div>`;
   h+=`<p class="hint">Под каждым уведомлением — кто его получил. ${firm?'Директор видит поток всей фирмы, остальные — только своё.':''}</p>`;
-  h+=`<section class="card">${list.length?`<ul class="notes">${list.map(n=>noteRow(n,un.has(n.id),true)).join('')}</ul>`:'<p class="empty">Под этот фильтр ничего нет.</p>'}</section>`;
+  h+=`<section class="card">${list.length?`<ul class="notes">${list.map(n=>noteRow(n,un.has(n.id),true)).join('')}</ul>`:emptyState('Под этот фильтр уведомлений нет.','Показать все','note-k','data-k="all"')}</section>`;
   return h;
 }
 
@@ -6033,14 +6067,23 @@ function toast(msg,kind){
 }
 
 // ——— поиск ———
+// Реестр источников: SEARCH.push({kind, label, find:(q)=>[{title, sub, open}], order?}) — раздел регистрирует свой в своём
+// файле. kind — машинное имя вида, label — подпись в строке результата («Сделка»), order — где в выдаче (меньше — выше,
+// по умолчанию 50). find получает строку поиска в нижнем регистре, сам проверяет право и видимость текущему человеку
+// и возвращает записи; open — готовые атрибуты кнопки (data-act="open-…" data-id="…"), как у карточек.
+const SEARCH=[];
+const SEARCH_PER=4,SEARCH_ALL=12;   // записей от одного источника и всего в выдаче
+// Подстрока в любом из полей — общая проверка для find
+const searchHas=(q,...parts)=>parts.join(' ').toLowerCase().includes(q);
+// Выдача по строке q: [{kind, type (подпись), label, sub, act}]. Короче двух букв — пусто. Право и видимость проверяет
+// сам источник в find: нет права — возвращает [].
 function searchRes(q){
-  q=q.trim().toLowerCase();if(q.length<2) return [];
-  const r=[],has=s=>s.toLowerCase().includes(q);
-  if(can('stock')) Catalog.query(S,{q}).slice(0,6).forEach(p=>{const k=stockOf(p.id);r.push({type:'Товар',label:p.name,sub:k.known?`свободно ${qtyOf(k.free,p)}`:'остаток: нет данных',act:`data-act="open-product" data-pid="${esc(p.id)}"`})});
-  if(can('clients')) Leads.dealsVisible(S,S.me).forEach(d=>{if(has(d.client+' '+d.id+' '+d.object)) r.push({type:'Сделка',label:d.client,sub:`${d.id} · ${d.object}`,act:`data-act="open-deal" data-id="${d.id}"`})});
-  if(can('stock')||can('logistics')) S.shipments.forEach(s=>{if(has(s.id+' '+s.supplier+' '+s.to+' '+s.track)) r.push({type:'Перевозка',label:`${s.id} · ${s.supplier}`,sub:`${stageName(s)} · ${fD(s.eta)}`,act:`data-act="open-ship" data-id="${esc(s.id)}"`})});
-  S.tasks.filter(taskVisible).forEach(t=>{if(has(t.title)) r.push({type:'Задача',label:t.title,sub:`${targetName(t)} · ${fRel(t.due)}`,act:`data-act="open-task" data-id="${t.id}"`})});
-  return r.slice(0,9);
+  q=String(q||'').trim().toLowerCase();if(q.length<2) return [];
+  const out=[];
+  for(const s of SEARCH.slice().sort((a,b)=>(a.order??50)-(b.order??50))){
+    (s.find(q)||[]).slice(0,SEARCH_PER).forEach(x=>out.push({kind:s.kind,type:s.label,label:x.title,sub:x.sub||'',act:x.open}));
+  }
+  return out.slice(0,SEARCH_ALL);
 }
 
 // ——— переходы ———
@@ -6181,7 +6224,7 @@ function render(){
   const n=NAV.find(x=>x.id===S.view),ok=n.ok();
   if(ok&&S.view==='receiving') syncRcv();
   const keep=hscrollKeep();
-  byId('view').innerHTML=ok?VIEWS[S.view]():vNoAccess(n);
+  byId('view').innerHTML=ok?navHint(n)+VIEWS[S.view]():vNoAccess(n);
   hscrollSync(keep);_hsView=S.view;
   // открыли по адресу (#…) — адрес следует за разделом, иначе перезагрузка вернёт старый
   try{const h=hashView();if(h&&h!==S.view) history.replaceState(null,'','#'+S.view)}catch(_){}
@@ -6198,7 +6241,8 @@ function render(){
 // ——— реестры полей и имитаций ———
 // Поля data-on: ON.input['<key>'] и ON.change['<key>'] = (el, e) => … — раздел регистрирует свои в своём файле.
 const ON={input:{},change:{}};
-// Имитации внешних событий для «Пульта проверки»: SIMS.push({id, label, run:()=>void}) — в файле раздела.
+// Имитации внешних событий для «Пульта проверки» (64-sims.js): SIMS.push({id, label, run}) — в файле раздела.
+// run() делает событие и возвращает {text — что произошло одной строкой, view — раздел, где это смотреть, id? — карточка}.
 const SIMS=[];
 
 // ——— действия по клику ———
@@ -6301,6 +6345,8 @@ document.addEventListener('click',e=>{
   if(!inSearch) byId('q-res').hidden=true;
   if(e.target.classList?.contains('modal-wrap')){closeModal();return}
   const el=e.target.closest('[data-act]');if(!el) return;
+  // строка таблицы открывает карточку, но не когда нажали поле или список внутри неё
+  if(el.tagName==='TR'&&e.target.closest('select,input,textarea,label,[data-on]')) return;
   const f=A[el.dataset.act];if(!f) return;
   if(el.closest('#q-res')){byId('q-res').hidden=true;byId('q').value=''}
   if(el.closest('#pop')) byId('pop').hidden=true;
@@ -6368,14 +6414,68 @@ byId('q').addEventListener('input',e=>{
   box.hidden=false;
 });
 
-// Раздел «Сегодня»
-// Перенесено из прототипа v2; «я» — человек S.me, «готово/закрыто» — флаг final этапа.
+// Раздел «Сегодня»: «что сделать сегодня» — свой у каждой роли.
+// Сверху плитки дня (homeTiles): каждое число — вызов ядра, своих копий расчёта здесь нет — Ships.awaitingReceipt,
+// Leads.fresh, Stock.expired, Dispatch.query, Acts.counts и Acts.noNext, Deals.sumOf, taskCounts (52-tasks.js).
+// Плитку роли, которой она не нужна, не показываем; нулевая плитка спокойная. Нажатие открывает список с нужным фильтром.
+// Ниже — сводка по фирме (директор), неделя, «Требует внимания», мои задачи и события.
 
 // ——— «Сегодня» ———
+// ——— плитки дня ———
+// Реестр плиток: {id, label, show, calc → {value, sub, tone, …}, open}. tone '' · 'bad' (просрочено) · 'warn' (нужно действие).
+const homeOpenDeals=()=>Leads.dealsVisible(S,S.me).filter(d=>Deals.state(S,d)==='open');
+// Резервы с истёкшим сроком (Stock.expired) по сделкам, которые видит человек
+const homeExpired=()=>{const vis=new Set(Leads.dealsVisible(S,S.me).map(d=>d.id));return Stock.expired(S,new Date()).filter(r=>vis.has(r.dealId))};
+// Сделки без следующего шага: открытые видимые сделки, у которых Acts.noNext
+const homeNoNext=()=>homeOpenDeals().filter(d=>Acts.noNext(S,{t:'deal',id:d.id}));
+const homeIsDriver=()=>Dispatch.drivers(S).some(p=>p.id===S.me);
+// Отправки на сегодня: открытые заявки с датой «сегодня»; водителю — только назначенные ему
+const homeDispatch=()=>Dispatch.query(S,{today:true,now:new Date(),driver:homeIsDriver()?S.me:''}).filter(d=>!Pipes.isFinal(S,d.pipeId,d.stageId));
+const homeTone=(n,tone)=>n>0?tone:'';
+const HOME_TILES=[
+  {id:'tasks',label:'Мои задачи на сегодня',show:()=>true,
+    calc:()=>{const c=taskCounts(),v=c.today+c.overdue;return {value:v,today:c.today,overdue:c.overdue,sub:c.overdue?`просрочено: ${c.overdue}`:v?'просроченных нет':'на сегодня задач нет',tone:homeTone(c.overdue,'bad')}},
+    open:()=>{const c=taskCounts();S.ui.taskF=c.overdue&&!c.today?'over':'mine';go('tasks')}},
+  {id:'leads',label:'Новые лиды',show:()=>can('leads'),
+    calc:()=>{const n=Leads.fresh(S,S.me).length;return {value:n,sub:n?'ждут первого шага':'новых лидов нет',tone:homeTone(n,'warn')}},
+    open:()=>{const p=leadPipe();S.ui.leads=Object.assign({},LEAD_DEF,{view:'list',stage:p?Leads.firstOf(p).id:''});go('leads')}},
+  {id:'receipt',label:'Поставки к приёмке',show:()=>can('receive')||can('logistics'),
+    calc:()=>{const n=Ships.awaitingReceipt(S).length;return {value:n,sub:n?'приехали и ждут приёмки':'ничего не ждёт приёмки',tone:homeTone(n,'warn')}},
+    open:()=>{
+      if(can('receive')) return go('receiving');
+      const p=shipPipe('in'),st=p&&p.stages.find(x=>x.flag==='arrived');
+      S.ui.logTab='in';setShipUi({stage:st?st.id:'open',page:1});go('logistics');
+    }},
+  {id:'reserves',label:'Резервы с истёкшим сроком',show:()=>can('reserve'),
+    calc:()=>{const n=homeExpired().length;return {value:n,sub:n?'снимите или продлите':'просроченных резервов нет',tone:homeTone(n,'bad')}},
+    open:()=>go('stock')},
+  {id:'dispatch',label:'Отправки на сегодня',show:()=>Dispatch.canWork(S,S.me),
+    calc:()=>{const n=homeDispatch().length;return {value:n,sub:n?(homeIsDriver()?'назначены вам':'собираем и везём'):'на сегодня отправок нет',tone:''}},
+    open:()=>{S.ui.dispatch=Object.assign({},DSP_DEF,{view:dspSel().view,today:true,driver:homeIsDriver()?S.me:''});go('dispatch')}},
+  {id:'acts',label:'Мои дела на сегодня',show:()=>can('clients')||can('leads')||Dispatch.canWork(S,S.me),
+    calc:()=>{const c=Acts.counts(S,S.me,new Date()),v=c.today+c.overdue;return {value:v,today:c.today,overdue:c.overdue,sub:c.overdue?`просрочено: ${c.overdue}`:v?'просроченных нет':'на сегодня дел нет',tone:homeTone(c.overdue,'bad')}},
+    open:()=>{
+      if(!can('clients')) return go(can('leads')?'leads':'dispatch');
+      const c=Acts.counts(S,S.me,new Date());
+      S.ui.deals=Object.assign({},DEALS_DEF,{view:dealsSel().view,acts:c.overdue?'overdue':''});go('deals');
+    }},
+  {id:'nonext',label:'Сделки без следующего шага',show:()=>can('leads')||can('firm'),
+    calc:()=>{const n=homeNoNext().length;return {value:n,sub:n?'запланируйте дело':'у всех сделок есть следующий шаг',tone:homeTone(n,'warn')}},
+    open:()=>{S.ui.deals=Object.assign({},DEALS_DEF,{view:dealsSel().view,acts:'none'});go('deals')}}
+];
+// Плитки, нужные этой роли: [{id, label, value, sub, tone, …}] в порядке реестра
+const homeTiles=()=>HOME_TILES.filter(t=>t.show()).map(t=>Object.assign({id:t.id,label:t.label},t.calc()));
+function todayHtml(){
+  const list=homeTiles();
+  return `<section class="today" aria-label="Что сделать сегодня"><h3 class="today-h">Что сделать сегодня</h3><div class="tiles">${list.map(t=>`<button type="button" class="ttile${t.value?'':' calm'}${t.tone?' '+t.tone:''}" data-act="home-tile" data-tile="${esc(t.id)}"><span class="k-l">${esc(t.label)}</span><b class="k-v">${t.value}</b><span class="k-s">${esc(t.sub)}</span></button>`).join('')}</div></section>`;
+}
+A['home-tile']=el=>{const t=HOME_TILES.find(x=>x.id===el.dataset.tile);if(t&&t.show()) t.open()};
+
 function vHome(){
   const m=me(),hr=new Date().getHours();
   const g=hr<5?'Доброй ночи':hr<12?'Доброе утро':hr<18?'Добрый день':'Добрый вечер';
   let h=`<div class="hello"><h2>${g}, ${esc(m.name.split(' ')[0])}</h2><p>${cap(WDF[T0.getDay()])}, ${T0.getDate()} ${MONF[T0.getMonth()]} · ${esc(roleName(m))}</p></div>`;
+  h+=todayHtml();
   if(can('firm')) h+=kpiHtml();
   if(can('stock')) h+=weekHtml();
   const L=[];
@@ -6388,7 +6488,7 @@ function kpiHtml(){
   const open=S.tasks.filter(t=>!isDone(t)),over=open.filter(taskOverdue);
   const inT=openIn(),late=S.shipments.filter(isLate);
   const rd=new Set(S.reserves.map(r=>r.dealId));
-  const act=S.deals.filter(d=>!isDone(d)&&!d.lostReason),total=sum(act,Deals.total);
+  const act=S.deals.filter(d=>Deals.state(S,d)==='open'),total=Deals.sumOf(act);
   const tile=(l,v,s,c,view)=>`<button class="kpi" data-act="go" data-view="${view}"><span class="k-l">${l}</span><b class="k-v">${v}</b><span class="k-s ${c}">${s}</span></button>`;
   return `<div class="kpis">${[
     tile('Задачи в работе',open.length,over.length?`${over.length} ${pl(over.length,'просрочена','просрочены','просрочено')}`:'просроченных нет',over.length?'bad':'ok','tasks'),
@@ -6399,7 +6499,7 @@ function kpiHtml(){
 }
 function weekHtml(){
   const act=S.shipments.filter(s=>!isDone(s)),late=act.filter(isLate);
-  const chip=s=>`<button class="wchip ${s.dir} ${isLate(s)?'late':''}" data-act="go" data-view="logistics" data-tab="${s.dir}"><b class="mono">${s.id}</b><span>${s.dir==='in'?'приход':'отгрузка'} · ${esc(shortItems(s))}</span></button>`;
+  const chip=s=>`<button class="wchip ${s.dir} ${isLate(s)?'late':''}" data-act="open-ship" data-id="${esc(s.id)}"><b class="mono">${s.id}</b><span>${s.dir==='in'?'приход':'отгрузка'} · ${esc(shortItems(s))}</span></button>`;
   let cols='';
   if(late.length) cols+=`<div class="wd late"><div class="wd-h">Опаздывают<b>${late.length} ${pl(late.length,'поставка','поставки','поставок')}</b></div>${late.map(chip).join('')}</div>`;
   for(let i=0;i<7;i++){
@@ -6412,12 +6512,13 @@ function attention(){
   const a=[];
   S.tasks.filter(t=>taskOverdue(t)&&taskVisible(t)).forEach(t=>a.push({lvl:'bad',icon:'tasks',text:`Просрочена задача «${t.title}»`,sub:`${targetName(t)} · срок был ${fD(t.due)}`,act:`data-act="open-task" data-id="${t.id}"`}));
   if(can('stock')){
-    S.shipments.filter(isLate).forEach(s=>a.push({lvl:'warn',icon:'truck',text:`${s.id} задерживается на ${days(-dd(s.eta))}`,sub:`Последняя отметка: ${shipLast(s).text}`,act:'data-act="go" data-view="logistics"'}));
+    S.shipments.filter(isLate).forEach(s=>a.push({lvl:'warn',icon:'truck',text:`${s.id} задерживается на ${days(-dd(s.eta))}`,sub:`Последняя отметка: ${shipLast(s).text}`,act:`data-act="open-ship" data-id="${esc(s.id)}"`}));
     S.products.forEach(p=>{
       const k=stockOf(p.id);
       if(k.freeAfter<0) a.push({lvl:'bad',icon:'box',text:`${p.name}: под резервы не хватает ${qtyOf(-k.freeAfter,p)}`,sub:'Даже с учётом всех поставок в пути',act:`data-act="open-product" data-pid="${esc(p.id)}"`});
       else if(k.onHand>0&&k.free<=0&&!k.incoming) a.push({lvl:'warn',icon:'box',text:`${p.name}: свободный остаток закончился`,sub:'Всё, что на складе, в резерве. Поставок нет',act:`data-act="open-product" data-pid="${esc(p.id)}"`});
     });
+    Stock.expired(S,new Date()).forEach(r=>{const p=product(r.productId),d=deal(r.dealId);a.push({lvl:'bad',icon:'clock',text:`Срок резерва вышел: ${p?p.name:'нет данных: товар'} — ${qtyOf(r.qty,p)}`,sub:`${r.dealId} · ${d?.client||''} · был до ${fD(r.until)}`,act:`data-act="open-product" data-pid="${esc(r.productId)}"`})});
     S.reserves.filter(r=>{const n=dd(r.until);return n>=0&&n<=2}).forEach(r=>{const p=product(r.productId),d=deal(r.dealId);a.push({lvl:'info',icon:'clock',text:`Резерв истекает ${fRel(r.until)}: ${p.name} — ${qtyOf(r.qty,p)}`,sub:`${r.dealId} · ${d?.client||''}`,act:`data-act="open-product" data-pid="${esc(p.id)}"`})});
   }
   return a;
@@ -6429,7 +6530,7 @@ function attnHtml(){
 function myTasksHtml(){
   const m=me();
   const list=S.tasks.filter(t=>!isDone(t)&&(taskMine(t)||t.from===m.id)).sort((a,b)=>a.due-b.due).slice(0,7);
-  return `<section class="card"><div class="card-h"><h3>Мои задачи</h3><button class="btn sm" data-act="new-task">${ic('plus')}Поставить задачу</button></div>${list.length?`<ul class="list">${list.map(t=>`<li><button class="li" data-act="open-task" data-id="${t.id}"><span class="tdot ${esc(t.stageId)}"></span><span class="li-t">${esc(t.title)}<small>${taskMine(t)?'Мне':'От меня → '+esc(targetName(t))} · ${esc(stageName(t))}</small></span><span class="due ${dd(t.due)<0?'bad':''}">${fRel(t.due)}</span></button></li>`).join('')}</ul>`:'<p class="empty">Открытых задач нет.</p>'}</section>`;
+  return `<section class="card"><div class="card-h"><h3>Мои задачи</h3><button class="btn sm" data-act="new-task">${ic('plus')}Поставить задачу</button></div>${list.length?`<ul class="list">${list.map(t=>`<li><button class="li" data-act="open-task" data-id="${t.id}"><span class="tdot ${taskDot(t)}"></span><span class="li-t">${esc(t.title)}<small>${taskMine(t)?'Мне':'От меня → '+esc(targetName(t))} · ${esc(stageName(t))}</small></span><span class="due ${dd(t.due)<0?'bad':''}">${fRel(t.due)}</span></button></li>`).join('')}</ul>`:emptyState('Открытых задач нет. Поставьте первую — кнопка «Поставить задачу».','Поставить задачу','new-task')}</section>`;
 }
 function eventsHtml(){
   const all=can('firm');
@@ -6453,6 +6554,12 @@ function curBoard(){
 const boardEditing=()=>!!S.ui.boardEdit&&can('settings')&&!!curBoard();
 // Цвет точки задачи — по флагу и месту этапа в воронке (stageTone), а не по номеру или id этапа: этапы можно переименовать и добавить
 const taskDot=t=>stageTone(t);
+// Мои задачи сегодня и просроченные: {today — срок сегодня, overdue — taskOverdue}. Открытые, мои или моего отдела (taskMine).
+// Единственный счёт для плитки главного экрана; «просрочена» — taskOverdue, второго определения нет.
+const taskCounts=()=>{
+  const mine=S.tasks.filter(t=>taskMine(t)&&!isDone(t));
+  return {today:mine.filter(t=>dd(t.due)===0).length,overdue:mine.filter(taskOverdue).length};
+};
 // Задача отдела, которую может взять человек из этого отдела
 const taskTakable=t=>t.to.t==='d'&&t.to.id===me().dept&&!isDone(t);
 
@@ -6460,6 +6567,7 @@ const taskTakable=t=>t.to.t==='d'&&t.to.id===me().dept&&!isDone(t);
 function vTasks(){
   const m=me(),F=S.ui.taskF,boards=Pipes.of(S,'tasks'),board=curBoard(),cols=board?.stages||[],edit=boardEditing();
   let list=S.tasks.filter(t=>taskVisible(t)&&t.boardId===board?.id);
+  const onBoard=list.length;
   if(F==='mine') list=list.filter(taskMine);
   else if(F==='byme') list=list.filter(t=>t.from===m.id);
   else if(F==='over') list=list.filter(taskOverdue);
@@ -6478,6 +6586,7 @@ function vTasks(){
   h+='</div>';
   if(edit) h+=pipeBoardHead(board);
   else h+=`<p class="hint">Перетаскивайте карточки между колонками или откройте задачу и смените статус. Тот, кто поставил задачу, получит уведомление. Задачу отдела видят все в отделе: нажмите «Взять», и она станет вашей.</p>`;
+  if(!edit&&!list.length) h+=onBoard?emptyState('Под этот фильтр задач нет.','Показать все','task-f','data-f="all"'):emptyState('Задач нет. Поставьте первую — кнопка «Поставить задачу».','Поставить задачу','new-task');
   const colHead=st=>edit?pipeStageCtl(board,st,false):`<span>${esc(st.name)}</span>`;
   const colHtml=st=>{
     const c=list.filter(t=>t.stageId===st.id).sort((a,b)=>a.due-b.due);
@@ -6514,6 +6623,7 @@ function taskTake(id){
 
 // ——— регистрация в реестрах оболочки ———
 DRAWERS.task=id=>{const t=S.tasks.find(x=>x.id===id);return t&&taskVisible(t)?dTask(t):null};
+SEARCH.push({kind:'task',label:'Задача',order:70,find:q=>S.tasks.filter(t=>taskVisible(t)&&searchHas(q,t.title)).map(t=>({title:t.title,sub:`${targetName(t)} · ${fRel(t.due)}`,open:`data-act="open-task" data-id="${esc(t.id)}"`}))});
 ON.change['task-dept']=t=>{S.ui.taskDept=t.value;render()};
 A['task-take']=el=>taskTake(el.dataset.id);
 A['task-board']=el=>{S.ui.taskBoard=el.dataset.id;render()};
@@ -6587,7 +6697,7 @@ function stockTable(){
   const rows=stockRows(),all=S.products.length,pages=Math.max(1,Math.ceil(rows.length/PAGE_SIZE));
   const page=Math.min(Math.max(0,parseInt(S.ui.page,10)||0),pages-1),from=page*PAGE_SIZE,part=rows.slice(from,from+PAGE_SIZE);
   const head=`<div class="count"><span>Показано <b>${rows.length}</b> из <b>${all}</b> позиций</span>${rows.length>PAGE_SIZE?`<span class="muted">строки ${from+1}–${from+part.length}</span>`:''}</div>`;
-  if(!rows.length) return head+'<p class="empty">Ничего не нашлось. Проверьте фильтр или строку поиска.</p>';
+  if(!rows.length) return head+emptyState('Ничего не нашлось. Проверьте фильтр или строку поиска.','Сбросить фильтры','stock-reset');
   const pr=can('prices'),pg=pagerHtml(page,pages);
   return `${head}<div class="xs"><table class="tbl"><thead><tr><th>Товар</th><th class="num">На складе</th><th class="num">В резерве</th><th class="num">Свободно сейчас</th><th>Едет к нам</th><th class="num">Свободно после прихода</th>${pr?'<th class="num">Цена</th>':''}<th>Картина</th></tr></thead><tbody>${part.map(p=>stockRow(p,pr)).join('')}</tbody></table></div>${pg}`;
 }
@@ -6620,10 +6730,10 @@ function movesPane(tabs){
 function movesTable(){
   const u=S.ui,list=S.moves.filter(m=>(!u.mvPid||m.productId===u.mvPid)&&(!u.mvKind||m.kind===u.mvKind)),part=list.slice(0,MV_LIMIT);
   const head=`<div class="count"><span>Показано <b>${list.length}</b> из <b>${S.moves.length}</b> движений</span>${list.length>MV_LIMIT?`<span class="muted">первые ${MV_LIMIT}: уточните фильтр</span>`:''}</div>`;
-  if(!part.length) return head+'<p class="empty">Движений по этому фильтру нет.</p>';
+  if(!part.length) return head+emptyState('Движений по этому фильтру нет.','Показать все движения','stock-journal');
   return `${head}<div class="xs"><table class="tbl"><thead><tr><th>Когда</th><th>Кто</th><th>Вид</th><th>Товар</th><th class="num">Сколько</th><th>Откуда и куда</th><th>Документ</th></tr></thead><tbody>${part.map(m=>{
     const p=product(m.productId),who=whoName(m.by);
-    return `<tr><td class="nowrap">${fWhen(m.at)}</td><td>${who?esc(who):noData('кто')}</td><td>${movePill(m)}</td><td>${p?`<button type="button" class="link" data-act="open-product" data-pid="${esc(p.id)}">${esc(p.name)}</button>`:noData('товар')}</td><td class="num">${moveSign(m)}${qtyOf(m.qty,p)}</td><td>${esc(moveWhere(m))}</td><td class="mono">${esc(m.doc||'')}</td></tr>`;
+    return `<tr${p?` class="click" data-act="open-product" data-pid="${esc(p.id)}" tabindex="0"`:''}><td class="nowrap">${fWhen(m.at)}</td><td>${who?esc(who):noData('кто')}</td><td>${movePill(m)}</td><td>${p?`<button type="button" class="link" data-act="open-product" data-pid="${esc(p.id)}">${esc(p.name)}</button>`:noData('товар')}</td><td class="num">${moveSign(m)}${qtyOf(m.qty,p)}</td><td>${esc(moveWhere(m))}</td><td class="mono">${esc(m.doc||'')}</td></tr>`;
   }).join('')}</tbody></table></div>`;
 }
 
@@ -6738,6 +6848,7 @@ MODALS.stockSell=o=>{
 };
 
 // ——— регистрация в реестрах оболочки ———
+SEARCH.push({kind:'product',label:'Товар',order:10,find:q=>!can('stock')?[]:Catalog.query(S,{q}).slice(0,6).map(p=>{const k=stockOf(p.id);return {title:p.name,sub:k.known?`свободно ${qtyOf(k.free,p)}`:'остаток: нет данных',open:`data-act="open-product" data-pid="${esc(p.id)}"`}})});
 DRAWERS.product=id=>{const p=can('stock')?product(id):null;return p?dProduct(p):null};
 ON.input.sq=t=>{S.ui.sq=t.value;refreshStock()};
 ON.change.deficit=t=>{S.ui.deficit=t.checked;refreshStock()};
@@ -6772,6 +6883,8 @@ FORMS['stock-sell']=f=>{
 A['stock-tab']=el=>{S.ui.stockTab=el.dataset.tab;render()};
 A['stock-cat']=el=>{S.ui.cat=el.dataset.cat;S.ui.page=0;render()};
 A['stock-page']=el=>{S.ui.page=parseInt(el.dataset.page,10)||0;byId('stock-tbl').innerHTML=stockTable();byId('scroll').scrollTop=0};
+// Пустой список остатков: сбросить категорию, бренд, наличие, каталог, поиск и «только где не хватает»
+A['stock-reset']=()=>{Object.assign(S.ui,{cat:'Все',sq:'',brand:'',avail:'',catf:'',deficit:false,page:0});render()};
 // Из карточки товара — в журнал движений по этому товару
 A['stock-journal']=el=>{S.ui.stockTab='moves';S.ui.mvPid=el.dataset.pid||'';S.ui.mvKind='';S.ui.drawer=null;go('stock')};
 
@@ -6946,7 +7059,7 @@ const SHIP_CELLS={
   depart:s=>`<td>${s.depart?fD(s.depart):'<span class="muted sm">нет данных</span>'}</td>`
 };
 function shipRow(s,pr,now){
-  return `<tr class="srow${shipLate(s,now)?' is-late':''}${isDone(s)?' is-done':''}" data-ship="${esc(s.id)}">${pr.cols.map(k=>SHIP_CELLS[k](s,now)).join('')}</tr>`;
+  return `<tr class="srow click${shipLate(s,now)?' is-late':''}${isDone(s)?' is-done':''}" data-ship="${esc(s.id)}" data-act="open-ship" data-id="${esc(s.id)}" tabindex="0">${pr.cols.map(k=>SHIP_CELLS[k](s,now)).join('')}</tr>`;
 }
 function shipHead(pr,u){
   const raw=u.sort,desc=raw.startsWith('-'),key=desc?raw.slice(1):raw;
@@ -6970,7 +7083,7 @@ function shipTable(u,pr,dir,now){
     if(r.groups){const k=r.keyOf.get(s.id);if(k!==cur){cur=k;const g=r.groups.get(k);body+=`<tr class="sgrp"><td colspan="${pr.cols.length}"><b>${esc(g.label)}</b> <span class="muted">· ${g.count}</span></td></tr>`}}
     body+=shipRow(s,pr,now);
   });
-  const tbl=r.rows.length?`<section class="card clip"><div class="xs"><table class="tbl stbl ${pr.density}"><thead>${shipHead(pr,u)}</thead><tbody>${body}</tbody></table></div></section>`:'<section class="card"><p class="empty">Под такие фильтры поставок нет.</p></section>';
+  const tbl=r.rows.length?`<section class="card clip"><div class="xs"><table class="tbl stbl ${pr.density}"><thead>${shipHead(pr,u)}</thead><tbody>${body}</tbody></table></div></section>`:`<section class="card">${emptyState('Под такие фильтры поставок нет. Поставку заводит логист кнопкой «Новая поставка».','Сбросить фильтры','ship-reset')}</section>`;
   return shipCounter(r.rows.length,r.total)+tbl+shipPager(r);
 }
 
@@ -7184,7 +7297,28 @@ function shipCarrier(shipId){
   toast(`Перевозчик сообщил по ${s.id}: «${r.to.name}». Сейчас: ${Ships.where(s).text}. Уведомление получили ${got} ${pl(got,'сотрудник','сотрудника','сотрудников')}.${rules?` Сработало ${rules} ${pl(rules,'правило','правила','правил')} директора.`:''}`);
   return Object.assign({shipId:s.id},r);
 }
-SIMS.push({id:'carrier',label:'Имитация: пришёл статус от перевозчика',run:()=>{shipCarrier()}});
+// Имитация «груз прибыл»: поверх того же выбора поставки (shipCarrierPick) — перевозчик сообщает, что груз приехал в город
+// назначения; поставка встаёт на этап с флагом «прибыло» через Ships.setStage и ждёт приёмки.
+function shipArrive(){
+  const s=shipCarrierPick(),now=new Date();
+  if(!s){toast('Нет поставки в пути, которая могла бы прибыть.','warn');return {ok:false,reason:'Нет поставки в пути, которая могла бы прибыть.'}}
+  const stage=stagesFor(s).find(x=>x.flag==='arrived');
+  if(!stage){toast('В воронке поставок нет этапа «прибыло».','warn');return {ok:false,reason:'В воронке поставок нет этапа «прибыло».'}}
+  const r=Ships.setStage(S,s.id,stage.id,null,now,Ships.SRC.carrier);
+  if(!r.ok){toast(r.reason,'warn');return r}
+  render();
+  toast(`Перевозчик сообщил: ${s.id} прибыла в город назначения и ждёт приёмки на складе.`);
+  return Object.assign({shipId:s.id},r);
+}
+// Результат имитации для «Пульта проверки»: {text — что произошло, view — где смотреть, id — карточка}
+SIMS.push({id:'carrier',label:'Имитация: пришёл статус от перевозчика',run:()=>{
+  const r=shipCarrier();
+  return r.ok===false?{text:r.reason,view:'logistics'}:{text:`Перевозчик сообщил по ${r.shipId}: «${r.to.name}». Сейчас: ${Ships.where(ship(r.shipId)).text}.`,view:'logistics',id:r.shipId};
+}});
+SIMS.push({id:'arrival',label:'Имитация: груз прибыл в город',run:()=>{
+  const r=shipArrive();
+  return r.ok===false?{text:r.reason,view:'logistics'}:{text:`Груз ${r.shipId} прибыл в город назначения и ждёт приёмки на складе.`,view:'logistics',id:r.shipId};
+}});
 
 // ——— карточка поставки ———
 function dShip(s){
@@ -7215,6 +7349,7 @@ function dShip(s){
 }
 
 // ——— регистрация в реестрах оболочки ———
+SEARCH.push({kind:'ship',label:'Перевозка',order:60,find:q=>!(can('stock')||can('logistics'))?[]:S.shipments.filter(s=>searchHas(q,s.id,s.supplier,s.to,s.track)).map(s=>({title:`${s.id} · ${s.supplier}`,sub:`${stageName(s)} · ${fD(s.eta)}`,open:`data-act="open-ship" data-id="${esc(s.id)}"`}))});
 DRAWERS.ship=id=>{const s=(can('stock')||can('logistics'))?ship(id):null;return s?dShip(s):null};
 MODALS.shipItems=id=>mShipItems(ship(id));
 
@@ -7313,7 +7448,7 @@ function rcvPlan(r=S.rcv){
 function vReceiving(){
   const r=curRcv();
   if(r&&r.done) return rcvLayout(rcvDoneHtml(r),rcvAfterHtml(r));
-  if(!r) return '<section class="card"><p class="empty">Сейчас нечего принимать: нет поставок на этапе «прибыло, ждёт приёмки». Как только логист отметит прибытие, поставка появится здесь.</p></section>';
+  if(!r) return `<section class="card">${emptyState('Сейчас нечего принимать: нет поставок на этапе «прибыло, ждёт приёмки». Как только логист отметит прибытие, поставка появится здесь.',can('stock')||can('logistics')?'Открыть поставки':'','go','data-view="logistics"')}</section>`;
   return rcvLayout(rcvPhoneHtml(r,pendingRcv()),`<div id="rcv-prev">${rcvPreview(r)}</div>`);
 }
 function rcvLayout(phone,side){
@@ -7507,11 +7642,14 @@ function dealsTable(cur,u){
 // ——— тело раздела: счёт + доска или таблица (его же перерисовывают поиск и правка в карточке) ———
 function dealsBody(){
   const u=dealsSel(),{vis,cur,pipe}=dealsScope(),pr=can('prices');
-  if(!vis.length) return '<section class="card"><p class="empty">Сделок пока нет. Заведите первую кнопкой «Новая сделка» или создайте её из лида в разделе «Лиды».</p></section>';
+  if(!vis.length) return `<section class="card">${emptyState('Сделок пока нет. Заведите первую или создайте её из лида в разделе «Лиды».','Новая сделка','deal-new')}</section>`;
   if(!pipe) return '<section class="card"><p class="empty">Воронки сделок этого типа нет — её заводят в «Настройки → Воронки».</p></section>';
-  const list=Deals.query(S,dealsFilter(u,cur),S.me),sum=list.reduce((s,d)=>s+Deals.total(d),0);
+  const list=Deals.query(S,dealsFilter(u,cur),S.me),sum=Deals.sumOf(list);
   const head=`<p class="count"><span>Сделок: <b>${list.length}</b></span>${pr?`<span>на сумму: <b>${rub(sum)}</b></span>`:''}<span>${esc(pipe.name)}</span></p>`;
-  if(!list.length) return `${head}<section class="card"><p class="empty">${u.q.trim()||u.mine||u.lost||u.acts?'По этим условиям сделок нет.':`Сделок типа ${Leads.TYPE[cur]} пока нет.`} ${u.q.trim()||u.mine||u.lost||u.acts?'<button type="button" class="link" data-act="deal-reset">Сбросить поиск и фильтры</button>':'Заведите сделку кнопкой «Новая сделка».'}</p></section>`;
+  if(!list.length){
+    const dirty=u.q.trim()||u.mine||u.lost||u.acts;
+    return `${head}<section class="card">${dirty?emptyState('По этим условиям сделок нет.','Сбросить поиск и фильтры','deal-reset'):emptyState(`Сделок типа ${Leads.TYPE[cur]} пока нет. Заведите первую или создайте её из лида.`,'Новая сделка','deal-new')}</section>`;
+  }
   return head+(u.view==='table'?dealsTable(cur,u):dealsBoard(pipe,cur,u));
 }
 
@@ -7914,6 +8052,7 @@ document.addEventListener('drop',e=>{
 VIEWS.deals=vDeals;
 // счётчик в меню: мои дела по сделкам на сегодня и просроченные (Acts.counts)
 Object.assign(NAV.find(n=>n.id==='deals'),{badge:()=>actsBadge('deal'),hot:true});
+SEARCH.push({kind:'deal',label:'Сделка',order:20,find:q=>!can('clients')?[]:Leads.dealsVisible(S,S.me).filter(d=>searchHas(q,d.client,d.id,d.object)).map(d=>({title:d.client,sub:`${d.id} · ${d.object}`,open:`data-act="open-deal" data-id="${esc(d.id)}"`}))});
 DRAWERS.deal=id=>{const d=Leads.dealsVisible(S,S.me).find(x=>x.id===id);return d?dealCard(d):null};
 
 // Раздел «Сообщения клиентам»
@@ -7933,6 +8072,9 @@ function updTpl(){const p=byId('tpl-prev');if(p) p.innerHTML=tplSample();const h
 // ——— регистрация в реестрах оболочки ———
 ON.input.tpl=t=>{S.tpl=t.value;updTpl()};
 ON.input.addr=t=>{S.address=t.value;updTpl()};
+// Текст пишут по буквам и сохраняют сами; когда закончили (поле потеряло фокус) — короткое подтверждение
+ON.change.tpl=()=>toast('Шаблон сообщения сохранён.');
+ON.change.addr=()=>toast('Адрес склада сохранён.');
 ON.change.rule=t=>{const r=rule(t.dataset.id);r.on=t.checked;toast(`Правило «${r.when}» ${r.on?'включено':'выключено'}.`)};
 
 // Раздел «Сотрудники и права»
@@ -8040,7 +8182,7 @@ SETTINGS_TABS.push(
   </div></section>`}
 );
 
-NAV.push({id:'settings',label:'Настройки',icon:'sliders',group:'Настройки',order:10,ok:()=>settingsTabs().length>0});
+NAV.push({id:'settings',label:'Настройки',icon:'sliders',group:'Настройки',order:10,hint:'Всё, что настраивают один раз: внешний вид, уведомления, воронки, почту, склады и права ролей.',ok:()=>settingsTabs().length>0});
 VIEWS.settings=vSettings;
 A['set-tab']=el=>{S.ui.setTab=el.dataset.tab;render()};
 
@@ -8114,8 +8256,8 @@ function leadBody(){
   const u=leadSel(),all=Leads.visible(S,S.me),funnel=u.view==='funnel';
   const list=leadFilter(all,u,!funnel);
   const head=`<p class="count"><span>Лидов: <b>${list.length}</b>${list.length!==all.length?` из ${all.length}`:''}</span><span>без менеджера: <b>${leadFreeCount(all)}</b></span></p>`;
-  if(!all.length) return `${head}<section class="card"><p class="empty">Лидов пока нет. Они приходят с сайта и из Битрикса24 — откуда именно, выбирают в «Настройки → Лиды и сделки».${can('settings')?' Проверить можно кнопками «Имитация» выше.':''}</p></section>`;
-  if(!list.length) return `${head}<section class="card"><p class="empty">По этим условиям лидов нет. <button type="button" class="link" data-act="lead-reset">Сбросить поиск и фильтры</button></p></section>`;
+  if(!all.length) return `${head}<section class="card">${emptyState(`Лидов пока нет. Они приходят с сайта и из Битрикса24 — откуда именно, выбирают в «Настройки → Лиды и сделки». Лид можно завести и руками.${can('settings')?' Проверить приход можно кнопками «Имитация» выше или в «Пульте проверки».':''}`,'Новый лид','lead-new')}</section>`;
+  if(!list.length) return `${head}<section class="card">${emptyState('По этим условиям лидов нет.','Сбросить поиск и фильтры','lead-reset')}</section>`;
   return head+(funnel?`<p class="hint">Перетащите карточку на другой этап или откройте лид и нажмите кнопку. «Сделка создана» заводит сделку, «Отказ» спрашивает причину. Двигать лид может менеджер, который его ведёт, и тот, кто раздаёт лиды (директор, РОП).</p>${leadFunnel(list)}`:leadTable(list));
 }
 
@@ -8354,12 +8496,19 @@ function leadSimulate(source){
   toast(`Пришёл лид ${lead.id} (${Leads.SOURCE[source]}, «пример»). ${lead.managerId?`Тип ${Leads.TYPE[lead.type]}, менеджер — ${leadWho(lead.managerId)}.`:'Менеджера нет — лид нераспределённый.'} Уведомление получили: ${got}.`);
   return lead;
 }
-SIMS.push({id:'lead-site',label:'Имитация: пришёл лид с сайта',run:()=>{leadSimulate('site')}});
-SIMS.push({id:'lead-bitrix',label:'Имитация: пришёл лид из Битрикса24',run:()=>{leadSimulate('bitrix')}});
+// Результат имитации для «Пульта проверки»: {text — что произошло, view — где смотреть, id — карточка}
+const leadSimResult=(source)=>{
+  const l=leadSimulate(source);
+  if(!l) return {text:`Лид не создан: источник «${Leads.SOURCE[source]}» сейчас не используется. Источник выбирают в «Настройки → Лиды и сделки».`,view:'settings'};
+  return {text:`Пришёл лид ${l.id} (${Leads.SOURCE[source]}, «пример»). ${l.managerId?`Тип ${Leads.TYPE[l.type]}, менеджер: ${leadWho(l.managerId)}`:'Менеджера нет — лид нераспределённый'}`,view:'leads',id:l.id};
+};
+SIMS.push({id:'lead-site',label:'Имитация: пришёл лид с сайта',run:()=>leadSimResult('site')});
+SIMS.push({id:'lead-bitrix',label:'Имитация: пришёл лид из Битрикса24',run:()=>leadSimResult('bitrix')});
 
 // ——— регистрация в реестрах оболочки ———
-NAV.push({id:'leads',label:'Лиды',icon:'funnel',group:'Продажи',order:5,ok:()=>can('leads'),badge:()=>Leads.fresh(S,S.me).length+actsBadge('lead'),hot:true});
+NAV.push({id:'leads',label:'Лиды',icon:'funnel',group:'Продажи',order:5,hint:'Заявки, которые ещё не стали сделками. Возьмите лид, свяжитесь с человеком и сделайте из него сделку.',ok:()=>can('leads'),badge:()=>Leads.fresh(S,S.me).length+actsBadge('lead'),hot:true});
 VIEWS.leads=vLeads;
+SEARCH.push({kind:'lead',label:'Лид',order:30,find:q=>!can('leads')?[]:Leads.visible(S,S.me).filter(l=>searchHas(q,l.id,l.name,l.company,l.phone,l.email,l.inn,l.text)).map(l=>({title:Leads.title(l),sub:`${l.id} · ${stageName(l)}`,open:`data-act="open-lead" data-id="${esc(l.id)}"`}))});
 DRAWERS.lead=id=>{const l=Leads.visible(S,S.me).find(x=>x.id===id);return l?dLead(l):null};
 
 // Раздел «Почта»: слева ящики и папки поставщиков со счётчиками непрочитанных, в середине список писем с поиском,
@@ -8414,7 +8563,7 @@ function mailNav(sel){
 function mailItems(sel){
   const list=mailList(sel),un=list.filter(l=>!l.read).length;
   const head=`<p class="count"><span>${sel.q.trim()?'Найдено':'Писем'}: <b>${list.length}</b></span><span>непрочитанных: <b>${un}</b></span></p>`;
-  if(!list.length) return head+`<p class="empty">${sel.q.trim()?'По этому запросу писем нет.':sel.box&&sel.box.added?`В новом ящике писем пока нет — ${MAIL_LATER}.`:'В этой папке писем нет.'}</p>`;
+  if(!list.length) return head+(sel.q.trim()?emptyState('По этому запросу писем нет.','Очистить поиск','mail-q-clear'):sel.box&&sel.box.added?emptyState(`В новом ящике писем пока нет — ${MAIL_LATER}.`):emptyState(`В этой папке писем нет. Письма приходят сами.${can('admin')?' Пока почта не подключена, проверить можно «Имитацией» в «Пульте проверки».':''}`));
   return head+`<ul class="mail-items">${list.map(l=>{
     const sn=l.body.replace(/\s+/g,' ').slice(0,90);
     return `<li><button type="button" class="mail-li${l.read?'':' unread'}${l.id===sel.letter?.id?' on':''}" data-act="mail-open" data-id="${esc(l.id)}"><span class="mail-li-top"><b>${esc(l.fromName||l.from)}</b><small>${esc(fWhen(l.at))}</small></span><span class="mail-li-sub">${esc(l.subject)}</span><span class="mail-li-sn">${esc(sn)}</span><span class="mail-li-tags">${l.demo?'<span class="pill sm">пример</span>':''}${sel.purchase&&sel.folder==='all'?`<span class="pill sm info">${esc(mailFolderName(sel.box,l))}</span>`:''}${(l.replies||[]).length?'<span class="pill sm sun">есть ответ</span>':''}</span></button></li>`;
@@ -8471,7 +8620,7 @@ function vMail(){
   <div class="mail" data-pane="${sel.pane}">${mailNav(sel)}${mailListPane(sel)}${mailLetterPane(sel)}</div>`;
 }
 
-NAV.push({id:'mail',label:'Почта',icon:'mail',group:'Работа',order:40,ok:()=>can('mail')&&Mail.boxesFor(S,S.me).length>0,badge:mailUnreadAll,hot:true});
+NAV.push({id:'mail',label:'Почта',icon:'mail',group:'Работа',order:40,hint:'Письма в ящиках фирмы. Письма поставщиков ложатся в их папки сами, незнакомые ждут в «Разобрать».',ok:()=>can('mail')&&Mail.boxesFor(S,S.me).length>0,badge:mailUnreadAll,hot:true});
 VIEWS.mail=vMail;
 
 // ——— действия ———
@@ -8486,6 +8635,7 @@ A['mail-back']=()=>{const u=mailU();u.pane=u.pane==='letter'?'list':'nav';render
 A['mail-reply']=()=>{const sel=mailSel();if(!sel.letter) return;mailU().reply=sel.letter.id;render();setTimeout(()=>byId('mail-reply-text')?.focus(),0)};
 A['mail-reply-cancel']=()=>{mailU().reply=null;render()};
 A['mail-sim']=el=>mailSimulate(el.dataset.box);
+A['mail-q-clear']=()=>{mailU().q='';render()};
 
 ON.input['mail-q']=t=>{
   mailU().q=t.value;
@@ -8534,7 +8684,13 @@ function mailSimulate(boxId){
   toast(`Пришло письмо в ящик «${box.title}», папка «${mailFolderName(box,l)}». Уведомление получили: ${to}.`);
   return l;
 }
-SIMS.push({id:'mail',label:'Имитация: пришло письмо',run:()=>{mailSimulate()}});
+// Результат имитации для «Пульта проверки»: {text — что произошло, view — где смотреть, id — карточка}
+SIMS.push({id:'mail',label:'Имитация: пришло письмо',run:()=>{
+  const l=mailSimulate();
+  if(!l) return {text:'Письмо не пришло: нет ящика, куда ему прийти.',view:'mail'};
+  const box=mailData().boxes.find(b=>b.id===l.boxId);
+  return {text:`Пришло письмо «${l.subject}» в ящик «${box.title}», папка «${mailFolderName(box,l)}».`,view:'mail',id:l.id};
+}});
 
 // «Настройки → Воронки»: один редактор для всех воронок — доски задач, сделки B2B и B2C, лиды, поставки, отправки.
 // Тот же редактор зовёт режим «Редактировать доску» в «Задачах» (52-tasks.js): разметку дают pipeNameCtl, pipeStageCtl и
@@ -8816,6 +8972,73 @@ A['sound-test']=()=>{
   if(!playSound(p.kind)) return toast('Не удалось сыграть: браузер не даёт включить звук. Нажмите «Проверить» ещё раз или проверьте громкость.','warn');
   toast(`Играет «${soundName(p.kind)}».${p.on?'':' Звук уведомлений сейчас выключен.'}`);
 };
+
+// Раздел «Пульт проверки»: все имитации внешних событий в одном месте (директор и тот, у кого есть право «admin»).
+// Имитации регистрируют сами разделы: SIMS.push({id, label, run}) — лид с сайта и из Битрикса (60), письмо (61), статус от
+// перевозчика и прибытие груза (54). run() делает событие и возвращает {text — что произошло одной строкой, view — раздел,
+// где это смотреть, id? — карточка в этом разделе}. Здесь — только экран: что запустили, что вышло и ссылка «посмотреть».
+// Последний результат каждой имитации лежит в S.ui.sims (не сохраняется).
+
+Object.assign(IC,{play:'<path d="M7 4.5l12 7.5-12 7.5z"/>'});
+
+// Пульт открыт директору и тому, кому дали право «Управлять сотрудниками и правами»
+const simsOpen=()=>can('admin');
+// «Имитация: пришёл лид с сайта» → «Пришёл лид с сайта»: слово «имитация» показывает метка рядом
+const simTitle=s=>{const t=String(s.label||'').replace(/^Имитация:\s*/i,'');return t.charAt(0).toUpperCase()+t.slice(1)};
+// Порядок карточек: как их называют в задаче — лид с сайта, лид из Битрикса, письмо, статус перевозчика, прибытие груза;
+// имитации, о которых пульт не знает, идут следом в порядке регистрации
+const SIM_ORDER=['lead-site','lead-bitrix','mail','carrier','arrival'];
+const simList=()=>{const k=s=>{const i=SIM_ORDER.indexOf(s.id);return i<0?SIM_ORDER.length:i};return SIMS.map((s,i)=>({s,i})).sort((a,b)=>k(a.s)-k(b.s)||a.i-b.i).map(x=>x.s)};
+const simLast=id=>(S.ui.sims||{})[id]||null;
+const simViewName=v=>(NAV.find(n=>n.id===v)||{}).label||'';
+
+// Ссылка «где смотреть»: есть, если раздел открыт этому человеку; нет — подпись без кнопки
+function simLink(s,r){
+  const n=NAV.find(x=>x.id===r.view);
+  if(!n) return '';
+  if(!n.ok()) return `<p class="muted sm m0">Смотреть: раздел «${esc(n.label)}» вам недоступен.</p>`;
+  return `<button type="button" class="btn sm" data-act="sim-open" data-id="${esc(s.id)}">${ic('arrow')}Посмотреть: ${esc(n.label)}</button>`;
+}
+function simCard(s){
+  const r=simLast(s.id);
+  const out=r?`<div class="sim-out" role="status"><p class="m0"><b>Что произошло:</b> ${esc(r.text)}</p><small class="muted">${esc(fWhen(r.at))}</small>${simLink(s,r)}</div>`
+    :'<p class="muted sm m0">Пока не запускали.</p>';
+  return `<section class="card sim"><div class="card-h"><h3>${esc(simTitle(s))}</h3><span class="pill sm">имитация</span></div><div class="card-b stack-s"><div><button type="button" class="btn pri" data-act="sim-run" data-id="${esc(s.id)}">${ic('play')}Запустить</button></div>${out}</div></section>`;
+}
+function vSims(){
+  if(!SIMS.length) return `<section class="card">${emptyState('Имитаций нет.')}</section>`;
+  return `<p class="hint">Настоящих подключений к сайту, Битриксу, почте и перевозчикам в прототипе нет. Каждая кнопка ниже изображает такое событие: в CRM появляется настоящая запись и уведомление, а под кнопкой — что вышло и куда посмотреть.</p>
+  <div class="sims">${simList().map(simCard).join('')}</div>`;
+}
+
+// Куда вести ссылку, если у результата есть id: открыть карточку или выбрать письмо
+const SIM_OPEN={
+  leads:id=>openDrawer('lead',id),
+  logistics:id=>openDrawer('ship',id),
+  dispatch:id=>openDrawer('dispatch',id),
+  deals:id=>openDrawer('deal',id),
+  mail:id=>{
+    const l=mailData().letters.find(x=>x.id===id);if(!l) return;
+    Object.assign(mailU(),{box:l.boxId,folder:'all',q:''});
+    A['mail-open']({dataset:{id}});
+  }
+};
+
+A['sim-run']=el=>{
+  const s=SIMS.find(x=>x.id===el.dataset.id);
+  if(!s||!simsOpen()) return;
+  const r=s.run()||{text:'Имитация ничего не вернула.',view:'sims'};
+  (S.ui.sims||(S.ui.sims={}))[s.id]={text:r.text,view:r.view,id:r.id,at:new Date()};
+  render();
+};
+A['sim-open']=el=>{
+  const r=simLast(el.dataset.id);if(!r) return;
+  go(r.view);
+  if(r.id&&SIM_OPEN[r.view]) SIM_OPEN[r.view](r.id);
+};
+
+NAV.push({id:'sims',label:'Пульт проверки',icon:'play',group:'Управление',order:20,ok:simsOpen,hint:'Здесь запускают то, что в жизни приходит снаружи: лид, письмо, статус перевозчика, прибытие груза.'});
+VIEWS.sims=vSims;
 
 // Настройки → «Склады и юрлица»: справочники юрлиц и городов (добавить, переименовать, адрес склада)
 // и откуда взят каталог. Справочники лежат в S.entities и S.cities: сетка остатков, форма резерва и журнал
@@ -9381,8 +9604,8 @@ function dspMineHtml(){
 function dspBody(){
   const u=dspSel(),all=S.dispatches||[],funnel=u.view==='funnel',list=dspList(u,funnel);
   const head=`<p class="count"><span>Заявок: <b>${list.length}</b>${list.length!==all.length?` из ${all.length}`:''}</span></p>`;
-  if(!all.length) return `${head}<section class="card"><p class="empty">Заявок на отправку пока нет. Любой сотрудник заводит её кнопкой «Новая отправка».</p></section>`;
-  if(!list.length) return `${head}<section class="card"><p class="empty">По этим условиям заявок нет. <button type="button" class="link" data-act="dsp-reset">Сбросить поиск и фильтры</button></p></section>`;
+  if(!all.length) return `${head}<section class="card">${emptyState('Заявок на отправку пока нет. Любой сотрудник может завести первую: что везём, кому, куда и когда.','Новая отправка','dsp-new')}</section>`;
+  if(!list.length) return `${head}<section class="card">${emptyState('По этим условиям заявок нет.','Сбросить поиск и фильтры','dsp-reset')}</section>`;
   return head+(funnel?`<p class="hint">Перетащите карточку на другой этап или откройте заявку и нажмите кнопку. Двигать этапы могут логист, кладовщик и водитель; автор может отменить свою заявку до «В пути».</p>${dspFunnel(list)}`:dspTable(list));
 }
 
@@ -9708,8 +9931,9 @@ document.addEventListener('drop',e=>{
 });
 
 // ——— регистрация в реестрах оболочки ———
-NAV.push({id:'dispatch',label:'Отправки',icon:'truck',group:'Товар',order:40,ok:()=>true,badge:()=>dspBadge(),hot:true});
+NAV.push({id:'dispatch',label:'Отправки',icon:'truck',group:'Товар',order:40,hint:'Заявки на отправку товара клиенту или между складами: кто собирает, кто везёт и где груз.',ok:()=>true,badge:()=>dspBadge(),hot:true});
 VIEWS.dispatch=vDispatch;
+SEARCH.push({kind:'dispatch',label:'Отправка',order:50,find:q=>Dispatch.query(S,{q}).map(d=>({title:`${d.number} · ${d.to.name}`,sub:`${dspStageName(d)} · ${dspWhen(d)}`,open:`data-act="open-dispatch" data-id="${esc(d.id)}"`}))});
 DRAWERS.dispatch=id=>{const d=Dispatch.byId(S,id);return d?dDispatch(d):null};
 
 // Раздел «Клиенты»: список с поиском по имени, телефону и ИНН, карточка клиента справа (данные правятся на месте,
@@ -9757,10 +9981,10 @@ function clientsTable(list){
 // Тело раздела: счёт и таблица (его же перерисовывает поиск)
 function clientsBody(){
   const u=clientsSel(),all=S.clients||[],list=clientsList(u),dirty=u.q.trim()||u.kind;
-  if(!all.length) return '<section class="card"><p class="empty">Клиентов пока нет. Они появляются, когда из лида создают сделку, или кнопкой «Новый клиент».</p></section>';
+  if(!all.length) return `<section class="card">${emptyState('Клиентов пока нет. Они появляются, когда из лида создают сделку. Клиента можно завести и руками.','Новый клиент','client-new')}</section>`;
   const comp=list.filter(c=>c.kind==='company').length;
   const head=`<p class="count"><span>Клиентов: <b>${list.length}</b>${list.length!==all.length?` из ${all.length}`:''}</span><span>компаний: <b>${comp}</b> · людей: <b>${list.length-comp}</b></span></p>`;
-  if(!list.length) return `${head}<section class="card"><p class="empty">По этим условиям клиентов нет. ${dirty?'<button type="button" class="link" data-act="client-reset">Сбросить поиск и фильтры</button>':''}</p></section>`;
+  if(!list.length) return `${head}<section class="card">${emptyState('По этим условиям клиентов нет.',dirty?'Сбросить поиск и фильтры':'','client-reset')}</section>`;
   return head+clientsTable(list);
 }
 function vClients(){
@@ -9901,8 +10125,9 @@ FORMS['client-new']=()=>{
 };
 
 // ——— регистрация в реестрах оболочки ———
-NAV.push({id:'clients',label:'Клиенты',icon:'person',group:'Продажи',order:15,ok:()=>can('clients')});
+NAV.push({id:'clients',label:'Клиенты',icon:'person',group:'Продажи',order:15,hint:'Картотека клиентов: у каждого свои сделки, лиды, сообщения и лента событий.',ok:()=>can('clients')});
 VIEWS.clients=vClients;
+SEARCH.push({kind:'client',label:'Клиент',order:40,find:q=>!can('clients')?[]:Clients.search(S,q).map(c=>({title:c.name,sub:`${c.id}${c.inn?' · ИНН '+c.inn:''}`,open:`data-act="open-client" data-id="${esc(c.id)}"`}))});
 DRAWERS.client=id=>{const c=can('clients')?Clients.byId(S,id):null;return c?dClient(c):null};
 
 // Запуск: состояние из браузера (localStorage[Store.KEY]); нет или битое — демо seed(). Затем первая отрисовка.

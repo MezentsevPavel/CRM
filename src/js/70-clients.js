@@ -43,10 +43,10 @@ function clientsTable(list){
 // Тело раздела: счёт и таблица (его же перерисовывает поиск)
 function clientsBody(){
   const u=clientsSel(),all=S.clients||[],list=clientsList(u),dirty=u.q.trim()||u.kind;
-  if(!all.length) return '<section class="card"><p class="empty">Клиентов пока нет. Они появляются, когда из лида создают сделку, или кнопкой «Новый клиент».</p></section>';
+  if(!all.length) return `<section class="card">${emptyState('Клиентов пока нет. Они появляются, когда из лида создают сделку. Клиента можно завести и руками.','Новый клиент','client-new')}</section>`;
   const comp=list.filter(c=>c.kind==='company').length;
   const head=`<p class="count"><span>Клиентов: <b>${list.length}</b>${list.length!==all.length?` из ${all.length}`:''}</span><span>компаний: <b>${comp}</b> · людей: <b>${list.length-comp}</b></span></p>`;
-  if(!list.length) return `${head}<section class="card"><p class="empty">По этим условиям клиентов нет. ${dirty?'<button type="button" class="link" data-act="client-reset">Сбросить поиск и фильтры</button>':''}</p></section>`;
+  if(!list.length) return `${head}<section class="card">${emptyState('По этим условиям клиентов нет.',dirty?'Сбросить поиск и фильтры':'','client-reset')}</section>`;
   return head+clientsTable(list);
 }
 function vClients(){
@@ -187,6 +187,7 @@ FORMS['client-new']=()=>{
 };
 
 // ——— регистрация в реестрах оболочки ———
-NAV.push({id:'clients',label:'Клиенты',icon:'person',group:'Продажи',order:15,ok:()=>can('clients')});
+NAV.push({id:'clients',label:'Клиенты',icon:'person',group:'Продажи',order:15,hint:'Картотека клиентов: у каждого свои сделки, лиды, сообщения и лента событий.',ok:()=>can('clients')});
 VIEWS.clients=vClients;
+SEARCH.push({kind:'client',label:'Клиент',order:40,find:q=>!can('clients')?[]:Clients.search(S,q).map(c=>({title:c.name,sub:`${c.id}${c.inn?' · ИНН '+c.inn:''}`,open:`data-act="open-client" data-id="${esc(c.id)}"`}))});
 DRAWERS.client=id=>{const c=can('clients')?Clients.byId(S,id):null;return c?dClient(c):null};

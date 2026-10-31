@@ -87,8 +87,8 @@ function dspMineHtml(){
 function dspBody(){
   const u=dspSel(),all=S.dispatches||[],funnel=u.view==='funnel',list=dspList(u,funnel);
   const head=`<p class="count"><span>Заявок: <b>${list.length}</b>${list.length!==all.length?` из ${all.length}`:''}</span></p>`;
-  if(!all.length) return `${head}<section class="card"><p class="empty">Заявок на отправку пока нет. Любой сотрудник заводит её кнопкой «Новая отправка».</p></section>`;
-  if(!list.length) return `${head}<section class="card"><p class="empty">По этим условиям заявок нет. <button type="button" class="link" data-act="dsp-reset">Сбросить поиск и фильтры</button></p></section>`;
+  if(!all.length) return `${head}<section class="card">${emptyState('Заявок на отправку пока нет. Любой сотрудник может завести первую: что везём, кому, куда и когда.','Новая отправка','dsp-new')}</section>`;
+  if(!list.length) return `${head}<section class="card">${emptyState('По этим условиям заявок нет.','Сбросить поиск и фильтры','dsp-reset')}</section>`;
   return head+(funnel?`<p class="hint">Перетащите карточку на другой этап или откройте заявку и нажмите кнопку. Двигать этапы могут логист, кладовщик и водитель; автор может отменить свою заявку до «В пути».</p>${dspFunnel(list)}`:dspTable(list));
 }
 
@@ -414,6 +414,7 @@ document.addEventListener('drop',e=>{
 });
 
 // ——— регистрация в реестрах оболочки ———
-NAV.push({id:'dispatch',label:'Отправки',icon:'truck',group:'Товар',order:40,ok:()=>true,badge:()=>dspBadge(),hot:true});
+NAV.push({id:'dispatch',label:'Отправки',icon:'truck',group:'Товар',order:40,hint:'Заявки на отправку товара клиенту или между складами: кто собирает, кто везёт и где груз.',ok:()=>true,badge:()=>dspBadge(),hot:true});
 VIEWS.dispatch=vDispatch;
+SEARCH.push({kind:'dispatch',label:'Отправка',order:50,find:q=>Dispatch.query(S,{q}).map(d=>({title:`${d.number} · ${d.to.name}`,sub:`${dspStageName(d)} · ${dspWhen(d)}`,open:`data-act="open-dispatch" data-id="${esc(d.id)}"`}))});
 DRAWERS.dispatch=id=>{const d=Dispatch.byId(S,id);return d?dDispatch(d):null};

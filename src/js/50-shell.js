@@ -78,22 +78,31 @@ function setTheme(t){
 const themeSwitch=compact=>`<div class="seg theme-seg${compact?' compact':''}" role="group" aria-label="Тема">${THEMES.map(([k,l,i])=>{const on=themePref()===k;return `<button type="button" class="${on?'on':''}" data-act="theme" data-theme="${k}" aria-pressed="${on}" title="${l}">${ic(i)}<span>${l}</span></button>`}).join('')}</div>`;
 
 // ——— разделы ———
-// Раздел: {id, label, icon, group, order, ok:()=>bool, badge?:()=>n}. Группа — одна из GROUPS (по порядку
-// сверху вниз), внутри группы — по order. Следующие таски добавляют раздел в своём файле: NAV.push({…}).
+// Раздел: {id, label, icon, group, order, hint, ok:()=>bool, badge?:()=>n}. Группа — одна из GROUPS (по порядку
+// сверху вниз), внутри группы — по order, в группе не больше MAX_GROUP пунктов. hint — строка «что здесь и зачем»:
+// одна короткая фраза без жаргона, оболочка сама ставит её под заголовком (navHint в render()).
+// Следующие таски добавляют раздел в своём файле: NAV.push({…}).
 const NAV=[
-  {id:'home',label:'Сегодня',icon:'home',group:'Работа',order:10,ok:()=>true},
-  {id:'tasks',label:'Задачи',icon:'tasks',group:'Работа',order:20,ok:()=>true,badge:()=>S.tasks.filter(t=>!isDone(t)&&taskMine(t)).length},
-  {id:'notifications',label:'Уведомления',icon:'bell',group:'Работа',order:30,ok:()=>true,badge:()=>unread().length,hot:true},
-  {id:'stock',label:'Товары и остатки',icon:'box',group:'Товар',order:10,ok:()=>can('stock')},
-  {id:'logistics',label:'Поставки и перевозки',icon:'truck',group:'Товар',order:20,ok:()=>can('stock')||can('logistics'),badge:()=>S.shipments.filter(s=>!isDone(s)).length},
-  {id:'receiving',label:'Приёмка на складе',icon:'camera',group:'Товар',order:30,ok:()=>can('receive'),badge:()=>S.shipments.filter(awaitsReceipt).length,hot:true},
-  {id:'deals',label:'Сделки',icon:'users',group:'Продажи',order:10,ok:()=>can('clients')},
-  {id:'messages',label:'Сообщения клиентам',icon:'chat',group:'Продажи',order:20,ok:()=>can('write')||can('auto')},
-  {id:'team',label:'Сотрудники и права',icon:'shield',group:'Управление',order:10,ok:()=>can('admin')}
+  {id:'home',label:'Сегодня',icon:'home',group:'Работа',order:10,ok:()=>true,hint:'Что нужно сделать сегодня именно вам. Нажмите на плитку — откроется список.'},
+  {id:'tasks',label:'Задачи',icon:'tasks',group:'Работа',order:20,ok:()=>true,hint:'Поручения людям и отделам. Сдвигайте карточку вправо, когда работа продвинулась.',badge:()=>S.tasks.filter(t=>!isDone(t)&&taskMine(t)).length},
+  {id:'notifications',label:'Уведомления',icon:'bell',group:'Работа',order:30,ok:()=>true,hint:'Всё, что произошло и касается вас: поставки, лиды, задачи, резервы. Новое подсвечено.',badge:()=>unread().length,hot:true},
+  {id:'stock',label:'Товары и остатки',icon:'box',group:'Товар',order:10,ok:()=>can('stock'),hint:'Сколько чего лежит на складах, что в резерве и что ещё едет. Нажмите на товар — откроется карточка.'},
+  {id:'logistics',label:'Поставки и перевозки',icon:'truck',group:'Товар',order:20,ok:()=>can('stock')||can('logistics'),hint:'Поставки от поставщиков: где сейчас груз, когда будет на складе и что опаздывает.',badge:()=>S.shipments.filter(s=>!isDone(s)).length},
+  {id:'receiving',label:'Приёмка на складе',icon:'camera',group:'Товар',order:30,ok:()=>can('receive'),hint:'Здесь принимают приехавший груз: сверяют количество, прикладывают фото и ставят на склад.',badge:()=>S.shipments.filter(awaitsReceipt).length,hot:true},
+  {id:'deals',label:'Сделки',icon:'users',group:'Продажи',order:10,ok:()=>can('clients'),hint:'Все сделки с клиентами — от заявки до монтажа. Нажмите на сделку, чтобы увидеть сумму, товар и следующий шаг.'},
+  {id:'messages',label:'Сообщения клиентам',icon:'chat',group:'Продажи',order:20,ok:()=>can('write')||can('auto'),hint:'Что и когда мы пишем клиентам в мессенджеры: текст сообщения и правила, по которым оно уходит.'},
+  {id:'team',label:'Сотрудники и права',icon:'shield',group:'Управление',order:10,ok:()=>can('admin'),hint:'Кто в фирме на какой роли и что этой роли разрешено. Права меняет директор.'}
 ];
 // Разделы, открытые текущему человеку: только они попадают в меню
 const navItems=()=>NAV.filter(n=>n.ok());
 const GROUPS=['Работа','Товар','Продажи','Управление','Настройки'];
+// В группе меню — не больше стольких пунктов у любой роли (тест проверяет каждую встроенную роль)
+const MAX_GROUP=6;
+// Строка «что здесь и зачем» под заголовком раздела — одна на все разделы, берётся из NAV.hint
+const navHint=n=>n&&n.hint?`<p class="sec-hint">${esc(n.hint)}</p>`:'';
+// Пустой список: что это значит, как его наполнить, и кнопка. action — имя в A (data-act), attrs — готовые data-атрибуты
+// кнопки. Нет кнопки или действия — только текст. Один вид во всех разделах.
+const emptyState=(text,btnLabel,action,attrs)=>`<div class="empty-st"><p class="empty">${esc(text)}</p>${btnLabel&&action?`<button type="button" class="btn pri" data-act="${esc(action)}"${attrs?' '+attrs:''}>${esc(btnLabel)}</button>`:''}</div>`;
 
 function renderSide(){
   const vis=navItems(),m=me();
@@ -119,7 +128,7 @@ function vNotes(){
   const un=new Set(unread().map(n=>n.id));
   let h=`<div class="bar"><div class="seg">${[['all','Все'],...Object.entries(KIND).map(([k,v])=>[k,v.l])].map(([k,l])=>`<button class="${S.ui.noteK===k?'on':''}" data-act="note-k" data-k="${k}">${l}</button>`).join('')}</div>${firm?`<div class="seg">${[['mine','Мне'],['all','Вся фирма']].map(([k,l])=>`<button class="${S.ui.noteScope===k?'on':''}" data-act="note-scope" data-k="${k}">${l}</button>`).join('')}</div>`:''}</div>`;
   h+=`<p class="hint">Под каждым уведомлением — кто его получил. ${firm?'Директор видит поток всей фирмы, остальные — только своё.':''}</p>`;
-  h+=`<section class="card">${list.length?`<ul class="notes">${list.map(n=>noteRow(n,un.has(n.id),true)).join('')}</ul>`:'<p class="empty">Под этот фильтр ничего нет.</p>'}</section>`;
+  h+=`<section class="card">${list.length?`<ul class="notes">${list.map(n=>noteRow(n,un.has(n.id),true)).join('')}</ul>`:emptyState('Под этот фильтр уведомлений нет.','Показать все','note-k','data-k="all"')}</section>`;
   return h;
 }
 
@@ -206,14 +215,23 @@ function toast(msg,kind){
 }
 
 // ——— поиск ———
+// Реестр источников: SEARCH.push({kind, label, find:(q)=>[{title, sub, open}], order?}) — раздел регистрирует свой в своём
+// файле. kind — машинное имя вида, label — подпись в строке результата («Сделка»), order — где в выдаче (меньше — выше,
+// по умолчанию 50). find получает строку поиска в нижнем регистре, сам проверяет право и видимость текущему человеку
+// и возвращает записи; open — готовые атрибуты кнопки (data-act="open-…" data-id="…"), как у карточек.
+const SEARCH=[];
+const SEARCH_PER=4,SEARCH_ALL=12;   // записей от одного источника и всего в выдаче
+// Подстрока в любом из полей — общая проверка для find
+const searchHas=(q,...parts)=>parts.join(' ').toLowerCase().includes(q);
+// Выдача по строке q: [{kind, type (подпись), label, sub, act}]. Короче двух букв — пусто. Право и видимость проверяет
+// сам источник в find: нет права — возвращает [].
 function searchRes(q){
-  q=q.trim().toLowerCase();if(q.length<2) return [];
-  const r=[],has=s=>s.toLowerCase().includes(q);
-  if(can('stock')) Catalog.query(S,{q}).slice(0,6).forEach(p=>{const k=stockOf(p.id);r.push({type:'Товар',label:p.name,sub:k.known?`свободно ${qtyOf(k.free,p)}`:'остаток: нет данных',act:`data-act="open-product" data-pid="${esc(p.id)}"`})});
-  if(can('clients')) Leads.dealsVisible(S,S.me).forEach(d=>{if(has(d.client+' '+d.id+' '+d.object)) r.push({type:'Сделка',label:d.client,sub:`${d.id} · ${d.object}`,act:`data-act="open-deal" data-id="${d.id}"`})});
-  if(can('stock')||can('logistics')) S.shipments.forEach(s=>{if(has(s.id+' '+s.supplier+' '+s.to+' '+s.track)) r.push({type:'Перевозка',label:`${s.id} · ${s.supplier}`,sub:`${stageName(s)} · ${fD(s.eta)}`,act:`data-act="open-ship" data-id="${esc(s.id)}"`})});
-  S.tasks.filter(taskVisible).forEach(t=>{if(has(t.title)) r.push({type:'Задача',label:t.title,sub:`${targetName(t)} · ${fRel(t.due)}`,act:`data-act="open-task" data-id="${t.id}"`})});
-  return r.slice(0,9);
+  q=String(q||'').trim().toLowerCase();if(q.length<2) return [];
+  const out=[];
+  for(const s of SEARCH.slice().sort((a,b)=>(a.order??50)-(b.order??50))){
+    (s.find(q)||[]).slice(0,SEARCH_PER).forEach(x=>out.push({kind:s.kind,type:s.label,label:x.title,sub:x.sub||'',act:x.open}));
+  }
+  return out.slice(0,SEARCH_ALL);
 }
 
 // ——— переходы ———
@@ -354,7 +372,7 @@ function render(){
   const n=NAV.find(x=>x.id===S.view),ok=n.ok();
   if(ok&&S.view==='receiving') syncRcv();
   const keep=hscrollKeep();
-  byId('view').innerHTML=ok?VIEWS[S.view]():vNoAccess(n);
+  byId('view').innerHTML=ok?navHint(n)+VIEWS[S.view]():vNoAccess(n);
   hscrollSync(keep);_hsView=S.view;
   // открыли по адресу (#…) — адрес следует за разделом, иначе перезагрузка вернёт старый
   try{const h=hashView();if(h&&h!==S.view) history.replaceState(null,'','#'+S.view)}catch(_){}
@@ -371,7 +389,8 @@ function render(){
 // ——— реестры полей и имитаций ———
 // Поля data-on: ON.input['<key>'] и ON.change['<key>'] = (el, e) => … — раздел регистрирует свои в своём файле.
 const ON={input:{},change:{}};
-// Имитации внешних событий для «Пульта проверки»: SIMS.push({id, label, run:()=>void}) — в файле раздела.
+// Имитации внешних событий для «Пульта проверки» (64-sims.js): SIMS.push({id, label, run}) — в файле раздела.
+// run() делает событие и возвращает {text — что произошло одной строкой, view — раздел, где это смотреть, id? — карточка}.
 const SIMS=[];
 
 // ——— действия по клику ———
@@ -474,6 +493,8 @@ document.addEventListener('click',e=>{
   if(!inSearch) byId('q-res').hidden=true;
   if(e.target.classList?.contains('modal-wrap')){closeModal();return}
   const el=e.target.closest('[data-act]');if(!el) return;
+  // строка таблицы открывает карточку, но не когда нажали поле или список внутри неё
+  if(el.tagName==='TR'&&e.target.closest('select,input,textarea,label,[data-on]')) return;
   const f=A[el.dataset.act];if(!f) return;
   if(el.closest('#q-res')){byId('q-res').hidden=true;byId('q').value=''}
   if(el.closest('#pop')) byId('pop').hidden=true;

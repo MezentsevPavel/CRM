@@ -28,6 +28,6 @@ SETTINGS_TABS.push(
   </div></section>`}
 );
 
-NAV.push({id:'settings',label:'Настройки',icon:'sliders',group:'Настройки',order:10,ok:()=>settingsTabs().length>0});
+NAV.push({id:'settings',label:'Настройки',icon:'sliders',group:'Настройки',order:10,hint:'Всё, что настраивают один раз: внешний вид, уведомления, воронки, почту, склады и права ролей.',ok:()=>settingsTabs().length>0});
 VIEWS.settings=vSettings;
 A['set-tab']=el=>{S.ui.setTab=el.dataset.tab;render()};

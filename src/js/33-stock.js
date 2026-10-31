@@ -218,6 +218,13 @@ const Stock = (() => {
     return { ok: true, reserve: r };
   }
 
+  // Резервы с истёкшим сроком: день «до» раньше дня now. В последний день срока резерв ещё действует. Единственное определение
+  // «срок резерва вышел»: плитка главного экрана и «Требует внимания» зовут его, а не считают сами.
+  function expired(st, now) {
+    const today = sod(now);
+    return (st.reserves || []).filter(r => r.until && sod(r.until) < today);
+  }
+
   // Снять с резерва q штук: весь резерв — unreserve(), часть — резерв уменьшается, в журнале «Снят резерв» на q.
   function release(st, r, q, by, at) {
     if (q >= r.qty) return unreserve(st, r.id, by, at);
@@ -274,5 +281,5 @@ const Stock = (() => {
     return { ok: true, move: m.move, reserve: r };
   }
 
-  return { ANY, KINDS, NO_ENTITY, NO_CITY, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, canReserve, bestCell, move, reserve, unreserve, sellMax, sell };
+  return { ANY, KINDS, NO_ENTITY, NO_CITY, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, canReserve, bestCell, move, reserve, unreserve, expired, sellMax, sell };
 })();

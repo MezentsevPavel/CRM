@@ -32,6 +32,8 @@ const Deals = (() => {
     const a = Number(deal && deal.amount);
     return isFinite(a) && a > 0 ? a : 0;
   }
+  // Сумма по списку сделок — единственная: колонка доски, шапка «Сделок» и плитка главного экрана зовут её.
+  const sumOf = deals => round2((deals || []).reduce((s, d) => s + total(d), 0));
   const noPrice = deal => ((deal && deal.items) || []).map((it, i) => (hasPrice(it) ? -1 : i)).filter(i => i >= 0);
 
   // ——— состояние ———
@@ -385,12 +387,12 @@ const Deals = (() => {
     const deals = query(st, Object.assign({}, filter, { pipeId }), personId);
     return pipe.stages.map(stage => {
       const ds = deals.filter(d => d.stageId === stage.id);
-      return { stage, count: ds.length, sum: round2(ds.reduce((s, d) => s + total(d), 0)), deals: ds };
+      return { stage, count: ds.length, sum: sumOf(ds), deals: ds };
     });
   }
 
   return {
-    defaultReasons, reasons, lineSum, total, noPrice, state, canEdit, itemName, reserved, lined, byId,
+    defaultReasons, reasons, lineSum, total, sumOf, noPrice, state, canEdit, itemName, reserved, lined, byId,
     create, update, move, win, lose, reopen, addItem, setItem, removeItem, reserveItem, unreserve, query, columns,
   };
 })();

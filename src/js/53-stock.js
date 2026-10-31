@@ -66,7 +66,7 @@ function stockTable(){
   const rows=stockRows(),all=S.products.length,pages=Math.max(1,Math.ceil(rows.length/PAGE_SIZE));
   const page=Math.min(Math.max(0,parseInt(S.ui.page,10)||0),pages-1),from=page*PAGE_SIZE,part=rows.slice(from,from+PAGE_SIZE);
   const head=`<div class="count"><span>Показано <b>${rows.length}</b> из <b>${all}</b> позиций</span>${rows.length>PAGE_SIZE?`<span class="muted">строки ${from+1}–${from+part.length}</span>`:''}</div>`;
-  if(!rows.length) return head+'<p class="empty">Ничего не нашлось. Проверьте фильтр или строку поиска.</p>';
+  if(!rows.length) return head+emptyState('Ничего не нашлось. Проверьте фильтр или строку поиска.','Сбросить фильтры','stock-reset');
   const pr=can('prices'),pg=pagerHtml(page,pages);
   return `${head}<div class="xs"><table class="tbl"><thead><tr><th>Товар</th><th class="num">На складе</th><th class="num">В резерве</th><th class="num">Свободно сейчас</th><th>Едет к нам</th><th class="num">Свободно после прихода</th>${pr?'<th class="num">Цена</th>':''}<th>Картина</th></tr></thead><tbody>${part.map(p=>stockRow(p,pr)).join('')}</tbody></table></div>${pg}`;
 }
@@ -99,10 +99,10 @@ function movesPane(tabs){
 function movesTable(){
   const u=S.ui,list=S.moves.filter(m=>(!u.mvPid||m.productId===u.mvPid)&&(!u.mvKind||m.kind===u.mvKind)),part=list.slice(0,MV_LIMIT);
   const head=`<div class="count"><span>Показано <b>${list.length}</b> из <b>${S.moves.length}</b> движений</span>${list.length>MV_LIMIT?`<span class="muted">первые ${MV_LIMIT}: уточните фильтр</span>`:''}</div>`;
-  if(!part.length) return head+'<p class="empty">Движений по этому фильтру нет.</p>';
+  if(!part.length) return head+emptyState('Движений по этому фильтру нет.','Показать все движения','stock-journal');
   return `${head}<div class="xs"><table class="tbl"><thead><tr><th>Когда</th><th>Кто</th><th>Вид</th><th>Товар</th><th class="num">Сколько</th><th>Откуда и куда</th><th>Документ</th></tr></thead><tbody>${part.map(m=>{
     const p=product(m.productId),who=whoName(m.by);
-    return `<tr><td class="nowrap">${fWhen(m.at)}</td><td>${who?esc(who):noData('кто')}</td><td>${movePill(m)}</td><td>${p?`<button type="button" class="link" data-act="open-product" data-pid="${esc(p.id)}">${esc(p.name)}</button>`:noData('товар')}</td><td class="num">${moveSign(m)}${qtyOf(m.qty,p)}</td><td>${esc(moveWhere(m))}</td><td class="mono">${esc(m.doc||'')}</td></tr>`;
+    return `<tr${p?` class="click" data-act="open-product" data-pid="${esc(p.id)}" tabindex="0"`:''}><td class="nowrap">${fWhen(m.at)}</td><td>${who?esc(who):noData('кто')}</td><td>${movePill(m)}</td><td>${p?`<button type="button" class="link" data-act="open-product" data-pid="${esc(p.id)}">${esc(p.name)}</button>`:noData('товар')}</td><td class="num">${moveSign(m)}${qtyOf(m.qty,p)}</td><td>${esc(moveWhere(m))}</td><td class="mono">${esc(m.doc||'')}</td></tr>`;
   }).join('')}</tbody></table></div>`;
 }
 
@@ -217,6 +217,7 @@ MODALS.stockSell=o=>{
 };
 
 // ——— регистрация в реестрах оболочки ———
+SEARCH.push({kind:'product',label:'Товар',order:10,find:q=>!can('stock')?[]:Catalog.query(S,{q}).slice(0,6).map(p=>{const k=stockOf(p.id);return {title:p.name,sub:k.known?`свободно ${qtyOf(k.free,p)}`:'остаток: нет данных',open:`data-act="open-product" data-pid="${esc(p.id)}"`}})});
 DRAWERS.product=id=>{const p=can('stock')?product(id):null;return p?dProduct(p):null};
 ON.input.sq=t=>{S.ui.sq=t.value;refreshStock()};
 ON.change.deficit=t=>{S.ui.deficit=t.checked;refreshStock()};
@@ -251,5 +252,7 @@ FORMS['stock-sell']=f=>{
 A['stock-tab']=el=>{S.ui.stockTab=el.dataset.tab;render()};
 A['stock-cat']=el=>{S.ui.cat=el.dataset.cat;S.ui.page=0;render()};
 A['stock-page']=el=>{S.ui.page=parseInt(el.dataset.page,10)||0;byId('stock-tbl').innerHTML=stockTable();byId('scroll').scrollTop=0};
+// Пустой список остатков: сбросить категорию, бренд, наличие, каталог, поиск и «только где не хватает»
+A['stock-reset']=()=>{Object.assign(S.ui,{cat:'Все',sq:'',brand:'',avail:'',catf:'',deficit:false,page:0});render()};
 // Из карточки товара — в журнал движений по этому товару
 A['stock-journal']=el=>{S.ui.stockTab='moves';S.ui.mvPid=el.dataset.pid||'';S.ui.mvKind='';S.ui.drawer=null;go('stock')};

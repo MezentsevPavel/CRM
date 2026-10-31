@@ -68,8 +68,8 @@ function leadBody(){
   const u=leadSel(),all=Leads.visible(S,S.me),funnel=u.view==='funnel';
   const list=leadFilter(all,u,!funnel);
   const head=`<p class="count"><span>Лидов: <b>${list.length}</b>${list.length!==all.length?` из ${all.length}`:''}</span><span>без менеджера: <b>${leadFreeCount(all)}</b></span></p>`;
-  if(!all.length) return `${head}<section class="card"><p class="empty">Лидов пока нет. Они приходят с сайта и из Битрикса24 — откуда именно, выбирают в «Настройки → Лиды и сделки».${can('settings')?' Проверить можно кнопками «Имитация» выше.':''}</p></section>`;
-  if(!list.length) return `${head}<section class="card"><p class="empty">По этим условиям лидов нет. <button type="button" class="link" data-act="lead-reset">Сбросить поиск и фильтры</button></p></section>`;
+  if(!all.length) return `${head}<section class="card">${emptyState(`Лидов пока нет. Они приходят с сайта и из Битрикса24 — откуда именно, выбирают в «Настройки → Лиды и сделки». Лид можно завести и руками.${can('settings')?' Проверить приход можно кнопками «Имитация» выше или в «Пульте проверки».':''}`,'Новый лид','lead-new')}</section>`;
+  if(!list.length) return `${head}<section class="card">${emptyState('По этим условиям лидов нет.','Сбросить поиск и фильтры','lead-reset')}</section>`;
   return head+(funnel?`<p class="hint">Перетащите карточку на другой этап или откройте лид и нажмите кнопку. «Сделка создана» заводит сделку, «Отказ» спрашивает причину. Двигать лид может менеджер, который его ведёт, и тот, кто раздаёт лиды (директор, РОП).</p>${leadFunnel(list)}`:leadTable(list));
 }
 
@@ -308,10 +308,17 @@ function leadSimulate(source){
   toast(`Пришёл лид ${lead.id} (${Leads.SOURCE[source]}, «пример»). ${lead.managerId?`Тип ${Leads.TYPE[lead.type]}, менеджер — ${leadWho(lead.managerId)}.`:'Менеджера нет — лид нераспределённый.'} Уведомление получили: ${got}.`);
   return lead;
 }
-SIMS.push({id:'lead-site',label:'Имитация: пришёл лид с сайта',run:()=>{leadSimulate('site')}});
-SIMS.push({id:'lead-bitrix',label:'Имитация: пришёл лид из Битрикса24',run:()=>{leadSimulate('bitrix')}});
+// Результат имитации для «Пульта проверки»: {text — что произошло, view — где смотреть, id — карточка}
+const leadSimResult=(source)=>{
+  const l=leadSimulate(source);
+  if(!l) return {text:`Лид не создан: источник «${Leads.SOURCE[source]}» сейчас не используется. Источник выбирают в «Настройки → Лиды и сделки».`,view:'settings'};
+  return {text:`Пришёл лид ${l.id} (${Leads.SOURCE[source]}, «пример»). ${l.managerId?`Тип ${Leads.TYPE[l.type]}, менеджер: ${leadWho(l.managerId)}`:'Менеджера нет — лид нераспределённый'}`,view:'leads',id:l.id};
+};
+SIMS.push({id:'lead-site',label:'Имитация: пришёл лид с сайта',run:()=>leadSimResult('site')});
+SIMS.push({id:'lead-bitrix',label:'Имитация: пришёл лид из Битрикса24',run:()=>leadSimResult('bitrix')});
 
 // ——— регистрация в реестрах оболочки ———
-NAV.push({id:'leads',label:'Лиды',icon:'funnel',group:'Продажи',order:5,ok:()=>can('leads'),badge:()=>Leads.fresh(S,S.me).length+actsBadge('lead'),hot:true});
+NAV.push({id:'leads',label:'Лиды',icon:'funnel',group:'Продажи',order:5,hint:'Заявки, которые ещё не стали сделками. Возьмите лид, свяжитесь с человеком и сделайте из него сделку.',ok:()=>can('leads'),badge:()=>Leads.fresh(S,S.me).length+actsBadge('lead'),hot:true});
 VIEWS.leads=vLeads;
+SEARCH.push({kind:'lead',label:'Лид',order:30,find:q=>!can('leads')?[]:Leads.visible(S,S.me).filter(l=>searchHas(q,l.id,l.name,l.company,l.phone,l.email,l.inn,l.text)).map(l=>({title:Leads.title(l),sub:`${l.id} · ${stageName(l)}`,open:`data-act="open-lead" data-id="${esc(l.id)}"`}))});
 DRAWERS.lead=id=>{const l=Leads.visible(S,S.me).find(x=>x.id===id);return l?dLead(l):null};

@@ -169,7 +169,7 @@ const SHIP_CELLS={
   depart:s=>`<td>${s.depart?fD(s.depart):'<span class="muted sm">нет данных</span>'}</td>`
 };
 function shipRow(s,pr,now){
-  return `<tr class="srow${shipLate(s,now)?' is-late':''}${isDone(s)?' is-done':''}" data-ship="${esc(s.id)}">${pr.cols.map(k=>SHIP_CELLS[k](s,now)).join('')}</tr>`;
+  return `<tr class="srow click${shipLate(s,now)?' is-late':''}${isDone(s)?' is-done':''}" data-ship="${esc(s.id)}" data-act="open-ship" data-id="${esc(s.id)}" tabindex="0">${pr.cols.map(k=>SHIP_CELLS[k](s,now)).join('')}</tr>`;
 }
 function shipHead(pr,u){
   const raw=u.sort,desc=raw.startsWith('-'),key=desc?raw.slice(1):raw;
@@ -193,7 +193,7 @@ function shipTable(u,pr,dir,now){
     if(r.groups){const k=r.keyOf.get(s.id);if(k!==cur){cur=k;const g=r.groups.get(k);body+=`<tr class="sgrp"><td colspan="${pr.cols.length}"><b>${esc(g.label)}</b> <span class="muted">· ${g.count}</span></td></tr>`}}
     body+=shipRow(s,pr,now);
   });
-  const tbl=r.rows.length?`<section class="card clip"><div class="xs"><table class="tbl stbl ${pr.density}"><thead>${shipHead(pr,u)}</thead><tbody>${body}</tbody></table></div></section>`:'<section class="card"><p class="empty">Под такие фильтры поставок нет.</p></section>';
+  const tbl=r.rows.length?`<section class="card clip"><div class="xs"><table class="tbl stbl ${pr.density}"><thead>${shipHead(pr,u)}</thead><tbody>${body}</tbody></table></div></section>`:`<section class="card">${emptyState('Под такие фильтры поставок нет. Поставку заводит логист кнопкой «Новая поставка».','Сбросить фильтры','ship-reset')}</section>`;
   return shipCounter(r.rows.length,r.total)+tbl+shipPager(r);
 }
 
@@ -407,7 +407,28 @@ function shipCarrier(shipId){
   toast(`Перевозчик сообщил по ${s.id}: «${r.to.name}». Сейчас: ${Ships.where(s).text}. Уведомление получили ${got} ${pl(got,'сотрудник','сотрудника','сотрудников')}.${rules?` Сработало ${rules} ${pl(rules,'правило','правила','правил')} директора.`:''}`);
   return Object.assign({shipId:s.id},r);
 }
-SIMS.push({id:'carrier',label:'Имитация: пришёл статус от перевозчика',run:()=>{shipCarrier()}});
+// Имитация «груз прибыл»: поверх того же выбора поставки (shipCarrierPick) — перевозчик сообщает, что груз приехал в город
+// назначения; поставка встаёт на этап с флагом «прибыло» через Ships.setStage и ждёт приёмки.
+function shipArrive(){
+  const s=shipCarrierPick(),now=new Date();
+  if(!s){toast('Нет поставки в пути, которая могла бы прибыть.','warn');return {ok:false,reason:'Нет поставки в пути, которая могла бы прибыть.'}}
+  const stage=stagesFor(s).find(x=>x.flag==='arrived');
+  if(!stage){toast('В воронке поставок нет этапа «прибыло».','warn');return {ok:false,reason:'В воронке поставок нет этапа «прибыло».'}}
+  const r=Ships.setStage(S,s.id,stage.id,null,now,Ships.SRC.carrier);
+  if(!r.ok){toast(r.reason,'warn');return r}
+  render();
+  toast(`Перевозчик сообщил: ${s.id} прибыла в город назначения и ждёт приёмки на складе.`);
+  return Object.assign({shipId:s.id},r);
+}
+// Результат имитации для «Пульта проверки»: {text — что произошло, view — где смотреть, id — карточка}
+SIMS.push({id:'carrier',label:'Имитация: пришёл статус от перевозчика',run:()=>{
+  const r=shipCarrier();
+  return r.ok===false?{text:r.reason,view:'logistics'}:{text:`Перевозчик сообщил по ${r.shipId}: «${r.to.name}». Сейчас: ${Ships.where(ship(r.shipId)).text}.`,view:'logistics',id:r.shipId};
+}});
+SIMS.push({id:'arrival',label:'Имитация: груз прибыл в город',run:()=>{
+  const r=shipArrive();
+  return r.ok===false?{text:r.reason,view:'logistics'}:{text:`Груз ${r.shipId} прибыл в город назначения и ждёт приёмки на складе.`,view:'logistics',id:r.shipId};
+}});
 
 // ——— карточка поставки ———
 function dShip(s){
@@ -438,6 +459,7 @@ function dShip(s){
 }
 
 // ——— регистрация в реестрах оболочки ———
+SEARCH.push({kind:'ship',label:'Перевозка',order:60,find:q=>!(can('stock')||can('logistics'))?[]:S.shipments.filter(s=>searchHas(q,s.id,s.supplier,s.to,s.track)).map(s=>({title:`${s.id} · ${s.supplier}`,sub:`${stageName(s)} · ${fD(s.eta)}`,open:`data-act="open-ship" data-id="${esc(s.id)}"`}))});
 DRAWERS.ship=id=>{const s=(can('stock')||can('logistics'))?ship(id):null;return s?dShip(s):null};
 MODALS.shipItems=id=>mShipItems(ship(id));
 

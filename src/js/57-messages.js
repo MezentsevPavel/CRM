@@ -15,4 +15,7 @@ function updTpl(){const p=byId('tpl-prev');if(p) p.innerHTML=tplSample();const h
 // ——— регистрация в реестрах оболочки ———
 ON.input.tpl=t=>{S.tpl=t.value;updTpl()};
 ON.input.addr=t=>{S.address=t.value;updTpl()};
+// Текст пишут по буквам и сохраняют сами; когда закончили (поле потеряло фокус) — короткое подтверждение
+ON.change.tpl=()=>toast('Шаблон сообщения сохранён.');
+ON.change.addr=()=>toast('Адрес склада сохранён.');
 ON.change.rule=t=>{const r=rule(t.dataset.id);r.on=t.checked;toast(`Правило «${r.when}» ${r.on?'включено':'выключено'}.`)};

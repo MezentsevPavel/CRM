@@ -50,7 +50,7 @@ function mailNav(sel){
 function mailItems(sel){
   const list=mailList(sel),un=list.filter(l=>!l.read).length;
   const head=`<p class="count"><span>${sel.q.trim()?'Найдено':'Писем'}: <b>${list.length}</b></span><span>непрочитанных: <b>${un}</b></span></p>`;
-  if(!list.length) return head+`<p class="empty">${sel.q.trim()?'По этому запросу писем нет.':sel.box&&sel.box.added?`В новом ящике писем пока нет — ${MAIL_LATER}.`:'В этой папке писем нет.'}</p>`;
+  if(!list.length) return head+(sel.q.trim()?emptyState('По этому запросу писем нет.','Очистить поиск','mail-q-clear'):sel.box&&sel.box.added?emptyState(`В новом ящике писем пока нет — ${MAIL_LATER}.`):emptyState(`В этой папке писем нет. Письма приходят сами.${can('admin')?' Пока почта не подключена, проверить можно «Имитацией» в «Пульте проверки».':''}`));
   return head+`<ul class="mail-items">${list.map(l=>{
     const sn=l.body.replace(/\s+/g,' ').slice(0,90);
     return `<li><button type="button" class="mail-li${l.read?'':' unread'}${l.id===sel.letter?.id?' on':''}" data-act="mail-open" data-id="${esc(l.id)}"><span class="mail-li-top"><b>${esc(l.fromName||l.from)}</b><small>${esc(fWhen(l.at))}</small></span><span class="mail-li-sub">${esc(l.subject)}</span><span class="mail-li-sn">${esc(sn)}</span><span class="mail-li-tags">${l.demo?'<span class="pill sm">пример</span>':''}${sel.purchase&&sel.folder==='all'?`<span class="pill sm info">${esc(mailFolderName(sel.box,l))}</span>`:''}${(l.replies||[]).length?'<span class="pill sm sun">есть ответ</span>':''}</span></button></li>`;
@@ -107,7 +107,7 @@ function vMail(){
   <div class="mail" data-pane="${sel.pane}">${mailNav(sel)}${mailListPane(sel)}${mailLetterPane(sel)}</div>`;
 }
 
-NAV.push({id:'mail',label:'Почта',icon:'mail',group:'Работа',order:40,ok:()=>can('mail')&&Mail.boxesFor(S,S.me).length>0,badge:mailUnreadAll,hot:true});
+NAV.push({id:'mail',label:'Почта',icon:'mail',group:'Работа',order:40,hint:'Письма в ящиках фирмы. Письма поставщиков ложатся в их папки сами, незнакомые ждут в «Разобрать».',ok:()=>can('mail')&&Mail.boxesFor(S,S.me).length>0,badge:mailUnreadAll,hot:true});
 VIEWS.mail=vMail;
 
 // ——— действия ———
@@ -122,6 +122,7 @@ A['mail-back']=()=>{const u=mailU();u.pane=u.pane==='letter'?'list':'nav';render
 A['mail-reply']=()=>{const sel=mailSel();if(!sel.letter) return;mailU().reply=sel.letter.id;render();setTimeout(()=>byId('mail-reply-text')?.focus(),0)};
 A['mail-reply-cancel']=()=>{mailU().reply=null;render()};
 A['mail-sim']=el=>mailSimulate(el.dataset.box);
+A['mail-q-clear']=()=>{mailU().q='';render()};
 
 ON.input['mail-q']=t=>{
   mailU().q=t.value;
@@ -170,4 +171,10 @@ function mailSimulate(boxId){
   toast(`Пришло письмо в ящик «${box.title}», папка «${mailFolderName(box,l)}». Уведомление получили: ${to}.`);
   return l;
 }
-SIMS.push({id:'mail',label:'Имитация: пришло письмо',run:()=>{mailSimulate()}});
+// Результат имитации для «Пульта проверки»: {text — что произошло, view — где смотреть, id — карточка}
+SIMS.push({id:'mail',label:'Имитация: пришло письмо',run:()=>{
+  const l=mailSimulate();
+  if(!l) return {text:'Письмо не пришло: нет ящика, куда ему прийти.',view:'mail'};
+  const box=mailData().boxes.find(b=>b.id===l.boxId);
+  return {text:`Пришло письмо «${l.subject}» в ящик «${box.title}», папка «${mailFolderName(box,l)}».`,view:'mail',id:l.id};
+}});

@@ -50,7 +50,7 @@ function rcvPlan(r=S.rcv){
 function vReceiving(){
   const r=curRcv();
   if(r&&r.done) return rcvLayout(rcvDoneHtml(r),rcvAfterHtml(r));
-  if(!r) return '<section class="card"><p class="empty">Сейчас нечего принимать: нет поставок на этапе «прибыло, ждёт приёмки». Как только логист отметит прибытие, поставка появится здесь.</p></section>';
+  if(!r) return `<section class="card">${emptyState('Сейчас нечего принимать: нет поставок на этапе «прибыло, ждёт приёмки». Как только логист отметит прибытие, поставка появится здесь.',can('stock')||can('logistics')?'Открыть поставки':'','go','data-view="logistics"')}</section>`;
   return rcvLayout(rcvPhoneHtml(r,pendingRcv()),`<div id="rcv-prev">${rcvPreview(r)}</div>`);
 }
 function rcvLayout(phone,side){

@@ -75,11 +75,14 @@ function dealsTable(cur,u){
 // ——— тело раздела: счёт + доска или таблица (его же перерисовывают поиск и правка в карточке) ———
 function dealsBody(){
   const u=dealsSel(),{vis,cur,pipe}=dealsScope(),pr=can('prices');
-  if(!vis.length) return '<section class="card"><p class="empty">Сделок пока нет. Заведите первую кнопкой «Новая сделка» или создайте её из лида в разделе «Лиды».</p></section>';
+  if(!vis.length) return `<section class="card">${emptyState('Сделок пока нет. Заведите первую или создайте её из лида в разделе «Лиды».','Новая сделка','deal-new')}</section>`;
   if(!pipe) return '<section class="card"><p class="empty">Воронки сделок этого типа нет — её заводят в «Настройки → Воронки».</p></section>';
-  const list=Deals.query(S,dealsFilter(u,cur),S.me),sum=list.reduce((s,d)=>s+Deals.total(d),0);
+  const list=Deals.query(S,dealsFilter(u,cur),S.me),sum=Deals.sumOf(list);
   const head=`<p class="count"><span>Сделок: <b>${list.length}</b></span>${pr?`<span>на сумму: <b>${rub(sum)}</b></span>`:''}<span>${esc(pipe.name)}</span></p>`;
-  if(!list.length) return `${head}<section class="card"><p class="empty">${u.q.trim()||u.mine||u.lost||u.acts?'По этим условиям сделок нет.':`Сделок типа ${Leads.TYPE[cur]} пока нет.`} ${u.q.trim()||u.mine||u.lost||u.acts?'<button type="button" class="link" data-act="deal-reset">Сбросить поиск и фильтры</button>':'Заведите сделку кнопкой «Новая сделка».'}</p></section>`;
+  if(!list.length){
+    const dirty=u.q.trim()||u.mine||u.lost||u.acts;
+    return `${head}<section class="card">${dirty?emptyState('По этим условиям сделок нет.','Сбросить поиск и фильтры','deal-reset'):emptyState(`Сделок типа ${Leads.TYPE[cur]} пока нет. Заведите первую или создайте её из лида.`,'Новая сделка','deal-new')}</section>`;
+  }
   return head+(u.view==='table'?dealsTable(cur,u):dealsBoard(pipe,cur,u));
 }
 
@@ -482,4 +485,5 @@ document.addEventListener('drop',e=>{
 VIEWS.deals=vDeals;
 // счётчик в меню: мои дела по сделкам на сегодня и просроченные (Acts.counts)
 Object.assign(NAV.find(n=>n.id==='deals'),{badge:()=>actsBadge('deal'),hot:true});
+SEARCH.push({kind:'deal',label:'Сделка',order:20,find:q=>!can('clients')?[]:Leads.dealsVisible(S,S.me).filter(d=>searchHas(q,d.client,d.id,d.object)).map(d=>({title:d.client,sub:`${d.id} · ${d.object}`,open:`data-act="open-deal" data-id="${esc(d.id)}"`}))});
 DRAWERS.deal=id=>{const d=Leads.dealsVisible(S,S.me).find(x=>x.id===id);return d?dealCard(d):null};
