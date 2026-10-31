@@ -144,10 +144,10 @@ function mStage(s){
   const def=stg.slice(stagePos(s)+1).find(x=>!locked(x))?.id||s.stageId;
   return `<form data-form="stage" data-id="${s.id}" novalidate>${mHead('Отметка по перевозке '+s.id)}<div class="modal-b">
     <div class="field"><label for="st-stage">Этап</label><select id="st-stage" class="inp">${stg.map(x=>`<option value="${esc(x.id)}" ${x.id===def?'selected':''} ${locked(x)?'disabled':''}>${esc(x.name)}${locked(x)?' — ставит склад при приёмке':''}</option>`).join('')}</select></div>
-    <div class="field"><label for="st-place">Где груз сейчас</label><input id="st-place" class="inp" value="${esc(shipLast(s).text)}"></div>
+    <p class="hint">Сейчас: ${esc(shipWhere(s))}. Положение груза на маршруте поменяется само, вместе с этапом.</p>
     <div class="field"><label for="st-eta">${s.dir==='in'?'Ожидается на складе':'Доставка клиенту'}</label><input id="st-eta" type="date" class="inp" value="${iso(s.eta)}"></div>
     <div class="field"><label for="st-note">Комментарий</label><input id="st-note" class="inp" placeholder="Например: водитель звонил, будет к обеду"></div>
-    <label class="check"><input type="checkbox" id="st-notify" checked> Уведомить сотрудников об отметке</label>
+    <p class="hint">Отметка запишется в историю как «вручную», уведомление получат все сотрудники, кроме тех, кто выключил вид «Перевозки».</p>
   </div>${mFoot('Отметить и уведомить')}</form>`;
 }
 let _ir=0;
@@ -159,6 +159,8 @@ function mShip(){
     <div class="field"><label for="ns-from">Откуда</label><input id="ns-from" class="inp" placeholder="Поставщик и город"></div>
     <div class="grid2"><div class="field"><label for="ns-car">Как едет</label><select id="ns-car" class="inp">${CARRIERS.map(c=>`<option>${c}</option>`).join('')}</select></div><div class="field"><label for="ns-doc">Номер накладной</label><input id="ns-doc" class="inp" placeholder="Если уже известен"></div>
     <div class="field"><label for="ns-stage">Этап сейчас</label><select id="ns-stage" class="inp">${open.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select></div><div class="field"><label for="ns-eta">Ожидается на складе</label><input id="ns-eta" type="date" class="inp" value="${iso(day(7))}"></div></div>
+    <div class="grid2"><div class="field"><label for="ns-city">Куда едет (город)</label><select id="ns-city" class="inp">${S.cities.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select></div><div class="field"><label for="ns-ent">На какое юрлицо</label><select id="ns-ent" class="inp">${S.entities.map(e=>`<option value="${esc(e.id)}">${esc(e.name)}</option>`).join('')}</select></div></div>
+    <p class="hint">Маршрут: Китай → Чита (таможня и перевалка) → выбранный город.</p>
     <div class="field"><span class="lbl">Что едет</span><div id="ns-items" class="stack-s" style="gap:8px">${irow()}</div><div><button type="button" class="btn sm ghost" data-act="add-irow">${ic('plus')}Ещё позиция</button></div></div>
     <p class="err" id="ns-err" hidden></p></div>${mFoot('Создать и уведомить')}</form>`;
 }
@@ -209,7 +211,7 @@ function searchRes(q){
   const r=[],has=s=>s.toLowerCase().includes(q);
   if(can('stock')) Catalog.query(S,{q}).slice(0,6).forEach(p=>{const k=stockOf(p.id);r.push({type:'Товар',label:p.name,sub:k.known?`свободно ${qtyOf(k.free,p)}`:'остаток: нет данных',act:`data-act="open-product" data-pid="${esc(p.id)}"`})});
   if(can('clients')) S.deals.forEach(d=>{if(has(d.client+' '+d.id+' '+d.object)) r.push({type:'Сделка',label:d.client,sub:`${d.id} · ${d.object}`,act:`data-act="open-deal" data-id="${d.id}"`})});
-  if(can('stock')||can('logistics')) S.shipments.forEach(s=>{if(has(s.id+' '+s.supplier+' '+s.to+' '+s.track)) r.push({type:'Перевозка',label:`${s.id} · ${s.supplier}`,sub:`${stageName(s)} · ${fD(s.eta)}`,act:`data-act="go" data-view="logistics" data-tab="${isDone(s)?'done':s.dir}"`})});
+  if(can('stock')||can('logistics')) S.shipments.forEach(s=>{if(has(s.id+' '+s.supplier+' '+s.to+' '+s.track)) r.push({type:'Перевозка',label:`${s.id} · ${s.supplier}`,sub:`${stageName(s)} · ${fD(s.eta)}`,act:`data-act="open-ship" data-id="${esc(s.id)}"`})});
   S.tasks.filter(taskVisible).forEach(t=>{if(has(t.title)) r.push({type:'Задача',label:t.title,sub:`${targetName(t)} · ${fRel(t.due)}`,act:`data-act="open-task" data-id="${t.id}"`})});
   return r.slice(0,9);
 }
@@ -332,18 +334,7 @@ const FORMS={
     Notify.push(S,'reserve',m.id,`Резерв: ${low(p.name)} — ${qtyOf(qty,p)} ${src==='stock'?'со склада':'из поставки '+src} для ${did} (${d.client}) до ${fD(u)}.`,now);
     render();toast(`Резерв поставлен: ${qtyOf(qty,p)} для ${did}. Склад и директор получили уведомление.`);
   },
-  stage:f=>{
-    const s=ship(f.dataset.id),m=me(),now=new Date();
-    const stg=Pipes.stage(S,s.pipeId,byId('st-stage').value);
-    if(!stg||(s.dir==='in'&&stg.flag==='final')){closeModal();return}
-    const place=byId('st-place').value.trim()||shipLast(s).text,eta=byId('st-eta').value,note=byId('st-note').value.trim(),notify=byId('st-notify').checked;
-    const old=s.eta,ne=eta?fromIso(eta,s.eta.getHours()||12):s.eta,moved=dd(ne)!==dd(old),wasOut=s.dir==='out'&&leftStart(s);
-    s.stageId=stg.id;s.history.push({at:now,by:m.id,text:place});s.eta=ne;
-    let sent=0;
-    if(notify) sent=Notify.push(S,'ship',m.id,`${s.id}: ${stg.name.toLowerCase()} — ${place}. ${s.dir==='in'?'На складе ожидается':'Доставка'} ${fD(ne)}${moved?` (было ${fD(old)})`:''}.${note?' '+note:''}`,now).to.filter(id=>id!==m.id).length;
-    if(s.dir==='out'&&!wasOut&&leftStart(s)&&rule('shipped').on&&s.deal){const d=deal(s.deal);if(d&&d.channel!=='phone') S.msgs.push({id:Store.freeId(S.msgs,'m'),at:now,deal:d.id,channel:d.channel,auto:true,text:`${d.contact}, здравствуйте! Ваш заказ отгружен: ${s.track}. Привезём ${fD(ne)}. Ваш менеджер — ${person(d.managerId)?.name||''}.`})}
-    closeModal();render();toast(notify?`Отмечено. Уведомление получили ${sent} ${pl(sent,'сотрудник','сотрудника','сотрудников')}.`:'Отмечено без уведомления.');
-  },
+  stage:f=>shipStageForm(f),
   task:()=>{
     const title=byId('t-title').value.trim();
     if(!title){showErr('t-err','Напишите, что нужно сделать.');byId('t-title').focus();return}
@@ -353,17 +344,7 @@ const FORMS={
     Notify.push(S,'task',m.id,`Новая задача: «${title}», срок ${fD(t.due)}.${t.deal?' Сделка '+t.deal+'.':''} От: ${m.name}.`,now,targetPeople(t.to));
     closeModal();render();toast(`Задача поставлена. ${targetName(t)} — уведомление отправлено.`);
   },
-  ship:f=>{
-    const from=byId('ns-from').value.trim(),m=me(),now=new Date(),items=[],pipe=shipPipe('in');
-    f.querySelectorAll('.irow').forEach(r=>{const sku=r.querySelector('select').value,q=parseInt(r.querySelector('input').value,10)||0;if(q<1) return;const e=items.find(i=>i.productId===sku);if(e) e.qty+=q;else items.push({productId:sku,qty:q})});
-    if(!from||!items.length) return showErr('ns-err','Укажите, откуда едет груз, и хотя бы одну позицию с количеством.');
-    const id='П-'+(Math.max(0,...S.shipments.filter(s=>s.dir==='in').map(s=>parseInt(s.id.replace(/\D/g,''),10)||0))+1);
-    const eta=byId('ns-eta').value?fromIso(byId('ns-eta').value):day(7,12);
-    const stageId=Pipes.stage(S,pipe.id,byId('ns-stage').value)?.id||startStage(pipe.id).id;
-    S.shipments.push({id,dir:'in',supplier:from,to:'Наш склад',carrier:byId('ns-car').value,track:byId('ns-doc').value.trim()||'нет данных: номер накладной',pipeId:pipe.id,stageId,eta,history:[{at:now,by:m.id,text:from}],items});
-    Notify.push(S,'ship',m.id,`Новая поставка ${id} из «${from}»: ${items.map(i=>`${low(product(i.productId).name)} ${qtyOf(i.qty,product(i.productId))}`).join(', ')}. На складе ожидается ${fD(eta)}.`,now);
-    closeModal();S.ui.logTab='in';render();toast(`Поставка ${id} создана. Менеджеры уже видят её в остатках как «едет к нам».`);
-  },
+  ship:f=>shipCreate(f),
   product:()=>{
     const name=byId('np-name').value.trim(),pr=byId('np-price'),m=me();
     if(!name) return showErr('np-err','Нужно наименование.');

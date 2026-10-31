@@ -370,30 +370,15 @@ td.free b{font-weight:700}
 .wh-add .field{flex:1;min-width:180px}
 @media (max-width:560px){.wh-row.city{grid-template-columns:minmax(0,1fr)}}
 
-/* ——— перевозки ——— */
-.ships{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,520px),1fr));gap:14px}
-.ship{display:flex;flex-direction:column;gap:12px;padding:16px}
-.ship.is-late{border-color:var(--bad)}
-.ship-h{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
-.ship-id{display:flex;align-items:center;flex-wrap:wrap;gap:10px}
-.ship-id>b{font-size:16px}
-.eta{display:flex;flex-direction:column;gap:1px;text-align:right}
-.eta small{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
-.eta b{font:800 17px/1.15 var(--f-display);letter-spacing:-.01em}
-.eta span{font-size:12px;color:var(--ink-3)}
-.eta.bad-t b,.eta.bad-t span{color:var(--bad)}
-.route{display:flex;align-items:center;flex-wrap:wrap;gap:8px;font-weight:500}
-.route .ic{width:16px;height:16px;color:var(--ink-3)}
+/* ——— поставки и перевозки: таблица, воронка, шкала маршрута, позиции, карточка ——— */
+
+/* этапы полосками — общие для карточки поставки и карточки сделки */
 .steps{display:grid;grid-template-columns:repeat(var(--n),minmax(0,1fr));gap:4px;margin:0;padding:0;list-style:none}
 .steps li{display:flex;flex-direction:column;gap:6px;min-width:0;font-size:11px;line-height:1.25;color:var(--ink-3);overflow-wrap:anywhere}
 .steps li::before{content:"";height:5px;border-radius:3px;background:var(--sunken)}
 .steps li.done::before{background:var(--primary-line)}
 .steps li.cur::before{background:var(--primary)}
 .steps li.cur{color:var(--ink);font-weight:600}
-.lastm{display:flex;align-items:flex-start;gap:8px;padding:9px 11px;border-radius:12px;background:var(--surface-2);font-size:13px}
-.lastm .ic{margin-top:1px;color:var(--primary)}
-.lastm small{display:block;font-size:12px;color:var(--ink-3)}
-.items{display:flex;flex-wrap:wrap;gap:6px}
 .waits{display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--ink-2)}
 .waits .ic{width:16px;height:16px;margin-top:1px;color:var(--ink-3)}
 .ship-f{display:flex;flex-wrap:wrap;gap:8px;padding-top:12px;border-top:1px solid var(--line)}
@@ -402,10 +387,172 @@ td.free b{font-weight:700}
 .ph-ph{display:grid;place-items:center;background:var(--sunken);color:var(--ink-3)}
 .photos-row small{margin-left:4px;font-size:12px;color:var(--ink-3)}
 
+/* фильтры и настройка вида */
+.sfilters{padding:12px 14px}
+.sf-row{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px}
+.sf-row .field{flex:1 1 130px;min-width:0}
+.sf-row .sf-q{flex:2 1 240px}
+.sset .hint{margin:0}
+.ss-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px;align-items:start}
+.ss-f{display:flex;flex-direction:column;gap:8px;min-width:0;margin:0;padding:0;border:0}
+fieldset.ss-f legend{padding:0;margin-bottom:6px;font-size:12.5px;font-weight:500;color:var(--ink-2)}
+.s-count{margin:0;font-size:13px;color:var(--ink-3)}
+.s-pager{display:flex;align-items:center;justify-content:center;gap:12px}
+
+/* таблица: строка фиксированной высоты, лишнее обрезается */
+.stbl{min-width:1100px}
+.stbl td{height:64px;padding:6px 12px;overflow:hidden}
+.stbl.dense td{height:40px;padding:3px 10px}
+.srow.is-late>td:first-child{box-shadow:inset 3px 0 0 var(--bad)}
+.srow.is-done{color:var(--ink-2)}
+.sgrp td{height:auto;padding:7px 12px;background:var(--surface-2);font-size:12.5px}
+.s-sort{padding:0;border:0;background:none;color:inherit;font:inherit;white-space:nowrap}
+.s-sort:hover,.s-sort.on{color:var(--ink)}
+.s-id{display:block;font-weight:600}
+.s-id+small{display:block;font-size:11px;line-height:13px}
+.s-ell{display:block;max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.s-ell small{display:block}
+.s-stsel{width:auto;min-width:150px;max-width:200px;height:30px}
+.s-eta{white-space:nowrap}
+.s-eta b{display:block}
+.s-eta small{display:block;font-size:11.5px}
+.s-where{min-width:250px}
+.s-itc{min-width:270px}
+.stbl.dense .s-ell small{display:inline;margin-left:6px}
+.stbl.dense .s-eta b,.stbl.dense .s-eta small{display:inline}
+.stbl.dense .s-id,.stbl.dense .s-id+small{display:inline}
+
+/* позиции «3 + ещё N» */
+.s-items{display:flex;align-items:center;gap:8px;min-width:0}
+.s-itl{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.s-it{display:flex;gap:4px;max-width:250px;font-size:12.5px;line-height:15px;white-space:nowrap}
+.s-it span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.s-it b{flex:none;font-weight:600;color:var(--ink-2)}
+.s-more{flex:none;min-width:36px;height:26px;padding:0 9px;border:1px solid var(--primary-line);border-radius:999px;background:var(--primary-soft);color:var(--primary);font:600 12px var(--f-body);cursor:pointer}
+.s-more:hover{background:var(--primary-line)}
+.stbl.dense .s-itl{flex-direction:row;gap:12px}
+.stbl.dense .s-it{max-width:130px}
+.drawer .s-it{max-width:none;font-size:13.5px;line-height:21px;white-space:normal}
+.drawer .s-it span{overflow:visible;text-overflow:clip}
+.drawer .s-items{align-items:flex-start}
+
+/* шкала маршрута */
+.rs{display:flex;flex-direction:column;gap:3px;max-width:270px}
+.rs.full{max-width:none;gap:6px;padding:4px 30px 0}
+.rs-line{position:relative;height:14px;margin:0 7px}
+.rs-line::before{content:"";position:absolute;left:0;right:0;top:6px;height:2px;border-radius:1px;background:var(--line-2)}
+.rs-fill{position:absolute;left:0;top:6px;height:2px;border-radius:1px;background:var(--primary)}
+.rs.late .rs-fill{background:var(--bad)}
+.rs-dot{position:absolute;top:2px;width:10px;height:10px;margin-left:-5px;box-sizing:border-box;border:2px solid var(--line-2);border-radius:50%;background:var(--surface)}
+.rs-dot.on{border-color:var(--primary);background:var(--primary)}
+.rs.late .rs-dot.on{border-color:var(--bad);background:var(--bad)}
+.rs-dot.cur{box-shadow:0 0 0 3px var(--primary-soft)}
+.rs.late .rs-dot.cur{box-shadow:0 0 0 3px var(--bad-soft)}
+.rs-mark{position:absolute;top:0;width:14px;height:14px;margin-left:-7px;box-sizing:border-box;border:2px solid var(--surface);border-radius:50%;background:var(--sun);box-shadow:0 0 0 1px var(--sun-ink)}
+.rs-names{position:relative;height:16px;margin:0 7px}
+.rs-names span{position:absolute;top:0;transform:translateX(-50%);font-size:11.5px;white-space:nowrap;color:var(--ink-3)}
+.rs-names span.on{color:var(--ink);font-weight:600}
+.rs-cap{display:flex;justify-content:space-between;gap:8px;font-size:12px;line-height:15px}
+.rs-w{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
+.rs-cap b{flex:none;font-weight:600;color:var(--ink-2)}
+.rs-cap b.bad-t{color:var(--bad)}
+.rs.full .rs-cap{font-size:13px;line-height:18px}
+.stbl.dense .rs{flex-direction:row;align-items:center;gap:8px}
+.stbl.dense .rs-line{flex:none;width:70px}
+.stbl.dense .rs-cap{flex:1;min-width:0}
+
+/* воронка */
+.sfun{display:grid;grid-template-columns:repeat(var(--n),minmax(220px,1fr));gap:12px;min-width:calc(var(--n)*232px)}
+.scol{min-height:200px}
+.scol-b{display:flex;flex-direction:column;gap:8px;max-height:min(68vh,640px);overflow-y:auto;overscroll-behavior:contain}
+.scard{display:flex;flex-direction:column;gap:5px;padding:10px 11px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+.scard[draggable="true"]{cursor:grab}
+.scard:hover{border-color:var(--line-2)}
+.scard.dragging{opacity:.5}
+.scard.is-late{border-color:var(--bad)}
+.scard.is-done{color:var(--ink-2)}
+.sc-h{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.sc-s{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;color:var(--ink-2)}
+.sc-m{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 8px;font-size:12px;color:var(--ink-2)}
+.sc-m b{color:var(--ink)}
+
+/* окно «Все позиции» */
+.si-sum{margin:0;font-size:13px;color:var(--ink-2)}
+.si-scroll{max-height:min(52vh,460px);overflow:auto;border:1px solid var(--line);border-radius:12px}
+.si-scroll .tbl th{position:sticky;top:0;z-index:1}
+#si-body{display:flex;flex-direction:column;gap:10px}
+
+/* карточка справа */
+.d-stage{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px}
+.d-stage .field{min-width:200px}
+.shist{display:flex;flex-direction:column;gap:10px;margin:0;padding:0;list-style:none}
+.shist li{padding-left:12px;border-left:2px solid var(--line)}
+.sh-t{font-size:13.5px}
+.shist small{display:block;margin-top:2px;font-size:12px;color:var(--ink-3)}
+
 @media (max-width:560px){
-  .ship-h{flex-direction:column}
-  .eta{text-align:left}
+  .sf-row .field{flex:1 1 calc(50% - 10px)}
+  .sf-row .sf-q{flex:1 1 100%}
+  .d-stage .field{min-width:0;flex:1 1 100%}
+  .rs.full{padding:4px 26px 0}
 }
+
+/* схема маршрута: контуры, линии и точки в одной системе процентов; подписи и числа — кнопки поверх */
+.smap{position:relative;aspect-ratio:100/58;min-height:300px;margin:14px;overflow:hidden;border-radius:14px;background:var(--surface-2)}
+.smap-svg{position:absolute;inset:0;width:100%;height:100%}
+.sm-land{stroke-width:1;vector-effect:non-scaling-stroke;stroke-linejoin:round}
+.sm-land.cn{fill:var(--sun-soft);stroke:var(--sun-ink);stroke-opacity:.35}
+.sm-land.ru{fill:var(--primary-soft);stroke:var(--primary);stroke-opacity:.35}
+.sm-line{stroke:var(--line-2);stroke-width:1.5;stroke-dasharray:3 4}
+.sm-line.on{stroke:var(--primary);stroke-width:2.5;stroke-dasharray:none}
+.sm-country{position:absolute;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);opacity:.7;pointer-events:none}
+.sm-country.cn{left:2%;top:7%}
+.sm-country.ru{left:62%;top:6%}
+.sm-dots{position:absolute;inset:0;pointer-events:none}
+.sm-dot{position:absolute;left:var(--xm);top:var(--ym);width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:var(--sun);box-shadow:0 0 0 2px var(--surface),0 0 0 3px var(--sun-ink);animation:sm-run var(--dur) linear infinite;animation-delay:var(--dl)}
+@keyframes sm-run{0%{left:var(--x1);top:var(--y1);opacity:0}10%{opacity:1}90%{opacity:1}100%{left:var(--x2);top:var(--y2);opacity:0}}
+.sm-pt{position:absolute;width:14px;height:14px;margin:-7px 0 0 -7px;box-sizing:border-box;border:2px solid var(--line-2);border-radius:50%;background:var(--surface)}
+.sm-pt.has{border-color:var(--primary);background:var(--primary)}
+.sm-leg{position:absolute;display:inline-flex;align-items:baseline;gap:4px;padding:2px 8px;transform:translate(-50%,-50%);border:1px solid var(--line-2);border-radius:999px;background:var(--surface);color:var(--ink-3);font:600 12px/16px var(--f-body);white-space:nowrap;cursor:pointer}
+.sm-leg.on{border-color:var(--primary);color:var(--ink)}
+.sm-leg:hover,.sm-chip:hover,.sm-cust:hover{border-color:var(--primary);background:var(--primary-soft)}
+.sm-node{position:absolute;display:flex;flex-direction:column;gap:4px;max-width:46%}
+.sm-node.bl{left:0;top:calc(var(--y) + 14px);align-items:flex-start}
+.sm-node.tl{right:calc(100% - var(--x) - 18px);bottom:calc(100% - var(--y) + 14px);align-items:flex-end;text-align:right}
+.sm-node.r{left:calc(var(--x) + 20px);top:var(--y);max-width:calc(88% - var(--x) - 20px);transform:translateY(-50%);align-items:flex-start}
+.sm-node.tr{right:0;bottom:calc(100% - var(--y) + 14px);align-items:flex-end;text-align:right}
+.sm-node.br{right:0;top:calc(var(--y) + 14px);align-items:flex-end;text-align:right}
+.sm-chip,.sm-cust{display:flex;flex-direction:column;gap:1px;padding:6px 10px;border:1px solid var(--line-2);border-radius:12px;background:var(--surface);color:var(--ink);font:inherit;text-align:inherit;cursor:pointer;box-shadow:var(--shadow-1)}
+.sm-chip.has{border-color:var(--primary-line)}
+.sm-nm{font-size:14px;font-weight:700}
+.sm-lbl{font-size:11.5px;line-height:14px;color:var(--ink-3)}
+.sm-key{color:var(--sun-ink);font-weight:600}
+.sm-cnt{display:flex;flex-wrap:wrap;gap:0 8px;font-size:12px;line-height:16px;color:var(--ink-2)}
+.sm-cnt b{color:var(--ink)}
+.sm-cust{flex-direction:row;gap:4px;padding:3px 10px;border-color:var(--sun);background:var(--sun-soft);color:var(--sun-ink);font-size:12px;font-weight:600}
+.sm-cust.has{border-color:var(--sun-ink)}
+.sm-note{margin:0;padding:0 14px 12px}
+.sm-list{display:flex;flex-direction:column;margin:0;padding:0 14px 8px;list-style:none}
+.sm-list li{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 12px;padding:8px 0;border-top:1px solid var(--line);font-size:13.5px}
+.sm-list li:first-child{border-top:0}
+@media (prefers-reduced-motion:reduce){.sm-dot{animation:none;opacity:1}}
+@media (max-width:640px){
+  .smap{aspect-ratio:100/92;min-height:0;margin:10px}
+  .sm-u,.sm-role,.sm-sep{display:none}
+  .sm-leg{padding:1px 6px}
+  .sm-chip,.sm-cust{padding:4px 8px}
+  .sm-nm{font-size:13px}
+  .sm-lbl{font-size:11px;line-height:13px}
+  .sm-cnt{flex-direction:column;font-size:11.5px;line-height:14px}
+  .sm-node{max-width:50%}
+}
+
+/* Настройки → «Поставки»: правила «если событие — поставить этап» */
+.srule{align-items:flex-end;flex-wrap:wrap;padding-left:0;padding-right:0}
+.srule .sw{align-self:center}
+.sr-body{display:flex;flex:1 1 380px;flex-wrap:wrap;gap:10px;min-width:0}
+.sr-body .field,.srule-add .field{flex:1 1 200px;min-width:0}
+.srule-add{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px;padding-top:12px;border-top:1px solid var(--line)}
 
 /* ——— приёмка ——— */
 .rcv{display:grid;grid-template-columns:minmax(0,410px) minmax(0,1fr);gap:24px;align-items:start}
@@ -445,6 +592,9 @@ td.free b{font-weight:700}
 .plain{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
 .plain li{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:13.5px}
 .plain li span:first-child{flex:1;min-width:0}
+
+.rcv-cell{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.rcv-cell .field{min-width:0}
 
 @media (max-width:1100px){
   .rcv{grid-template-columns:minmax(0,1fr)}
@@ -1198,14 +1348,9 @@ SEEDS.push(st=>{
     // товары и остатки кладёт шаг каталога (38-catalog.js) из снимков; ниже записи v2 ссылаются на товары по старым артикулам,
     // шаг каталога переводит их на настоящие позиции
     products:[],
-    shipments:[
-      {id:'П-1044',dir:'in',supplier:'Склад дистрибьютора, Москва',to:'Наш склад',carrier:'Сборный груз, транспортная компания',track:'ТТН 44-552018',pipeId:'ships',stageId:'arrived',eta:day(0,14),history:[{at:day(0,8,15),by:'p6',text:'Терминал транспортной компании в городе'}],items:[{productId:'CAB-6R',qty:500},{productId:'CAB-6B',qty:500},{productId:'MC4',qty:200},{productId:'CTRL-60',qty:6},{productId:'BOX-DC',qty:10}],demo:true},
-      {id:'П-1041',dir:'in',supplier:'Поставщик инверторов, Москва',to:'Наш склад',carrier:'Сборный груз, транспортная компания',track:'ТТН 41-008352',pipeId:'ships',stageId:'toStock',eta:day(3,12),history:[{at:day(0,9,40),by:'p6',text:'Трасса М-7, Владимир'}],items:[{productId:'INV-H6',qty:10},{productId:'BAT-LFP-100',qty:16}],demo:true},
-      {id:'П-1042',dir:'in',supplier:'Поставщик ветрогенераторов, Екатеринбург',to:'Наш склад',carrier:'Отдельная машина',track:'ТТН 42-110907',pipeId:'ships',stageId:'toStock',eta:day(-1,12),history:[{at:day(-1,18,5),by:'p6',text:'Казань, стоянка'}],items:[{productId:'WND-3K',qty:2},{productId:'MTR-3F',qty:5}],demo:true},
-      {id:'П-1043',dir:'in',supplier:'Завод панелей, Китай',to:'Наш склад',carrier:'Контейнер: море + железная дорога',track:'Контейнер TGHU 482117 3',pipeId:'ships',stageId:'toStock',eta:day(6,12),history:[{at:day(-1,7,20),by:'p6',text:'Ж/д станция, Новосибирск'}],items:[{productId:'PV-550M',qty:120},{productId:'MNT-R4',qty:30}],demo:true},
-      {id:'О-207',dir:'out',deal:'Д-305',supplier:'Наш склад',to:'Объект Д-305 · Волкова Мария',carrier:'Своя машина',track:'Отгрузка О-207',pipeId:'shipsOut',stageId:'onWay',eta:day(0,16),history:[{at:day(0,11,0),by:'p6',text:'Выехали со склада'}],items:[{productId:'PV-550M',qty:12},{productId:'MNT-R4',qty:3},{productId:'CAB-6R',qty:60}],demo:true},
-      {id:'П-1038',dir:'in',supplier:'Производитель крепежа',to:'Наш склад',carrier:'Своя машина',track:'УПД 1038',pipeId:'ships',stageId:'inStock',eta:day(-2,15),history:[{at:day(-2,15,30),by:'p5',text:'Наш склад'}],items:[{productId:'MNT-R4',qty:24,got:24}],received:{at:day(-2,15,30),by:'p5',photos:3,urls:[],note:''},demo:true}
-    ],
+    // поставки и отгрузка клиенту (120+ демо-поставок по маршрутам) кладёт шаг поставок (34-ships.js);
+    // на якорные П-1038, П-1041…П-1044 и О-207 ссылаются резервы, задачи и движения ниже
+    shipments:[],
     reserves:[
       {id:'r1',productId:'PV-550M',dealId:'Д-311',qty:22,src:'stock',until:day(9)},
       {id:'r2',productId:'PV-550M',dealId:'Д-314',qty:36,src:'stock',until:day(5)},
@@ -1282,11 +1427,11 @@ SEEDS.push(st=>{
   N('msg',null,day(-2,15,32),'Авто-сообщение в MAX: Волкова Мария (Д-305) — крепёж пришёл на склад.',['p2']);
   N('reserve','p2',day(-1,10,5),`Резерв: солнечная панель 550 Вт — 22 шт со склада для Д-311 (Иванов Сергей) до ${fD(day(9))}.`);
   N('task','p3',day(-1,11,20),`Новая задача: «Подготовить КП на СЭС 30 кВт» (Д-320), срок ${fD(day(2))}. От: Максим Л.`,['p4']);
-  N('warn','p6',day(-1,12,0),'Поставщик сократил П-1042: ветрогенераторов 2 шт вместо 3. Под резервы не хватает 1 шт.');
+  N('warn','p6',day(-1,12,0),'Поставщик-пример 7 сократил П-1042: ветрогенераторов 2 шт вместо 3. Под резервы не хватает 1 шт.');
   N('task','p2',day(-1,16,0),'Новая задача отделу «Инженерный»: согласовать с клиентом дату пуска станции (Д-305). От: Анна С.',dept('eng'));
-  N('warn',null,day(-1,18,5),'П-1042 задерживается: машина стоит в Казани. Ветрогенераторы ждут сделки Д-305 и Д-314.');
-  N('ship','p6',day(0,8,15),'П-1044 прибыла на терминал транспортной компании в городе: кабель, разъёмы MC4, контроллеры, щиты DC. На склад — сегодня.');
-  N('ship','p6',day(0,9,40),`П-1041 (инверторы, АКБ) прошла Владимир. На складе ожидается ${fD(day(3))}.`);
+  N('warn',null,day(-1,18,5),'П-1042 задерживается: груз стоит на перегоне Чита → Иркутск. Ветрогенераторы ждут сделки Д-305 и Д-314.');
+  N('ship','p6',day(0,8,15),'П-1044 прибыла в Иркутск, на терминал транспортной компании: кабель, разъёмы MC4, контроллеры, щиты DC. Ждёт приёмки, на склад — сегодня.');
+  N('ship','p6',day(0,9,40),`П-1041 (инверторы, АКБ) прошла Читу и идёт в Иркутск. На складе ожидается ${fD(day(3))}.`);
   N('ship','p6',day(0,11,0),'Отгрузка О-207 выехала на объект Д-305 (Волкова Мария). Привезём к 16:00.');
 });
 
@@ -1321,8 +1466,8 @@ const startStage=pipeId=>(pipeById(pipeId)?.stages||[]).find(s=>!s.flag)||null;
 const finalStage=x=>stagesFor(x).find(s=>s.flag==='final')||null;
 // Цвет метки этапа: закрыт — ok, прошёл заметную часть пути — info
 const stageTone=x=>{if(isDone(x)) return 'ok';const n=stagesFor(x).length,i=stagePos(x);return n>1&&i/(n-1)>=.4?'info':''};
-// «Прибыло, ждёт приёмки» — единственное определение: входящая поставка на этапе с флагом arrived
-const awaitsReceipt=s=>s.dir==='in'&&stageOf(s)?.flag==='arrived';
+// «Прибыло, ждёт приёмки» — единственное определение живёт в Ships.awaitingReceipt (34-ships.js)
+const awaitsReceipt=s=>Ships.awaitingReceipt(S,s);
 // Отгрузка клиенту ушла со склада — сошла с начального этапа своей воронки
 const leftStart=s=>s.stageId!==startStage(s.pipeId)?.id;
 // Последняя отметка поставки — последняя запись истории {at, by, text}; новая отметка — history.push
@@ -1333,7 +1478,8 @@ const dealPipe=type=>Pipes.of(S,'deals',type).find(p=>p.scope===type)||Pipes.of(
 const taskBoard=()=>Pipes.of(S,'tasks')[0]||null;
 
 // ——— остатки: считает Stock (33-stock.js), здесь — только вызов и подписи ———
-const isLate=s=>!isDone(s)&&dd(s.eta)<0;
+// «Опоздала» — единственное определение живёт в Ships.isLate (34-ships.js)
+const isLate=s=>Ships.isLate(s,new Date(),S);
 const resOf=pid=>S.reserves.filter(r=>r.productId===pid);
 const sum=(a,f)=>a.reduce((x,y)=>x+f(y),0);
 const openIn=()=>S.shipments.filter(s=>s.dir==='in'&&!isDone(s));
@@ -1387,7 +1533,8 @@ const Store = (() => {
   // Меняется, когда форма записей меняется так, что сохранённое прежней формы читать нельзя.
   // 2 — товары каталога (id вместо sku), остатки по юрлицам и городам, юрлица и города в состоянии. Сохранения без rev — ревизия 1.
   // 3 — почта: st.mail (ящики, поставщики, письма). Старое сохранение без неё уходит в пользу демо.
-  const REV = 3;
+  // 4 — поставки: маршрут route, положение pos, depart, number, carrier, юрлицо/город; st.shipRules. Прежнее сохранение уходит в пользу демо.
+  const REV = 4;
   // Браузер даёт сайту около 5 млн символов на всё; берём с запасом.
   const LIMIT = 4500000;
   const NO_SPACE = 'не сохранено — мало места в браузере';
@@ -1966,6 +2113,488 @@ const Stock = (() => {
 
   return { ANY, KINDS, NO_ENTITY, NO_CITY, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, canReserve, bestCell, move, reserve, unreserve };
 })();
+
+// Ядро: поставки и маршрут. Чистые функции, без DOM; текущее время приходит аргументом now.
+// Поставка из-за границы идёт по маршруту — списку точек route:[nodeId…] из пяти точек NODES.
+// Положение pos:{i, t}: t = 0 — груз стоит в точке route[i]; 0 < t < 1 — идёт по перегону route[i] → route[i+1],
+// прошёл долю t. Этап (stageId) и положение двигаются вместе: смена этапа переставляет груз на схеме.
+// Этапы названы по id воронки поставок по умолчанию (32-pipes.js): ordered, shipped, toBorder, customs,
+// transship, toStock, arrived (флаг arrived), inStock (флаг final). Директор может переименовать и убрать
+// этапы без флага — тогда груз просто не встаёт на отсутствующий этап.
+// Отметка в history: {at, by, text, source, auto?} — source говорит, кто двинул поставку: SRC.
+
+const Ships = (() => {
+  // ——— точки схемы: подпись и условные координаты (0–100 по обеим осям, слева направо по ходу груза) ———
+  const NODES = [
+    { id: 'cn', name: 'Китай', label: 'основной город-поставщик', x: 8, y: 50 },
+    { id: 'chita', name: 'Чита', label: 'основной город-приёмщик · таможня и перевалка', x: 32, y: 50 },
+    { id: 'irk', name: 'Иркутск', label: 'основной город-получатель', x: 58, y: 50 },
+    { id: 'msk', name: 'Москва', label: 'город-получатель', x: 90, y: 24 },
+    { id: 'krd', name: 'Краснодар', label: 'город-получатель', x: 90, y: 76 },
+  ];
+  const nodeOf = id => NODES.find(n => n.id === id) || null;
+  const nodeName = id => (nodeOf(id) ? nodeOf(id).name : String(id));
+
+  // Этапы воронки поставок по умолчанию (id).
+  const ST = { ordered: 'ordered', shipped: 'shipped', toBorder: 'toBorder', customs: 'customs', transship: 'transship', toStock: 'toStock', arrived: 'arrived', inStock: 'inStock' };
+  // Кто двинул поставку — подпись в истории.
+  const SRC = {
+    manual: 'вручную',
+    carrier: 'автоматически: перевозчик',
+    receipt: 'автоматически: приёмка',
+    rule: label => 'правило: ' + label,
+  };
+  // Положение на перегоне, где груз «в пути» (середина), и доля по умолчанию.
+  const LEG_T = 0.5;
+
+  const shipOf = (st, id) => (st.shipments || []).find(s => s.id === id) || null;
+  const sumBy = (a, f) => a.reduce((x, y) => x + f(y), 0);
+  const units = s => sumBy(s.items || [], i => Number(i.qty) || 0);
+  const hasRoute = s => Array.isArray(s.route) && s.route.length >= 2;
+  const posOf = s => ({
+    i: s.pos && Number.isInteger(s.pos.i) ? s.pos.i : 0,
+    t: s.pos && Number.isFinite(s.pos.t) ? s.pos.t : 0,
+  });
+  const onLeg = p => p.t > 0 && p.t < 1;
+  const routeText = route => (route || []).map(nodeName).join(' → ');
+  const fold = x => String(x ?? '').toLowerCase().replace(/ё/g, 'е');
+
+  // ——— где груз сейчас ———
+  // → {at, text} — стоит в точке; {from, to, t, text} — идёт по перегону; {text} — маршрута нет.
+  function where(s) {
+    if (!hasRoute(s)) return { text: 'нет данных: маршрут' };
+    const { i, t } = posOf(s);
+    const last = s.route.length - 1;
+    if (!onLeg({ t }) || i >= last) {
+      const id = s.route[Math.min(Math.max(i, 0), last)];
+      const note = id === 'chita' ? (s.stageId === ST.customs ? ', таможня' : s.stageId === ST.transship ? ', перевалка' : '') : '';
+      return { at: id, text: nodeName(id) + note };
+    }
+    const from = s.route[i], to = s.route[i + 1];
+    return { from, to, t, text: `в пути ${nodeName(from)} → ${nodeName(to)}, пройдено ${Math.round(t * 100)}%` };
+  }
+
+  // ——— путь груза по маршруту: последовательность состояний {i, t, stageId} ———
+  // Китай: «Заказано» → «Отгружено»; перегон до Читы — «В пути до границы»; в Чите — «Таможня» → «Перевалка»;
+  // дальше перегоны и промежуточные точки — «В пути до склада»; в последней точке — «Прибыло в город».
+  // Состояния с этапом, которого нет в воронке, пропускаются.
+  function plan(st, s) {
+    const out = [];
+    if (!hasRoute(s)) return out;
+    const r = s.route, last = r.length - 1;
+    const add = (i, t, stageId) => { if (Pipes.stage(st, s.pipeId, stageId)) out.push({ i, t, stageId }); };
+    add(0, 0, ST.ordered);
+    add(0, 0, ST.shipped);
+    for (let k = 0; k < last; k++) {
+      add(k, LEG_T, r[k + 1] === 'chita' ? ST.toBorder : ST.toStock);
+      const n = k + 1;
+      if (r[n] === 'chita') {
+        add(n, 0, ST.customs);
+        add(n, 0, ST.transship);
+        if (n === last) add(n, 0, ST.arrived);
+      } else {
+        add(n, 0, n === last ? ST.arrived : ST.toStock);
+      }
+    }
+    return out;
+  }
+
+  // Где в плане сейчас поставка: по этапу и положению, иначе — по одному из двух. -1 — не нашли.
+  function cursor(pl, s) {
+    const p = posOf(s);
+    const same = e => e.i === p.i && onLeg(e) === onLeg(p);
+    let k = pl.findIndex(e => same(e) && e.stageId === s.stageId);
+    if (k < 0) k = pl.findIndex(e => e.stageId === s.stageId);
+    if (k < 0) k = pl.findIndex(same);
+    return k;
+  }
+
+  // Доля пути, 0–1, по плану (для сроков и демо): состояние k из L.
+  const progress = (pl, k) => {
+    if (pl.length < 2 || k < 0) return 0;
+    const e = pl[k];
+    return Math.min(1, Math.max(0, (k + (onLeg(e) ? e.t - 0.5 : 0)) / (pl.length - 1)));
+  };
+
+  // ——— «ждёт приёмки» и «опоздала» — единственные определения ———
+  const awaits = (st, s) => s.dir === 'in' && !s.received && !!s.stageId && (Pipes.stage(st, s.pipeId, s.stageId) || {}).flag === 'arrived';
+  // awaitingReceipt(st, s) — ждёт ли эта поставка приёмки (да/нет); awaitingReceipt(st) — все такие поставки.
+  function awaitingReceipt(st, s) {
+    if (s !== undefined) return awaits(st, s);
+    return (st.shipments || []).filter(x => awaits(st, x));
+  }
+
+  // Опоздала: ещё не закрыта и день ожидаемого прихода раньше дня now. st нужен, чтобы знать, закрыт ли этап;
+  // без st закрытой считается принятая (received).
+  function isLate(s, now, st) {
+    if (s.received) return false;
+    if (st && Pipes.isFinal(st, s.pipeId, s.stageId)) return false;
+    return !!s.eta && sod(s.eta) < sod(now);
+  }
+
+  // ——— счётчики для схемы ———
+  // Фильтр — как у query (кроме node: схема и сама показывает точки). Считаются только едущие поставки к нам
+  // с маршрутом и не принятые (этап без флага final).
+  // → {nodes:{<nodeId>:{ships, units}, chita:{ships, units, customs:{ships, units}}}, legs:{'a>b':{ships, units}}}
+  // legs: все перегоны маршрутов выбранных поставок, у пустых — нули.
+  function mapCounts(st, filter) {
+    const f = { ...(filter || {}), node: undefined, dir: 'in' };
+    const names = productNames(st);
+    const nodes = {}, legs = {};
+    NODES.forEach(n => { nodes[n.id] = { ships: 0, units: 0 }; });
+    nodes.chita.customs = { ships: 0, units: 0 };
+    const add = (c, u) => { c.ships += 1; c.units += u; };
+    for (const s of st.shipments || []) {
+      if (!hasRoute(s) || Pipes.isFinal(st, s.pipeId, s.stageId) || !matches(st, s, f, names)) continue;
+      for (let k = 0; k < s.route.length - 1; k++) {
+        const key = s.route[k] + '>' + s.route[k + 1];
+        legs[key] = legs[key] || { ships: 0, units: 0 };
+      }
+      const w = where(s), u = units(s);
+      if (w.at) {
+        add(nodes[w.at] || (nodes[w.at] = { ships: 0, units: 0 }), u);
+        if (w.at === 'chita' && s.stageId === ST.customs) add(nodes.chita.customs, u);
+      } else {
+        add(legs[w.from + '>' + w.to], u);
+      }
+    }
+    return { nodes, legs };
+  }
+
+  // ——— поиск, фильтры, сортировка, страницы ———
+  const productNames = st => new Map((st.products || []).map(p => [p.id, p.name]));
+  const atNode = (s, key) => {
+    const w = where(s);
+    return String(key).includes('>') ? !!w.from && w.from + '>' + w.to === key : w.at === key;
+  };
+  function matches(st, s, f, names) {
+    const dir = f.dir || 'in';
+    if (dir !== 'all' && (s.dir || 'in') !== dir) return false;
+    if (f.stage && s.stageId !== f.stage) return false;
+    if (f.supplier && s.supplier !== f.supplier) return false;
+    if (f.city && s.cityId !== f.city) return false;
+    if (f.entity && s.entityId !== f.entity) return false;
+    if (f.node && !atNode(s, f.node)) return false;
+    const q = fold(f.q).trim();
+    if (q) {
+      const hay = fold([s.id, s.number, s.supplier, s.track, where(s).text, ...(s.items || []).map(i => names.get(i.productId) || '')].join(' '));
+      if (!q.split(/\s+/).every(w => hay.includes(w))) return false;
+    }
+    return true;
+  }
+  // Ключ сортировки; '-ключ' — по убыванию. Равные — по номеру.
+  const SORTS = {
+    eta: s => s.eta, depart: s => s.depart, number: s => s.id, supplier: s => s.supplier,
+    units: s => units(s), items: s => (s.items || []).length,
+  };
+  function query(st, f = {}) {
+    const names = productNames(st);
+    let rows = (st.shipments || []).filter(s => matches(st, s, f, names));
+    const raw = String(f.sort || 'eta');
+    const desc = raw.startsWith('-'), key = desc ? raw.slice(1) : raw;
+    const stagePos = s => { const p = (st.pipelines || []).find(x => x.id === s.pipeId); return p ? p.stages.findIndex(x => x.id === s.stageId) : -1; };
+    const val = key === 'stage' ? stagePos : (SORTS[key] || SORTS.eta);
+    const num = v => (v instanceof Date || Object.prototype.toString.call(v) === '[object Date]' ? v.getTime() : v);
+    const cmp = (a, b) => {
+      const x = num(val(a)), y = num(val(b));
+      const c = typeof x === 'string' ? String(x).localeCompare(String(y), 'ru') : (x ?? 0) - (y ?? 0);
+      return (desc ? -c : c) || String(a.id).localeCompare(String(b.id), 'ru', { numeric: true });
+    };
+    rows = rows.slice().sort(cmp);
+    const total = rows.length;
+    const size = Math.max(1, Math.floor(f.size) || 50);
+    const pages = Math.max(1, Math.ceil(total / size));
+    const page = Math.min(Math.max(1, Math.floor(f.page) || 1), pages);
+    return { rows: rows.slice((page - 1) * size, page * size), total, page, pages, size };
+  }
+
+  // ——— смена этапа ———
+  // Первый этап плана с таким id, а если груз уже стоит на таком — он же (чтобы не прыгать зря).
+  function syncPos(st, s, stageId) {
+    if (!hasRoute(s)) return;
+    const stage = Pipes.stage(st, s.pipeId, stageId);
+    const last = s.route.length - 1;
+    if (stage && stage.flag === 'final') { s.pos = { i: last, t: 0 }; return; }
+    const hits = plan(st, s).filter(e => e.stageId === stageId);
+    if (!hits.length) return;
+    const p = posOf(s);
+    const keep = hits.find(e => e.i === p.i && onLeg(e) === onLeg(p));
+    const e = keep || hits[0];
+    s.pos = { i: e.i, t: keep ? p.t : e.t };
+  }
+
+  // «Что» везём — для текста уведомления: первая позиция и «и ещё N».
+  function brief(st, s) {
+    const items = s.items || [];
+    if (!items.length) return 'без позиций';
+    const p = (st.products || []).find(x => x.id === items[0].productId);
+    let first = p ? p.name : 'нет данных: товар';
+    if (first.length > 56) first = first.slice(0, 55) + '…';
+    const more = items.length - 1;
+    return more > 0 ? `${first} и ещё ${more} ${pl(more, 'позиция', 'позиции', 'позиций')}` : first;
+  }
+
+  // Записывает новый этап и положение, отметку в историю, уведомление. Приёмка шлёт свои уведомления сама.
+  function put(st, s, stageId, by, now, source, pos) {
+    const was = Pipes.stage(st, s.pipeId, s.stageId);
+    const stage = Pipes.stage(st, s.pipeId, stageId);
+    s.stageId = stageId;
+    if (pos) s.pos = { i: pos.i, t: pos.t }; else syncPos(st, s, stageId);
+    const where_ = where(s).text;
+    const entry = { at: now, by: by || null, text: `Этап: «${was ? was.name : 'нет данных'}» → «${stage.name}». ${where_}.`, source };
+    if (source !== SRC.manual) entry.auto = true;
+    s.history = s.history || [];
+    s.history.push(entry);
+    let note = null;
+    if (source !== SRC.receipt) {
+      const when = s.dir === 'out' ? 'Доставка' : 'На складе ожидается';
+      const here = hasRoute(s) ? ` Сейчас: ${where_}.` : '';
+      note = Notify.push(st, 'ship', by || null, `${s.id}: ${brief(st, s)} — этап «${stage.name}».${here} ${when} ${s.eta ? fD(s.eta) : 'нет данных: дата'}.`, now);
+    }
+    return { ok: true, from: was, to: stage, note, text: entry.text };
+  }
+
+  // Ручная (или иная) смена этапа. → {ok, reason?, from, to, note}
+  function setStage(st, shipId, stageId, by, now, source) {
+    const s = shipOf(st, shipId);
+    if (!s) return { ok: false, reason: 'Поставки нет.' };
+    if (!Pipes.stage(st, s.pipeId, stageId)) return { ok: false, reason: 'Такого этапа в воронке нет.' };
+    if (s.stageId === stageId) return { ok: false, reason: 'Поставка уже на этом этапе.' };
+    return put(st, s, stageId, by, now, source || SRC.manual);
+  }
+
+  // ——— шаг по маршруту (трек перевозчика) ———
+  // Груз делает следующий шаг плана: выехал → в пути → в точке → таможня → перевалка → … → «Прибыло в город».
+  // Дальше (на склад) его двигает только приёмка. Шаг порождает события для правил директора.
+  // → {ok, reason?, from, to, events:[…], applied:[ruleId…]}
+  function advance(st, shipId, by, now, source) {
+    const s = shipOf(st, shipId);
+    if (!s) return { ok: false, reason: 'Поставки нет.' };
+    if (!hasRoute(s)) return { ok: false, reason: 'У поставки нет маршрута.' };
+    if (Pipes.isFinal(st, s.pipeId, s.stageId) || s.received) return { ok: false, reason: 'Поставка уже принята на складе.' };
+    const pl = plan(st, s);
+    const k = cursor(pl, s);
+    const next = pl[k + 1];
+    if (!next) return { ok: false, reason: 'Груз уже в городе назначения: дальше его принимает склад.' };
+    const prevStage = s.stageId, prevPos = posOf(s);
+    const src = source || SRC.carrier;
+    const r = put(st, s, next.stageId, by, now, src, next);
+    const events = [];
+    // «груз в точке» — только когда груз пришёл в точку, а не когда в ней сменился этап (таможня → перевалка)
+    if (!onLeg(next) && next.i > 0 && (onLeg(prevPos) || prevPos.i !== next.i)) events.push('carrier:' + s.route[next.i]);
+    if (prevStage === ST.customs && next.stageId !== ST.customs) events.push('customs');
+    const applied = [];
+    for (const ev of events) applied.push(...applyRules(st, ev, shipId, by, now));
+    return { ok: true, from: r.from, to: r.to, events, applied, note: r.note };
+  }
+
+  // ——— правила директора: «если событие — поставить этап» ———
+  // st.shipRules:[{id, on, when, then}]: on — включено; when — 'received' (принято на складе), 'customs'
+  // (таможня пройдена), 'carrier:<nodeId>' (перевозчик: груз в точке) или просто 'carrier' (в любой точке);
+  // then — id этапа воронки поставки.
+  const EVENTS = { received: 'принято на складе', customs: 'таможня пройдена' };
+  function eventLabel(ev) {
+    if (EVENTS[ev]) return EVENTS[ev];
+    if (ev === 'carrier') return 'перевозчик: груз в любой точке';
+    if (String(ev).startsWith('carrier:')) return 'перевозчик: груз в точке ' + nodeName(String(ev).slice(8));
+    return String(ev);
+  }
+  const ruleHits = (rule, event) => rule.when === event || (rule.when === 'carrier' && String(event).startsWith('carrier:'));
+
+  // Применяет включённые правила к событию по поставке. Правило срабатывает, только если меняет этап;
+  // срабатывание пишется в историю (source «правило: …») и рассылается как смена этапа.
+  // → id сработавших правил.
+  function applyRules(st, event, shipId, by, now) {
+    const s = shipOf(st, shipId);
+    const fired = [];
+    if (!s) return fired;
+    for (const rule of st.shipRules || []) {
+      if (rule.on !== true || !ruleHits(rule, event)) continue;
+      const stage = Pipes.stage(st, s.pipeId, rule.then);
+      if (!stage || s.stageId === rule.then) continue;
+      put(st, s, rule.then, by, now, SRC.rule(`если ${eventLabel(rule.when)} — «${stage.name}»`));
+      fired.push(rule.id);
+    }
+    return fired;
+  }
+
+  return {
+    NODES, ST, SRC, EVENTS, nodeOf, nodeName, routeText, units, brief,
+    where, plan, progress, awaitingReceipt, isLate, mapCounts, query,
+    advance, setStage, applyRules, eventLabel,
+  };
+})();
+
+// ——— демо-данные ———
+// Шаг SEEDS: 126 поставок на фиксированную дату демо 31.10.2026 — после «Сбросить» те же самые (свой генератор
+// псевдослучайных чисел с зерном, ничего от настоящей даты). Настоящих поставщиков и номеров нет: «Поставщик-пример N»,
+// номера и треки с пометкой «демо». Позиции — настоящие товары каталога (берём из тех же снимков, что и шаг почты:
+// шаг каталога (38) стоит позже). Пять якорных поставок (П-1038, П-1041…П-1044) и отгрузка О-207 остались от v2:
+// на них ссылаются резервы, задачи и движения; их позиции названы артикулами v2 — на настоящие товары их переводит
+// шаг каталога вместе с резервами, которые на них ссылаются.
+SEEDS.push(st => {
+  const DEMO = new Date(2026, 9, 31);
+  const at = (back, h = 12, m = 0) => new Date(DEMO.getFullYear(), DEMO.getMonth(), DEMO.getDate() - back, h, m);
+  // mulberry32: фиксированное зерно — фиксированный набор
+  let seedNum = 31102026;
+  const rnd = () => {
+    seedNum = (seedNum + 0x6D2B79F5) | 0;
+    let t = Math.imul(seedNum ^ (seedNum >>> 15), 1 | seedNum);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const int = (lo, hi) => lo + Math.floor(rnd() * (hi - lo + 1));
+  const pickW = list => {
+    let x = rnd() * list.reduce((s, e) => s + e[1], 0);
+    for (const e of list) { x -= e[1]; if (x < 0) return e[0]; }
+    return list[list.length - 1][0];
+  };
+  const shuffle = arr => {
+    for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; }
+    return arr;
+  };
+
+  const products = Catalog.build(CATALOG, STOCK_SNAPSHOT).products;
+  const SUPPLIERS = [
+    { n: 1, cats: ['Инверторы'] }, { n: 2, cats: ['Аккумуляторы'] }, { n: 3, cats: ['Панели'] },
+    { n: 4, cats: ['Кабель', 'Защита и соединения'] }, { n: 5, cats: ['Контроллеры'] }, { n: 6, cats: ['Защита и соединения'] },
+    { n: 7, cats: null }, // смешанный: любые товары
+  ].map(s => ({ ...s, name: `Поставщик-пример ${s.n}`, pool: s.cats ? products.filter(p => s.cats.includes(p.cat)) : products }));
+  const sup = n => SUPPLIERS[n - 1];
+  const QTY = { 'Панели': [10, 120], 'Инверторы': [1, 10], 'Аккумуляторы': [2, 24], 'Контроллеры': [1, 12], 'Защита и соединения': [5, 100], 'Кабель': [100, 600] };
+  const pickItems = (supplier, n) => {
+    const pool = supplier.pool.slice();
+    const out = [];
+    for (let k = 0; k < Math.min(n, pool.length); k++) {
+      const p = pool.splice(Math.floor(rnd() * pool.length), 1)[0];
+      const [lo, hi] = QTY[p.cat] || [1, 20];
+      out.push({ productId: p.id, qty: int(lo, hi) });
+    }
+    return out;
+  };
+
+  // маршруты: все через Читу (там таможня и перевалка), места назначения разные
+  const ROUTES = [
+    [['cn', 'chita', 'irk'], 38], [['cn', 'chita', 'msk'], 22], [['cn', 'chita', 'krd'], 14],
+    [['cn', 'chita', 'irk', 'msk'], 14], [['cn', 'chita', 'irk', 'krd'], 8], [['cn', 'chita', 'irk', 'msk', 'krd'], 4],
+  ];
+  const LEG_DAYS = { 'cn>chita': 6, 'chita>irk': 4, 'chita>msk': 8, 'chita>krd': 9, 'irk>msk': 5, 'irk>krd': 6, 'msk>krd': 3 };
+  const totalDays = route => 2 + 6 + route.slice(1).reduce((s, n, k) => s + (LEG_DAYS[route[k] + '>' + n] || 5), 0);
+  const LEG_TEXT = { toBorder: 'Груз в пути до границы', toStock: 'Груз в пути' };
+  const stateText = (route, e) => {
+    const here = Ships.nodeName(route[e.i]);
+    if (e.stageId === 'ordered') return 'Заказ оформлен у поставщика';
+    if (e.stageId === 'shipped') return 'Груз передан перевозчику';
+    if (e.t > 0) return `${LEG_TEXT[e.stageId]}: ${here} → ${Ships.nodeName(route[e.i + 1])}`;
+    if (e.stageId === 'customs') return 'Прибыл в Читу, таможенное оформление';
+    if (e.stageId === 'transship') return 'Таможня пройдена, перевалка в Чите';
+    if (e.stageId === 'arrived') return `Прибыл в город: ${here}, ждёт приёмки`;
+    return `Груз в точке: ${here}`;
+  };
+
+  // отметки истории: состояния плана до k включительно (не больше четырёх), последняя — в момент last,
+  // прежние раньше на step дней; часть отметок — от «перевозчика»
+  const hist = (route, pl, k, last, step, over) => {
+    const out = [];
+    for (let j = Math.max(0, k - 3); j <= k; j++) {
+      const back = (k - j) * step;
+      const t = new Date(last.getFullYear(), last.getMonth(), last.getDate() - back, j === k ? last.getHours() : 9 + (j % 6), j === k ? last.getMinutes() : (j * 7) % 60);
+      const e = { at: t, by: 'p6', text: j === k && over ? over : stateText(route, pl[j]), source: Ships.SRC.manual };
+      if ((j + k) % 4 === 0) { e.source = Ships.SRC.carrier; e.auto = true; }
+      out.push(e);
+    }
+    return out;
+  };
+
+  const base = (id, supplier, route, entityId, extra) => ({
+    id, number: `${id} (демо)`, dir: 'in', supplier: supplier.name, to: 'Наш склад',
+    carrier: pickW([[CARRIERS[0], 4], [CARRIERS[1], 2], [CARRIERS[3], 4]]),
+    track: `ТРЕК-ПРИМЕР-${id.replace(/\D/g, '')} (демо)`, entityId, cityId: route[route.length - 1], route, pipeId: 'ships', demo: true, ...extra,
+  });
+
+  const shipments = [];
+
+  // ——— якорные поставки v2: положение и сроки заданы руками ———
+  const anchor = (id, supplier, stageId, pos, eta, depart, carrier, rows, lastAt, lastText, extra) => {
+    const route = ['cn', 'chita', 'irk'];
+    const s = base(id, supplier, route, 'ip', { carrier, stageId, pos, eta, depart, items: rows.map(([productId, qty]) => ({ productId, qty })), ...extra });
+    const pl = Ships.plan(st, s), k = pl.findIndex(e => e.stageId === (stageId === 'inStock' ? 'arrived' : stageId));
+    if (extra && extra.received) {
+      s.history = hist(route, pl, k, new Date(lastAt.getTime() - 3600e3), 3);
+      s.history.push({ at: lastAt, by: 'p5', text: lastText, source: Ships.SRC.receipt, auto: true });
+    } else s.history = hist(route, pl, k, lastAt, 3, lastText);
+    return s;
+  };
+  shipments.push(
+    anchor('П-1038', sup(6), 'inStock', { i: 2, t: 0 }, at(2, 15), at(21, 12), CARRIERS[2], [['MNT-R4', 24]], at(2, 15, 30), 'Принято на складе',
+      { received: { at: at(2, 15, 30), by: 'p5', photos: 3, urls: [], note: '' } }),
+    anchor('П-1041', sup(1), 'toStock', { i: 1, t: 0.6 }, at(-3, 12), at(20, 12), CARRIERS[0], [['INV-H6', 10], ['BAT-LFP-100', 16]], at(0, 9, 40), 'Прошёл Читу, идёт в Иркутск'),
+    anchor('П-1042', sup(7), 'toStock', { i: 1, t: 0.35 }, at(1, 12), at(22, 12), CARRIERS[1], [['WND-3K', 2], ['MTR-3F', 5]], at(1, 18, 5), 'Задерживается: груз стоит на перегоне Чита → Иркутск'),
+    anchor('П-1043', sup(3), 'transship', { i: 1, t: 0 }, at(-6, 12), at(14, 12), CARRIERS[3], [['PV-550M', 120], ['MNT-R4', 30]], at(1, 7, 20), 'Перевалка в Чите'),
+    anchor('П-1044', sup(4), 'arrived', { i: 2, t: 0 }, at(0, 14), at(12, 12), CARRIERS[0], [['CAB-6R', 500], ['CAB-6B', 500], ['MC4', 200], ['CTRL-60', 6], ['BOX-DC', 10]], at(0, 8, 15), 'Терминал транспортной компании в городе'),
+  );
+  shipments[0].items[0].got = 24;
+
+  // ——— генерация: 120 поставок по квотам этапов ———
+  const QUOTA = [['ordered', 8], ['shipped', 12], ['toBorder', 20], ['customs', 12], ['transship', 9], ['toStock', 24], ['arrived', 9], ['inStock', 26]];
+  // сколько из поставок этапа опаздывают
+  const LATE = { toBorder: 5, customs: 4, transship: 3, toStock: 7, arrived: 4 };
+  const slots = [];
+  for (const [stage, n] of QUOTA) for (let k = 0; k < n; k++) slots.push({ stage, late: k < (LATE[stage] || 0) });
+  shuffle(slots);
+  // несколько больших поставок — 50–150 позиций, у смешанного поставщика
+  const BIG = new Map([[4, 52], [19, 64], [37, 75], [58, 96], [83, 120], [101, 150]]);
+  const SIZES = [1, 1, 2, 2, 3, 3, 3, 4, 4, 5, 6, 7, 8, 10];
+
+  slots.forEach((slot, idx) => {
+    const id = `П-${1101 + idx}`;
+    const big = BIG.get(idx);
+    const supplier = big ? sup(7) : sup(pickW([[1, 4], [2, 3], [3, 5], [4, 3], [5, 2], [6, 2], [7, 2]]));
+    const route = pickW(ROUTES);
+    const entityId = pickW([['ip', 5], ['npp', 3], ['vs', 2]]);
+    const s = base(id, supplier, route, entityId, {});
+    s.items = pickItems(supplier, big || SIZES[int(0, SIZES.length - 1)]);
+    s.stageId = slot.stage;
+    const pl = Ships.plan(st, s);
+    const hits = pl.map((e, k) => k).filter(k => pl[k].stageId === (slot.stage === 'inStock' ? 'arrived' : slot.stage));
+    const k = hits[int(0, hits.length - 1)];
+    const e = pl[k];
+    s.pos = { i: e.i, t: e.t > 0 ? Math.round((0.15 + rnd() * 0.7) * 100) / 100 : 0 };
+    const T = totalDays(route) + int(0, 4);
+    const p = slot.stage === 'inStock' ? 1 : Ships.progress(pl, k);
+    const step = Math.max(1, Math.floor(T / pl.length));
+    if (slot.stage === 'inStock') {
+      const back = int(2, 30);
+      s.eta = at(back, 15); s.depart = at(back + T, 12);
+      s.received = { at: at(back, int(9, 17), int(0, 59)), by: 'p5', photos: int(1, 3), urls: [], note: '' };
+      s.items.forEach(i => { i.got = i.qty; });
+      s.history = hist(route, pl, k, s.received.at, step);
+      s.history.push({ at: s.received.at, by: 'p5', text: 'Принято на складе', source: Ships.SRC.receipt, auto: true });
+    } else {
+      if (slot.stage === 'ordered') { const d = int(1, 7); s.depart = at(-d, 12); s.eta = at(-(d + T), 12); }
+      else if (slot.late) { const d = slot.stage === 'arrived' ? int(1, 6) : int(1, 9); s.eta = at(d, 12); s.depart = at(d + T, 12); }
+      else { const left = slot.stage === 'arrived' ? 0 : Math.ceil((1 - p) * T); s.eta = at(-left, 12); s.depart = at(T - left, 12); }
+      s.history = hist(route, pl, k, at(slot.late ? int(1, 3) : 0, int(7, 11), int(0, 59)), step);
+    }
+    shipments.push(s);
+  });
+
+  // отгрузка клиенту от v2 — единственная исходящая
+  shipments.push({
+    id: 'О-207', number: 'О-207 (демо)', dir: 'out', deal: 'Д-305', supplier: 'Наш склад', to: 'Объект Д-305 · Волкова Мария',
+    carrier: 'Своя машина', track: 'Отгрузка О-207', pipeId: 'shipsOut', stageId: 'onWay', eta: at(0, 16),
+    history: [{ at: at(0, 11, 0), by: 'p6', text: 'Выехали со склада', source: Ships.SRC.manual }],
+    items: [{ productId: 'PV-550M', qty: 12 }, { productId: 'MNT-R4', qty: 3 }, { productId: 'CAB-6R', qty: 60 }], demo: true,
+  });
+
+  st.shipments = shipments;
+  // правила директора по умолчанию (Настройки → Поставки); третье выключено — пример выключенного
+  st.shipRules = [
+    { id: 'sr1', on: true, when: 'received', then: 'inStock' },
+    { id: 'sr2', on: true, when: 'customs', then: 'transship' },
+    { id: 'sr3', on: false, when: 'carrier:irk', then: 'arrived' },
+  ];
+});
 
 // Ядро: почта — ящики, папки поставщиков, правила по адресам. Чистая логика, без DOM.
 // Это имитация: наружу ничего не уходит, ответ только ложится в ветку письма с пометкой.
@@ -2566,10 +3195,10 @@ function mStage(s){
   const def=stg.slice(stagePos(s)+1).find(x=>!locked(x))?.id||s.stageId;
   return `<form data-form="stage" data-id="${s.id}" novalidate>${mHead('Отметка по перевозке '+s.id)}<div class="modal-b">
     <div class="field"><label for="st-stage">Этап</label><select id="st-stage" class="inp">${stg.map(x=>`<option value="${esc(x.id)}" ${x.id===def?'selected':''} ${locked(x)?'disabled':''}>${esc(x.name)}${locked(x)?' — ставит склад при приёмке':''}</option>`).join('')}</select></div>
-    <div class="field"><label for="st-place">Где груз сейчас</label><input id="st-place" class="inp" value="${esc(shipLast(s).text)}"></div>
+    <p class="hint">Сейчас: ${esc(shipWhere(s))}. Положение груза на маршруте поменяется само, вместе с этапом.</p>
     <div class="field"><label for="st-eta">${s.dir==='in'?'Ожидается на складе':'Доставка клиенту'}</label><input id="st-eta" type="date" class="inp" value="${iso(s.eta)}"></div>
     <div class="field"><label for="st-note">Комментарий</label><input id="st-note" class="inp" placeholder="Например: водитель звонил, будет к обеду"></div>
-    <label class="check"><input type="checkbox" id="st-notify" checked> Уведомить сотрудников об отметке</label>
+    <p class="hint">Отметка запишется в историю как «вручную», уведомление получат все сотрудники, кроме тех, кто выключил вид «Перевозки».</p>
   </div>${mFoot('Отметить и уведомить')}</form>`;
 }
 let _ir=0;
@@ -2581,6 +3210,8 @@ function mShip(){
     <div class="field"><label for="ns-from">Откуда</label><input id="ns-from" class="inp" placeholder="Поставщик и город"></div>
     <div class="grid2"><div class="field"><label for="ns-car">Как едет</label><select id="ns-car" class="inp">${CARRIERS.map(c=>`<option>${c}</option>`).join('')}</select></div><div class="field"><label for="ns-doc">Номер накладной</label><input id="ns-doc" class="inp" placeholder="Если уже известен"></div>
     <div class="field"><label for="ns-stage">Этап сейчас</label><select id="ns-stage" class="inp">${open.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select></div><div class="field"><label for="ns-eta">Ожидается на складе</label><input id="ns-eta" type="date" class="inp" value="${iso(day(7))}"></div></div>
+    <div class="grid2"><div class="field"><label for="ns-city">Куда едет (город)</label><select id="ns-city" class="inp">${S.cities.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select></div><div class="field"><label for="ns-ent">На какое юрлицо</label><select id="ns-ent" class="inp">${S.entities.map(e=>`<option value="${esc(e.id)}">${esc(e.name)}</option>`).join('')}</select></div></div>
+    <p class="hint">Маршрут: Китай → Чита (таможня и перевалка) → выбранный город.</p>
     <div class="field"><span class="lbl">Что едет</span><div id="ns-items" class="stack-s" style="gap:8px">${irow()}</div><div><button type="button" class="btn sm ghost" data-act="add-irow">${ic('plus')}Ещё позиция</button></div></div>
     <p class="err" id="ns-err" hidden></p></div>${mFoot('Создать и уведомить')}</form>`;
 }
@@ -2631,7 +3262,7 @@ function searchRes(q){
   const r=[],has=s=>s.toLowerCase().includes(q);
   if(can('stock')) Catalog.query(S,{q}).slice(0,6).forEach(p=>{const k=stockOf(p.id);r.push({type:'Товар',label:p.name,sub:k.known?`свободно ${qtyOf(k.free,p)}`:'остаток: нет данных',act:`data-act="open-product" data-pid="${esc(p.id)}"`})});
   if(can('clients')) S.deals.forEach(d=>{if(has(d.client+' '+d.id+' '+d.object)) r.push({type:'Сделка',label:d.client,sub:`${d.id} · ${d.object}`,act:`data-act="open-deal" data-id="${d.id}"`})});
-  if(can('stock')||can('logistics')) S.shipments.forEach(s=>{if(has(s.id+' '+s.supplier+' '+s.to+' '+s.track)) r.push({type:'Перевозка',label:`${s.id} · ${s.supplier}`,sub:`${stageName(s)} · ${fD(s.eta)}`,act:`data-act="go" data-view="logistics" data-tab="${isDone(s)?'done':s.dir}"`})});
+  if(can('stock')||can('logistics')) S.shipments.forEach(s=>{if(has(s.id+' '+s.supplier+' '+s.to+' '+s.track)) r.push({type:'Перевозка',label:`${s.id} · ${s.supplier}`,sub:`${stageName(s)} · ${fD(s.eta)}`,act:`data-act="open-ship" data-id="${esc(s.id)}"`})});
   S.tasks.filter(taskVisible).forEach(t=>{if(has(t.title)) r.push({type:'Задача',label:t.title,sub:`${targetName(t)} · ${fRel(t.due)}`,act:`data-act="open-task" data-id="${t.id}"`})});
   return r.slice(0,9);
 }
@@ -2754,18 +3385,7 @@ const FORMS={
     Notify.push(S,'reserve',m.id,`Резерв: ${low(p.name)} — ${qtyOf(qty,p)} ${src==='stock'?'со склада':'из поставки '+src} для ${did} (${d.client}) до ${fD(u)}.`,now);
     render();toast(`Резерв поставлен: ${qtyOf(qty,p)} для ${did}. Склад и директор получили уведомление.`);
   },
-  stage:f=>{
-    const s=ship(f.dataset.id),m=me(),now=new Date();
-    const stg=Pipes.stage(S,s.pipeId,byId('st-stage').value);
-    if(!stg||(s.dir==='in'&&stg.flag==='final')){closeModal();return}
-    const place=byId('st-place').value.trim()||shipLast(s).text,eta=byId('st-eta').value,note=byId('st-note').value.trim(),notify=byId('st-notify').checked;
-    const old=s.eta,ne=eta?fromIso(eta,s.eta.getHours()||12):s.eta,moved=dd(ne)!==dd(old),wasOut=s.dir==='out'&&leftStart(s);
-    s.stageId=stg.id;s.history.push({at:now,by:m.id,text:place});s.eta=ne;
-    let sent=0;
-    if(notify) sent=Notify.push(S,'ship',m.id,`${s.id}: ${stg.name.toLowerCase()} — ${place}. ${s.dir==='in'?'На складе ожидается':'Доставка'} ${fD(ne)}${moved?` (было ${fD(old)})`:''}.${note?' '+note:''}`,now).to.filter(id=>id!==m.id).length;
-    if(s.dir==='out'&&!wasOut&&leftStart(s)&&rule('shipped').on&&s.deal){const d=deal(s.deal);if(d&&d.channel!=='phone') S.msgs.push({id:Store.freeId(S.msgs,'m'),at:now,deal:d.id,channel:d.channel,auto:true,text:`${d.contact}, здравствуйте! Ваш заказ отгружен: ${s.track}. Привезём ${fD(ne)}. Ваш менеджер — ${person(d.managerId)?.name||''}.`})}
-    closeModal();render();toast(notify?`Отмечено. Уведомление получили ${sent} ${pl(sent,'сотрудник','сотрудника','сотрудников')}.`:'Отмечено без уведомления.');
-  },
+  stage:f=>shipStageForm(f),
   task:()=>{
     const title=byId('t-title').value.trim();
     if(!title){showErr('t-err','Напишите, что нужно сделать.');byId('t-title').focus();return}
@@ -2775,17 +3395,7 @@ const FORMS={
     Notify.push(S,'task',m.id,`Новая задача: «${title}», срок ${fD(t.due)}.${t.deal?' Сделка '+t.deal+'.':''} От: ${m.name}.`,now,targetPeople(t.to));
     closeModal();render();toast(`Задача поставлена. ${targetName(t)} — уведомление отправлено.`);
   },
-  ship:f=>{
-    const from=byId('ns-from').value.trim(),m=me(),now=new Date(),items=[],pipe=shipPipe('in');
-    f.querySelectorAll('.irow').forEach(r=>{const sku=r.querySelector('select').value,q=parseInt(r.querySelector('input').value,10)||0;if(q<1) return;const e=items.find(i=>i.productId===sku);if(e) e.qty+=q;else items.push({productId:sku,qty:q})});
-    if(!from||!items.length) return showErr('ns-err','Укажите, откуда едет груз, и хотя бы одну позицию с количеством.');
-    const id='П-'+(Math.max(0,...S.shipments.filter(s=>s.dir==='in').map(s=>parseInt(s.id.replace(/\D/g,''),10)||0))+1);
-    const eta=byId('ns-eta').value?fromIso(byId('ns-eta').value):day(7,12);
-    const stageId=Pipes.stage(S,pipe.id,byId('ns-stage').value)?.id||startStage(pipe.id).id;
-    S.shipments.push({id,dir:'in',supplier:from,to:'Наш склад',carrier:byId('ns-car').value,track:byId('ns-doc').value.trim()||'нет данных: номер накладной',pipeId:pipe.id,stageId,eta,history:[{at:now,by:m.id,text:from}],items});
-    Notify.push(S,'ship',m.id,`Новая поставка ${id} из «${from}»: ${items.map(i=>`${low(product(i.productId).name)} ${qtyOf(i.qty,product(i.productId))}`).join(', ')}. На складе ожидается ${fD(eta)}.`,now);
-    closeModal();S.ui.logTab='in';render();toast(`Поставка ${id} создана. Менеджеры уже видят её в остатках как «едет к нам».`);
-  },
+  ship:f=>shipCreate(f),
   product:()=>{
     const name=byId('np-name').value.trim(),pr=byId('np-price'),m=me();
     if(!name) return showErr('np-err','Нужно наименование.');
@@ -3132,54 +3742,508 @@ A['stock-page']=el=>{S.ui.page=parseInt(el.dataset.page,10)||0;byId('stock-tbl')
 // Из карточки товара — в журнал движений по этому товару
 A['stock-journal']=el=>{S.ui.stockTab='moves';S.ui.mvPid=el.dataset.pid||'';S.ui.mvKind='';S.ui.drawer=null;go('stock')};
 
-// Раздел «Поставки и перевозки»
-// Перенесено из прототипа v2; этапы — воронка поставки (Pipes), «закрыта» — флаг final, «ждёт приёмки» — awaitsReceipt.
+// Раздел «Поставки и перевозки»: таблица, воронка, шкала маршрута, позиции «3 + ещё N», карточка поставки.
+// Считает ядро Ships (34-ships.js): поиск, фильтры, сортировка и страницы — Ships.query, «опоздала» — Ships.isLate,
+// смена этапа — только Ships.setStage (через shipMark). Виды — функции state → HTML; состояние меняют A, ON, FORMS.
+// Настройки вида — S.prefs.ship {view, cols, density, group, size}: сохраняются. Поиск, фильтры, сортировка,
+// страница — S.ui.ships: не сохраняются.
 
-// ——— поставки и перевозки ———
+// ——— настройки вида ———
+// [ключ, подпись, ключ сортировки в Ships.query]
+const SHIP_COLS=[
+  ['number','Номер','number'],['supplier','Поставщик','supplier'],['stage','Этап','stage'],['where','Где сейчас',null],
+  ['eta','Когда будет','eta'],['entity','Юрлицо и город',null],['items','Позиции','items'],['units','Штук','units'],
+  ['carrier','Перевозчик',null],['depart','Отправлена','depart']
+];
+const SHIP_COLS_DEFAULT=['number','supplier','stage','where','eta','entity','items','units'];
+const SHIP_GROUPS=[['','Без группировки'],['stage','По этапу'],['supplier','По поставщику'],['node','По точке'],['city','По городу']];
+const SHIP_SIZES=[25,50,100];
+const SHIP_VIEWS=[['table','Таблица'],['funnel','Воронка'],['map','Схема']];
+const SHIP_ITEMS_SHOWN=3;
+
+// Выбор вида с подстановкой умолчаний. Колонка «Номер» есть всегда.
+function shipPrefs(){
+  const p=(S.prefs&&S.prefs.ship)||{};
+  const keys=SHIP_COLS.map(c=>c[0]);
+  const cols=Array.isArray(p.cols)?keys.filter(k=>k==='number'||p.cols.includes(k)):SHIP_COLS_DEFAULT.slice();
+  return {
+    view:SHIP_VIEWS.some(v=>v[0]===p.view)?p.view:'table',
+    cols,
+    density:p.density==='dense'?'dense':'normal',
+    group:SHIP_GROUPS.some(g=>g[0]===p.group)?p.group:'',
+    size:SHIP_SIZES.includes(Number(p.size))?Number(p.size):SHIP_SIZES[0]
+  };
+}
+function setShipPref(key,value){S.prefs.ship=Object.assign({},S.prefs.ship,{[key]:value})}
+
+// Поиск, фильтры, сортировка, страница. stage 'open' — «не принятые»: Ships.query такого не знает, режем после него.
+const SHIP_UI={q:'',stage:'open',supplier:'',node:'',city:'',entity:'',sort:'eta',page:1,settings:false};
+const shipUi=()=>Object.assign({},SHIP_UI,S.ui.ships);
+const setShipUi=patch=>{S.ui.ships=Object.assign(shipUi(),patch)};
+const shipDir=()=>S.ui.logTab==='out'?'out':'in';
+const shipNow=()=>new Date();
+const SHIP_DAY=864e5;
+const shipFold=x=>String(x??'').toLowerCase().replace(/ё/g,'е');
+
+// Запрос к ядру: только фильтры, которые оно знает. Этап из чужой воронки (после смены «Едут / Отгрузки») не считается.
+function shipFilter(u,dir){
+  const pipe=shipPipe(dir);
+  const stage=pipe&&pipe.stages.some(x=>x.id===u.stage)?u.stage:'';
+  return {q:u.q,stage,supplier:u.supplier,node:u.node,city:u.city,entity:u.entity,dir,sort:u.sort};
+}
+
+// Группа строки: {key, label, order}; порядок групп — по order, равные — по подписи.
+function shipGroupOf(s,mode){
+  if(mode==='stage'){
+    const st=(Pipes.of(S,'ships').find(p=>p.id===s.pipeId)||{stages:[]}).stages,i=st.findIndex(x=>x.id===s.stageId);
+    return {key:'st:'+s.stageId,label:i<0?'нет данных: этап':st[i].name,order:i<0?999:i};
+  }
+  if(mode==='supplier') return {key:'su:'+s.supplier,label:s.supplier||'нет данных: поставщик',order:0};
+  if(mode==='city') return {key:'ci:'+(s.cityId||''),label:s.cityId?(Stock.cityName(S,s.cityId)||s.cityId):'нет данных: город',order:s.cityId?0:999};
+  const w=Ships.where(s);
+  if(w.at) return {key:'no:'+w.at,label:Ships.nodeName(w.at),order:Math.max(0,Ships.NODES.findIndex(n=>n.id===w.at))};
+  if(w.from) return {key:'no:'+w.from+'>'+w.to,label:`В пути ${Ships.nodeName(w.from)} → ${Ships.nodeName(w.to)}`,order:10+Math.max(0,Ships.NODES.findIndex(n=>n.id===w.from))};
+  return {key:'no:',label:'нет данных: маршрут',order:999};
+}
+
+// Страница таблицы → {rows, total, page, pages, size, groups}. Без группировки и без «не принятых» — прямо Ships.query.
+// Иначе берём у ядра все подходящие (оно же фильтрует и сортирует), режем и делим на страницы здесь.
+function shipList(u,pr,dir){
+  const f=shipFilter(u,dir),openOnly=u.stage==='open';
+  if(!openOnly&&!pr.group) return Object.assign(Ships.query(S,Object.assign({},f,{page:u.page,size:pr.size})),{groups:null});
+  let rows=Ships.query(S,Object.assign({},f,{page:1,size:1e9})).rows;
+  if(openOnly) rows=rows.filter(s=>!isDone(s));
+  let groups=null,keyOf=null;
+  if(pr.group){
+    groups=new Map();
+    const g=new Map(rows.map(s=>[s,shipGroupOf(s,pr.group)]));
+    rows.forEach(s=>{const x=g.get(s),e=groups.get(x.key);if(e) e.count++;else groups.set(x.key,{label:x.label,order:x.order,count:1})});
+    rows=rows.slice().sort((a,b)=>{const x=g.get(a),y=g.get(b);return (x.order-y.order)||x.label.localeCompare(y.label,'ru',{numeric:true})||x.key.localeCompare(y.key)});
+    keyOf=new Map(rows.map(s=>[s.id,g.get(s).key]));
+  }
+  const total=rows.length,size=pr.size,pages=Math.max(1,Math.ceil(total/size)),page=Math.min(Math.max(1,Math.floor(u.page)||1),pages);
+  return {rows:rows.slice((page-1)*size,page*size),total,page,pages,size,groups,keyOf};
+}
+
+// ——— слова: когда будет, где сейчас ———
+const shipDays=(s,now)=>Math.round((sod(s.eta)-sod(now))/SHIP_DAY);
+function shipEtaText(s,now){
+  if(isDone(s)){const L=s.history&&s.history[s.history.length-1];return s.received?'принято '+fD(s.received.at):'закрыто '+(L?fD(L.at):'нет данных: дата')}
+  if(!s.eta) return 'нет данных: срок';
+  const n=shipDays(s,now);
+  return n>0?'через '+days(n):n===0?'сегодня':'опаздывает на '+days(-n);
+}
+const shipLate=(s,now)=>Ships.isLate(s,now,S);
+// Где груз — словами; у отгрузки клиенту маршрута нет, берём последнюю отметку
+function shipWhere(s){
+  if(Array.isArray(s.route)&&s.route.length>=2) return Ships.where(s).text;
+  const L=s.history&&s.history[s.history.length-1];
+  return L?L.text:'нет данных: где груз';
+}
+const shipPlace=s=>{
+  const e=Stock.entityName(S,s.entityId),c=s.cityId?Stock.cityName(S,s.cityId):null;
+  return {entity:s.entityId?(e||s.entityId):'нет данных: юрлицо',city:s.cityId?(c||s.cityId):'нет данных: город'};
+};
+
+// ——— шкала маршрута ———
+// Точки маршрута; пройденные отмечены, где груз сейчас — кольцо (в точке) или бегунок (на перегоне); под шкалой —
+// где груз и сколько дней до прибытия (красным — опаздывает). full: с подписями точек (карточка), иначе компактная (строка).
+function shipScale(s,now,full){
+  if(!Array.isArray(s.route)||s.route.length<2) return `<span class="muted sm">${esc(shipWhere(s))}</span>`;
+  const r=s.route,last=r.length-1,w=Ships.where(s);
+  const i=Math.max(0,r.indexOf(w.at||w.from)),onLeg=!w.at,pct=Math.min(100,(i+(onLeg?w.t:0))/last*100);
+  const late=shipLate(s,now),cap=shipEtaText(s,now);
+  const dots=r.map((id,k)=>`<i class="rs-dot${k<=i?' on':''}${!onLeg&&k===i?' cur':''}" style="left:${k/last*100}%"></i>`).join('');
+  const names=full?`<div class="rs-names">${r.map((id,k)=>`<span class="${k<=i?'on':''}" style="left:${k/last*100}%">${esc(Ships.nodeName(id))}</span>`).join('')}</div>`:'';
+  const label=`Маршрут: ${Ships.routeText(r)}. Сейчас: ${w.text}. ${cap}.`;
+  return `<div class="rs${full?' full':''}${late?' late':''}" role="img" aria-label="${esc(label)}"><div class="rs-line"><i class="rs-fill" style="width:${pct}%"></i>${dots}${onLeg?`<i class="rs-mark" style="left:${pct}%"></i>`:''}</div>${names}<div class="rs-cap"><span class="rs-w" title="${esc(w.text)}">${esc(full||w.at?w.text:Ships.nodeName(w.from)+' → '+Ships.nodeName(w.to)+' · '+Math.round(w.t*100)+'%')}</span><b class="${late?'bad-t':''}">${esc(cap)}</b></div></div>`;
+}
+
+// ——— позиции «3 + ещё N» ———
+// Одна функция на строку таблицы и на карточку: первые три позиции и кнопка «+N» — окно со всем списком.
+function shipItems(s){
+  const its=s.items||[],first=its.slice(0,SHIP_ITEMS_SHOWN),more=its.length-first.length;
+  if(!its.length) return '<span class="muted sm">нет данных: позиции</span>';
+  const line=it=>{const p=product(it.productId);return `<div class="s-it"><span>${esc(p?p.name:'нет данных: товар')}</span> <b>× ${esc(qtyOf(it.qty,p))}</b></div>`};
+  return `<div class="s-items"><div class="s-itl">${first.map(line).join('')}</div>${more>0?`<button type="button" class="s-more" data-act="ship-items" data-id="${esc(s.id)}" aria-label="Показать все ${its.length} ${pl(its.length,'позицию','позиции','позиций')}">+${more}</button>`:''}</div>`;
+}
+// Список для окна: подходящие под поиск по названию позиции и итог штук. Пустой поиск — всё.
+function shipItemsList(s,q){
+  const its=s.items||[],names=new Map(),want=shipFold(q).trim().split(/\s+/).filter(Boolean);
+  its.forEach(it=>{const p=product(it.productId);names.set(it,p?p.name:'нет данных: товар')});
+  const shown=its.filter(it=>want.every(w=>shipFold(names.get(it)).includes(w)));
+  const sum=a=>a.reduce((x,it)=>x+(Number(it.qty)||0),0);
+  const all=sum(its),part=sum(shown);
+  const head=shown.length===its.length?`${its.length} ${pl(its.length,'позиция','позиции','позиций')} · штук ${num(all)}`:`Найдено ${shown.length} из ${its.length} · штук ${num(part)} из ${num(all)}`;
+  const rows=shown.map(it=>{
+    const p=product(it.productId);
+    return `<tr><td class="num muted">${its.indexOf(it)+1}</td><td>${esc(names.get(it))}</td><td class="num"><b>${esc(qtyOf(it.qty,p))}</b>${it.got!==undefined&&it.got!==it.qty?`<small class="muted"> принято ${esc(qtyOf(it.got,p))}</small>`:''}</td></tr>`;
+  }).join('');
+  return `<p class="si-sum" id="si-sum">${head}</p>${shown.length?`<div class="si-scroll"><table class="tbl"><thead><tr><th class="num">№</th><th>Название</th><th class="num">Кол-во</th></tr></thead><tbody>${rows}</tbody></table></div>`:'<p class="empty">Ничего не нашлось.</p>'}`;
+}
+function mShipItems(s){
+  if(!s) return `<div>${mHead('Позиции')}<div class="modal-b"><p class="empty">Поставки нет.</p></div></div>`;
+  return `<div>${mHead('Позиции поставки '+esc(s.id))}<div class="modal-b si">
+    <div class="field"><label for="si-q">Поиск по названию</label><input id="si-q" class="inp" type="search" data-on="ship-items-q" data-id="${esc(s.id)}" placeholder="Например: панель" autocomplete="off"></div>
+    <div id="si-body">${shipItemsList(s,'')}</div>
+  </div><div class="modal-f"><button type="button" class="btn" data-act="close-modal">Закрыть</button></div></div>`;
+}
+
+// ——— таблица ———
+// Выпадающий список этапов: ручная смена (в строке и в карточке). На склад входящую ставит только приёмка.
+function shipStageSelect(s,cls){
+  const stg=stagesFor(s),locked=x=>s.dir==='in'&&x.flag==='final';
+  return `<select class="${cls}" data-on="ship-stage" data-id="${esc(s.id)}" aria-label="Этап поставки ${esc(s.id)}">${stg.map(x=>`<option value="${esc(x.id)}" ${x.id===s.stageId?'selected':''} ${locked(x)?'disabled':''}>${esc(x.name)}${locked(x)?' — ставит склад':''}</option>`).join('')}</select>`;
+}
+function shipStageCell(s,now){
+  if(can('logistics')&&!isDone(s)) return shipStageSelect(s,'inp sm s-stsel');
+  const tone=isDone(s)?'ok':shipLate(s,now)?'bad':awaitsReceipt(s)?'sun':'info';
+  return `<span class="pill ${tone}">${esc(stageName(s))}</span>`;
+}
+const SHIP_CELLS={
+  number:s=>`<td><button type="button" class="link mono s-id" data-act="open-ship" data-id="${esc(s.id)}">${esc(s.id)}</button>${s.demo?'<small class="muted">демо</small>':''}</td>`,
+  supplier:s=>`<td><span class="s-ell" title="${esc(s.supplier)}">${esc(s.supplier)}</span></td>`,
+  stage:(s,now)=>`<td>${shipStageCell(s,now)}</td>`,
+  where:(s,now)=>`<td class="s-where">${shipScale(s,now,false)}</td>`,
+  eta:(s,now)=>`<td class="s-eta"><b>${s.eta?fD(s.eta):'нет данных'}</b>${shipLate(s,now)?'<small class="bad-t">опаздывает</small>':isDone(s)?`<small class="muted">${esc(shipEtaText(s,now))}</small>`:''}</td>`,
+  entity:s=>{const p=shipPlace(s);return `<td><span class="s-ell" title="${esc(p.entity+' · '+p.city)}">${esc(p.entity)}<small class="muted">${esc(p.city)}</small></span></td>`},
+  items:s=>`<td class="s-itc">${shipItems(s)}</td>`,
+  units:s=>`<td class="num"><b>${num(Ships.units(s))}</b></td>`,
+  carrier:s=>`<td><span class="s-ell" title="${esc(s.carrier)}">${esc(s.carrier)}</span></td>`,
+  depart:s=>`<td>${s.depart?fD(s.depart):'<span class="muted sm">нет данных</span>'}</td>`
+};
+function shipRow(s,pr,now){
+  return `<tr class="srow${shipLate(s,now)?' is-late':''}${isDone(s)?' is-done':''}" data-ship="${esc(s.id)}">${pr.cols.map(k=>SHIP_CELLS[k](s,now)).join('')}</tr>`;
+}
+function shipHead(pr,u){
+  const raw=u.sort,desc=raw.startsWith('-'),key=desc?raw.slice(1):raw;
+  return `<tr>${pr.cols.map(k=>{
+    const c=SHIP_COLS.find(x=>x[0]===k);
+    if(!c[2]) return `<th class="${k==='where'?'s-where':''}">${c[1]}</th>`;
+    const on=key===c[2];
+    return `<th class="${k==='units'?'num':''}" aria-sort="${on?(desc?'descending':'ascending'):'none'}"><button type="button" class="s-sort${on?' on':''}" data-act="ship-sort" data-k="${c[2]}">${c[1]}<span aria-hidden="true">${on?(desc?' ▼':' ▲'):''}</span></button></th>`;
+  }).join('')}</tr>`;
+}
+function shipPager(r){
+  if(r.pages<2) return '';
+  return `<div class="s-pager"><button type="button" class="btn sm" data-act="ship-page" data-p="${r.page-1}" ${r.page<2?'disabled':''}>← Назад</button><span class="muted sm">Страница ${r.page} из ${r.pages}</span><button type="button" class="btn sm" data-act="ship-page" data-p="${r.page+1}" ${r.page>=r.pages?'disabled':''}>Дальше →</button></div>`;
+}
+// Счётчик «Показано N из M»: N — строк на этой странице, M — всех подходящих под фильтры.
+const shipCounter=(n,m)=>`<p class="s-count" id="ship-count">Показано ${n} из ${m}</p>`;
+function shipTable(u,pr,dir,now){
+  const r=shipList(u,pr,dir);
+  let body='',cur=null;
+  r.rows.forEach(s=>{
+    if(r.groups){const k=r.keyOf.get(s.id);if(k!==cur){cur=k;const g=r.groups.get(k);body+=`<tr class="sgrp"><td colspan="${pr.cols.length}"><b>${esc(g.label)}</b> <span class="muted">· ${g.count}</span></td></tr>`}}
+    body+=shipRow(s,pr,now);
+  });
+  const tbl=r.rows.length?`<section class="card clip"><div class="xs"><table class="tbl stbl ${pr.density}"><thead>${shipHead(pr,u)}</thead><tbody>${body}</tbody></table></div></section>`:'<section class="card"><p class="empty">Под такие фильтры поставок нет.</p></section>';
+  return shipCounter(r.rows.length,r.total)+tbl+shipPager(r);
+}
+
+// ——— воронка ———
+function shipCardMini(s,now){
+  const late=shipLate(s,now),drag=can('logistics')&&!isDone(s);
+  return `<article class="scard${late?' is-late':''}${isDone(s)?' is-done':''}" ${drag?`draggable="true" data-drag="${esc(s.id)}"`:''}>
+    <div class="sc-h"><button type="button" class="link mono" data-act="open-ship" data-id="${esc(s.id)}">${esc(s.id)}</button>${late?'<span class="pill bad sm">опаздывает</span>':''}</div>
+    <div class="sc-s" title="${esc(s.supplier)}">${esc(s.supplier)}</div>
+    <div class="sc-m"><span><b>${num(Ships.units(s))}</b> шт.</span><span class="${late?'bad-t':''}">${s.eta?fD(s.eta):'нет данных'} · ${esc(shipEtaText(s,now))}</span></div></article>`;
+}
+function shipFunnel(u,pr,dir,now){
+  const pipe=shipPipe(dir);
+  if(!pipe) return '<section class="card"><p class="empty">нет данных: воронка поставок.</p></section>';
+  const f=Object.assign(shipFilter(u,dir),{stage:'',sort:'eta',page:1,size:1e9});
+  const rows=Ships.query(S,f).rows;
+  const cols=pipe.stages.map(st=>{
+    const list=rows.filter(s=>s.stageId===st.id),un=list.reduce((x,s)=>x+Ships.units(s),0);
+    return `<section class="col scol" data-scol="${esc(st.id)}" aria-label="${esc(st.name)}"><div class="col-h"><span>${esc(st.name)}</span><span class="cnt-s">${list.length} · ${num(un)} шт.</span></div><div class="scol-b">${list.map(s=>shipCardMini(s,now)).join('')||'<p class="col-empty">Пусто</p>'}</div></section>`;
+  }).join('');
+  return `${shipCounter(rows.length,rows.length)}${can('logistics')?'<p class="hint">Перетащите карточку в другую колонку — этап сменится, сотрудникам придёт уведомление. На склад входящую поставку ставит приёмка.</p>':''}<div class="xs"><div class="sfun" style="--n:${pipe.stages.length}">${cols}</div></div>`;
+}
+
+// ——— схема маршрута ———
+// Встроенная схема без внешних карт: условные контуры Китая и России, пять точек Ships.NODES, перегоны.
+// Числа — только Ships.mapCounts, те же поставки, что покажет таблица после нажатия. Нажатие на точку, на «на таможне»
+// или на перегон включает фильтр таблицы и переключает вид на «Таблицу». Грузы бегут по перегонам, где есть поставки.
+// Где подпись точки относительно самой точки: bl — снизу слева, tl — сверху слева, r — справа, tr / br — справа сверху / снизу.
+const SMAP_PLACE={cn:'bl',chita:'tl',irk:'r',msk:'tr',krd:'br'};
+// Где на перегоне стоит число (доля пути): у сходящихся линий разные, чтобы числа не наползали друг на друга
+const SMAP_LEG_AT={'cn>chita':.5,'chita>irk':.5,'chita>msk':.45,'chita>krd':.45,'irk>msk':.75,'irk>krd':.75,'msk>krd':.2};
+// Контуры условные, не по масштабу: Китай слева, Россия справа (чтобы груз шёл слева направо, как в Ships.NODES)
+const SMAP_CN='M0,24 C5,18 12,20 16,26 C20,30 24,34 23,42 C22,48 25,52 24,58 C23,66 18,72 14,78 C10,84 5,88 0,90 Z';
+const SMAP_RU='M27,12 C34,6 46,8 56,6 C68,4 80,6 92,4 L100,5 L100,95 L90,96 C80,94 72,90 62,92 C52,94 46,86 42,78 C38,72 30,70 28,62 C26,56 28,52 27,46 C25,40 28,36 26,30 C24,22 25,16 27,12 Z';
+const smapPct=v=>Math.round(v*100)/100+'%';
+const smapShips=n=>`${n} ${pl(n,'поставка','поставки','поставок')}`;
+// Какие поставки на схеме: те же поиск, поставщик, город и юрлицо, что в панели над таблицей (этап и точку схема считает сама)
+const smapFilter=u=>({q:u.q,supplier:u.supplier,city:u.city,entity:u.entity});
+const smapOrder=key=>key.split('>').map(id=>Math.max(0,Ships.NODES.findIndex(n=>n.id===id)));
+function smapLegName(key){const [a,b]=key.split('>');return Ships.nodeName(a)+' → '+Ships.nodeName(b)}
+// Подпись точки: роль («основной город-приёмщик») и то, что там делают («таможня и перевалка») — из Ships.NODES.label
+function smapLabel(n){
+  const parts=String(n.label||'').split(' · '),key=parts.length>1?parts[parts.length-1]:'',role=parts.length>1?parts.slice(0,-1).join(' · '):parts[0];
+  return `<span class="sm-lbl">${role?`<span class="sm-role">${esc(role)}</span>`:''}${role&&key?'<span class="sm-sep"> · </span>':''}${key?`<span class="sm-key">${esc(key)}</span>`:''}</span>`;
+}
+// Число поставок и штук: видимый текст и атрибуты берут одно и то же
+const smapCnt=c=>`<span class="sm-cnt"><span><b>${num(c.ships)}</b> ${pl(c.ships,'поставка','поставки','поставок')}</span><span><b>${num(c.units)}</b> шт</span></span>`;
+function shipMap(u,dir){
+  if(dir==='out') return '<section class="card"><p class="empty">Схема показывает поставки, которые едут к нам: у отгрузок клиентам маршрута из пяти точек нет. Переключитесь на «Едут к нам».</p></section>';
+  const c=Ships.mapCounts(S,smapFilter(u)),N=Ships.NODES;
+  const at=id=>N.find(n=>n.id===id),legKeys=Object.keys(c.legs).sort((a,b)=>{const x=smapOrder(a),y=smapOrder(b);return (x[0]-y[0])||(x[1]-y[1])});
+  const totShips=N.reduce((s,n)=>s+c.nodes[n.id].ships,0)+legKeys.reduce((s,k)=>s+c.legs[k].ships,0);
+  const totUnits=N.reduce((s,n)=>s+c.nodes[n.id].units,0)+legKeys.reduce((s,k)=>s+c.legs[k].units,0);
+  const line=k=>{const [a,b]=k.split('>').map(at);return `<line class="sm-line${c.legs[k].ships?' on':''}" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" vector-effect="non-scaling-stroke"/>`};
+  const dots=legKeys.filter(k=>c.legs[k].ships>0).map(k=>{
+    const [a,b]=k.split('>').map(at),n=Math.min(4,Math.ceil(c.legs[k].ships/5)),dur=Math.round((4+Math.hypot(b.x-a.x,b.y-a.y)/12)*10)/10;
+    return Array.from({length:n},(_,i)=>`<i class="sm-dot" style="--x1:${smapPct(a.x)};--y1:${smapPct(a.y)};--x2:${smapPct(b.x)};--y2:${smapPct(b.y)};--xm:${smapPct(a.x+(b.x-a.x)*(i+1)/(n+1))};--ym:${smapPct(a.y+(b.y-a.y)*(i+1)/(n+1))};--dur:${dur}s;--dl:-${Math.round(dur*i/n*10)/10}s"></i>`).join('');
+  }).join('');
+  const legBtn=k=>{
+    const [a,b]=k.split('>').map(at),t=SMAP_LEG_AT[k]??.5,g=c.legs[k];
+    return `<button type="button" class="sm-leg${g.ships?' on':''}" style="left:${smapPct(a.x+(b.x-a.x)*t)};top:${smapPct(a.y+(b.y-a.y)*t)}" data-act="ship-map" data-k="${esc(k)}" data-leg="${esc(k)}" data-ships="${g.ships}" data-units="${g.units}" aria-label="Перегон ${esc(smapLegName(k))}: ${smapShips(g.ships)}, ${num(g.units)} шт. Показать в таблице"><b>${num(g.ships)}</b>${g.ships?`<span class="sm-u">· ${num(g.units)} шт</span>`:''}</button>`;
+  };
+  const nodeBox=n=>{
+    const g=c.nodes[n.id],cu=g.customs,place=SMAP_PLACE[n.id]||'r';
+    const chip=`<button type="button" class="sm-chip${g.ships?' has':''}" data-act="ship-map" data-k="${esc(n.id)}" data-node="${esc(n.id)}" data-ships="${g.ships}" data-units="${g.units}" aria-label="${esc(n.name)}, ${esc(n.label)}: ${smapShips(g.ships)}, ${num(g.units)} шт. Показать в таблице"><span class="sm-nm">${esc(n.name)}</span>${smapLabel(n)}${smapCnt(g)}</button>`;
+    const cust=cu?`<button type="button" class="sm-cust${cu.ships?' has':''}" data-act="ship-map" data-k="${esc(n.id)}" data-stage="customs" data-customs-ships="${cu.ships}" data-customs-units="${cu.units}" aria-label="${esc(n.name)}, на таможне: ${smapShips(cu.ships)}, ${num(cu.units)} шт. Показать в таблице">на таможне: <b>${num(cu.ships)}</b><span class="sm-u">· <b>${num(cu.units)}</b> шт</span></button>`:'';
+    return `<i class="sm-pt${g.ships?' has':''}" style="left:${smapPct(n.x)};top:${smapPct(n.y)}" aria-hidden="true"></i><div class="sm-node ${place}" style="--x:${smapPct(n.x)};--y:${smapPct(n.y)}">${chip}${cust}</div>`;
+  };
+  const rows=legKeys.map(k=>{const g=c.legs[k];return `<li><button type="button" class="link" data-act="ship-map" data-k="${esc(k)}" data-row-leg="${esc(k)}">${esc(smapLegName(k))}</button><span class="${g.ships?'':'muted'}">${g.ships?`${smapShips(g.ships)} · ${num(g.units)} шт`:'сейчас на перегоне никого'}</span></li>`}).join('');
+  return `<p class="s-count" id="ship-count">На схеме ${smapShips(totShips)}, ${num(totUnits)} шт. Нажмите на точку или перегон — таблица покажет эти поставки.</p>
+    <section class="card"><div class="smap" role="group" aria-label="Схема маршрута: ${esc(N.map(n=>n.name).join(', '))}">
+      <svg class="smap-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" focusable="false"><path class="sm-land cn" d="${SMAP_CN}"/><path class="sm-land ru" d="${SMAP_RU}"/>${legKeys.map(line).join('')}</svg>
+      <span class="sm-country cn" aria-hidden="true">Китай</span><span class="sm-country ru" aria-hidden="true">Россия</span>
+      <div class="sm-dots" aria-hidden="true">${dots}</div>
+      ${legKeys.map(legBtn).join('')}${N.map(nodeBox).join('')}
+    </div><p class="hint sm-note">Схема условная: контуры и расстояния не по масштабу. Бегущие точки — грузы в пути. Числа — не принятые поставки, в точке или на перегоне; поставки из демо-набора.</p></section>
+    <section class="card"><div class="card-h"><h3>Перегоны</h3></div><ul class="sm-list">${rows||'<li class="muted">Поставок с маршрутом нет.</li>'}</ul></section>`;
+}
+
+// ——— верх раздела: переключатели, фильтры, настройка вида ———
+function shipFilterBar(u,pr,dir){
+  const pipe=shipPipe(dir);
+  const sups=[...new Set(S.shipments.filter(s=>(s.dir||'in')===dir).map(s=>s.supplier).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru',{numeric:true}));
+  const legs=Object.keys(Ships.mapCounts(S,{}).legs);
+  const opt=(v,l,cur)=>`<option value="${esc(v)}" ${v===cur?'selected':''}>${esc(l)}</option>`;
+  const sel=(k,label,opts)=>`<div class="field"><label for="sf-${k}">${label}</label><select id="sf-${k}" class="inp sm" data-on="ship-f" data-k="${k}">${opts}</select></div>`;
+  const stageSel=pr.view!=='table'?'':sel('stage','Этап',opt('open',dir==='out'?'Не закрытые':'Не принятые',u.stage)+opt('','Все этапы',u.stage)+(pipe?pipe.stages.map(x=>opt(x.id,x.name,u.stage)).join(''):''));
+  const nodeOpts=opt('','Везде',u.node)+Ships.NODES.map(n=>opt(n.id,n.name,u.node)).join('')+legs.map(k=>{const [a,b]=k.split('>');return opt(k,`В пути ${Ships.nodeName(a)} → ${Ships.nodeName(b)}`,u.node)}).join('');
+  const dirty=u.q||u.supplier||u.node||u.city||u.entity||(pr.view==='table'&&u.stage!=='open');
+  return `<section class="card sfilters"><div class="sf-row">
+    <div class="field sf-q"><label for="sf-q">Поиск</label><input id="sf-q" class="inp sm" type="search" value="${esc(u.q)}" data-on="ship-q" placeholder="Номер, поставщик, трек, товар, где груз" autocomplete="off"></div>
+    ${stageSel}
+    ${sel('supplier','Поставщик',opt('','Все',u.supplier)+sups.map(x=>opt(x,x,u.supplier)).join(''))}
+    ${sel('node','Точка',nodeOpts)}
+    ${sel('city','Город',opt('','Все',u.city)+S.cities.map(c=>opt(c.id,c.name,u.city)).join(''))}
+    ${sel('entity','Юрлицо',opt('','Все',u.entity)+S.entities.map(e=>opt(e.id,e.name,u.entity)).join(''))}
+    ${dirty?`<button type="button" class="btn sm ghost" data-act="ship-reset">Сбросить</button>`:''}
+  </div></section>`;
+}
+function shipSettings(pr,u){
+  if(!u.settings) return '';
+  return `<section class="card sset"><div class="card-h"><h3>Настройка вида</h3><span class="hint">Запоминается: при следующем заходе вид будет таким же.</span></div><div class="card-b ss-grid">
+    <fieldset class="ss-f"><legend>Колонки таблицы</legend>${SHIP_COLS.map(c=>`<label class="check"><input type="checkbox" data-on="ship-col" data-k="${c[0]}" ${pr.cols.includes(c[0])?'checked':''} ${c[0]==='number'?'disabled':''}> ${c[1]}</label>`).join('')}</fieldset>
+    <div class="ss-f"><span class="lbl">Плотность строк</span><div class="seg" role="group" aria-label="Плотность строк">${[['normal','Обычная'],['dense','Плотная']].map(([k,l])=>`<button type="button" class="${pr.density===k?'on':''}" aria-pressed="${pr.density===k}" data-act="ship-density" data-d="${k}">${l}</button>`).join('')}</div></div>
+    <div class="field ss-f"><label for="ss-group">Группировка таблицы</label><select id="ss-group" class="inp sm" data-on="ship-group">${SHIP_GROUPS.map(([k,l])=>`<option value="${k}" ${pr.group===k?'selected':''}>${l}</option>`).join('')}</select></div>
+    <div class="field ss-f"><label for="ss-size">Строк на странице</label><select id="ss-size" class="inp sm" data-on="ship-size">${SHIP_SIZES.map(n=>`<option value="${n}" ${pr.size===n?'selected':''}>${n}</option>`).join('')}</select></div>
+  </div></section>`;
+}
+// Содержимое под фильтрами: таблица или воронка. Его же перерисовывает поиск, чтобы не терять курсор в поле.
+function shipBody(now){
+  const u=shipUi(),pr=shipPrefs(),dir=shipDir();
+  if(pr.view==='map') return shipMap(u,dir);
+  return pr.view==='funnel'?shipFunnel(u,pr,dir,now||shipNow()):shipTable(u,pr,dir,now||shipNow());
+}
 function vLogistics(){
-  const byEta=(a,b)=>a.eta-b.eta;
-  const ins=S.shipments.filter(s=>s.dir==='in'&&!isDone(s)).sort(byEta),outs=S.shipments.filter(s=>s.dir==='out'&&!isDone(s)).sort(byEta);
-  const done=S.shipments.filter(isDone).sort((a,b)=>shipLast(b).at-shipLast(a).at);
-  const tab=S.ui.logTab,list=tab==='in'?ins:tab==='out'?outs:done;
-  let h=`<div class="bar"><div class="seg">${[['in','Едут к нам',ins.length],['out','Отгрузки клиентам',outs.length],['done','Завершённые',done.length]].map(([k,l,c])=>`<button class="${tab===k?'on':''}" data-act="log-tab" data-tab="${k}">${l}<b>${c}</b></button>`).join('')}</div><span class="grow"></span>${can('logistics')?`<button class="btn pri" data-act="new-ship">${ic('plus')}Новая поставка</button>`:''}</div>`;
+  const u=shipUi(),pr=shipPrefs(),dir=shipDir(),now=shipNow();
+  const open=d=>S.shipments.filter(s=>(s.dir||'in')===d&&!isDone(s)).length;
+  let h=`<div class="bar"><div class="seg" role="group" aria-label="Что показать">${[['in','Едут к нам'],['out','Отгрузки клиентам']].map(([k,l])=>`<button type="button" class="${dir===k?'on':''}" aria-pressed="${dir===k}" data-act="log-tab" data-tab="${k}">${l}<b>${open(k)}</b></button>`).join('')}</div>
+    <div class="seg" role="group" aria-label="Вид">${SHIP_VIEWS.map(([k,l])=>`<button type="button" class="${pr.view===k?'on':''}" aria-pressed="${pr.view===k}" data-act="ship-view" data-v="${k}">${l}</button>`).join('')}</div>
+    <span class="grow"></span>
+    <button type="button" class="btn sm${u.settings?' pri':''}" data-act="ship-settings" aria-expanded="${u.settings}">${ic('sliders')}Настройка вида</button>
+    ${can('logistics')?`<button type="button" class="btn pri" data-act="new-ship">${ic('plus')}Новая поставка</button>`:''}</div>`;
   if(!can('logistics')) h+=`<p class="hint">Этапы перевозки отмечает логист. Каждая отметка приходит вам уведомлением.</p>`;
-  h+=list.length?`<div class="ships">${list.map(shipCard).join('')}</div>`:'<section class="card"><p class="empty">Здесь пока пусто.</p></section>';
+  h+=shipSettings(pr,u)+shipFilterBar(u,pr,dir)+`<div id="ship-body" class="stack-s">${shipBody(now)}</div>`;
   return h;
 }
-function shipCard(s){
-  const stg=stagesFor(s),pos=stagePos(s),done=isDone(s),late=isLate(s),n=dd(s.eta),nm=esc(stageName(s)),L=shipLast(s);
-  const pill=done?`<span class="pill ok">${nm}</span>`:late?'<span class="pill bad">Задерживается</span>':awaitsReceipt(s)?`<span class="pill sun">${nm}</span>`:`<span class="pill info">${nm}</span>`;
-  const when=done?L.at:s.eta;
-  const etaTxt=done?(s.received?'принято '+fT(s.received.at):'доставлено '+fT(L.at)):n>0?'через '+days(n):n===0?'сегодня'+(s.eta.getHours()?', к '+fT(s.eta):''):'опаздывает на '+days(-n);
-  const waits=s.dir==='in'?[...byDeal(S.reserves.filter(r=>r.src===s.id)).keys()]:(s.deal?[s.deal]:[]);
-  const items=s.items.map(it=>{const p=product(it.productId);const t=`${esc(p.name)} <b>× ${qtyOf(it.got??it.qty,p)}</b>`;return can('stock')?`<button class="chip" data-act="open-product" data-pid="${esc(it.productId)}">${t}</button>`:`<span class="chip">${t}</span>`}).join('');
-  let w='';
-  if(waits.length) w=`<div class="waits">${ic('users')}<span>${s.dir==='in'?'Ждут этот товар':'Для сделки'}: ${can('clients')?waits.map(id=>`<button class="link" data-act="open-deal" data-id="${id}">${id} · ${esc(deal(id)?.client||'')}</button>`).join(', '):waits.length+' '+pl(waits.length,'сделка','сделки','сделок')}</span></div>`;
-  let ph='';
-  if(s.received){const r=s.received;ph=`<div class="photos-row">${(r.urls.length?r.urls.map(u=>`<img src="${u}" alt="Фото приёмки">`):Array.from({length:r.photos},()=>`<span class="ph-ph">${ic('photo')}</span>`)).join('')}<small>${r.photos} фото · принял(а) ${esc(person(r.by)?.name||'')}${r.note?' · '+esc(r.note):''}</small></div>${unsavedNote(r)}`;}
-  let f='';
-  if(!done){
-    const b=[];
-    if(can('logistics')) b.push(`<button class="btn sm" data-act="stage" data-id="${s.id}">${ic('pin')}Отметить этап</button>`);
-    if(can('receive')&&awaitsReceipt(s)) b.push(`<button class="btn sm pri" data-act="rcv-start" data-id="${s.id}">${ic('camera')}Принять на складе</button>`);
-    if(b.length) f=`<div class="ship-f">${b.join('')}</div>`;
+
+// ——— смена этапа: единственный путь ———
+// Ручная отметка из строки, карточки, воронки и формы. Этап пишет только Ships.setStage (история с источником
+// «вручную», уведомление всем, у кого включён вид «Поставки»); здесь — права, закрытые поставки и сообщение клиенту.
+function shipMark(shipId,stageId){
+  const s=ship(shipId),m=me(),now=new Date();
+  if(!s) return {ok:false,reason:'Поставки нет.'};
+  const fail=(msg,quiet)=>{if(!quiet) toast(msg,'warn');return {ok:false,reason:msg}};
+  if(!can('logistics')) return fail('Этапы перевозки отмечает логист.');
+  const stg=Pipes.stage(S,s.pipeId,stageId);
+  if(!stg) return fail('Такого этапа в воронке нет.');
+  if(s.stageId===stageId) return fail('Поставка уже на этом этапе.',true);
+  if(isDone(s)) return fail('Поставка уже закрыта: этап не меняется.');
+  if(s.dir==='in'&&stg.flag==='final') return fail('На склад входящую поставку ставит приёмка: она кладёт товар на юрлицо и город.');
+  const wasOut=s.dir==='out'&&leftStart(s);
+  const r=Ships.setStage(S,s.id,stageId,m.id,now,Ships.SRC.manual);
+  if(!r.ok) return fail(r.reason);
+  // отгрузка клиенту ушла со склада — автосообщение клиенту, как в v2
+  if(s.dir==='out'&&!wasOut&&leftStart(s)&&rule('shipped')?.on&&s.deal){
+    const d=deal(s.deal);
+    if(d&&d.channel!=='phone') S.msgs.push({id:Store.freeId(S.msgs,'m'),at:now,deal:d.id,channel:d.channel,auto:true,text:`${d.contact}, здравствуйте! Ваш заказ отгружен: ${s.track}. Привезём ${fD(s.eta)}. Ваш менеджер — ${person(d.managerId)?.name||''}.`});
   }
-  return `<article class="card ship ${late?'is-late':''}"><div class="ship-h"><div class="ship-id"><b class="mono">${s.id}</b>${pill}</div><div class="eta ${late?'bad-t':''}"><small>${done?'Закрыто':s.dir==='in'?'Ожидается на складе':'Доставка'}</small><b>${fD(when)}</b><span>${etaTxt}</span></div></div>
-    <div class="route"><span>${esc(s.supplier)}</span>${ic('arrow')}<span>${esc(s.to)}</span></div>
-    <div class="muted sm">${esc(s.carrier)} · <span class="mono">${esc(s.track)}</span></div>
-    <ol class="steps" style="--n:${stg.length}">${stg.map((x,i)=>`<li class="${i<pos||done?'done':i===pos?'cur':''}"><span>${esc(x.name)}</span></li>`).join('')}</ol>
-    <div class="lastm">${ic('pin')}<span>${esc(L.text)}<small>${fWhen(L.at)} · отметка: ${esc(person(L.by)?.name||'')}</small></span></div>
-    <div class="items">${items}</div>${w}${ph}${f}</article>`;
+  const got=r.note?r.note.to.filter(id=>id!==m.id).length:0;
+  render();
+  toast(`${s.id}: «${stg.name}». Уведомление получили ${got} ${pl(got,'сотрудник','сотрудника','сотрудников')}.`);
+  return r;
+}
+// Форма «Отметить этап»: этап — через shipMark, срок и комментарий — отдельными отметками в историю.
+function shipStageForm(f){
+  const s=ship(f.dataset.id),m=me(),now=new Date();
+  if(!s){closeModal();return}
+  const stageId=byId('st-stage').value,eta=byId('st-eta').value,note=byId('st-note').value.trim();
+  const ne=eta?fromIso(eta,s.eta?s.eta.getHours()||12:12):s.eta,old=s.eta,moved=!!old&&!!ne&&dd(ne)!==dd(old);
+  const termNote=()=>s.history.push({at:now,by:m.id,text:`Срок прихода: было ${fD(old)}, стало ${fD(ne)}.`,source:Ships.SRC.manual});
+  if(stageId!==s.stageId){
+    if(moved) s.eta=ne;               // срок ставим до отметки: в уведомлении уже новая дата
+    const r=shipMark(s.id,stageId);
+    if(!r.ok){s.eta=old;return}
+    if(moved) termNote();
+  }else if(moved){
+    s.eta=ne;termNote();
+    Notify.push(S,'ship',m.id,`${s.id}: срок прихода — ${fD(ne)} (было ${fD(old)}). Сейчас: ${shipWhere(s)}.`,now);
+  }
+  if(note) s.history.push({at:now,by:m.id,text:'Комментарий: '+note,source:Ships.SRC.manual});
+  closeModal();render();
+}
+// Форма «Новая поставка»: маршрут Китай → Чита → город назначения, положение и этап — через ядро.
+function shipCreate(f){
+  const from=byId('ns-from').value.trim(),m=me(),now=new Date(),items=[],pipe=shipPipe('in');
+  f.querySelectorAll('.irow').forEach(r=>{const sku=r.querySelector('select').value,q=parseInt(r.querySelector('input').value,10)||0;if(q<1) return;const e=items.find(i=>i.productId===sku);if(e) e.qty+=q;else items.push({productId:sku,qty:q})});
+  if(!from||!items.length) return showErr('ns-err','Укажите, откуда едет груз, и хотя бы одну позицию с количеством.');
+  const city=byId('ns-city').value,route=['cn','chita',city];
+  const id='П-'+(Math.max(0,...S.shipments.filter(s=>s.dir==='in').map(s=>parseInt(s.id.replace(/\D/g,''),10)||0))+1);
+  const eta=byId('ns-eta').value?fromIso(byId('ns-eta').value):day(7,12);
+  const start=startStage(pipe.id),wanted=Pipes.stage(S,pipe.id,byId('ns-stage').value);
+  const s={id,number:id,dir:'in',supplier:from,to:'Наш склад',carrier:byId('ns-car').value,track:byId('ns-doc').value.trim()||'нет данных: номер накладной',
+    entityId:byId('ns-ent').value,cityId:city,route,pos:{i:0,t:0},eta,pipeId:pipe.id,stageId:start.id,
+    items,history:[{at:now,by:m.id,text:`Поставка создана. Маршрут: ${Ships.routeText(route)}.`,source:Ships.SRC.manual}]};
+  S.shipments.push(s);
+  // сразу на нужный этап — тоже через ядро: оно расставит груз на маршруте, запишет историю и разошлёт уведомление
+  if(wanted&&wanted.id!==start.id) Ships.setStage(S,id,wanted.id,m.id,now,Ships.SRC.manual);
+  else Notify.push(S,'ship',m.id,`Новая поставка ${id} из «${from}»: ${Ships.brief(S,s)}. Маршрут: ${Ships.routeText(route)}. На складе ожидается ${fD(eta)}.`,now);
+  closeModal();S.ui.logTab='in';render();toast(`Поставка ${id} создана. Менеджеры уже видят её в остатках как «едет к нам».`);
 }
 
+// ——— имитация: статус от перевозчика ———
+// Перевозчик (настоящего трека пока нет) сообщает, что груз сдвинулся: один шаг по маршруту через Ships.advance с
+// источником «автоматически: перевозчик». Правила директора, которые этот шаг запускает, видны в истории поставки.
+// Можно ли двигать: едет к нам, есть маршрут, ещё в пути (не ждёт приёмки, не принята), есть следующий шаг в плане.
+function shipCarrierCan(s){
+  if(!s||s.dir!=='in'||s.received||isDone(s)||awaitsReceipt(s)||!Array.isArray(s.route)||s.route.length<2) return false;
+  if(s.stageId===Ships.ST.ordered) return false;
+  const pl_=Ships.plan(S,s),i=pl_.findIndex(e=>e.stageId===s.stageId);
+  return i>=0&&i<pl_.length-1;
+}
+// Одна поставка в пути: с самым ранним ожидаемым приходом (то, что уже опаздывает, — первым)
+const shipCarrierPick=()=>S.shipments.filter(shipCarrierCan).sort((a,b)=>(a.eta?a.eta.getTime():Infinity)-(b.eta?b.eta.getTime():Infinity)||String(a.id).localeCompare(String(b.id),'ru',{numeric:true}))[0]||null;
+function shipCarrier(shipId){
+  const s=shipId?ship(shipId):shipCarrierPick(),now=new Date();
+  if(!s){toast('Нет поставки в пути, которую можно сдвинуть.','warn');return {ok:false,reason:'Нет поставки в пути.'}}
+  const r=Ships.advance(S,s.id,null,now,Ships.SRC.carrier);
+  if(!r.ok){toast(r.reason,'warn');return r}
+  const got=r.note?r.note.to.length:0,rules=(r.applied||[]).length;
+  render();
+  toast(`Перевозчик сообщил по ${s.id}: «${r.to.name}». Сейчас: ${Ships.where(s).text}. Уведомление получили ${got} ${pl(got,'сотрудник','сотрудника','сотрудников')}.${rules?` Сработало ${rules} ${pl(rules,'правило','правила','правил')} директора.`:''}`);
+  return Object.assign({shipId:s.id},r);
+}
+SIMS.push({id:'carrier',label:'Имитация: пришёл статус от перевозчика',run:()=>{shipCarrier()}});
+
+// ——— карточка поставки ———
+function dShip(s){
+  const now=shipNow(),late=shipLate(s,now),done=isDone(s),place=shipPlace(s);
+  const waits=s.dir==='in'?[...byDeal(S.reserves.filter(r=>r.src===s.id)).keys()]:(s.deal?[s.deal]:[]);
+  const hist=(s.history||[]).slice().reverse().map(h=>{
+    const src=h.source||(h.auto?'автоматически':'вручную'),who=h.by?person(h.by)?.name:null;
+    return `<li><div class="sh-t">${esc(h.text)}</div><small>${fWhen(h.at)}${who?' · '+esc(who):''} · <span class="pill sm${h.auto?' info':''}">${esc(src)}</span></small></li>`;
+  }).join('');
+  const photos=s.received?(()=>{const r=s.received;return `<div class="photos-row">${(r.urls.length?r.urls.map(u=>`<img src="${u}" alt="Фото приёмки">`):Array.from({length:r.photos},()=>`<span class="ph-ph">${ic('photo')}</span>`)).join('')}<small>${r.photos} фото · принял(а) ${esc(person(r.by)?.name||'')}${r.note?' · '+esc(r.note):''}</small></div>${unsavedNote(r)}`})():'';
+  const acts=[];
+  if(can('logistics')&&!done) acts.push(`<button type="button" class="btn sm" data-act="stage" data-id="${esc(s.id)}">${ic('pin')}Отметить этап…</button>`);
+  if(can('logistics')&&shipCarrierCan(s)) acts.push(`<button type="button" class="btn sm" data-act="ship-carrier" data-id="${esc(s.id)}">${ic('truck')}Имитация: статус от перевозчика</button>`);
+  if(can('receive')&&awaitsReceipt(s)) acts.push(`<button type="button" class="btn sm pri" data-act="rcv-start" data-id="${esc(s.id)}">${ic('camera')}Принять на складе</button>`);
+  const stageNow=done||!can('logistics')?`<span class="pill ${done?'ok':late?'bad':awaitsReceipt(s)?'sun':'info'}">${esc(stageName(s))}</span>`:shipStageSelect(s,'inp sm');
+  return {kind:(s.dir==='out'?'Отгрузка ':'Поставка ')+s.id,title:esc(s.supplier)+(s.demo?' <span class="pill sm">пример</span>':''),sub:esc(shipWhere(s)),body:`
+    <div class="d-stage"><div class="field"><label>Этап</label>${stageNow}</div>${late?'<span class="pill bad">Опаздывает</span>':''}</div>
+    ${shipScale(s,now,true)}
+    <dl class="kv"><dt>Ожидается</dt><dd>${s.eta?fD(s.eta):'нет данных'} · ${esc(shipEtaText(s,now))}</dd>
+      <dt>Отправлена</dt><dd>${s.depart?fD(s.depart):'нет данных: дата отправки'}</dd>
+      <dt>Перевозчик</dt><dd>${esc(s.carrier||'нет данных')}</dd><dt>Трек</dt><dd><span class="mono">${esc(s.track||'нет данных')}</span></dd>
+      ${s.dir==='in'?`<dt>Юрлицо</dt><dd>${esc(place.entity)}</dd><dt>Город</dt><dd>${esc(place.city)}</dd>`:`<dt>Куда</dt><dd>${esc(s.to||'нет данных')}</dd>`}
+      ${Array.isArray(s.route)&&s.route.length>1?`<dt>Маршрут</dt><dd>${esc(Ships.routeText(s.route))}</dd>`:''}</dl>
+    <div><h4 class="sh">Позиции · штук ${num(Ships.units(s))}</h4>${shipItems(s)}</div>
+    ${waits.length?`<div class="waits">${ic('users')}<span>${s.dir==='in'?'Ждут этот товар':'Для сделки'}: ${can('clients')?waits.map(id=>`<button type="button" class="link" data-act="open-deal" data-id="${esc(id)}">${esc(id)} · ${esc(deal(id)?.client||'')}</button>`).join(', '):waits.length+' '+pl(waits.length,'сделка','сделки','сделок')}</span></div>`:''}
+    ${photos}${acts.length?`<div class="ship-f">${acts.join('')}</div>`:''}
+    <div><h4 class="sh">История отметок</h4><ul class="shist">${hist||'<li class="muted">Отметок пока нет.</li>'}</ul></div>`};
+}
+
+// ——— регистрация в реестрах оболочки ———
+DRAWERS.ship=id=>{const s=(can('stock')||can('logistics'))?ship(id):null;return s?dShip(s):null};
+MODALS.shipItems=id=>mShipItems(ship(id));
+
+Object.assign(A,{
+  'open-ship':el=>openDrawer('ship',el.dataset.id),
+  'ship-items':el=>openModal('shipItems',el.dataset.id),
+  'ship-view':el=>{setShipPref('view',el.dataset.v);render()},
+  'ship-settings':()=>{setShipUi({settings:!shipUi().settings});render()},
+  'ship-density':el=>{setShipPref('density',el.dataset.d);render()},
+  'ship-sort':el=>{const u=shipUi(),k=el.dataset.k;setShipUi({sort:u.sort===k?'-'+k:k,page:1});render()},
+  'ship-page':el=>{setShipUi({page:Number(el.dataset.p)||1});render()},
+  'ship-reset':()=>{setShipUi({q:'',stage:'open',supplier:'',node:'',city:'',entity:'',page:1});render()},
+  // нажатие на точку, «на таможне» или перегон схемы: фильтр таблицы (точка или перегон; для таможни — ещё этап) и сама «Таблица»
+  'ship-map':el=>{setShipPref('view','table');setShipUi({node:el.dataset.k,stage:el.dataset.stage||'open',page:1});render()},
+  'ship-carrier':el=>{shipCarrier(el.dataset.id)}
+});
+Object.assign(ON.input,{
+  // поиск перерисовывает только таблицу — курсор в поле остаётся
+  'ship-q':el=>{setShipUi({q:el.value,page:1});byId('ship-body').innerHTML=shipBody()},
+  'ship-items-q':el=>{const s=ship(el.dataset.id);if(s) byId('si-body').innerHTML=shipItemsList(s,el.value)}
+});
+Object.assign(ON.change,{
+  'ship-f':el=>{setShipUi({[el.dataset.k]:el.value,page:1});render()},
+  'ship-col':el=>{
+    const on=new Set(shipPrefs().cols);
+    if(el.checked) on.add(el.dataset.k);else on.delete(el.dataset.k);
+    setShipPref('cols',SHIP_COLS.map(c=>c[0]).filter(k=>k==='number'||on.has(k)));render();
+  },
+  'ship-group':el=>{setShipPref('group',el.value);setShipUi({page:1});render()},
+  'ship-size':el=>{setShipPref('size',Number(el.value));setShipUi({page:1});render()},
+  'ship-stage':el=>{if(!shipMark(el.dataset.id,el.value).ok) render()}
+});
+
+// ——— перетаскивание карточек воронки между колонками ———
+// Свои колонки (data-scol) и свой drop: общий обработчик оболочки смотрит только на data-col (задачи).
+document.addEventListener('dragover',e=>{
+  const col=e.target.closest?.('[data-scol]');if(!col) return;
+  e.preventDefault();document.querySelectorAll('.col.drop').forEach(x=>{if(x!==col) x.classList.remove('drop')});col.classList.add('drop');
+});
+document.addEventListener('drop',e=>{
+  const col=e.target.closest?.('[data-scol]');if(!col) return;
+  e.preventDefault();col.classList.remove('drop');
+  const id=e.dataTransfer&&e.dataTransfer.getData('text/plain');
+  if(id) shipMark(id,col.dataset.scol);
+});
+
 // Раздел «Приёмка на складе»
-// Перенесено из прототипа v2. Что ждёт приёмки — awaitsReceipt (флаг arrived); кому уведомления — Notify;
-// предпросмотр и подтверждение считают по одному плану rcvPlan().
+// Перенесено из прототипа v2. Что ждёт приёмки — Ships.awaitingReceipt (флаг arrived), единственное «ждёт приёмки»;
+// кому уведомления — Notify; этап ставит только ядро (Ships.setStage, Ships.applyRules); товар кладёт Stock.move.
+// Предпросмотр и подтверждение считают по одному плану rcvPlan(): справа на экране то же самое, что сделает receiveShip.
 
 // ——— приёмка ———
-const newRcv=id=>{const s=ship(id);return {shipId:id,qty:Object.fromEntries(s.items.map(i=>[i.productId,i.qty])),dmg:{},note:'',photos:[],done:null}};
+// Юрлицо и город склада по умолчанию — те, что записаны в поставке; нет данных — кладовщик выбирает сам
+const newRcv=id=>{const s=ship(id);return {shipId:id,qty:Object.fromEntries(s.items.map(i=>[i.productId,i.qty])),dmg:{},note:'',photos:[],entityId:s.entityId||'',cityId:s.cityId||'',done:null}};
 function initRcv(id){S.rcv=newRcv(id)}
-const pendingRcv=()=>S.shipments.filter(awaitsReceipt).sort((a,b)=>a.eta-b.eta);
+const pendingRcv=()=>Ships.awaitingReceipt(S).sort((a,b)=>(a.eta?a.eta.getTime():Infinity)-(b.eta?b.eta.getTime():Infinity));
+// Куда ляжет товар: выбранные юрлицо и город (у черновика из старого сохранения их нет — берём из поставки)
+function rcvCell(r=S.rcv){
+  const s=ship(r.shipId)||{},entityId=r.entityId!==undefined?r.entityId:(s.entityId||''),cityId=r.cityId!==undefined?r.cityId:(s.cityId||'');
+  const en=entityId?Stock.entityName(S,entityId):null,cn=cityId?Stock.cityName(S,cityId):null;
+  return {entityId,cityId,entityName:en||'нет данных: юрлицо',cityName:cn||'нет данных: город',ok:!!en&&!!cn};
+}
 // Текущая приёмка: начатая или первая из ждущих (без записи в S — вид не меняет состояние)
 function curRcv(){
   if(S.rcv&&S.rcv.done) return S.rcv;
@@ -3191,7 +4255,8 @@ function curRcv(){
 function syncRcv(){const r=curRcv();if(r!==S.rcv) S.rcv=r}
 const qv=(pid,r=S.rcv)=>Math.max(0,parseInt(r.qty[pid],10)||0);
 function diffHtml(it,r=S.rcv){const d=qv(it.productId,r)-it.qty;return d<0?`<span class="pill bad sm">недостача ${num(-d)}</span>`:d>0?`<span class="pill warn sm">излишек ${num(d)}</span>`:'<span class="pill ok sm">сходится</span>'}
-// План приёмки — один на предпросмотр и подтверждение: расхождения, сделки-ждуны и что с каждой, кому уведомления
+// План приёмки — один на предпросмотр и подтверждение: что ляжет на склад и куда, на какой этап встанет поставка,
+// расхождения, сделки-ждуны и что с каждой, кому уведомления. receiveShip делает ровно это и ничего сверх.
 function rcvPlan(r=S.rcv){
   const s=ship(r.shipId),auto=rule('arrive').on,issues=[],dmg=[];
   s.items.forEach(it=>{
@@ -3200,11 +4265,17 @@ function rcvPlan(r=S.rcv){
     else if(q>it.qty) issues.push(`${p.name}: принято ${num(q)} вместо ${qtyOf(it.qty,p)}`);
     if(r.dmg[it.productId]) dmg.push(p.name);
   });
+  const cell=rcvCell(r),fin=finalStage(s);
+  // что ляжет на склад: принятое по каждой позиции, в порядке позиций поставки (ноль — ничего не кладём)
+  const adds=s.items.map(it=>({productId:it.productId,qty:qv(it.productId,r)}));
+  // правила «принято на складе»: поставка к тому времени уже на этапе «на складе», срабатывают те, что ставят другой этап
+  const rules=(S.shipRules||[]).filter(x=>x.on===true&&x.when==='received'&&fin&&x.then!==fin.id&&Pipes.stage(S,s.pipeId,x.then));
   const res=S.reserves.filter(x=>x.src===s.id);
   // как сообщить клиенту: телефон → задача менеджеру; иначе авто-сообщение, если правило включено; иначе напоминание
   const waits=[...byDeal(res)].map(([did,list])=>{const d=deal(did);return {d,list,items:itemsText(list),how:d.channel==='phone'?'call':auto?'auto':'remind'}});
-  const ids=new Set([...Notify.recipients(S,'arrive'),...waits.flatMap(w=>Notify.recipients(S,'msg',[w.d.managerId])),...(issues.length||dmg.length?Notify.recipients(S,'warn'):[])]);
-  return {s,issues,dmg,res,waits,warnTo:Notify.recipients(S,'warn'),to:[...ids]};
+  const ids=new Set([...Notify.recipients(S,'arrive'),...waits.flatMap(w=>Notify.recipients(S,'msg',[w.d.managerId])),...(issues.length||dmg.length?Notify.recipients(S,'warn'):[]),...(rules.length?Notify.recipients(S,'ship'):[])]);
+  const block=!fin?'В воронке поставок нет этапа «на складе» (с флагом «закрыто»): приёмке некуда перевести поставку.':!cell.ok?'Выберите юрлицо и город, куда класть товар.':'';
+  return {s,issues,dmg,res,waits,warnTo:Notify.recipients(S,'warn'),to:[...ids],adds,cell,final:fin,rules,block};
 }
 function vReceiving(){
   const r=curRcv();
@@ -3218,19 +4289,26 @@ function rcvLayout(phone,side){
 function photosHtml(r=S.rcv){
   return r.photos.map((u,i)=>`<figure class="ph"><img src="${u}" alt="Фото ${i+1}"><button class="ph-x" data-act="rcv-photo-del" data-i="${i}" aria-label="Удалить фото">${ic('x')}</button></figure>`).join('')+`<label class="ph add" for="rcv-file">${ic('camera')}<span>Снять или добавить фото</span><input id="rcv-file" class="sr" type="file" accept="image/*" capture="environment" multiple data-on="rcv-photo"></label>`;
 }
+// Куда ляжет товар: по умолчанию юрлицо и город из поставки; нет данных — выбрать нужно, иначе приёмка не пройдёт
+function rcvCellHtml(r){
+  const c=rcvCell(r),opt=(list,cur)=>(cur&&list.some(x=>x.id===cur)?'':`<option value="" selected>нет данных: выберите</option>`)+list.map(x=>`<option value="${esc(x.id)}" ${x.id===cur?'selected':''}>${esc(x.name)}</option>`).join('');
+  return `<div class="rcv-cell"><div class="field"><label for="rcv-ent">Юрлицо</label><select id="rcv-ent" class="inp" data-on="rcv-entity">${opt(S.entities,c.entityId)}</select></div><div class="field"><label for="rcv-city">Город склада</label><select id="rcv-city" class="inp" data-on="rcv-city">${opt(S.cities,c.cityId)}</select></div></div>${c.ok?'':'<p class="warn-t sm m0">Юрлицо или город не выбраны — без них товар на склад не лечь.</p>'}`;
+}
 function rcvPhoneHtml(r,pend){
   const s=ship(r.shipId);
   const opts=pend.map(x=>{const on=x.id===s.id;return `<label class="opt ${on?'on':''}"><input type="radio" name="rcv-ship" id="rcv-s-${x.id}" value="${x.id}" ${on?'checked':''} data-on="rcv-ship"><span><b class="mono">${x.id}</b> · ${esc(x.supplier)}<small>${isLate(x)?'задерживается':esc(stageName(x).toLowerCase())} · ${x.items.length} ${pl(x.items.length,'позиция','позиции','позиций')} · ожидается ${fRel(x.eta)}</small></span></label>`}).join('');
   const rows=s.items.map(it=>{const p=product(it.productId);return `<div class="cnt-row"><div class="cnt-name">${esc(p.name)}<small>Ожидалось: ${qtyOf(it.qty,p)}</small></div><div class="qty"><button type="button" data-act="rcv-step" data-pid="${it.productId}" data-d="-1" aria-label="Меньше">−</button><input id="rcv-q-${it.productId}" type="number" inputmode="numeric" min="0" value="${esc(r.qty[it.productId])}" data-on="rcv-qty" data-pid="${it.productId}" aria-label="Принято"><button type="button" data-act="rcv-step" data-pid="${it.productId}" data-d="1" aria-label="Больше">+</button></div><div class="cnt-x"><label class="check"><input type="checkbox" id="rcv-d-${it.productId}" data-on="rcv-dmg" data-pid="${it.productId}" ${r.dmg[it.productId]?'checked':''}> Есть повреждения</label><span id="rcv-diff-${it.productId}">${diffHtml(it,r)}</span></div></div>`}).join('');
   return `<div class="ph-sec"><span class="ph-step">Шаг 1</span><h3>Какая поставка пришла</h3>${opts}</div>
     <div class="ph-sec"><span class="ph-step">Шаг 2</span><h3>Пересчитайте товар</h3>${rows}</div>
-    <div class="ph-sec"><span class="ph-step">Шаг 3</span><h3>Фото груза и накладной</h3><div class="photos" id="rcv-photos">${photosHtml(r)}</div>${unsavedNote(r)}<div class="field"><label for="rcv-note">Комментарий</label><textarea id="rcv-note" class="inp" rows="2" data-on="rcv-note" placeholder="Например: одна коробка надорвана, содержимое целое">${esc(r.note)}</textarea></div></div>
+    <div class="ph-sec"><span class="ph-step">Шаг 3</span><h3>На какое юрлицо и в какой город</h3>${rcvCellHtml(r)}</div>
+    <div class="ph-sec"><span class="ph-step">Шаг 4</span><h3>Фото груза и накладной</h3><div class="photos" id="rcv-photos">${photosHtml(r)}</div>${unsavedNote(r)}<div class="field"><label for="rcv-note">Комментарий</label><textarea id="rcv-note" class="inp" rows="2" data-on="rcv-note" placeholder="Например: одна коробка надорвана, содержимое целое">${esc(r.note)}</textarea></div></div>
     <div class="ph-foot"><button class="btn pri big" data-act="rcv-confirm">${ic('check')}Принять на склад и уведомить</button></div>`;
 }
 function rcvPreview(r=S.rcv){
   const P=rcvPlan(r),s=P.s,m=me();
   const ppl=P.to.filter(id=>id!==m.id).map(person).filter(Boolean);
-  const add=s.items.map(it=>{const p=product(it.productId);return `<li><span>${esc(p.name)}</span><b class="num">+${qtyOf(qv(it.productId,r),p)}</b></li>`}).join('');
+  const add=s.items.map((it,i)=>{const p=product(it.productId);return `<li><span>${esc(p.name)}</span><b class="num">+${qtyOf(P.adds[i].qty,p)}</b></li>`}).join('');
+  const rules=P.rules.map(x=>`<li class="sm">Правило «если ${esc(Ships.eventLabel(x.when))}» — этап «${esc(Pipes.stage(S,s.pipeId,x.then).name)}»</li>`).join('');
   const warnNames=P.warnTo.map(id=>person(id)?.name).filter(Boolean).map(esc).join(', ');
   const waits=P.waits.map(({d,items,how})=>{
     const mg=person(d.managerId);
@@ -3238,53 +4316,65 @@ function rcvPreview(r=S.rcv){
     return `<div class="wait"><div class="wait-h"><b>${esc(d.client)}</b><span class="mono muted">${d.id}</span>${chPill(d.channel)}<span class="muted sm">менеджер ${esc(mg?.name||'нет данных')}</span></div><p class="sm m0">Ждёт: ${esc(items)}</p>${msg}</div>`;
   }).join('');
   return `<section class="card"><div class="card-h"><h3>Что произойдёт после приёмки ${s.id}</h3></div><div class="card-b stack-s">
-    <div><h4 class="sh">Добавится на склад</h4><ul class="plain">${add}</ul></div>
+    <div><h4 class="sh">Добавится на склад: ${esc(P.cell.entityName)}, ${esc(P.cell.cityName)}</h4><ul class="plain">${add}</ul></div>
+    <div><h4 class="sh">Поставка ${esc(s.id)}</h4><p class="sm m0">${P.final?`Перейдёт на этап «${esc(P.final.name)}» (автоматически: приёмка).`:'нет данных: этап «на складе» в воронке'}</p>${rules?`<ul class="plain">${rules}</ul>`:''}${P.block?`<p class="warn-t sm" style="margin:6px 0 0">${esc(P.block)}</p>`:''}</div>
     <div><h4 class="sh">Уведомление получат</h4><div class="who-list">${ppl.map(p=>`<span class="chip">${av(p,'xs')}${esc(p.name)} · ${esc(roleName(p).toLowerCase())}</span>`).join('')}</div>${P.issues.length||P.dmg.length?`<p class="warn-t sm" style="margin:8px 0 0">Есть расхождение или повреждение — отдельное предупреждение получат: ${warnNames}.</p>`:''}</div>
     <div><h4 class="sh">Клиенты, которые ждут этот товар</h4><div class="stack-s">${waits||'<p class="muted sm m0">Резервов под эту поставку нет — весь товар станет свободным для продажи.</p>'}</div></div>
   </div></section>`;
 }
 function updRcvPrev(){const b=byId('rcv-prev');if(b) b.innerHTML=rcvPreview()}
-// Принять поставку S.rcv: остаток растёт, резервы «из поставки» становятся резервами со склада,
-// поставка — на завершающий этап, уведомления через Notify, клиентам — сообщение или задача менеджеру.
+// Принять поставку S.rcv по плану rcvPlan: товар ложится на выбранные юрлицо и город (Stock.move, запись в журнал),
+// резервы «из поставки» становятся резервами со склада, поставка встаёт на этап «на складе» через ядро
+// (Ships.setStage с пометкой «автоматически: приёмка» и Ships.applyRules на «принято на складе»), уведомления — Notify,
+// клиентам — сообщение в канал сделки (имитация) или задача менеджеру позвонить.
+// → итог приёмки (он же S.rcv.done) или {ok:false, reason}, если принять нельзя; тогда ничего не меняется.
 function receiveShip(by,now){
   const r=S.rcv,P=rcvPlan(r),s=P.s,who=person(by);
-  s.items.forEach(it=>{
-    const q=qv(it.productId,r);
+  if(P.block) return {ok:false,reason:P.block};
+  const stock=[];
+  s.items.forEach((it,i)=>{
+    const q=P.adds[i].qty;
     it.got=q;
-    // приход: остаток растёт в клетке «юрлицо × город» поставки, запись попадает в журнал движений
-    if(q) Stock.move(S,{kind:Stock.KINDS.receive,productId:it.productId,qty:q,entityId:s.entityId,cityId:s.cityId,doc:s.id,by,at:now});
+    // приход: остаток растёт в клетке «юрлицо × город», запись попадает в журнал движений
+    if(q&&Stock.move(S,{kind:Stock.KINDS.receive,productId:it.productId,qty:q,entityId:P.cell.entityId,cityId:P.cell.cityId,doc:s.id,by,at:now}).ok) stock.push({productId:it.productId,qty:q});
   });
-  P.res.forEach(x=>{x.src='stock'});
-  s.stageId=finalStage(s)?.id||s.stageId;s.history.push({at:now,by,text:'Наш склад'});
+  s.entityId=P.cell.entityId;s.cityId=P.cell.cityId;
+  P.res.forEach(x=>{x.src='stock';x.entityId=P.cell.entityId;x.cityId=P.cell.cityId});
+  // этап и положение груза — только через ядро; правила директора на «принято на складе» — после этапа
+  const before=S.notes.length;
+  Ships.setStage(S,s.id,P.final.id,by,now,Ships.SRC.receipt);
+  s.history.push({at:now,by,text:`Принято на склад: ${P.cell.entityName}, ${P.cell.cityName}. Фото: ${r.photos.length}.${r.note.trim()?' Комментарий: '+r.note.trim():''}`,source:Ships.SRC.receipt,auto:true});
+  const fired=Ships.applyRules(S,'received',s.id,by,now);
   s.received={at:now,by,photos:r.photos.length,urls:r.photos.slice(),note:r.note.trim()};
-  const notes=[],msgIds=[];
-  notes.push(Notify.push(S,'arrive',by,`${s.id} принята на склад: ${s.items.map(it=>`${low(product(it.productId).name)} ${qtyOf(it.got,product(it.productId))}`).join(', ')}. Фото: ${r.photos.length}.${s.received.note?' Комментарий: '+s.received.note:''}`,now));
+  const notes=S.notes.slice(0,S.notes.length-before),msgIds=[],taskIds=[];
+  notes.push(Notify.push(S,'arrive',by,`${s.id} принята на склад (${P.cell.entityName}, ${P.cell.cityName}): ${s.items.map(it=>`${low(product(it.productId).name)} ${qtyOf(it.got,product(it.productId))}`).join(', ')}. Фото: ${r.photos.length}.${s.received.note?' Комментарий: '+s.received.note:''}`,now));
   if(P.issues.length||P.dmg.length) notes.push(Notify.push(S,'warn',by,`Приёмка ${s.id} с замечаниями. ${[P.issues.join('; '),P.dmg.length?'Повреждено: '+P.dmg.join(', '):''].filter(Boolean).join('. ')}. Фото в карточке поставки.`,now));
   P.waits.forEach(({d,items,how})=>{
     const mg=person(d.managerId);let tail;
-    if(how==='call'){const board=taskBoard();S.tasks.push({id:Store.freeId(S.tasks,'t'),title:`Позвонить клиенту: товар по ${d.id} на складе`,desc:items,to:{t:'p',id:d.managerId},from:by,due:day(0,18),boardId:board.id,stageId:startStage(board.id).id,prio:'high',deal:d.id,at:now});tail='Менеджеру поставлена задача позвонить клиенту.'}
-    else if(how==='auto'){const x={id:Store.freeId(S.msgs,'m'),at:now,deal:d.id,channel:d.channel,auto:true,text:fillTpl(d,items,false)};S.msgs.push(x);msgIds.push(x.id);tail=`Клиенту ушло авто-сообщение в ${CH[d.channel]} (имитация, не отправлено).`}
+    if(how==='call'){const board=taskBoard();const t={id:Store.freeId(S.tasks,'t'),title:`Позвонить клиенту: товар по ${d.id} на складе`,desc:items,to:{t:'p',id:d.managerId},from:by,due:day(0,18),boardId:board.id,stageId:startStage(board.id).id,prio:'high',deal:d.id,at:now};S.tasks.push(t);taskIds.push(t.id);tail='Менеджеру поставлена задача позвонить клиенту.'}
+    else if(how==='auto'){const x={id:Store.freeId(S.msgs,'m'),at:now,deal:d.id,channel:d.channel,auto:true,sim:true,text:fillTpl(d,items,false)};S.msgs.push(x);msgIds.push(x.id);tail=`Клиенту ушло авто-сообщение в ${CH[d.channel]} (имитация, не отправлено).`}
     else tail='Авто-сообщения выключены — напишите клиенту.';
     // менеджеру сделки — отдельно: уведомите клиента (R15)
     notes.push(Notify.push(S,'msg',null,`Уведомите клиента: ${d.client} (${d.id}) — товар на складе: ${items}. ${tail} Менеджер: ${mg?.name||'нет данных'}.`,now,[d.managerId]));
   });
   const notified=new Set(notes.flatMap(n=>n.to).filter(id=>id!==by)).size;
-  r.done={shipId:s.id,noteIds:notes.map(n=>n.id),msgIds,notified,issues:P.issues.length+P.dmg.length,by:who?.id||by};
+  r.done={ok:true,shipId:s.id,noteIds:notes.map(n=>n.id),msgIds,taskIds,stock,cell:{entityId:P.cell.entityId,cityId:P.cell.cityId,entityName:P.cell.entityName,cityName:P.cell.cityName},stage:P.final.name,fired,notified,issues:P.issues.length+P.dmg.length,by:who?.id||by};
   return r.done;
 }
 function rcvConfirm(){
   const r=receiveShip(me().id,new Date());
+  if(r.ok===false){toast(r.reason,'warn');return}
   render();byId('scroll').scrollTop=0;
   toast(`${r.shipId} принята. Уведомления получили ${r.notified} ${pl(r.notified,'сотрудник','сотрудника','сотрудников')}${r.msgIds.length?`, клиентам подготовлено ${r.msgIds.length} ${pl(r.msgIds.length,'сообщение','сообщения','сообщений')}`:''}.`);
 }
 function rcvDoneHtml(rc=S.rcv){
   const r=rc.done,s=ship(r.shipId);
-  return `<div class="done-box"><span class="done-ic">${ic('check')}</span><h3 class="m0">${s.id} на складе</h3><p class="m0 muted">Остатки обновлены, резервы под эту поставку стали резервами со склада. Уведомили ${r.notified} ${pl(r.notified,'сотрудника','сотрудников','сотрудников')}.${r.msgIds.length?` Клиентам подготовлено сообщений: ${r.msgIds.length} — в прототипе они не уходят.`:''}</p>${r.issues?'<p class="m0 warn-t">Расхождения и повреждения отправлены отдельным предупреждением.</p>':''}<div class="bar"><button class="btn pri" data-act="rcv-again">Принять другую поставку</button><button class="btn" data-act="go" data-view="notifications">Уведомления</button></div></div>`;
+  return `<div class="done-box"><span class="done-ic">${ic('check')}</span><h3 class="m0">${s.id} на складе</h3><p class="m0 muted">Остатки обновлены (${esc(r.cell.entityName)}, ${esc(r.cell.cityName)}), поставка на этапе «${esc(r.stage)}», резервы под неё стали резервами со склада. Уведомили ${r.notified} ${pl(r.notified,'сотрудника','сотрудников','сотрудников')}.${r.msgIds.length?` Клиентам подготовлено сообщений: ${r.msgIds.length} — имитация, не отправлено.`:''}${r.taskIds&&r.taskIds.length?` Менеджерам поставлено задач позвонить клиенту: ${r.taskIds.length}.`:''}</p>${r.issues?'<p class="m0 warn-t">Расхождения и повреждения отправлены отдельным предупреждением.</p>':''}<div class="bar"><button class="btn pri" data-act="rcv-again">Принять другую поставку</button><button class="btn" data-act="go" data-view="notifications">Уведомления</button></div></div>`;
 }
 function rcvAfterHtml(rc=S.rcv){
   const r=rc.done,notes=S.notes.filter(n=>r.noteIds.includes(n.id)),msgs=S.msgs.filter(x=>r.msgIds.includes(x.id));
   let h=`<section class="card"><div class="card-h"><h3>Кому что ушло</h3></div><ul class="notes">${notes.map(n=>noteRow(n,false,true)).join('')}</ul></section>`;
-  if(msgs.length) h+=`<section class="card"><div class="card-h"><h3>Сообщения клиентам</h3><span class="pill sun sm">имитация: не отправлены</span></div><div class="card-b stack-s">${msgs.map(x=>{const d=deal(x.deal);return `<div class="stack-s" style="gap:6px"><p class="sm m0"><b>${esc(d.client)}</b> · ${CH[x.channel]}</p><div class="chat"><div class="bub out">${esc(x.text)}<small>${fT(x.at)} · авто</small></div></div></div>`}).join('')}</div></section>`;
+  if(msgs.length) h+=`<section class="card"><div class="card-h"><h3>Сообщения клиентам</h3><span class="pill sun sm">имитация: не отправлены</span></div><div class="card-b stack-s">${msgs.map(x=>{const d=deal(x.deal);return `<div class="stack-s" style="gap:6px"><p class="sm m0"><b>${esc(d.client)}</b> · ${CH[x.channel]}</p><div class="chat"><div class="bub out">${esc(x.text)}<small>${fT(x.at)} · авто · имитация, не отправлено</small></div></div></div>`}).join('')}</div></section>`;
   return h;
 }
 function addPhotos(files){
@@ -3302,6 +4392,8 @@ const rcvItem=pid=>ship(S.rcv.shipId).items.find(i=>i.productId===pid);
 ON.input['rcv-qty']=t=>{const pid=t.dataset.pid;S.rcv.qty[pid]=t.value;byId('rcv-diff-'+pid).innerHTML=diffHtml(rcvItem(pid));updRcvPrev()};
 ON.input['rcv-note']=t=>{S.rcv.note=t.value};
 ON.change['rcv-ship']=t=>{initRcv(t.value);render()};
+ON.change['rcv-entity']=t=>{S.rcv.entityId=t.value;render()};
+ON.change['rcv-city']=t=>{S.rcv.cityId=t.value;render()};
 ON.change['rcv-dmg']=t=>{S.rcv.dmg[t.dataset.pid]=t.checked;updRcvPrev()};
 ON.change['rcv-photo']=t=>{addPhotos(t.files);t.value=''};
 
@@ -3656,6 +4748,83 @@ function vWarehouses(){
   </div></section>`;
 }
 SETTINGS_TABS.push({id:'stock',label:'Склады и юрлица',order:60,ok:()=>can('settings'),render:vWarehouses});
+
+// Настройки → «Поставки»: правила директора «если <событие> — поставить этап <этап>».
+// Правила лежат в S.shipRules [{id, on, when, then}]; событие и срабатывание считает ядро Ships (applyRules):
+// приёмка зовёт его на «принято на складе», шаг перевозчика — на «перевозчик: груз в точке …» и «таможня пройдена».
+// Срабатывание видно в истории поставки с пометкой «правило: …».
+
+// События для выбора: подписи — Ships.eventLabel, одно место. Китай — начало маршрута: груз туда не «приходит».
+const SHIP_RULE_EVENTS=()=>[
+  'received',
+  ...Ships.NODES.filter(n=>n.id!=='cn').map(n=>'carrier:'+n.id),
+  'carrier',
+  'customs'
+];
+// Этапы воронки поставок «едут к нам»: на них правило ставит поставку
+const shipRuleStages=()=>(shipPipe('in')||{stages:[]}).stages;
+const shipRules=()=>S.shipRules||[];
+
+function shipRuleEventSel(r,attrs){
+  const evs=SHIP_RULE_EVENTS();
+  if(!evs.includes(r.when)) evs.push(r.when);
+  return `<select ${attrs} class="inp sm">${evs.map(ev=>`<option value="${esc(ev)}" ${ev===r.when?'selected':''}>${esc(Ships.eventLabel(ev))}</option>`).join('')}</select>`;
+}
+function shipRuleStageSel(r,attrs){
+  const st=shipRuleStages(),known=st.some(x=>x.id===r.then);
+  return `<select ${attrs} class="inp sm">${known?'':`<option value="" selected>нет данных: этап</option>`}${st.map(x=>`<option value="${esc(x.id)}" ${x.id===r.then?'selected':''}>${esc(x.name)}${x.flag==='final'?' (на складе)':''}</option>`).join('')}</select>`;
+}
+function vShipSettings(){
+  const rules=shipRules();
+  const rows=rules.map(r=>`<li class="rule srule" data-rule="${esc(r.id)}">
+    <label class="sw"><input type="checkbox" id="sr-on-${esc(r.id)}" data-on="ship-rule-on" data-id="${esc(r.id)}" ${r.on?'checked':''} aria-label="Правило включено"><span class="sw-t" aria-hidden="true"></span></label>
+    <div class="sr-body"><div class="field"><label for="sr-when-${esc(r.id)}">Если</label>${shipRuleEventSel(r,`id="sr-when-${esc(r.id)}" data-on="ship-rule-when" data-id="${esc(r.id)}"`)}</div>
+    <div class="field"><label for="sr-then-${esc(r.id)}">Поставить этап</label>${shipRuleStageSel(r,`id="sr-then-${esc(r.id)}" data-on="ship-rule-then" data-id="${esc(r.id)}"`)}</div></div>
+    <button type="button" class="btn sm ghost" data-act="ship-rule-del" data-id="${esc(r.id)}" aria-label="Удалить правило">${ic('x')}Удалить</button>
+  </li>`).join('');
+  const add=`<form class="srule-add" data-form="ship-rule-add" novalidate>
+    <div class="field"><label for="sr-new-when">Если</label>${shipRuleEventSel({when:'received'},'id="sr-new-when"')}</div>
+    <div class="field"><label for="sr-new-then">Поставить этап</label>${shipRuleStageSel({then:(shipRuleStages().find(x=>x.flag==='final')||{}).id},'id="sr-new-then"')}</div>
+    <button class="btn" type="submit">${ic('plus')}Добавить правило</button></form><p class="err" id="sr-err" hidden></p>`;
+  return `<section class="card"><div class="card-h"><h3>Правила смены этапа поставки</h3></div><div class="card-b stack-s">
+    <p class="hint">Правило «если событие — поставить этап» срабатывает само: когда склад принял поставку, когда перевозчик сообщил, что груз в точке, или когда пройдена таможня. Срабатывание видно в истории поставки с пометкой «правило». Выключенное правило ничего не делает. Правило срабатывает, только если этап поставки меняется.</p>
+    <ul class="rules">${rows||'<li class="muted">Правил пока нет: добавьте первое ниже.</li>'}</ul>
+    ${add}
+  </div></section>`;
+}
+
+// ——— обработчики ———
+const shipRuleOf=id=>shipRules().find(r=>r.id===id);
+ON.change['ship-rule-on']=t=>{
+  const r=shipRuleOf(t.dataset.id);if(!r) return;
+  r.on=!!t.checked;
+  toast(`Правило «если ${Ships.eventLabel(r.when)}» ${r.on?'включено':'выключено'}.`);
+};
+ON.change['ship-rule-when']=t=>{
+  const r=shipRuleOf(t.dataset.id);if(!r) return;
+  r.when=t.value;render();
+  toast(`Правило теперь срабатывает на событие «${Ships.eventLabel(r.when)}».`);
+};
+ON.change['ship-rule-then']=t=>{
+  const r=shipRuleOf(t.dataset.id),st=shipRuleStages().find(x=>x.id===t.value);if(!r||!st) return;
+  r.then=st.id;render();
+  toast(`Правило «если ${Ships.eventLabel(r.when)}» ставит этап «${st.name}».`);
+};
+A['ship-rule-del']=el=>{
+  const i=shipRules().findIndex(r=>r.id===el.dataset.id);if(i<0) return;
+  const [r]=S.shipRules.splice(i,1);
+  render();toast(`Правило «если ${Ships.eventLabel(r.when)}» удалено.`);
+};
+FORMS['ship-rule-add']=()=>{
+  const when=byId('sr-new-when').value,then=byId('sr-new-then').value,st=shipRuleStages().find(x=>x.id===then);
+  if(!when||!st) return showErr('sr-err','Выберите событие и этап.');
+  if(shipRules().some(r=>r.when===when&&r.then===then)) return showErr('sr-err','Такое правило уже есть.');
+  if(!S.shipRules) S.shipRules=[];
+  S.shipRules.push({id:Store.freeId(S.shipRules,'sr'),on:true,when,then});
+  render();toast(`Правило добавлено: если ${Ships.eventLabel(when)} — «${st.name}». Оно включено.`);
+};
+
+SETTINGS_TABS.push({id:'ships',label:'Поставки',order:70,ok:()=>can('settings'),render:vShipSettings});
 
 // Настройки → «Почта»: ящики (добавить, адрес, кто видит) и поставщики (добавить, переименовать, правила-адреса,
 // удалить). Данные лежат в S.mail, раздел «Почта» читает их оттуда же, поэтому правка видна там сразу.

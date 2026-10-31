@@ -776,7 +776,7 @@ test('мало места: после перезагрузки карточка 
   app.A['rcv-start']({ dataset: { id: s.id } });
   app.S.rcv.photos.push(PHOTO, PHOTO);
   app.A['rcv-confirm']();
-  const card = a => { a.S.ui.logTab = 'done'; return a.VIEWS.logistics().split('<article').find(c => c.includes(`>${s.id}</b>`)) || ''; };
+  const card = a => { const d = a.DRAWERS.ship(s.id); return d ? d.body : ''; };  // фото приёмки — в карточке поставки (справа)
   assert.ok(card(app).includes('<img'), 'до перезагрузки фото не видны');
   assert.ok(!card(app).includes(NO_SPACE), 'фото в памяти, а карточка говорит «не сохранено»');
   const again = reloadTight(app);

@@ -51,14 +51,9 @@ SEEDS.push(st=>{
     // товары и остатки кладёт шаг каталога (38-catalog.js) из снимков; ниже записи v2 ссылаются на товары по старым артикулам,
     // шаг каталога переводит их на настоящие позиции
     products:[],
-    shipments:[
-      {id:'П-1044',dir:'in',supplier:'Склад дистрибьютора, Москва',to:'Наш склад',carrier:'Сборный груз, транспортная компания',track:'ТТН 44-552018',pipeId:'ships',stageId:'arrived',eta:day(0,14),history:[{at:day(0,8,15),by:'p6',text:'Терминал транспортной компании в городе'}],items:[{productId:'CAB-6R',qty:500},{productId:'CAB-6B',qty:500},{productId:'MC4',qty:200},{productId:'CTRL-60',qty:6},{productId:'BOX-DC',qty:10}],demo:true},
-      {id:'П-1041',dir:'in',supplier:'Поставщик инверторов, Москва',to:'Наш склад',carrier:'Сборный груз, транспортная компания',track:'ТТН 41-008352',pipeId:'ships',stageId:'toStock',eta:day(3,12),history:[{at:day(0,9,40),by:'p6',text:'Трасса М-7, Владимир'}],items:[{productId:'INV-H6',qty:10},{productId:'BAT-LFP-100',qty:16}],demo:true},
-      {id:'П-1042',dir:'in',supplier:'Поставщик ветрогенераторов, Екатеринбург',to:'Наш склад',carrier:'Отдельная машина',track:'ТТН 42-110907',pipeId:'ships',stageId:'toStock',eta:day(-1,12),history:[{at:day(-1,18,5),by:'p6',text:'Казань, стоянка'}],items:[{productId:'WND-3K',qty:2},{productId:'MTR-3F',qty:5}],demo:true},
-      {id:'П-1043',dir:'in',supplier:'Завод панелей, Китай',to:'Наш склад',carrier:'Контейнер: море + железная дорога',track:'Контейнер TGHU 482117 3',pipeId:'ships',stageId:'toStock',eta:day(6,12),history:[{at:day(-1,7,20),by:'p6',text:'Ж/д станция, Новосибирск'}],items:[{productId:'PV-550M',qty:120},{productId:'MNT-R4',qty:30}],demo:true},
-      {id:'О-207',dir:'out',deal:'Д-305',supplier:'Наш склад',to:'Объект Д-305 · Волкова Мария',carrier:'Своя машина',track:'Отгрузка О-207',pipeId:'shipsOut',stageId:'onWay',eta:day(0,16),history:[{at:day(0,11,0),by:'p6',text:'Выехали со склада'}],items:[{productId:'PV-550M',qty:12},{productId:'MNT-R4',qty:3},{productId:'CAB-6R',qty:60}],demo:true},
-      {id:'П-1038',dir:'in',supplier:'Производитель крепежа',to:'Наш склад',carrier:'Своя машина',track:'УПД 1038',pipeId:'ships',stageId:'inStock',eta:day(-2,15),history:[{at:day(-2,15,30),by:'p5',text:'Наш склад'}],items:[{productId:'MNT-R4',qty:24,got:24}],received:{at:day(-2,15,30),by:'p5',photos:3,urls:[],note:''},demo:true}
-    ],
+    // поставки и отгрузка клиенту (120+ демо-поставок по маршрутам) кладёт шаг поставок (34-ships.js);
+    // на якорные П-1038, П-1041…П-1044 и О-207 ссылаются резервы, задачи и движения ниже
+    shipments:[],
     reserves:[
       {id:'r1',productId:'PV-550M',dealId:'Д-311',qty:22,src:'stock',until:day(9)},
       {id:'r2',productId:'PV-550M',dealId:'Д-314',qty:36,src:'stock',until:day(5)},
@@ -135,11 +130,11 @@ SEEDS.push(st=>{
   N('msg',null,day(-2,15,32),'Авто-сообщение в MAX: Волкова Мария (Д-305) — крепёж пришёл на склад.',['p2']);
   N('reserve','p2',day(-1,10,5),`Резерв: солнечная панель 550 Вт — 22 шт со склада для Д-311 (Иванов Сергей) до ${fD(day(9))}.`);
   N('task','p3',day(-1,11,20),`Новая задача: «Подготовить КП на СЭС 30 кВт» (Д-320), срок ${fD(day(2))}. От: Максим Л.`,['p4']);
-  N('warn','p6',day(-1,12,0),'Поставщик сократил П-1042: ветрогенераторов 2 шт вместо 3. Под резервы не хватает 1 шт.');
+  N('warn','p6',day(-1,12,0),'Поставщик-пример 7 сократил П-1042: ветрогенераторов 2 шт вместо 3. Под резервы не хватает 1 шт.');
   N('task','p2',day(-1,16,0),'Новая задача отделу «Инженерный»: согласовать с клиентом дату пуска станции (Д-305). От: Анна С.',dept('eng'));
-  N('warn',null,day(-1,18,5),'П-1042 задерживается: машина стоит в Казани. Ветрогенераторы ждут сделки Д-305 и Д-314.');
-  N('ship','p6',day(0,8,15),'П-1044 прибыла на терминал транспортной компании в городе: кабель, разъёмы MC4, контроллеры, щиты DC. На склад — сегодня.');
-  N('ship','p6',day(0,9,40),`П-1041 (инверторы, АКБ) прошла Владимир. На складе ожидается ${fD(day(3))}.`);
+  N('warn',null,day(-1,18,5),'П-1042 задерживается: груз стоит на перегоне Чита → Иркутск. Ветрогенераторы ждут сделки Д-305 и Д-314.');
+  N('ship','p6',day(0,8,15),'П-1044 прибыла в Иркутск, на терминал транспортной компании: кабель, разъёмы MC4, контроллеры, щиты DC. Ждёт приёмки, на склад — сегодня.');
+  N('ship','p6',day(0,9,40),`П-1041 (инверторы, АКБ) прошла Читу и идёт в Иркутск. На складе ожидается ${fD(day(3))}.`);
   N('ship','p6',day(0,11,0),'Отгрузка О-207 выехала на объект Д-305 (Волкова Мария). Привезём к 16:00.');
 });
 
@@ -174,8 +169,8 @@ const startStage=pipeId=>(pipeById(pipeId)?.stages||[]).find(s=>!s.flag)||null;
 const finalStage=x=>stagesFor(x).find(s=>s.flag==='final')||null;
 // Цвет метки этапа: закрыт — ok, прошёл заметную часть пути — info
 const stageTone=x=>{if(isDone(x)) return 'ok';const n=stagesFor(x).length,i=stagePos(x);return n>1&&i/(n-1)>=.4?'info':''};
-// «Прибыло, ждёт приёмки» — единственное определение: входящая поставка на этапе с флагом arrived
-const awaitsReceipt=s=>s.dir==='in'&&stageOf(s)?.flag==='arrived';
+// «Прибыло, ждёт приёмки» — единственное определение живёт в Ships.awaitingReceipt (34-ships.js)
+const awaitsReceipt=s=>Ships.awaitingReceipt(S,s);
 // Отгрузка клиенту ушла со склада — сошла с начального этапа своей воронки
 const leftStart=s=>s.stageId!==startStage(s.pipeId)?.id;
 // Последняя отметка поставки — последняя запись истории {at, by, text}; новая отметка — history.push
@@ -186,7 +181,8 @@ const dealPipe=type=>Pipes.of(S,'deals',type).find(p=>p.scope===type)||Pipes.of(
 const taskBoard=()=>Pipes.of(S,'tasks')[0]||null;
 
 // ——— остатки: считает Stock (33-stock.js), здесь — только вызов и подписи ———
-const isLate=s=>!isDone(s)&&dd(s.eta)<0;
+// «Опоздала» — единственное определение живёт в Ships.isLate (34-ships.js)
+const isLate=s=>Ships.isLate(s,new Date(),S);
 const resOf=pid=>S.reserves.filter(r=>r.productId===pid);
 const sum=(a,f)=>a.reduce((x,y)=>x+f(y),0);
 const openIn=()=>S.shipments.filter(s=>s.dir==='in'&&!isDone(s));

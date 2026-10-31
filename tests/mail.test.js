@@ -670,7 +670,7 @@ test('имитация «пришло письмо»: поочерёдно от 
 
 test('сохранение со старой ревизией (до почты) уходит в пользу демо', () => {
   const app = load();
-  assert.equal(app.Store.REV, 3);
+  assert.ok(app.Store.REV >= 3, 'ревизия не ниже той, что принесла почта');
   const old = JSON.parse(app.Store.dump(app.S).text);
   old.rev = 2; delete old.mail;
   assert.equal(app.Store.load(JSON.stringify(old)), null, 'ревизия 2 не читается');
