@@ -71,6 +71,48 @@ button{cursor:pointer}
 .feed-t{margin:0;font-size:13.5px;line-height:1.45;overflow-wrap:anywhere;white-space:pre-wrap}
 .feed-i.k-comment .feed-t{padding:8px 10px;border-radius:12px;background:var(--surface-2)}
 
+/* ——— дела в ленте: «Запланировать», открытые дела, выполненные ——— */
+.act-plan{border:1px solid var(--line);border-radius:14px;background:var(--surface-2)}
+.act-plan>summary{display:flex;width:100%;justify-content:flex-start;list-style:none;cursor:pointer;border:0;background:transparent}
+.act-plan>summary::-webkit-details-marker{display:none}
+.act-plan[open]>summary{border-bottom:1px solid var(--line);border-radius:14px 14px 0 0}
+.act-form{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;padding:12px;min-width:0}
+.act-form .field{min-width:0}
+.act-form .field:nth-child(2),.act-form .field:nth-child(3),.act-form .err,.act-form .btn{grid-column:1/-1}
+.act-form .btn{justify-self:start}
+.act-form input,.act-form select{min-width:0;max-width:100%}
+.act-q{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.act-list{display:flex;flex-direction:column;gap:8px;margin:0;padding:0;list-style:none}
+.act-i{display:flex;align-items:center;gap:10px;min-width:0;padding:10px 12px;border:1px solid var(--line);border-left:3px solid var(--primary);border-radius:12px;background:var(--surface)}
+.act-i.over{border-color:var(--bad-soft);border-left-color:var(--bad);background:var(--bad-soft)}
+.act-ic{display:grid;place-items:center;flex:none;width:30px;height:30px;border-radius:9px;background:var(--primary-soft);color:var(--primary-deep)}
+.act-i.over .act-ic{background:var(--surface);color:var(--bad)}
+.act-ic .ic{width:17px;height:17px}
+.act-b{display:flex;flex-direction:column;align-items:flex-start;gap:2px;flex:1;min-width:0}
+.act-t{font-size:13.5px;font-weight:600;overflow-wrap:anywhere}
+.act-b small{font-size:12px;color:var(--ink-2);overflow-wrap:anywhere}
+.act-late{color:var(--bad);font-weight:700}
+.act-i .btn{flex:none}
+.act-empty{display:flex;align-items:center;gap:8px;margin:0;padding:10px 12px;border-radius:12px;background:var(--warn-soft);color:var(--warn);font-size:13px}
+.act-empty .ic{width:16px;height:16px;flex:none}
+/* выполненное дело в ленте — серое */
+.feed-i.k-act::after{border-color:var(--line-2);background:var(--sunken)}
+.feed-i.k-act .feed-h b,.feed-i.k-act .feed-t{color:var(--ink-3)}
+.feed-i.k-act .feed-t{padding:8px 10px;border-radius:12px;background:var(--sunken)}
+/* метка ближайшего дела на карточках канбана и в списках */
+.act-nx{display:inline-flex;align-items:center;gap:5px;max-width:100%;font-size:12px;color:var(--ink-2)}
+.act-nx .ic{width:14px;height:14px;flex:none}
+.act-nx>span{min-width:0;overflow-wrap:anywhere}
+.act-nx.over{color:var(--bad);font-weight:600}
+.act-nx.none{white-space:normal}
+.act-nx.none .ic{width:12px;height:12px}
+.tcard>.act-nx{align-self:flex-start}
+@media (max-width:560px){
+  .act-form{grid-template-columns:1fr}
+  .act-i{flex-wrap:wrap}
+  .act-i .btn{margin-left:40px}
+}
+
 /* ——— каркас ——— */
 .app{display:grid;grid-template-columns:252px minmax(0,1fr);height:100%}
 .side{display:flex;flex-direction:column;overflow-y:auto;padding-block:18px 14px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:14px;background:var(--surface);border-right:1px solid var(--line);color:var(--ink)}
@@ -1773,7 +1815,8 @@ const Store = (() => {
   // 5 — лиды: st.leads, st.leadSource; у сделок из лидов leadId, phone, email. Прежнее сохранение уходит в пользу демо.
   // 6 — роль РОП и право leadsAssign (таск 04): сохранение без них уходит в пользу демо.
   // 7 — клиенты и лента (таск 09): st.clients, st.feed, st.lostReasons; у сделок clientId, items, at, wonAt, lostReason; у лидов clientId.
-  const REV = 7;
+  // 8 — дела (таск 10): st.acts; лента подмешивает выполненные дела.
+  const REV = 8;
   // Браузер даёт сайту около 5 млн символов на всё; берём с запасом.
   const LIMIT = 4500000;
   const NO_SPACE = 'не сохранено — мало места в браузере';
@@ -3412,6 +3455,7 @@ const Notify = (() => {
     msg: ['director'],                                         // сообщения клиентам — плюс менеджер сделки (extraPersons)
     lead: ['director', 'rop'],                                 // новый лид — директору и РОП, плюс менеджер, кому он ушёл (extraPersons)
     mail: [],                                                  // новое письмо — те, кто видит ящик (extraPersons)
+    act: [],                                                   // напоминание о деле — ответственный (extraPersons)
   };
 
   const wants = (st, personId, kind) => {
@@ -3854,7 +3898,7 @@ const Feed = (() => {
   // Виды записей и подписи. Модули дел и отправок добавляют свои виды сюда же: Feed.KINDS.act = 'Дело'.
   const KINDS = {
     comment: 'Комментарий', create: 'Создано', stage: 'Этап', field: 'Изменение', item: 'Товары',
-    reserve: 'Резерв', win: 'Успешно', lose: 'Провалена', msg: 'Сообщение клиенту', history: 'История',
+    reserve: 'Резерв', win: 'Успешно', lose: 'Провалена', msg: 'Сообщение клиенту', history: 'История', act: 'Дело выполнено',
   };
   // Что есть ссылка на карточку и как её назвать в ленте клиента.
   const REF = { deal: 'Сделка', lead: 'Лид', client: 'Клиент', dispatch: 'Отправка' };
@@ -3899,6 +3943,11 @@ const Feed = (() => {
     if (ref.t === 'lead') {
       const l = (st.leads || []).find(x => x.id === ref.id);
       ((l && l.history) || []).forEach((h, i) => out.push({ id: `h:${ref.id}:${i}`, ref, at: h.at, by: h.by || null, kind: 'history', text: h.text }));
+    }
+    // выполненные дела карточки: серые записи, пишутся в момент выполнения (Acts.done), здесь только показываются
+    for (const a of st.acts || []) {
+      if (!a.doneAt || a.ref.t !== ref.t || a.ref.id !== ref.id) continue;
+      out.push({ id: `a:${a.id}`, ref, at: a.doneAt, by: a.doneBy || null, kind: 'act', text: Acts.doneText(a), data: { actId: a.id, type: a.type, ownerId: a.ownerId } });
     }
     if (ref.t === 'deal') {
       const done = new Set(own.filter(e => e.data && e.data.reserveId).map(e => e.data.reserveId));
@@ -3958,9 +4007,57 @@ const Feed = (() => {
 })();
 
 // ——— вид ———
-// Лента карточки и поле «Комментарий»: один вид для лида, сделки, клиента и отправки. Не меняет состояние.
-// st по умолчанию — S; видит человек st.me. Класс feed-add / data-form="feed-comment" — форма комментария (feedCommentForm).
-function feedHtml(ref, st = S) {
+// Лента карточки: «Запланировать» сверху, открытые дела над лентой (ближайшее первым, просроченные красным),
+// поле «Комментарий» и сама лента, новые записи сверху. Один вид для лида, сделки, клиента и отправки. Не меняет состояние.
+// st по умолчанию — S; видит человек st.me; now — для «просрочено» (по умолчанию сейчас).
+// Класс feed-add / data-form="feed-comment" — форма комментария (feedCommentForm), data-form="act-plan" — форма дела (feedWire).
+
+Object.assign(IC,{phone:'<path d="M6.5 3.5h3l1.5 4-2 1.3a10 10 0 0 0 5.2 5.2l1.3-2 4 1.5v3a2 2 0 0 1-2.2 2A15.5 15.5 0 0 1 4.5 5.7 2 2 0 0 1 6.5 3.5z"/>'});
+// Значок вида дела
+const ACT_IC = { call: 'phone', meet: 'users', mail: 'mail', todo: 'tasks' };
+// Дата и время для поля datetime-local: «2026-11-02T10:00»
+const actInput = d => iso(d) + 'T' + fT(d);
+// Число на пункте меню: мои дела на сегодня и просроченные по карточкам этого вида ('deal' | 'lead'); считает Acts.counts
+const actsBadge = type => { const c = Acts.counts(S, S.me, new Date(), type); return c.today + c.overdue; };
+const actWho = (st, id) => ((st.people || []).find(p => p.id === id) || {}).name || 'нет данных: сотрудник';
+
+// Форма «Запланировать»: вид, название, срок (быстрые кнопки и поле даты со временем), ответственный (по умолчанию я), напоминание
+function actPlanHtml(ref, st, now) {
+  const me = st.me, people = (st.people || []).filter(p => Feed.canComment(st, p.id, ref));
+  return `<details class="act-plan"><summary class="btn">${ic('plus')}Запланировать дело</summary>
+    <form class="act-form" data-form="act-plan" data-t="${esc(ref.t)}" data-id="${esc(ref.id)}" novalidate>
+      <div class="field"><label for="act-type">Что</label><select id="act-type" class="inp">${Object.entries(Acts.TYPES).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select></div>
+      <div class="field"><label for="act-title">Название</label><input id="act-title" class="inp" placeholder="Например: перезвонить по расчёту" autocomplete="off"></div>
+      <div class="field"><label for="act-due">Срок</label><input id="act-due" class="inp" type="datetime-local" value="${esc(actInput(Acts.quick('tomorrow', now)))}"><div class="act-q">${Object.entries(Acts.QUICK).map(([k, l]) => `<button type="button" class="fchip" data-act="act-quick" data-q="${k}">${esc(l)}</button>`).join('')}</div></div>
+      <div class="field"><label for="act-owner">Ответственный</label><select id="act-owner" class="inp">${people.map(p => `<option value="${esc(p.id)}"${p.id === me ? ' selected' : ''}>${esc(p.name)}${p.id === me ? ' (я)' : ''}</option>`).join('')}</select></div>
+      <div class="field"><label for="act-remind">Напомнить</label><select id="act-remind" class="inp">${Acts.REMINDS.map(([v, l]) => `<option value="${v === null ? '' : v}"${v === 0 ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></div>
+      <p class="err" id="act-err" hidden></p>
+      <button class="btn pri" type="submit">${ic('check')}Запланировать</button>
+    </form></details>`;
+}
+
+// Открытые дела: ближайшее первым; просроченное — красным и словом «просрочено»; дел нет — «Нет следующего шага»
+function actListHtml(ref, st, now) {
+  const list = Acts.open(st, ref, st.me), t = now.getTime();
+  if (!list.length) return Acts.noNext(st, ref) ? `<p class="act-empty">${ic('alert')}Нет следующего шага. Запланируйте звонок, встречу или дело.</p>` : '';
+  return `<ul class="act-list" aria-label="Открытые дела">${list.map(a => {
+    const over = new Date(a.due).getTime() < t;
+    const from = a.ref.t !== ref.t || a.ref.id !== ref.id ? `<span class="pill sm">${esc((Feed.REF[a.ref.t] || '') + ' ' + a.ref.id)}</span>` : '';
+    return `<li class="act-i k-${esc(a.type)}${over ? ' over' : ''}"><span class="act-ic">${ic(ACT_IC[a.type] || 'tasks')}</span><div class="act-b"><b class="act-t">${esc(a.title)}</b><small>${esc(Acts.TYPES[a.type] || 'Дело')} · ${over ? '<span class="act-late">просрочено</span> · ' : ''}${esc(fWhen(a.due))} · ${esc(actWho(st, a.ownerId))}</small>${from}</div>${Feed.canComment(st, st.me, a.ref) ? `<button type="button" class="btn sm" data-act="act-done" data-id="${esc(a.id)}">${ic('check')}Выполнено</button>` : ''}</li>`;
+  }).join('')}</ul>`;
+}
+
+// Метка на карточке канбана и в списке: ближайшее дело («звонок · завтра, 10:00») или «нет следующего шага».
+// У закрытой карточки метки нет. Просроченное — красным и словом «просрочено».
+function actNextHtml(ref, st = S, now = new Date()) {
+  if (!Acts.alive(st, ref)) return '';
+  const a = Acts.next(st, ref);
+  if (!a) return `<span class="pill sm warn act-nx none">${ic('alert')}нет следующего шага</span>`;
+  const over = new Date(a.due).getTime() < now.getTime();
+  return `<span class="act-nx${over ? ' over' : ''}" title="${esc(a.title)}">${ic(ACT_IC[a.type] || 'tasks')}<span>${esc(Acts.label(a))}${over ? ' · просрочено' : ''}</span></span>`;
+}
+
+function feedHtml(ref, st = S, now = new Date()) {
   const me = st.me, who = id => (st.people || []).find(p => p.id === id);
   const kindLabel = e => e.kind === 'msg' && e.data && e.data.inbound ? 'Сообщение от клиента' : (Feed.KINDS[e.kind] || 'Событие');
   const rows = Feed.of(st, ref, me).map(e => {
@@ -3970,14 +4067,17 @@ function feedHtml(ref, st = S) {
     const when = e.at ? fWhen(e.at) : 'нет данных: время';
     return `<li class="feed-i k-${esc(e.kind)}"><div class="feed-h"><b>${esc(kindLabel(e))}</b>${from}<small>${esc(by)} · ${esc(when)}</small></div><p class="feed-t">${esc(e.text)}</p></li>`;
   }).join('');
-  const form = Feed.canComment(st, me, ref)
+  const can = Feed.canComment(st, me, ref);
+  const plan = can && Acts.REFS.includes(ref.t) && Acts.alive(st, ref) ? actPlanHtml(ref, st, now) : '';
+  const acts = Acts.REFS.includes(ref.t) ? actListHtml(ref, st, now) : '';
+  const form = can
     ? `<form class="feed-add" data-form="feed-comment" data-t="${esc(ref.t)}" data-id="${esc(ref.id)}" novalidate><textarea id="feed-text" class="inp" rows="3" placeholder="Комментарий" aria-label="Комментарий"></textarea><p class="err" id="feed-err" hidden></p><button class="btn pri" type="submit">${ic('chat')}Добавить комментарий</button></form>`
     : `<p class="lock">${ic('lock')}У вашей роли нет права писать в эту ленту.</p>`;
-  return `<div class="feed" data-ref-t="${esc(ref.t)}" data-ref-id="${esc(ref.id)}">${form}${rows ? `<ol class="feed-list">${rows}</ol>` : '<p class="muted m0">В ленте пока пусто.</p>'}</div>`;
+  return `<div class="feed" data-ref-t="${esc(ref.t)}" data-ref-id="${esc(ref.id)}">${plan}${acts}${form}${rows ? `<ol class="feed-list">${rows}</ol>` : '<p class="muted m0">В ленте пока пусто.</p>'}</div>`;
 }
 
-// Отправка формы комментария (data-form="feed-comment"): пишет в ленту от имени S.me. Регистрируется в FORMS экраном
-// раздела: FORMS['feed-comment'] = feedCommentForm (реестр FORMS объявлен в 50-shell, а этот файл читается раньше).
+// Отправка формы комментария (data-form="feed-comment"): пишет в ленту от имени S.me. Регистрируется в FORMS
+// экраном раздела: FORMS['feed-comment'] = feedCommentForm (реестр FORMS объявлен в 50-shell, а этот файл читается раньше).
 function feedCommentForm(f) {
   const ta = byId('feed-text'), txt = ta.value.trim();
   if (!txt) { ta.focus(); return; }
@@ -3986,6 +4086,48 @@ function feedCommentForm(f) {
   ta.value = '';
   render();
   toast('Комментарий записан в ленту.');
+}
+
+// Дела в ленте: окно «Выполнено», форма «Запланировать», быстрые сроки. Реестры A, FORMS, MODALS объявлены в 50-shell,
+// а этот файл читается раньше — поэтому регистрация одной функцией, которую зовёт раздел (56-deals.js), как у feedCommentForm.
+function feedWire() {
+  A['act-quick'] = el => { const inp = byId('act-due'); if (inp) inp.value = actInput(Acts.quick(el.dataset.q, new Date())); };
+  A['act-done'] = el => { if (Acts.byId(S, el.dataset.id)) { openModal('actDone', el.dataset.id); const ta = byId('ad-result'); if (ta) ta.focus(); } };
+  MODALS.actDone = id => {
+    const a = Acts.byId(S, id);
+    return `<form data-form="act-done" data-id="${esc(id)}" novalidate>${mHead('Дело выполнено')}<div class="modal-b">
+      <p class="m0">${a ? `<b>${esc(a.title)}</b><br><small class="muted">${esc(Acts.label(a))} · ${esc(Acts.refTitle(S, a.ref))}</small>` : ''}</p>
+      <div class="field"><label for="ad-result">Результат</label><textarea id="ad-result" class="inp" rows="3" placeholder="Что получилось, о чём договорились"></textarea></div>
+      <p class="hint">Дело станет серым и останется в ленте вместе с результатом; править его уже нельзя.</p>
+      <p class="err" id="ad-err" hidden></p></div>${mFoot('Выполнено')}</form>`;
+  };
+  FORMS['act-done'] = f => {
+    const r = Acts.done(S, f.dataset.id, byId('ad-result').value, S.me, new Date());
+    if (!r.ok) return showErr('ad-err', r.reason);
+    closeModal(); render();
+    toast(`Дело выполнено: «${r.act.title}». Результат записан в ленту.`);
+  };
+  FORMS['act-plan'] = f => {
+    const due = byId('act-due').value, rem = byId('act-remind').value;
+    const r = Acts.plan(S, { t: f.dataset.t, id: f.dataset.id }, {
+      type: byId('act-type').value, title: byId('act-title').value, due: due ? new Date(due) : null,
+      ownerId: byId('act-owner').value, remind: rem === '' ? null : Number(rem),
+    }, S.me, new Date());
+    if (!r.ok) return showErr('act-err', r.missing && r.missing.includes('due') ? 'Укажите срок: нажмите «Сегодня», «Завтра» или выберите дату и время.' : r.reason);
+    render();
+    toast(`Дело запланировано: ${Acts.label(r.act)}. Ответственный: ${actWho(S, r.act.ownerId)}`);
+  };
+}
+
+// Раз в минуту (и при каждой перерисовке — в render()): напоминания, которым пора. Перерисовывает только колокол и меню,
+// чтобы не сбить ввод в открытой форме.
+function actsTick() {
+  if (!S) return;
+  const made = Acts.notify(S, new Date());
+  if (!made.length) return;
+  updBell(); renderSide(); save();
+  const mine = made.filter(n => n.to.includes(S.me));
+  if (mine.length) toast(mine[0].text + (mine.length > 1 ? ` И ещё напоминаний: ${mine.length - 1}.` : ''));
 }
 
 // Ядро: сделки. Завести, править, двигать по воронке, закрыть («Успешно» или «Провалена» с причиной), строки
@@ -4332,7 +4474,8 @@ const Deals = (() => {
 
   // ——— выборка и колонки канбана ———
   // Сделки, которые человек видит (Leads.dealsVisible), по условиям filter: pipeId, type, q (поиск по клиенту, контакту, номеру,
-  // телефону, почте, объекту), mine (мои), managerId, lost (true — вместе с проваленными, 'only' — только они).
+  // телефону, почте, объекту), mine (мои), managerId, lost (true — вместе с проваленными, 'only' — только они),
+  // acts ('none' — без открытых дел, 'overdue' — дела просрочены на момент now).
   // Нет personId — все сделки. Один отбор на канбан и таблицу.
   function query(st, filter, personId) {
     const f = filter || {}, words = Catalog.norm(f.q).split(' ').filter(Boolean);
@@ -4340,6 +4483,7 @@ const Deals = (() => {
       (!f.pipeId || d.pipeId === f.pipeId) && (!f.type || d.type === f.type)
       && (!f.mine || d.managerId === personId) && (!f.managerId || d.managerId === f.managerId)
       && (f.lost === 'only' ? lostOf(d) : f.lost ? true : !lostOf(d))
+      && (!f.acts || Acts.matches(st, { t: 'deal', id: d.id }, f.acts, f.now))
       && (!words.length || words.every(w => Catalog.norm([d.id, d.client, d.contact, d.phone, d.email, d.object].join(' ')).includes(w))));
   }
 
@@ -4470,6 +4614,217 @@ SEEDS.push(st => {
     if (k % 2 === 0) say(d, k, new Date(start.getTime() + Math.floor(1.5 * t.step)));
     if (lostWhy) Deals.lose(st, d.id, lostWhy, mgr, new Date(t.end.getTime() + 36e5));
   });
+});
+
+// Ядро: дела — следующий шаг по лиду, сделке и клиенту. Звонок, встреча, письмо или просто дело со сроком, ответственным
+// и напоминанием; выполняют его с результатом. Лента (Feed.of) подмешивает выполненные дела сама, открытые дела показывает
+// feedHtml над лентой, метки «нет следующего шага» и счётчики меню берутся отсюда же.
+// Чистые функции над состоянием st; время приходит параметром now (Date), кто делает — by (id сотрудника).
+// Дело: {id, ref:{t,id}, type, title, due, ownerId, by, at, remind (минут до срока или null), remindedAt?, doneAt?, doneBy?, result?}.
+// Дело считается «живым», пока жива его карточка: лид не закрыт, сделка не провалена и не закрыта успешно. Дела закрытых
+// карточек не попадают ни в счётчики, ни в «нет следующего шага», ни в напоминания: гасить их по одному никто не обязан.
+
+const Acts = (() => {
+  const TYPES = { call: 'Звонок', meet: 'Встреча', mail: 'Письмо', todo: 'Дело' };
+  // За сколько минут до срока напомнить: [минуты, подпись]; null — не напоминать.
+  const REMINDS = [[null, 'Не напоминать'], [0, 'В срок'], [15, 'За 15 минут'], [60, 'За час'], [1440, 'За день']];
+  // Быстрые сроки в форме
+  const QUICK = { today: 'Сегодня', tomorrow: 'Завтра', week: 'Через неделю' };
+  // Карточки, к которым ставят дела
+  const REFS = ['deal', 'lead', 'client'];
+  const MISSING = { type: 'вид дела', due: 'срок' };
+
+  const str = v => String(v == null ? '' : v).trim();
+  const time = v => { const n = v == null || v === '' ? NaN : new Date(v).getTime(); return isNaN(n) ? null : n; };
+  const same = (a, b) => !!a && !!b && a.t === b.t && a.id === b.id;
+  const fail = (reason, extra) => Object.assign({ ok: false, reason }, extra);
+  const personOf = (st, id) => (st.people || []).find(p => p.id === id) || null;
+  const all = st => st.acts || [];
+  const byId = (st, id) => all(st).find(a => a.id === id) || null;
+
+  // ——— карточка, к которой привязано дело ———
+  // Живая ли карточка: лид не в финале, сделка открыта, клиент есть. Нет карточки — не жива.
+  function alive(st, ref) {
+    if (!ref) return false;
+    if (ref.t === 'deal') { const d = (st.deals || []).find(x => x.id === ref.id); return !!d && Deals.state(st, d) === 'open'; }
+    if (ref.t === 'lead') { const l = (st.leads || []).find(x => x.id === ref.id); return !!l && !Pipes.isFinal(st, l.pipeId, l.stageId); }
+    if (ref.t === 'client') return !!Clients.byId(st, ref.id);
+    return false;
+  }
+  // Как назвать карточку в тексте: «Сделка Д-311 (ООО …)».
+  function refTitle(st, ref) {
+    let name = '';
+    if (ref.t === 'deal') name = ((st.deals || []).find(x => x.id === ref.id) || {}).client;
+    else if (ref.t === 'lead') { const l = (st.leads || []).find(x => x.id === ref.id); name = l ? Leads.title(l) : ''; }
+    else if (ref.t === 'client') name = (Clients.byId(st, ref.id) || {}).name;
+    return `${Feed.REF[ref.t] || 'Карточка'} ${ref.id}${name ? ` (${name})` : ''}`;
+  }
+  // Карточки, чьи дела видны в этой: у клиента — ещё его сделки и лиды (те, что видит personId), как в его ленте.
+  function refs(st, ref, personId) {
+    const out = [ref];
+    if (ref.t === 'client') {
+      const rel = Clients.related(st, ref.id, personId);
+      rel.deals.forEach(d => out.push({ t: 'deal', id: d.id }));
+      rel.leads.forEach(l => out.push({ t: 'lead', id: l.id }));
+    }
+    return out;
+  }
+
+  // ——— срок и напоминание ———
+  const label = a => `${TYPES[a.type].toLowerCase()} · ${fWhen(a.due)}`;
+  // Быстрые сроки от now: «сегодня» — 18:00 (а если до него меньше 15 минут — через час, но не позже конца дня),
+  // «завтра» и «через неделю» — в 10:00.
+  function quick(kind, now) {
+    const n = new Date(now);
+    const at = (add, h, m = 0) => { const d = new Date(n); d.setDate(d.getDate() + add); d.setHours(h, m, 0, 0); return d; };
+    if (kind === 'tomorrow') return at(1, 10);
+    if (kind === 'week') return at(7, 10);
+    let d = at(0, 18);
+    if (d.getTime() < n.getTime() + 15 * 6e4) { d = new Date(n.getTime() + 60 * 6e4); d.setSeconds(0, 0); }
+    if (d.getDate() !== n.getDate()) d = at(0, 23, 59);
+    return d;
+  }
+
+  // ——— поставить и выполнить ———
+  // Новое дело: {type, title?, due, ownerId?, remind?}. Без вида или срока — {ok:false, missing:[…]}. Без названия — название
+  // вида («Звонок»). Ответственный по умолчанию — тот, кто ставит; и он, и тот, кто ставит, должны видеть карточку (Feed.canComment).
+  // remind — за сколько минут до срока напомнить; пусто — не напоминать. → {ok, id, act, missing, reason}
+  function plan(st, ref, data, by, now) {
+    const d = data || {}, missing = [];
+    if (!TYPES[d.type]) missing.push('type');
+    const due = time(d.due);
+    if (due === null) missing.push('due');
+    if (missing.length) return fail(`Не заполнено: ${missing.map(k => MISSING[k]).join(', ')}.`, { id: null, act: null, missing });
+    const none = { id: null, act: null, missing: [] };
+    if (!ref || !REFS.includes(ref.t) || !alive(st, ref)) return fail('Такой карточки нет или она закрыта — дело поставить некуда.', none);
+    if (!Feed.canComment(st, by, ref)) return fail('У вас нет права ставить дела в эту карточку.', none);
+    const ownerId = d.ownerId || by;
+    if (!personOf(st, ownerId)) return fail('Такого сотрудника нет.', none);
+    if (!Feed.canComment(st, ownerId, ref)) return fail('Этот сотрудник не видит карточку — поставить ему дело нельзя.', none);
+    let remind = null;
+    if (d.remind !== undefined && d.remind !== null && d.remind !== '' && d.remind !== false) {
+      remind = d.remind === true ? 0 : Math.round(Number(d.remind));
+      if (!(remind >= 0) || !isFinite(remind)) return fail('Напоминание — число минут до срока.', none);
+    }
+    st.acts = st.acts || [];
+    const a = {
+      id: Store.freeId(st.acts, 'a'), ref: { t: ref.t, id: ref.id }, type: d.type, title: str(d.title) || TYPES[d.type],
+      due: new Date(due), ownerId, by: by || null, at: now, remind,
+    };
+    st.acts.push(a);
+    return { ok: true, id: a.id, act: a, missing: [], reason: '' };
+  }
+
+  // Выполнить дело с результатом: без результата — отказ (дело выполняют с результатом). Выполненное не правится и не
+  // выполняется второй раз. Запись появляется в ленте карточки (Feed.of). → {ok, act, reason}
+  function done(st, id, result, by, now) {
+    const a = byId(st, id);
+    if (!a) return fail('Такого дела нет.', { act: null });
+    if (a.doneAt) return fail('Дело уже выполнено.', { act: a });
+    const res = str(result);
+    if (!res) return fail('Напишите результат: что получилось.', { act: a });
+    if (!Feed.canComment(st, by, a.ref)) return fail('У вас нет права закрывать дела этой карточки.', { act: a });
+    a.doneAt = now;
+    a.doneBy = by || null;
+    a.result = res;
+    return { ok: true, act: a, reason: '' };
+  }
+  // Фраза о выполненном деле — одна на ленту и на что угодно ещё.
+  const doneText = a => `${TYPES[a.type]} «${a.title}», срок ${fWhen(a.due)}. Результат: ${a.result}`;
+
+  // ——— выборки ———
+  const byDue = (a, b) => time(a.due) - time(b.due);
+  // Открытые дела карточки, ближайшее первым. У клиента — и дела его сделок и лидов (personId — чьими глазами).
+  function open(st, ref, personId) {
+    const rs = refs(st, ref, personId);
+    return all(st).filter(a => !a.doneAt && rs.some(r => same(r, a.ref))).sort(byDue);
+  }
+  // Ближайшее открытое дело или null.
+  const next = (st, ref, personId) => open(st, ref, personId)[0] || null;
+  // «Нет следующего шага»: карточка жива, а открытых дел у неё нет.
+  const noNext = (st, ref) => alive(st, ref) && open(st, ref).length === 0;
+  // Есть ли у живой карточки просроченное открытое дело.
+  const overdue = (st, ref, now) => {
+    const t = time(now);
+    return alive(st, ref) && t !== null && open(st, ref).some(a => time(a.due) < t);
+  };
+  // Подходит ли карточка под фильтр экрана: 'none' — без дел, 'overdue' — просрочены дела.
+  const matches = (st, ref, mode, now) => (mode === 'none' ? noNext(st, ref) : mode === 'overdue' ? overdue(st, ref, now) : true);
+
+  // Мои дела: сколько на сегодня (срок ещё впереди, но сегодня) и сколько просрочено (срок прошёл, now — сейчас).
+  // Только открытые дела живых карточек, где человек — ответственный. type ('deal' | 'lead' | 'client') — только дела таких карточек.
+  function counts(st, personId, now, type) {
+    const t = time(now), out = { today: 0, overdue: 0 };
+    if (t === null) return out;
+    const end = new Date(t); end.setHours(24, 0, 0, 0);
+    for (const a of all(st)) {
+      if (a.doneAt || a.ownerId !== personId || (type && a.ref.t !== type) || !alive(st, a.ref)) continue;
+      const d = time(a.due);
+      if (d < t) out.overdue++; else if (d < end.getTime()) out.today++;
+    }
+    return out;
+  }
+
+  // ——— напоминания ———
+  // Дела, которым пора напомнить: открытые, живой карточки, с напоминанием, срок минус remind уже наступил, а напоминание
+  // ещё не уходило (remindedAt нет).
+  function due(st, now) {
+    const t = time(now);
+    if (t === null) return [];
+    return all(st).filter(a => !a.doneAt && !a.remindedAt && a.remind !== null && a.remind !== undefined
+      && time(a.due) - a.remind * 6e4 <= t && alive(st, a.ref));
+  }
+  // Разослать напоминания: каждому делу — одно уведомление «act» его ответственному, дело помечается remindedAt.
+  // Вторая проверка в ту же минуту ничего не шлёт. → [уведомление…]
+  function notify(st, now) {
+    return due(st, now).map(a => {
+      a.remindedAt = now;
+      return Notify.push(st, 'act', null, `Пора: ${label(a)} — «${a.title}». ${refTitle(st, a.ref)}.`, now, [a.ownerId]);
+    });
+  }
+
+  return { TYPES, REMINDS, QUICK, REFS, byId, alive, refTitle, label, quick, plan, done, doneText, open, next, noNext, overdue, matches, counts, due, notify };
+})();
+
+// Вид уведомления «Дела» в «Уведомления»: подпись и значок (список видов — KIND в 20-model.js)
+KIND.act = { l: 'Дела', ic: 'clock', c: 'sun' };
+
+// Шаг SEEDS: демо-дела. У открытых сделок и лидов — открытые дела: часть просрочена, часть на сегодня, часть на завтра и
+// дальше, у части — ни одного («нет следующего шага»); у части сделок есть и выполненные дела с результатом. Ответственный —
+// менеджер карточки, а каждое четвёртое дело — тот, кто сейчас в системе (st.me), чтобы счётчики не были пустыми.
+// Всё помечено «пример». Напоминаний у демо-дел нет: при первом запуске в уведомления ничего не сыплется.
+SEEDS.push(st => {
+  st.acts = [];
+  const TITLES = {
+    call: ['Перезвонить по расчёту', 'Уточнить сроки по поставке', 'Согласовать время замера'],
+    meet: ['Встреча на объекте', 'Показать КП в офисе'],
+    mail: ['Отправить КП на почту', 'Выслать схему подключения'],
+    todo: ['Подготовить договор', 'Собрать данные для расчёта'],
+  };
+  // шаблоны по кругу: [вид, срок: дней от сегодня, час, ещё одно дело: вид, дни, час]
+  const PAT = [
+    [['call', -1, 11]],
+    [['meet', 0, 17]],
+    [['mail', 1, 10]],
+    [],
+    [['todo', 5, 12], ['call', 0, 18]],
+    [['meet', -3, 14], ['call', 1, 15]],
+  ];
+  const pick = (kind, k) => `${TITLES[kind][k % TITLES[kind].length]} (пример)`;
+  const seedFor = (ref, managerId, created, k) => {
+    for (const [j, [kind, add, hour]] of PAT[k % PAT.length].entries()) {
+      const owner = (k + j) % 4 === 0 ? st.me : managerId;
+      if (!owner) continue;
+      Acts.plan(st, ref, { type: kind, title: pick(kind, k + j), due: day(add, hour, 0), ownerId: owner }, owner, created);
+    }
+    // выполненное дело: каждой третьей карточке, не там, где дел нет совсем
+    if (k % 3 === 0 && managerId && PAT[k % PAT.length].length) {
+      const r = Acts.plan(st, ref, { type: 'call', title: 'Первый звонок клиенту (пример)', due: day(-2, 11, 0), ownerId: managerId }, managerId, created);
+      if (r.ok) Acts.done(st, r.id, 'Пример: дозвонились, клиент ждёт расчёт.', managerId, day(-2, 12, 0));
+    }
+  };
+  st.deals.filter(d => Deals.state(st, d) === 'open').forEach((d, k) => seedFor({ t: 'deal', id: d.id }, d.managerId, d.at || day(-3, 9, 0), k));
+  st.leads.filter(l => !Pipes.isFinal(st, l.pipeId, l.stageId)).forEach((l, k) => seedFor({ t: 'lead', id: l.id }, l.managerId, l.at || day(-3, 9, 0), k));
 });
 
 // Оболочка: состояние S и его сохранение, тема, разделы NAV, боковая панель, «Кто я», уведомления, окна,
@@ -4834,6 +5189,7 @@ function render(){
   try{const h=hashView();if(h&&h!==S.view) history.replaceState(null,'','#'+S.view)}catch(_){}
   // открыл раздел «Уведомления» — свои прочитаны (подсвечены один раз, при этой отрисовке)
   if(ok&&S.view==='notifications') Notify.markRead(S,S.me);
+  Acts.notify(S,new Date());
   renderSide();
   byId('ttl').textContent=n.label;
   byId('role').innerHTML=whoOptions();
@@ -5000,6 +5356,8 @@ if(typeof window!=='undefined') window.addEventListener('resize',()=>hscrollSync
 // Часть раздела перерисовали без render() (поиск в поставках и лидах) — новым доскам тоже нужны стрелки
 try{if(typeof MutationObserver==='function') new MutationObserver(()=>hscrollSync()).observe(byId('view'),{childList:true,subtree:true})}catch(_){}
 byId('role').addEventListener('change',e=>setMe(e.target.value));
+// напоминания о делах: раз в минуту (в тестах таймера нет)
+if(typeof setInterval==='function') setInterval(actsTick,60000);
 // адрес поменяли руками (#team) — показать этот раздел (или «Нет доступа»)
 if(typeof window!=='undefined') window.addEventListener('hashchange',()=>{const v=hashView();if(v&&S&&v!==S.view){S.view=v;S.ui.drawer=null;render()}});
 // «как в системе»: устройство переключило светлую/тёмную — тема следом
@@ -5961,7 +6319,7 @@ ON.change['rcv-photo']=t=>{addPhotos(t.files);t.value=''};
 Object.assign(IC,{print:'<path d="M7 9V4h10v5"/><rect x="4" y="9" width="16" height="8" rx="2"/><path d="M7 14h10v6H7z"/>'});
 
 // ——— выбор на экране ———
-const DEALS_DEF={view:'board',q:'',mine:false,lost:false};
+const DEALS_DEF={view:'board',q:'',mine:false,lost:false,acts:''};
 const dealsU=()=>S.ui.deals||(S.ui.deals=Object.assign({},DEALS_DEF));
 const dealsSel=()=>Object.assign({},DEALS_DEF,S.ui.deals||{});
 const dealNoData=t=>`<span class="muted">нет данных: ${t}</span>`;
@@ -5993,7 +6351,7 @@ function dealsScope(){
   return {vis,types,cur,pipes,pipe};
 }
 // Один отбор на канбан, таблицу и счётчики: тип, поиск, «Мои», «Провалены»
-const dealsFilter=(u,cur)=>({type:cur,q:u.q,mine:u.mine,lost:u.lost?'only':undefined});
+const dealsFilter=(u,cur)=>({type:cur,q:u.q,mine:u.mine,lost:u.lost?'only':undefined,acts:u.acts||undefined,now:new Date()});
 // Сумма сделки: только Deals.total; у кого нет права «цены» — не показывается совсем
 const dealSumText=d=>{const s=Deals.total(d);return s?rub(s):'не рассчитана'};
 const dealWho=id=>person(id)?.name||'нет данных: менеджер';
@@ -6003,7 +6361,7 @@ function dealCardHtml(d){
   const lost=!!d.lostReason,pr=can('prices'),np=Deals.noPrice(d).length;
   const mgr=d.managerId?`<span class="who">${av(person(d.managerId),'xs')}${esc(dealWho(d.managerId))}</span>`:'<span class="pill sm warn">нет менеджера</span>';
   const top=[lost?'<span class="pill sm bad">Провалена</span>':'',d.demo?'<span class="pill sm">пример</span>':'',np?`<span class="pill sm warn">без цены: ${np}</span>`:''].join('');
-  return `<article class="tcard dcard${lost?' lost':''}${Deals.state(S,d)==='won'?' won':''}"${lost?'':` draggable="true" data-drag="${esc(d.id)}"`} data-act="open-deal" data-id="${esc(d.id)}" tabindex="0"><div class="tc-top">${top}</div><p class="tc-t">${esc(d.client)}<small class="mono lc-id">${esc(d.id)} · ${esc(d.object)}</small></p>${pr?`<p class="dc-sum">${esc(dealSumText(d))}</p>`:''}${lost?`<p class="dc-lost">Причина: ${esc(d.lostReason)}</p>`:''}<div class="tc-m">${mgr}<span class="due">${d.at?esc(fRel(d.at)):''}</span></div></article>`;
+  return `<article class="tcard dcard${lost?' lost':''}${Deals.state(S,d)==='won'?' won':''}"${lost?'':` draggable="true" data-drag="${esc(d.id)}"`} data-act="open-deal" data-id="${esc(d.id)}" tabindex="0"><div class="tc-top">${top}</div><p class="tc-t">${esc(d.client)}<small class="mono lc-id">${esc(d.id)} · ${esc(d.object)}</small></p>${pr?`<p class="dc-sum">${esc(dealSumText(d))}</p>`:''}${lost?`<p class="dc-lost">Причина: ${esc(d.lostReason)}</p>`:''}${actNextHtml({t:'deal',id:d.id})}<div class="tc-m">${mgr}<span class="due">${d.at?esc(fRel(d.at)):''}</span></div></article>`;
 }
 
 // ——— канбан: колонки — этапы воронки, в шапке число сделок и сумма (Deals.columns) ———
@@ -6021,7 +6379,7 @@ function dealsTable(cur,u){
   const pr=can('prices'),list=Deals.query(S,dealsFilter(u,cur),S.me).sort((a,b)=>stagePos(b)-stagePos(a)||String(b.id).localeCompare(String(a.id)));
   const rows=list.map(d=>{
     const g=dealGoods(d),lost=!!d.lostReason;
-    return `<tr class="click" data-act="open-deal" data-id="${esc(d.id)}" tabindex="0"><td><div class="pname"><span>${esc(d.client)}${d.demo?' <span class="pill sm">пример</span>':''}</span><small class="mono">${esc(d.id)} · ${esc(d.object)}</small></div></td><td>${lost?`<span class="pill bad">Провалена: ${esc(d.lostReason)}</span>`:`<span class="pill ${stageTone(d)}">${esc(stageName(d))}</span>`}</td><td class="d-hide-s"><span class="pill sm ${g.lvl}">${esc(g.text)}</span></td><td class="nowrap">${esc(dealWho(d.managerId))}</td><td class="d-hide-s">${chPill(d.channel)}</td>${pr?`<td class="num">${esc(dealSumText(d))}</td>`:''}</tr>`;
+    return `<tr class="click" data-act="open-deal" data-id="${esc(d.id)}" tabindex="0"><td><div class="pname"><span>${esc(d.client)}${d.demo?' <span class="pill sm">пример</span>':''}</span><small class="mono">${esc(d.id)} · ${esc(d.object)}</small></div></td><td>${lost?`<span class="pill bad">Провалена: ${esc(d.lostReason)}</span>`:`<span class="pill ${stageTone(d)}">${esc(stageName(d))}</span>`}${actNextHtml({t:'deal',id:d.id})}</td><td class="d-hide-s"><span class="pill sm ${g.lvl}">${esc(g.text)}</span></td><td class="nowrap">${esc(dealWho(d.managerId))}</td><td class="d-hide-s">${chPill(d.channel)}</td>${pr?`<td class="num">${esc(dealSumText(d))}</td>`:''}</tr>`;
   }).join('');
   return `<section class="card clip"><div class="xs"><table class="tbl"><thead><tr><th>Клиент</th><th>Этап</th><th class="d-hide-s">Товар</th><th>Менеджер</th><th class="d-hide-s">Связь</th>${pr?'<th class="num">Сумма</th>':''}</tr></thead><tbody>${rows}</tbody></table></div></section>`;
 }
@@ -6033,7 +6391,7 @@ function dealsBody(){
   if(!pipe) return '<section class="card"><p class="empty">Воронки сделок этого типа нет — её заводят в «Настройки → Воронки».</p></section>';
   const list=Deals.query(S,dealsFilter(u,cur),S.me),sum=list.reduce((s,d)=>s+Deals.total(d),0);
   const head=`<p class="count"><span>Сделок: <b>${list.length}</b></span>${pr?`<span>на сумму: <b>${rub(sum)}</b></span>`:''}<span>${esc(pipe.name)}</span></p>`;
-  if(!list.length) return `${head}<section class="card"><p class="empty">${u.q.trim()||u.mine||u.lost?'По этим условиям сделок нет.':`Сделок типа ${Leads.TYPE[cur]} пока нет.`} ${u.q.trim()||u.mine||u.lost?'<button type="button" class="link" data-act="deal-reset">Сбросить поиск и фильтры</button>':'Заведите сделку кнопкой «Новая сделка».'}</p></section>`;
+  if(!list.length) return `${head}<section class="card"><p class="empty">${u.q.trim()||u.mine||u.lost||u.acts?'По этим условиям сделок нет.':`Сделок типа ${Leads.TYPE[cur]} пока нет.`} ${u.q.trim()||u.mine||u.lost||u.acts?'<button type="button" class="link" data-act="deal-reset">Сбросить поиск и фильтры</button>':'Заведите сделку кнопкой «Новая сделка».'}</p></section>`;
   return head+(u.view==='table'?dealsTable(cur,u):dealsBoard(pipe,cur,u));
 }
 
@@ -6043,10 +6401,11 @@ function vDeals(){
   const seg=(act,items,on,aria)=>`<div class="seg" role="group" aria-label="${aria}">${items.map(([k,l,n])=>`<button type="button" class="${on===k?'on':''}" aria-pressed="${on===k}" data-act="${act}" data-${act==='deal-type'?'type':'v'}="${k}">${l}${n===undefined?'':`<b>${n}</b>`}</button>`).join('')}</div>`;
   const typeSw=types.length>1?seg('deal-type',types.map(t=>[t,Leads.TYPE[t],vis.filter(d=>d.type===t).length]),cur,'Тип клиентов'):'';
   const pipeSel=pipes.length>1?`<select class="inp sm w-auto" data-on="deal-pipe" aria-label="Воронка">${pipes.map(p=>`<option value="${esc(p.id)}"${pipe&&p.id===pipe.id?' selected':''}>${esc(p.name)}</option>`).join('')}</select>`:'';
-  const dirty=u.q.trim()||u.mine||u.lost;
+  const dirty=u.q.trim()||u.mine||u.lost||u.acts,fq={type:cur,q:u.q,mine:u.mine,now:new Date()};
+  const noActN=Deals.query(S,{...fq,acts:'none'},S.me).length,lateN=Deals.query(S,{...fq,acts:'overdue'},S.me).length;
   return `<p class="hint">Перетащите карточку на другой этап или откройте сделку. «Успешно», «Провалена» и коммерческое предложение — в карточке. ${types.length>1?'Переключатель показывает сделки выбранного типа.':`Вам видны сделки типа ${Leads.TYPE[cur]}.`}</p>
   <div class="bar dbar">${typeSw}${seg('deal-view',[['board','Доска'],['table','Таблица']],u.view,'Вид')}${pipeSel}<div class="search-in">${ic('search')}<input id="deal-q" class="inp" type="search" placeholder="Поиск: клиент, номер, телефон, объект" value="${esc(u.q)}" data-on="deal-q" autocomplete="off" aria-label="Поиск по сделкам"></div><span class="grow"></span><button type="button" class="btn pri" data-act="deal-new">${ic('plus')}Новая сделка</button></div>
-  <div class="bar dfilt"><button type="button" class="fchip${u.mine?' on':''}" aria-pressed="${u.mine}" data-act="deal-mine">Мои</button><button type="button" class="fchip${u.lost?' on':''}" aria-pressed="${u.lost}" data-act="deal-lostf">Провалены · ${lostN}</button>${dirty?'<button type="button" class="btn ghost sm" data-act="deal-reset">Сбросить</button>':''}</div>
+  <div class="bar dfilt"><button type="button" class="fchip${u.mine?' on':''}" aria-pressed="${u.mine}" data-act="deal-mine">Мои</button><button type="button" class="fchip${u.lost?' on':''}" aria-pressed="${u.lost}" data-act="deal-lostf">Провалены · ${lostN}</button><button type="button" class="fchip${u.acts==='none'?' on':''}" aria-pressed="${u.acts==='none'}" data-act="deal-acts" data-k="none">Без дел · ${noActN}</button><button type="button" class="fchip${u.acts==='overdue'?' on':''}" aria-pressed="${u.acts==='overdue'}" data-act="deal-acts" data-k="overdue">Просрочены дела · ${lateN}</button>${dirty?'<button type="button" class="btn ghost sm" data-act="deal-reset">Сбросить</button>':''}</div>
   <div id="deal-body" class="stack-s">${dealsBody()}</div>`;
 }
 
@@ -6251,6 +6610,7 @@ A['deal-type']=el=>{S.ui.dealType=el.dataset.type==='b2c'?'b2c':'b2b';render()};
 A['deal-view']=el=>{dealsU().view=el.dataset.v==='table'?'table':'board';render()};
 A['deal-mine']=()=>{const u=dealsU();u.mine=!u.mine;render()};
 A['deal-lostf']=()=>{const u=dealsU();u.lost=!u.lost;render()};
+A['deal-acts']=el=>{const u=dealsU();u.acts=u.acts===el.dataset.k?'':el.dataset.k;render()};
 A['deal-reset']=()=>{S.ui.deals=Object.assign({},DEALS_DEF,{view:dealsSel().view});render()};
 A['deal-new']=el=>openModal('dealNew',el.dataset.stage||'');
 A['deal-tab']=el=>{S.ui.dealTab=el.dataset.tab;render()};
@@ -6351,6 +6711,7 @@ ON.change['deal-rs']=t=>{
 
 // ——— формы ———
 FORMS['feed-comment']=feedCommentForm;
+feedWire();
 FORMS['deal-new']=f=>{
   const {types}=dealsScope(),type=byId('dn-type').value,now=new Date();
   const radio=document.querySelector('#dn-cres input[name="dn-c"]:checked'),cid=radio?radio.value:'new';
@@ -6417,6 +6778,8 @@ document.addEventListener('drop',e=>{
 
 // ——— регистрация в реестрах оболочки ———
 VIEWS.deals=vDeals;
+// счётчик в меню: мои дела по сделкам на сегодня и просроченные (Acts.counts)
+Object.assign(NAV.find(n=>n.id==='deals'),{badge:()=>actsBadge('deal'),hot:true});
 DRAWERS.deal=id=>{const d=Leads.dealsVisible(S,S.me).find(x=>x.id===id);return d?dealCard(d):null};
 
 // Раздел «Сообщения клиентам»
@@ -6498,7 +6861,7 @@ A['set-tab']=el=>{S.ui.setTab=el.dataset.tab;render()};
 
 Object.assign(IC,{funnel:'<path d="M3.5 5h17l-6.5 7.5V19l-4 1.5v-8z"/>'});
 
-const LEAD_DEF={view:'list',q:'',stage:'',type:'',source:'',manager:''};
+const LEAD_DEF={view:'list',q:'',stage:'',type:'',source:'',manager:'',acts:''};
 const leadU=()=>S.ui.leads||(S.ui.leads=Object.assign({},LEAD_DEF));
 const leadSel=()=>Object.assign({},LEAD_DEF,S.ui.leads||{});
 const leadById=id=>(S.leads||[]).find(l=>l.id===id)||null;
@@ -6509,11 +6872,12 @@ const leadNoData=t=>`<span class="muted">нет данных: ${t}</span>`;
 // ——— отбор: одни условия на список, воронку и счётчики ———
 // Стадию как условие берёт только список: в воронке этапы — это сами столбцы.
 function leadFilter(list,u,withStage){
-  const q=u.q.trim().toLowerCase();
+  const q=u.q.trim().toLowerCase(),now=new Date();
   return list.filter(l=>
     (!withStage||!u.stage||l.stageId===u.stage)
     &&(!u.type||(u.type==='none'?!l.type:l.type===u.type))
     &&(!u.source||l.source===u.source)
+    &&(!u.acts||Acts.matches(S,{t:'lead',id:l.id},u.acts,now))
     &&(!u.manager||(u.manager==='none'?!l.managerId&&!isDone(l):l.managerId===u.manager))
     &&(!q||[l.id,l.name,l.company,l.inn,l.phone,l.email,l.text].join(' ').toLowerCase().includes(q))
   ).sort((a,b)=>b.at-a.at);
@@ -6531,14 +6895,14 @@ const leadDemoPill=l=>l.demo?' <span class="pill sm">пример</span>':'';
 
 // ——— список ———
 function leadTable(list){
-  const rows=list.map(l=>`<tr class="click" data-act="open-lead" data-id="${esc(l.id)}" tabindex="0"><td><div class="pname"><span>${esc(Leads.title(l))}${leadDemoPill(l)}</span><small class="mono">${esc(l.id)}<span class="l-show-s"> · ${esc(Leads.SOURCE[l.source]||l.source)}${l.type?' · '+Leads.TYPE[l.type]:''}</span></small></div></td><td class="l-hide-s">${leadSrcPill(l)}</td><td class="l-hide-s">${leadTypePill(l)}</td><td>${leadStagePill(l)}</td><td>${leadMgrCell(l)}</td><td class="l-hide-s nowrap">${esc(fWhen(l.at))}</td></tr>`).join('');
+  const rows=list.map(l=>`<tr class="click" data-act="open-lead" data-id="${esc(l.id)}" tabindex="0"><td><div class="pname"><span>${esc(Leads.title(l))}${leadDemoPill(l)}</span><small class="mono">${esc(l.id)}<span class="l-show-s"> · ${esc(Leads.SOURCE[l.source]||l.source)}${l.type?' · '+Leads.TYPE[l.type]:''}</span></small></div></td><td class="l-hide-s">${leadSrcPill(l)}</td><td class="l-hide-s">${leadTypePill(l)}</td><td>${leadStagePill(l)}${actNextHtml({t:'lead',id:l.id})}</td><td>${leadMgrCell(l)}</td><td class="l-hide-s nowrap">${esc(fWhen(l.at))}</td></tr>`).join('');
   return `<section class="card clip"><div class="xs"><table class="tbl"><thead><tr><th>Лид</th><th class="l-hide-s">Источник</th><th class="l-hide-s">Тип</th><th>Этап</th><th>Менеджер</th><th class="l-hide-s">Пришёл</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
 }
 
 // ——— воронка ———
 function leadCard(l){
   const mgr=l.managerId?`<span class="who">${av(person(l.managerId),'xs')}${esc(leadWho(l.managerId))}</span>`:'<span class="pill sm warn">Нераспределённый</span>';
-  return `<article class="tcard lcard${isDone(l)?' done':''}" draggable="true" data-drag="${esc(l.id)}" data-act="open-lead" data-id="${esc(l.id)}" tabindex="0"><div class="tc-top">${leadSrcPill(l)}${leadTypePill(l)}${l.demo?'<span class="pill sm">пример</span>':''}</div><p class="tc-t">${esc(Leads.title(l))}<small class="mono lc-id">${esc(l.id)}</small></p>${l.text?`<p class="lc-x">${esc(l.text)}</p>`:''}<div class="tc-m">${mgr}<span class="due">${esc(fRel(l.at))}</span></div></article>`;
+  return `<article class="tcard lcard${isDone(l)?' done':''}" draggable="true" data-drag="${esc(l.id)}" data-act="open-lead" data-id="${esc(l.id)}" tabindex="0"><div class="tc-top">${leadSrcPill(l)}${leadTypePill(l)}${l.demo?'<span class="pill sm">пример</span>':''}</div><p class="tc-t">${esc(Leads.title(l))}<small class="mono lc-id">${esc(l.id)}</small></p>${l.text?`<p class="lc-x">${esc(l.text)}</p>`:''}${actNextHtml({t:'lead',id:l.id})}<div class="tc-m">${mgr}<span class="due">${esc(fRel(l.at))}</span></div></article>`;
 }
 function leadFunnel(list){
   const pipe=leadPipe();
@@ -6568,12 +6932,13 @@ function vLeads(){
     +sel('type','Тип',opt('','Все типы',u.type)+opt('b2b','B2B',u.type)+opt('b2c','B2C',u.type)+opt('none','Тип не определён',u.type))
     +sel('source','Источник',opt('','Все источники',u.source)+Object.entries(Leads.SOURCE).map(([k,v])=>opt(k,v,u.source)).join(''))
     +sel('manager','Менеджер',opt('','Все менеджеры',u.manager)+opt('none','Нераспределённые',u.manager)+Leads.managers(S).map(m=>opt(m.id,m.name,u.manager)).join(''));
-  const dirty=u.q.trim()||u.stage||u.type||u.source||u.manager;
+  const dirty=u.q.trim()||u.stage||u.type||u.source||u.manager||u.acts;
+  const noActN=leadFilter(all,{...u,acts:'none'},!funnel).length,lateN=leadFilter(all,{...u,acts:'overdue'},!funnel).length;
   const sims=can('settings')?`<span class="grow"></span><button type="button" class="btn sm" data-act="lead-sim" data-source="site">${ic('plus')}Имитация: пришёл лид с сайта</button><button type="button" class="btn sm" data-act="lead-sim" data-source="bitrix">${ic('plus')}Имитация: пришёл лид из Битрикса24</button>`:'';
   return `<p class="hint">Лиды — заявки, которые ещё не стали сделками. Новый лид сам уходит менеджеру своего типа: компания или ИНН — B2B, иначе телефон или почта — B2C; кому менеджера не нашлось, тот лежит в «Нераспределённых» — их раздаёт РОП или директор. Заявки здесь пока примерные: настоящего подключения сайта и Битрикса24 нет.</p>
   <div class="bar lbar"><div class="seg" role="group" aria-label="Вид">${[['list','Список'],['funnel','Воронка']].map(([k,l])=>`<button type="button" class="${u.view===k?'on':''}" aria-pressed="${u.view===k}" data-act="lead-view" data-v="${k}">${l}</button>`).join('')}</div>
     <div class="search-in">${ic('search')}<input id="lead-q" class="inp" type="search" placeholder="Поиск: имя, компания, ИНН, телефон, почта, текст" value="${esc(u.q)}" data-on="lead-q" autocomplete="off" aria-label="Поиск по лидам"></div>${sims}</div>
-  <div class="bar lfilt">${filters}<button type="button" class="fchip${u.manager==='none'?' on':''}" aria-pressed="${u.manager==='none'}" data-act="lead-free">Нераспределённые · ${free}</button>${dirty?'<button type="button" class="btn ghost sm" data-act="lead-reset">Сбросить</button>':''}</div>
+  <div class="bar lfilt">${filters}<button type="button" class="fchip${u.manager==='none'?' on':''}" aria-pressed="${u.manager==='none'}" data-act="lead-free">Нераспределённые · ${free}</button><button type="button" class="fchip${u.acts==='none'?' on':''}" aria-pressed="${u.acts==='none'}" data-act="lead-acts" data-k="none">Без дел · ${noActN}</button><button type="button" class="fchip${u.acts==='overdue'?' on':''}" aria-pressed="${u.acts==='overdue'}" data-act="lead-acts" data-k="overdue">Просрочены дела · ${lateN}</button>${dirty?'<button type="button" class="btn ghost sm" data-act="lead-reset">Сбросить</button>':''}</div>
   <div id="lead-body" class="stack-s">${leadBody()}</div>`;
 }
 
@@ -6660,6 +7025,7 @@ function leadMoveTo(id,stageId){
 A['open-lead']=el=>openDrawer('lead',el.dataset.id);
 A['lead-view']=el=>{leadU().view=el.dataset.v==='funnel'?'funnel':'list';render()};
 A['lead-free']=()=>{const u=leadU();u.manager=u.manager==='none'?'':'none';render()};
+A['lead-acts']=el=>{const u=leadU();u.acts=u.acts===el.dataset.k?'':el.dataset.k;render()};
 A['lead-reset']=()=>{S.ui.leads=Object.assign({},LEAD_DEF,{view:leadSel().view});render()};
 A['lead-take']=el=>leadAct(el.dataset.id,'take',now=>Leads.take(S,el.dataset.id,S.me,now),l=>`Лид ${l.id} теперь у вас: ${Leads.title(l)}.`);
 A['lead-contacted']=el=>leadAct(el.dataset.id,'work',now=>Leads.contacted(S,el.dataset.id,S.me,now),l=>`Записали: связались по лиду ${l.id}. Этап — «${stageName(l)}».`);
@@ -6737,7 +7103,7 @@ SIMS.push({id:'lead-site',label:'Имитация: пришёл лид с сай
 SIMS.push({id:'lead-bitrix',label:'Имитация: пришёл лид из Битрикса24',run:()=>{leadSimulate('bitrix')}});
 
 // ——— регистрация в реестрах оболочки ———
-NAV.push({id:'leads',label:'Лиды',icon:'funnel',group:'Продажи',order:5,ok:()=>can('leads'),badge:()=>Leads.fresh(S,S.me).length,hot:true});
+NAV.push({id:'leads',label:'Лиды',icon:'funnel',group:'Продажи',order:5,ok:()=>can('leads'),badge:()=>Leads.fresh(S,S.me).length+actsBadge('lead'),hot:true});
 VIEWS.leads=vLeads;
 DRAWERS.lead=id=>{const l=Leads.visible(S,S.me).find(x=>x.id===id);return l?dLead(l):null};
 

@@ -15,6 +15,7 @@ const Notify = (() => {
     msg: ['director'],                                         // сообщения клиентам — плюс менеджер сделки (extraPersons)
     lead: ['director', 'rop'],                                 // новый лид — директору и РОП, плюс менеджер, кому он ушёл (extraPersons)
     mail: [],                                                  // новое письмо — те, кто видит ящик (extraPersons)
+    act: [],                                                   // напоминание о деле — ответственный (extraPersons)
   };
 
   const wants = (st, personId, kind) => {

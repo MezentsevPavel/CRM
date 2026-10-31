@@ -7,7 +7,7 @@
 Object.assign(IC,{print:'<path d="M7 9V4h10v5"/><rect x="4" y="9" width="16" height="8" rx="2"/><path d="M7 14h10v6H7z"/>'});
 
 // ——— выбор на экране ———
-const DEALS_DEF={view:'board',q:'',mine:false,lost:false};
+const DEALS_DEF={view:'board',q:'',mine:false,lost:false,acts:''};
 const dealsU=()=>S.ui.deals||(S.ui.deals=Object.assign({},DEALS_DEF));
 const dealsSel=()=>Object.assign({},DEALS_DEF,S.ui.deals||{});
 const dealNoData=t=>`<span class="muted">нет данных: ${t}</span>`;
@@ -39,7 +39,7 @@ function dealsScope(){
   return {vis,types,cur,pipes,pipe};
 }
 // Один отбор на канбан, таблицу и счётчики: тип, поиск, «Мои», «Провалены»
-const dealsFilter=(u,cur)=>({type:cur,q:u.q,mine:u.mine,lost:u.lost?'only':undefined});
+const dealsFilter=(u,cur)=>({type:cur,q:u.q,mine:u.mine,lost:u.lost?'only':undefined,acts:u.acts||undefined,now:new Date()});
 // Сумма сделки: только Deals.total; у кого нет права «цены» — не показывается совсем
 const dealSumText=d=>{const s=Deals.total(d);return s?rub(s):'не рассчитана'};
 const dealWho=id=>person(id)?.name||'нет данных: менеджер';
@@ -49,7 +49,7 @@ function dealCardHtml(d){
   const lost=!!d.lostReason,pr=can('prices'),np=Deals.noPrice(d).length;
   const mgr=d.managerId?`<span class="who">${av(person(d.managerId),'xs')}${esc(dealWho(d.managerId))}</span>`:'<span class="pill sm warn">нет менеджера</span>';
   const top=[lost?'<span class="pill sm bad">Провалена</span>':'',d.demo?'<span class="pill sm">пример</span>':'',np?`<span class="pill sm warn">без цены: ${np}</span>`:''].join('');
-  return `<article class="tcard dcard${lost?' lost':''}${Deals.state(S,d)==='won'?' won':''}"${lost?'':` draggable="true" data-drag="${esc(d.id)}"`} data-act="open-deal" data-id="${esc(d.id)}" tabindex="0"><div class="tc-top">${top}</div><p class="tc-t">${esc(d.client)}<small class="mono lc-id">${esc(d.id)} · ${esc(d.object)}</small></p>${pr?`<p class="dc-sum">${esc(dealSumText(d))}</p>`:''}${lost?`<p class="dc-lost">Причина: ${esc(d.lostReason)}</p>`:''}<div class="tc-m">${mgr}<span class="due">${d.at?esc(fRel(d.at)):''}</span></div></article>`;
+  return `<article class="tcard dcard${lost?' lost':''}${Deals.state(S,d)==='won'?' won':''}"${lost?'':` draggable="true" data-drag="${esc(d.id)}"`} data-act="open-deal" data-id="${esc(d.id)}" tabindex="0"><div class="tc-top">${top}</div><p class="tc-t">${esc(d.client)}<small class="mono lc-id">${esc(d.id)} · ${esc(d.object)}</small></p>${pr?`<p class="dc-sum">${esc(dealSumText(d))}</p>`:''}${lost?`<p class="dc-lost">Причина: ${esc(d.lostReason)}</p>`:''}${actNextHtml({t:'deal',id:d.id})}<div class="tc-m">${mgr}<span class="due">${d.at?esc(fRel(d.at)):''}</span></div></article>`;
 }
 
 // ——— канбан: колонки — этапы воронки, в шапке число сделок и сумма (Deals.columns) ———
@@ -67,7 +67,7 @@ function dealsTable(cur,u){
   const pr=can('prices'),list=Deals.query(S,dealsFilter(u,cur),S.me).sort((a,b)=>stagePos(b)-stagePos(a)||String(b.id).localeCompare(String(a.id)));
   const rows=list.map(d=>{
     const g=dealGoods(d),lost=!!d.lostReason;
-    return `<tr class="click" data-act="open-deal" data-id="${esc(d.id)}" tabindex="0"><td><div class="pname"><span>${esc(d.client)}${d.demo?' <span class="pill sm">пример</span>':''}</span><small class="mono">${esc(d.id)} · ${esc(d.object)}</small></div></td><td>${lost?`<span class="pill bad">Провалена: ${esc(d.lostReason)}</span>`:`<span class="pill ${stageTone(d)}">${esc(stageName(d))}</span>`}</td><td class="d-hide-s"><span class="pill sm ${g.lvl}">${esc(g.text)}</span></td><td class="nowrap">${esc(dealWho(d.managerId))}</td><td class="d-hide-s">${chPill(d.channel)}</td>${pr?`<td class="num">${esc(dealSumText(d))}</td>`:''}</tr>`;
+    return `<tr class="click" data-act="open-deal" data-id="${esc(d.id)}" tabindex="0"><td><div class="pname"><span>${esc(d.client)}${d.demo?' <span class="pill sm">пример</span>':''}</span><small class="mono">${esc(d.id)} · ${esc(d.object)}</small></div></td><td>${lost?`<span class="pill bad">Провалена: ${esc(d.lostReason)}</span>`:`<span class="pill ${stageTone(d)}">${esc(stageName(d))}</span>`}${actNextHtml({t:'deal',id:d.id})}</td><td class="d-hide-s"><span class="pill sm ${g.lvl}">${esc(g.text)}</span></td><td class="nowrap">${esc(dealWho(d.managerId))}</td><td class="d-hide-s">${chPill(d.channel)}</td>${pr?`<td class="num">${esc(dealSumText(d))}</td>`:''}</tr>`;
   }).join('');
   return `<section class="card clip"><div class="xs"><table class="tbl"><thead><tr><th>Клиент</th><th>Этап</th><th class="d-hide-s">Товар</th><th>Менеджер</th><th class="d-hide-s">Связь</th>${pr?'<th class="num">Сумма</th>':''}</tr></thead><tbody>${rows}</tbody></table></div></section>`;
 }
@@ -79,7 +79,7 @@ function dealsBody(){
   if(!pipe) return '<section class="card"><p class="empty">Воронки сделок этого типа нет — её заводят в «Настройки → Воронки».</p></section>';
   const list=Deals.query(S,dealsFilter(u,cur),S.me),sum=list.reduce((s,d)=>s+Deals.total(d),0);
   const head=`<p class="count"><span>Сделок: <b>${list.length}</b></span>${pr?`<span>на сумму: <b>${rub(sum)}</b></span>`:''}<span>${esc(pipe.name)}</span></p>`;
-  if(!list.length) return `${head}<section class="card"><p class="empty">${u.q.trim()||u.mine||u.lost?'По этим условиям сделок нет.':`Сделок типа ${Leads.TYPE[cur]} пока нет.`} ${u.q.trim()||u.mine||u.lost?'<button type="button" class="link" data-act="deal-reset">Сбросить поиск и фильтры</button>':'Заведите сделку кнопкой «Новая сделка».'}</p></section>`;
+  if(!list.length) return `${head}<section class="card"><p class="empty">${u.q.trim()||u.mine||u.lost||u.acts?'По этим условиям сделок нет.':`Сделок типа ${Leads.TYPE[cur]} пока нет.`} ${u.q.trim()||u.mine||u.lost||u.acts?'<button type="button" class="link" data-act="deal-reset">Сбросить поиск и фильтры</button>':'Заведите сделку кнопкой «Новая сделка».'}</p></section>`;
   return head+(u.view==='table'?dealsTable(cur,u):dealsBoard(pipe,cur,u));
 }
 
@@ -89,10 +89,11 @@ function vDeals(){
   const seg=(act,items,on,aria)=>`<div class="seg" role="group" aria-label="${aria}">${items.map(([k,l,n])=>`<button type="button" class="${on===k?'on':''}" aria-pressed="${on===k}" data-act="${act}" data-${act==='deal-type'?'type':'v'}="${k}">${l}${n===undefined?'':`<b>${n}</b>`}</button>`).join('')}</div>`;
   const typeSw=types.length>1?seg('deal-type',types.map(t=>[t,Leads.TYPE[t],vis.filter(d=>d.type===t).length]),cur,'Тип клиентов'):'';
   const pipeSel=pipes.length>1?`<select class="inp sm w-auto" data-on="deal-pipe" aria-label="Воронка">${pipes.map(p=>`<option value="${esc(p.id)}"${pipe&&p.id===pipe.id?' selected':''}>${esc(p.name)}</option>`).join('')}</select>`:'';
-  const dirty=u.q.trim()||u.mine||u.lost;
+  const dirty=u.q.trim()||u.mine||u.lost||u.acts,fq={type:cur,q:u.q,mine:u.mine,now:new Date()};
+  const noActN=Deals.query(S,{...fq,acts:'none'},S.me).length,lateN=Deals.query(S,{...fq,acts:'overdue'},S.me).length;
   return `<p class="hint">Перетащите карточку на другой этап или откройте сделку. «Успешно», «Провалена» и коммерческое предложение — в карточке. ${types.length>1?'Переключатель показывает сделки выбранного типа.':`Вам видны сделки типа ${Leads.TYPE[cur]}.`}</p>
   <div class="bar dbar">${typeSw}${seg('deal-view',[['board','Доска'],['table','Таблица']],u.view,'Вид')}${pipeSel}<div class="search-in">${ic('search')}<input id="deal-q" class="inp" type="search" placeholder="Поиск: клиент, номер, телефон, объект" value="${esc(u.q)}" data-on="deal-q" autocomplete="off" aria-label="Поиск по сделкам"></div><span class="grow"></span><button type="button" class="btn pri" data-act="deal-new">${ic('plus')}Новая сделка</button></div>
-  <div class="bar dfilt"><button type="button" class="fchip${u.mine?' on':''}" aria-pressed="${u.mine}" data-act="deal-mine">Мои</button><button type="button" class="fchip${u.lost?' on':''}" aria-pressed="${u.lost}" data-act="deal-lostf">Провалены · ${lostN}</button>${dirty?'<button type="button" class="btn ghost sm" data-act="deal-reset">Сбросить</button>':''}</div>
+  <div class="bar dfilt"><button type="button" class="fchip${u.mine?' on':''}" aria-pressed="${u.mine}" data-act="deal-mine">Мои</button><button type="button" class="fchip${u.lost?' on':''}" aria-pressed="${u.lost}" data-act="deal-lostf">Провалены · ${lostN}</button><button type="button" class="fchip${u.acts==='none'?' on':''}" aria-pressed="${u.acts==='none'}" data-act="deal-acts" data-k="none">Без дел · ${noActN}</button><button type="button" class="fchip${u.acts==='overdue'?' on':''}" aria-pressed="${u.acts==='overdue'}" data-act="deal-acts" data-k="overdue">Просрочены дела · ${lateN}</button>${dirty?'<button type="button" class="btn ghost sm" data-act="deal-reset">Сбросить</button>':''}</div>
   <div id="deal-body" class="stack-s">${dealsBody()}</div>`;
 }
 
@@ -297,6 +298,7 @@ A['deal-type']=el=>{S.ui.dealType=el.dataset.type==='b2c'?'b2c':'b2b';render()};
 A['deal-view']=el=>{dealsU().view=el.dataset.v==='table'?'table':'board';render()};
 A['deal-mine']=()=>{const u=dealsU();u.mine=!u.mine;render()};
 A['deal-lostf']=()=>{const u=dealsU();u.lost=!u.lost;render()};
+A['deal-acts']=el=>{const u=dealsU();u.acts=u.acts===el.dataset.k?'':el.dataset.k;render()};
 A['deal-reset']=()=>{S.ui.deals=Object.assign({},DEALS_DEF,{view:dealsSel().view});render()};
 A['deal-new']=el=>openModal('dealNew',el.dataset.stage||'');
 A['deal-tab']=el=>{S.ui.dealTab=el.dataset.tab;render()};
@@ -397,6 +399,7 @@ ON.change['deal-rs']=t=>{
 
 // ——— формы ———
 FORMS['feed-comment']=feedCommentForm;
+feedWire();
 FORMS['deal-new']=f=>{
   const {types}=dealsScope(),type=byId('dn-type').value,now=new Date();
   const radio=document.querySelector('#dn-cres input[name="dn-c"]:checked'),cid=radio?radio.value:'new';
@@ -463,4 +466,6 @@ document.addEventListener('drop',e=>{
 
 // ——— регистрация в реестрах оболочки ———
 VIEWS.deals=vDeals;
+// счётчик в меню: мои дела по сделкам на сегодня и просроченные (Acts.counts)
+Object.assign(NAV.find(n=>n.id==='deals'),{badge:()=>actsBadge('deal'),hot:true});
 DRAWERS.deal=id=>{const d=Leads.dealsVisible(S,S.me).find(x=>x.id===id);return d?dealCard(d):null};

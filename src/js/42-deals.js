@@ -342,7 +342,8 @@ const Deals = (() => {
 
   // ——— выборка и колонки канбана ———
   // Сделки, которые человек видит (Leads.dealsVisible), по условиям filter: pipeId, type, q (поиск по клиенту, контакту, номеру,
-  // телефону, почте, объекту), mine (мои), managerId, lost (true — вместе с проваленными, 'only' — только они).
+  // телефону, почте, объекту), mine (мои), managerId, lost (true — вместе с проваленными, 'only' — только они),
+  // acts ('none' — без открытых дел, 'overdue' — дела просрочены на момент now).
   // Нет personId — все сделки. Один отбор на канбан и таблицу.
   function query(st, filter, personId) {
     const f = filter || {}, words = Catalog.norm(f.q).split(' ').filter(Boolean);
@@ -350,6 +351,7 @@ const Deals = (() => {
       (!f.pipeId || d.pipeId === f.pipeId) && (!f.type || d.type === f.type)
       && (!f.mine || d.managerId === personId) && (!f.managerId || d.managerId === f.managerId)
       && (f.lost === 'only' ? lostOf(d) : f.lost ? true : !lostOf(d))
+      && (!f.acts || Acts.matches(st, { t: 'deal', id: d.id }, f.acts, f.now))
       && (!words.length || words.every(w => Catalog.norm([d.id, d.client, d.contact, d.phone, d.email, d.object].join(' ')).includes(w))));
   }
 

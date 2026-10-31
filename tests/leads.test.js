@@ -490,7 +490,7 @@ test('Leads.allows / setSource: сайт и Битрикс24 включаютс�
   assert.equal(st.leadSource, 'both', 'неизвестный источник записался');
 });
 
-test('раздел «Лиды»: пункт меню есть у директора, РОП и менеджеров, у кладовщика, инженера и логиста нет; число — новые лиды человека', () => {
+test('раздел «Лиды»: пункт меню есть у директора, РОП и менеджеров, у кладовщика, инженера и логиста нет; число — новые лиды человека и его дела по лидам (сегодня и просроченные)', () => {
   const app = load();
   for (const role of ['director', 'rop', 'managerB2b', 'managerB2c']) {
     asRole(app, role);
@@ -501,11 +501,13 @@ test('раздел «Лиды»: пункт меню есть у директо�
     asRole(app, role);
     assert.ok(!app.navItems().some(n => n.id === 'leads'), `${role}: пункт «Лиды» есть`);
   }
-  // число на пункте менеджера — его лиды на первом этапе (считаем по данным)
+  // число на пункте менеджера — его лиды на первом этапе (считаем по данным) и его дела по лидам на сегодня и просроченные (таск 10)
   const mgr = app.S.leads.find(l => l.managerId && l.type === 'b2b' && l.stageId === 'new').managerId;
   app.setMe(mgr);
-  const expected = app.S.leads.filter(l => l.managerId === mgr && l.stageId === 'new').length;
-  assert.ok(expected > 0, 'в демо у менеджера нет новых лидов — проверка пустая');
+  const fresh = app.S.leads.filter(l => l.managerId === mgr && l.stageId === 'new').length;
+  assert.ok(fresh > 0, 'в демо у менеджера нет новых лидов — проверка пустая');
+  const acts = app.Acts.counts(app.S, mgr, new Date(), 'lead');
+  const expected = fresh + acts.today + acts.overdue;
   const badge = app.document.getElementById('side').innerHTML.match(/data-view="leads"><svg.*?<\/svg><span>Лиды<\/span><span class="cnt hot">(\d+)</);
   assert.ok(badge, 'на пункте нет числа');
   assert.equal(Number(badge[1]), expected);

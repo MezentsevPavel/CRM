@@ -6,7 +6,7 @@
 
 Object.assign(IC,{funnel:'<path d="M3.5 5h17l-6.5 7.5V19l-4 1.5v-8z"/>'});
 
-const LEAD_DEF={view:'list',q:'',stage:'',type:'',source:'',manager:''};
+const LEAD_DEF={view:'list',q:'',stage:'',type:'',source:'',manager:'',acts:''};
 const leadU=()=>S.ui.leads||(S.ui.leads=Object.assign({},LEAD_DEF));
 const leadSel=()=>Object.assign({},LEAD_DEF,S.ui.leads||{});
 const leadById=id=>(S.leads||[]).find(l=>l.id===id)||null;
@@ -17,11 +17,12 @@ const leadNoData=t=>`<span class="muted">нет данных: ${t}</span>`;
 // ——— отбор: одни условия на список, воронку и счётчики ———
 // Стадию как условие берёт только список: в воронке этапы — это сами столбцы.
 function leadFilter(list,u,withStage){
-  const q=u.q.trim().toLowerCase();
+  const q=u.q.trim().toLowerCase(),now=new Date();
   return list.filter(l=>
     (!withStage||!u.stage||l.stageId===u.stage)
     &&(!u.type||(u.type==='none'?!l.type:l.type===u.type))
     &&(!u.source||l.source===u.source)
+    &&(!u.acts||Acts.matches(S,{t:'lead',id:l.id},u.acts,now))
     &&(!u.manager||(u.manager==='none'?!l.managerId&&!isDone(l):l.managerId===u.manager))
     &&(!q||[l.id,l.name,l.company,l.inn,l.phone,l.email,l.text].join(' ').toLowerCase().includes(q))
   ).sort((a,b)=>b.at-a.at);
@@ -39,14 +40,14 @@ const leadDemoPill=l=>l.demo?' <span class="pill sm">пример</span>':'';
 
 // ——— список ———
 function leadTable(list){
-  const rows=list.map(l=>`<tr class="click" data-act="open-lead" data-id="${esc(l.id)}" tabindex="0"><td><div class="pname"><span>${esc(Leads.title(l))}${leadDemoPill(l)}</span><small class="mono">${esc(l.id)}<span class="l-show-s"> · ${esc(Leads.SOURCE[l.source]||l.source)}${l.type?' · '+Leads.TYPE[l.type]:''}</span></small></div></td><td class="l-hide-s">${leadSrcPill(l)}</td><td class="l-hide-s">${leadTypePill(l)}</td><td>${leadStagePill(l)}</td><td>${leadMgrCell(l)}</td><td class="l-hide-s nowrap">${esc(fWhen(l.at))}</td></tr>`).join('');
+  const rows=list.map(l=>`<tr class="click" data-act="open-lead" data-id="${esc(l.id)}" tabindex="0"><td><div class="pname"><span>${esc(Leads.title(l))}${leadDemoPill(l)}</span><small class="mono">${esc(l.id)}<span class="l-show-s"> · ${esc(Leads.SOURCE[l.source]||l.source)}${l.type?' · '+Leads.TYPE[l.type]:''}</span></small></div></td><td class="l-hide-s">${leadSrcPill(l)}</td><td class="l-hide-s">${leadTypePill(l)}</td><td>${leadStagePill(l)}${actNextHtml({t:'lead',id:l.id})}</td><td>${leadMgrCell(l)}</td><td class="l-hide-s nowrap">${esc(fWhen(l.at))}</td></tr>`).join('');
   return `<section class="card clip"><div class="xs"><table class="tbl"><thead><tr><th>Лид</th><th class="l-hide-s">Источник</th><th class="l-hide-s">Тип</th><th>Этап</th><th>Менеджер</th><th class="l-hide-s">Пришёл</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
 }
 
 // ——— воронка ———
 function leadCard(l){
   const mgr=l.managerId?`<span class="who">${av(person(l.managerId),'xs')}${esc(leadWho(l.managerId))}</span>`:'<span class="pill sm warn">Нераспределённый</span>';
-  return `<article class="tcard lcard${isDone(l)?' done':''}" draggable="true" data-drag="${esc(l.id)}" data-act="open-lead" data-id="${esc(l.id)}" tabindex="0"><div class="tc-top">${leadSrcPill(l)}${leadTypePill(l)}${l.demo?'<span class="pill sm">пример</span>':''}</div><p class="tc-t">${esc(Leads.title(l))}<small class="mono lc-id">${esc(l.id)}</small></p>${l.text?`<p class="lc-x">${esc(l.text)}</p>`:''}<div class="tc-m">${mgr}<span class="due">${esc(fRel(l.at))}</span></div></article>`;
+  return `<article class="tcard lcard${isDone(l)?' done':''}" draggable="true" data-drag="${esc(l.id)}" data-act="open-lead" data-id="${esc(l.id)}" tabindex="0"><div class="tc-top">${leadSrcPill(l)}${leadTypePill(l)}${l.demo?'<span class="pill sm">пример</span>':''}</div><p class="tc-t">${esc(Leads.title(l))}<small class="mono lc-id">${esc(l.id)}</small></p>${l.text?`<p class="lc-x">${esc(l.text)}</p>`:''}${actNextHtml({t:'lead',id:l.id})}<div class="tc-m">${mgr}<span class="due">${esc(fRel(l.at))}</span></div></article>`;
 }
 function leadFunnel(list){
   const pipe=leadPipe();
@@ -76,12 +77,13 @@ function vLeads(){
     +sel('type','Тип',opt('','Все типы',u.type)+opt('b2b','B2B',u.type)+opt('b2c','B2C',u.type)+opt('none','Тип не определён',u.type))
     +sel('source','Источник',opt('','Все источники',u.source)+Object.entries(Leads.SOURCE).map(([k,v])=>opt(k,v,u.source)).join(''))
     +sel('manager','Менеджер',opt('','Все менеджеры',u.manager)+opt('none','Нераспределённые',u.manager)+Leads.managers(S).map(m=>opt(m.id,m.name,u.manager)).join(''));
-  const dirty=u.q.trim()||u.stage||u.type||u.source||u.manager;
+  const dirty=u.q.trim()||u.stage||u.type||u.source||u.manager||u.acts;
+  const noActN=leadFilter(all,{...u,acts:'none'},!funnel).length,lateN=leadFilter(all,{...u,acts:'overdue'},!funnel).length;
   const sims=can('settings')?`<span class="grow"></span><button type="button" class="btn sm" data-act="lead-sim" data-source="site">${ic('plus')}Имитация: пришёл лид с сайта</button><button type="button" class="btn sm" data-act="lead-sim" data-source="bitrix">${ic('plus')}Имитация: пришёл лид из Битрикса24</button>`:'';
   return `<p class="hint">Лиды — заявки, которые ещё не стали сделками. Новый лид сам уходит менеджеру своего типа: компания или ИНН — B2B, иначе телефон или почта — B2C; кому менеджера не нашлось, тот лежит в «Нераспределённых» — их раздаёт РОП или директор. Заявки здесь пока примерные: настоящего подключения сайта и Битрикса24 нет.</p>
   <div class="bar lbar"><div class="seg" role="group" aria-label="Вид">${[['list','Список'],['funnel','Воронка']].map(([k,l])=>`<button type="button" class="${u.view===k?'on':''}" aria-pressed="${u.view===k}" data-act="lead-view" data-v="${k}">${l}</button>`).join('')}</div>
     <div class="search-in">${ic('search')}<input id="lead-q" class="inp" type="search" placeholder="Поиск: имя, компания, ИНН, телефон, почта, текст" value="${esc(u.q)}" data-on="lead-q" autocomplete="off" aria-label="Поиск по лидам"></div>${sims}</div>
-  <div class="bar lfilt">${filters}<button type="button" class="fchip${u.manager==='none'?' on':''}" aria-pressed="${u.manager==='none'}" data-act="lead-free">Нераспределённые · ${free}</button>${dirty?'<button type="button" class="btn ghost sm" data-act="lead-reset">Сбросить</button>':''}</div>
+  <div class="bar lfilt">${filters}<button type="button" class="fchip${u.manager==='none'?' on':''}" aria-pressed="${u.manager==='none'}" data-act="lead-free">Нераспределённые · ${free}</button><button type="button" class="fchip${u.acts==='none'?' on':''}" aria-pressed="${u.acts==='none'}" data-act="lead-acts" data-k="none">Без дел · ${noActN}</button><button type="button" class="fchip${u.acts==='overdue'?' on':''}" aria-pressed="${u.acts==='overdue'}" data-act="lead-acts" data-k="overdue">Просрочены дела · ${lateN}</button>${dirty?'<button type="button" class="btn ghost sm" data-act="lead-reset">Сбросить</button>':''}</div>
   <div id="lead-body" class="stack-s">${leadBody()}</div>`;
 }
 
@@ -168,6 +170,7 @@ function leadMoveTo(id,stageId){
 A['open-lead']=el=>openDrawer('lead',el.dataset.id);
 A['lead-view']=el=>{leadU().view=el.dataset.v==='funnel'?'funnel':'list';render()};
 A['lead-free']=()=>{const u=leadU();u.manager=u.manager==='none'?'':'none';render()};
+A['lead-acts']=el=>{const u=leadU();u.acts=u.acts===el.dataset.k?'':el.dataset.k;render()};
 A['lead-reset']=()=>{S.ui.leads=Object.assign({},LEAD_DEF,{view:leadSel().view});render()};
 A['lead-take']=el=>leadAct(el.dataset.id,'take',now=>Leads.take(S,el.dataset.id,S.me,now),l=>`Лид ${l.id} теперь у вас: ${Leads.title(l)}.`);
 A['lead-contacted']=el=>leadAct(el.dataset.id,'work',now=>Leads.contacted(S,el.dataset.id,S.me,now),l=>`Записали: связались по лиду ${l.id}. Этап — «${stageName(l)}».`);
@@ -245,6 +248,6 @@ SIMS.push({id:'lead-site',label:'Имитация: пришёл лид с сай
 SIMS.push({id:'lead-bitrix',label:'Имитация: пришёл лид из Битрикса24',run:()=>{leadSimulate('bitrix')}});
 
 // ——— регистрация в реестрах оболочки ———
-NAV.push({id:'leads',label:'Лиды',icon:'funnel',group:'Продажи',order:5,ok:()=>can('leads'),badge:()=>Leads.fresh(S,S.me).length,hot:true});
+NAV.push({id:'leads',label:'Лиды',icon:'funnel',group:'Продажи',order:5,ok:()=>can('leads'),badge:()=>Leads.fresh(S,S.me).length+actsBadge('lead'),hot:true});
 VIEWS.leads=vLeads;
 DRAWERS.lead=id=>{const l=Leads.visible(S,S.me).find(x=>x.id===id);return l?dLead(l):null};

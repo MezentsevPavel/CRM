@@ -499,7 +499,7 @@ test('демо переживает сохранение: клиенты, лен
   assert.equal(back.feed[0].at.getTime(), S.feed[0].at.getTime(), 'дата ленты не вернулась датой');
   assert.equal(JSON.stringify(back.deals.map(d => d.items)), JSON.stringify(S.deals.map(d => d.items)));
   assert.equal(JSON.stringify(back.lostReasons), JSON.stringify(S.lostReasons));
-  assert.equal(Store.REV, 7, 'форма данных изменилась — ревизия должна быть 7');
+  assert.ok(Store.REV >= 7, 'ревизия сохранения не ниже той, что принесли клиенты (7): позже её поднимали дела');
   // прежнее сохранение (ревизия 6, до клиентов) не читается: запуск возьмёт демо
   const old = JSON.parse(Store.dump(S).text);
   old.rev = 6;

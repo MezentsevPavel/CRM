@@ -360,6 +360,7 @@ function render(){
   try{const h=hashView();if(h&&h!==S.view) history.replaceState(null,'','#'+S.view)}catch(_){}
   // открыл раздел «Уведомления» — свои прочитаны (подсвечены один раз, при этой отрисовке)
   if(ok&&S.view==='notifications') Notify.markRead(S,S.me);
+  Acts.notify(S,new Date());
   renderSide();
   byId('ttl').textContent=n.label;
   byId('role').innerHTML=whoOptions();
@@ -526,6 +527,8 @@ if(typeof window!=='undefined') window.addEventListener('resize',()=>hscrollSync
 // Часть раздела перерисовали без render() (поиск в поставках и лидах) — новым доскам тоже нужны стрелки
 try{if(typeof MutationObserver==='function') new MutationObserver(()=>hscrollSync()).observe(byId('view'),{childList:true,subtree:true})}catch(_){}
 byId('role').addEventListener('change',e=>setMe(e.target.value));
+// напоминания о делах: раз в минуту (в тестах таймера нет)
+if(typeof setInterval==='function') setInterval(actsTick,60000);
 // адрес поменяли руками (#team) — показать этот раздел (или «Нет доступа»)
 if(typeof window!=='undefined') window.addEventListener('hashchange',()=>{const v=hashView();if(v&&S&&v!==S.view){S.view=v;S.ui.drawer=null;render()}});
 // «как в системе»: устройство переключило светлую/тёмную — тема следом

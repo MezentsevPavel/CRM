@@ -20,3 +20,45 @@
 .feed-h small{font-size:12px;color:var(--ink-3)}
 .feed-t{margin:0;font-size:13.5px;line-height:1.45;overflow-wrap:anywhere;white-space:pre-wrap}
 .feed-i.k-comment .feed-t{padding:8px 10px;border-radius:12px;background:var(--surface-2)}
+
+/* ——— дела в ленте: «Запланировать», открытые дела, выполненные ——— */
+.act-plan{border:1px solid var(--line);border-radius:14px;background:var(--surface-2)}
+.act-plan>summary{display:flex;width:100%;justify-content:flex-start;list-style:none;cursor:pointer;border:0;background:transparent}
+.act-plan>summary::-webkit-details-marker{display:none}
+.act-plan[open]>summary{border-bottom:1px solid var(--line);border-radius:14px 14px 0 0}
+.act-form{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;padding:12px;min-width:0}
+.act-form .field{min-width:0}
+.act-form .field:nth-child(2),.act-form .field:nth-child(3),.act-form .err,.act-form .btn{grid-column:1/-1}
+.act-form .btn{justify-self:start}
+.act-form input,.act-form select{min-width:0;max-width:100%}
+.act-q{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.act-list{display:flex;flex-direction:column;gap:8px;margin:0;padding:0;list-style:none}
+.act-i{display:flex;align-items:center;gap:10px;min-width:0;padding:10px 12px;border:1px solid var(--line);border-left:3px solid var(--primary);border-radius:12px;background:var(--surface)}
+.act-i.over{border-color:var(--bad-soft);border-left-color:var(--bad);background:var(--bad-soft)}
+.act-ic{display:grid;place-items:center;flex:none;width:30px;height:30px;border-radius:9px;background:var(--primary-soft);color:var(--primary-deep)}
+.act-i.over .act-ic{background:var(--surface);color:var(--bad)}
+.act-ic .ic{width:17px;height:17px}
+.act-b{display:flex;flex-direction:column;align-items:flex-start;gap:2px;flex:1;min-width:0}
+.act-t{font-size:13.5px;font-weight:600;overflow-wrap:anywhere}
+.act-b small{font-size:12px;color:var(--ink-2);overflow-wrap:anywhere}
+.act-late{color:var(--bad);font-weight:700}
+.act-i .btn{flex:none}
+.act-empty{display:flex;align-items:center;gap:8px;margin:0;padding:10px 12px;border-radius:12px;background:var(--warn-soft);color:var(--warn);font-size:13px}
+.act-empty .ic{width:16px;height:16px;flex:none}
+/* выполненное дело в ленте — серое */
+.feed-i.k-act::after{border-color:var(--line-2);background:var(--sunken)}
+.feed-i.k-act .feed-h b,.feed-i.k-act .feed-t{color:var(--ink-3)}
+.feed-i.k-act .feed-t{padding:8px 10px;border-radius:12px;background:var(--sunken)}
+/* метка ближайшего дела на карточках канбана и в списках */
+.act-nx{display:inline-flex;align-items:center;gap:5px;max-width:100%;font-size:12px;color:var(--ink-2)}
+.act-nx .ic{width:14px;height:14px;flex:none}
+.act-nx>span{min-width:0;overflow-wrap:anywhere}
+.act-nx.over{color:var(--bad);font-weight:600}
+.act-nx.none{white-space:normal}
+.act-nx.none .ic{width:12px;height:12px}
+.tcard>.act-nx{align-self:flex-start}
+@media (max-width:560px){
+  .act-form{grid-template-columns:1fr}
+  .act-i{flex-wrap:wrap}
+  .act-i .btn{margin-left:40px}
+}
