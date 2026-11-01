@@ -132,19 +132,23 @@ function receiveShip(by,now){
   s.history.push({at:now,by,text:`Принято на склад: ${P.cell.entityName}, ${P.cell.cityName}. Фото: ${r.photos.length}.${r.note.trim()?' Комментарий: '+r.note.trim():''}`,source:Ships.SRC.receipt,auto:true});
   const fired=Ships.applyRules(S,'received',s.id,by,now);
   s.received={at:now,by,photos:r.photos.length,urls:r.photos.slice(),note:r.note.trim()};
-  const notes=S.notes.slice(0,S.notes.length-before),msgIds=[],taskIds=[];
-  notes.push(Notify.push(S,'arrive',by,`${s.id} принята на склад (${P.cell.entityName}, ${P.cell.cityName}): ${s.items.map(it=>`${low(product(it.productId).name)} ${qtyOf(it.got,product(it.productId))}`).join(', ')}. Фото: ${r.photos.length}.${s.received.note?' Комментарий: '+s.received.note:''}`,now));
-  if(P.issues.length||P.dmg.length) notes.push(Notify.push(S,'warn',by,`Приёмка ${s.id} с замечаниями. ${[P.issues.join('; '),P.dmg.length?'Повреждено: '+P.dmg.join(', '):''].filter(Boolean).join('. ')}. Фото в карточке поставки.`,now));
+  const notes=S.notes.slice(0,S.notes.length-before),msgIds=[],taskIds=[],asked=[];
+  notes.push(Notify.push(S,'arrive',by,`${s.id} принята на склад (${P.cell.entityName}, ${P.cell.cityName}): ${s.items.map(it=>`${low(product(it.productId).name)} ${qtyOf(it.got,product(it.productId))}`).join(', ')}. Фото: ${r.photos.length}.${s.received.note?' Комментарий: '+s.received.note:''}`,now,[],{t:'ship',id:s.id}));
+  if(P.issues.length||P.dmg.length) notes.push(Notify.push(S,'warn',by,`Приёмка ${s.id} с замечаниями. ${[P.issues.join('; '),P.dmg.length?'Повреждено: '+P.dmg.join(', '):''].filter(Boolean).join('. ')}. Фото в карточке поставки.`,now,[],{t:'ship',id:s.id}));
   P.waits.forEach(({d,items,how})=>{
     const mg=person(d.managerId);let tail;
     if(how==='call'){const board=taskBoard();const t={id:Store.freeId(S.tasks,'t'),title:`Позвонить клиенту: товар по ${d.id} на складе`,desc:items,to:{t:'p',id:d.managerId},from:by,due:day(0,18),boardId:board.id,stageId:startStage(board.id).id,prio:'high',deal:d.id,at:now};S.tasks.push(t);taskIds.push(t.id);tail='Менеджеру поставлена задача позвонить клиенту.'}
     else if(how==='auto'){const x={id:Store.freeId(S.msgs,'m'),at:now,deal:d.id,channel:d.channel,auto:true,sim:true,text:fillTpl(d,items,false)};S.msgs.push(x);msgIds.push(x.id);tail=`Клиенту ушло авто-сообщение в ${CH[d.channel]} (имитация, не отправлено).`}
     else tail='Авто-сообщения выключены — напишите клиенту.';
-    // менеджеру сделки — отдельно: уведомите клиента (R15)
-    notes.push(Notify.push(S,'msg',null,`Уведомите клиента: ${d.client} (${d.id}) — товар на складе: ${items}. ${tail} Менеджер: ${mg?.name||'нет данных'}.`,now,[d.managerId]));
+    // менеджеру сделки — отдельно: уведомите клиента (R15). Клиента, номер сделки и менеджера называем только тому, кому сделка
+    // видна (Stock.dealRef); остальные читают тот же текст со словами «сделка скрыта» — он же в asked для экрана после приёмки
+    const text=withDeal=>withDeal?`Уведомите клиента: ${d.client} (${d.id}) — товар на складе: ${items}. ${tail} Менеджер: ${mg?.name||'нет данных'}.`:`Уведомите клиента (${Stock.HIDDEN_DEAL}) — товар на складе: ${items}. ${tail}`;
+    const made=Notify.pushFor(S,'msg',null,id=>text(!!Stock.dealRef(S,d.id,id)),now,[d.managerId],{t:'deal',id:d.id});
+    notes.push(...made);
+    asked.push({dealId:d.id,noteIds:made.map(n=>n.id),hidden:text(false)});
   });
   const notified=new Set(notes.flatMap(n=>n.to).filter(id=>id!==by)).size;
-  r.done={ok:true,shipId:s.id,noteIds:notes.map(n=>n.id),msgIds,taskIds,stock,cell:{entityId:P.cell.entityId,cityId:P.cell.cityId,entityName:P.cell.entityName,cityName:P.cell.cityName},stage:P.final.name,fired,notified,issues:P.issues.length+P.dmg.length,by:who?.id||by};
+  r.done={ok:true,shipId:s.id,noteIds:notes.map(n=>n.id),msgIds,taskIds,asked,stock,cell:{entityId:P.cell.entityId,cityId:P.cell.cityId,entityName:P.cell.entityName,cityName:P.cell.cityName},stage:P.final.name,fired,notified,issues:P.issues.length+P.dmg.length,by:who?.id||by};
   return r.done;
 }
 function rcvConfirm(){
@@ -157,10 +161,18 @@ function rcvDoneHtml(rc=S.rcv){
   const r=rc.done,s=ship(r.shipId);
   return `<div class="done-box"><span class="done-ic">${ic('check')}</span><h3 class="m0">${s.id} на складе</h3><p class="m0 muted">Остатки обновлены (${esc(r.cell.entityName)}, ${esc(r.cell.cityName)}), поставка на этапе «${esc(r.stage)}», резервы под неё стали резервами со склада. Уведомили ${r.notified} ${pl(r.notified,'сотрудника','сотрудников','сотрудников')}.${r.msgIds.length?` Клиентам подготовлено сообщений: ${r.msgIds.length} — имитация, не отправлено.`:''}${r.taskIds&&r.taskIds.length?` Менеджерам поставлено задач позвонить клиенту: ${r.taskIds.length}.`:''}</p>${r.issues?'<p class="m0 warn-t">Расхождения и повреждения отправлены отдельным предупреждением.</p>':''}<div class="bar"><button class="btn pri" data-act="rcv-again">Принять другую поставку</button><button class="btn" data-act="go" data-view="notifications">Уведомления</button></div></div>`;
 }
+// Экран после приёмки. Клиентов и номера сделок называем только тому, кому сделка видна (Stock.dealRef, как в превью приёмки):
+// остальным (кладовщику) — «сделка скрыта» и количество; текст сообщения клиенту ему не показываем: в нём имя и номер сделки.
 function rcvAfterHtml(rc=S.rcv){
-  const r=rc.done,notes=S.notes.filter(n=>r.noteIds.includes(n.id)),msgs=S.msgs.filter(x=>r.msgIds.includes(x.id));
+  const r=rc.done,asked=r.asked||[],seen=id=>!!Stock.dealRef(S,id,S.me);
+  // уведомление «Уведомите клиента…» по сделке, которую человек не видит, читает в безымянном виде
+  const hiddenText=n=>{const a=asked.find(x=>x.noteIds.includes(n.id));return a&&!seen(a.dealId)?a.hidden:null};
+  const notes=S.notes.filter(n=>r.noteIds.includes(n.id)).map(n=>{const t=hiddenText(n);return t===null?n:Object.assign({},n,{text:t})});
+  const msgs=S.msgs.filter(x=>r.msgIds.includes(x.id));
   let h=`<section class="card"><div class="card-h"><h3>Кому что ушло</h3></div><ul class="notes">${notes.map(n=>noteRow(n,false,true)).join('')}</ul></section>`;
-  if(msgs.length) h+=`<section class="card"><div class="card-h"><h3>Сообщения клиентам</h3><span class="pill sun sm">имитация: не отправлены</span></div><div class="card-b stack-s">${msgs.map(x=>{const d=deal(x.deal);return `<div class="stack-s" style="gap:6px"><p class="sm m0"><b>${esc(d.client)}</b> · ${CH[x.channel]}</p><div class="chat"><div class="bub out">${esc(x.text)}<small>${fT(x.at)} · авто · имитация, не отправлено</small></div></div></div>`}).join('')}</div></section>`;
+  if(msgs.length) h+=`<section class="card"><div class="card-h"><h3>Сообщения клиентам</h3><span class="pill sun sm">имитация: не отправлены</span></div><div class="card-b stack-s">${msgs.map(x=>{
+    if(!seen(x.deal)) return `<div class="stack-s" style="gap:6px"><p class="sm m0"><b class="muted">${Stock.HIDDEN_DEAL}</b> · ${CH[x.channel]}</p><p class="sm m0 muted">Клиенту ушло авто-сообщение (${fT(x.at)}, имитация, не отправлено). Текст видит тот, кому сделка видна.</p></div>`;
+    const d=deal(x.deal);return `<div class="stack-s" style="gap:6px"><p class="sm m0"><b>${esc(d.client)}</b> · ${CH[x.channel]}</p><div class="chat"><div class="bub out">${esc(x.text)}<small>${fT(x.at)} · авто · имитация, не отправлено</small></div></div></div>`}).join('')}</div></section>`;
   return h;
 }
 function addPhotos(files){

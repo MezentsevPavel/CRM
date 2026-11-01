@@ -172,7 +172,7 @@ const Acts = (() => {
   function notify(st, now) {
     return due(st, now).map(a => {
       a.remindedAt = now;
-      return Notify.push(st, 'act', null, `Пора: ${label(a)} — «${a.title}». ${refTitle(st, a.ref)}.`, now, [a.ownerId]);
+      return Notify.push(st, 'act', null, `Пора: ${label(a)} — «${a.title}». ${refTitle(st, a.ref)}.`, now, [a.ownerId], a.ref);
     });
   }
 

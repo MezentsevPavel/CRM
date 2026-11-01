@@ -272,7 +272,7 @@ const Dispatch = (() => {
     st.dispatches.push(d);
     const what = `${PURPOSE[d.purpose]}, кому: ${d.to.name}, на ${fD(d.when.date)}, ${d.items.length} ${pl(d.items.length, 'позиция', 'позиции', 'позиций')}`;
     Feed.add(st, ref(d), { kind: 'create', text: `Заявка создана: ${what}.`, by, at: now });
-    if (!(opts && opts.silent)) Notify.push(st, 'dispatch', by, `Новая заявка на отправку ${d.number}: ${what}. Создал: ${personName(st, by)}.`, now);
+    if (!(opts && opts.silent)) Notify.push(st, 'dispatch', by, `Новая заявка на отправку ${d.number}: ${what}. Создал: ${personName(st, by)}.`, now, [], { t: 'dispatch', id: d.id });
     return { ok: true, id: d.id, missing: [], reason: '' };
   }
 
@@ -341,7 +341,7 @@ const Dispatch = (() => {
       // автору — каждая смена этапа его заявки, кроме тех, что он сделал сам. Вид STEP_KIND без постоянных адресатов
       // (Notify.RECIPIENTS): логист и кладовщик новую заявку получают, а ход каждой — нет. Некому слать — записи нет.
       const extra = d.by && d.by !== by ? [d.by] : [];
-      if (extra.length) Notify.push(st, STEP_KIND, by, `${d.number} (${d.to.name}): ${personName(st, by)} перевёл заявку на этап «${stageName(st, d, stageId)}».${g.note ? ' ' + g.note : ''}`, now, extra);
+      if (extra.length) Notify.push(st, STEP_KIND, by, `${d.number} (${d.to.name}): ${personName(st, by)} перевёл заявку на этап «${stageName(st, d, stageId)}».${g.note ? ' ' + g.note : ''}`, now, extra, { t: 'dispatch', id: d.id });
     }
     return { ok: true, from, to: stageId, note: g.note || '' };
   }
@@ -358,7 +358,7 @@ const Dispatch = (() => {
     if (to) d.driverId = to; else delete d.driverId;
     Feed.add(st, ref(d), { kind: 'field', text: to ? `Водитель: ${personName(st, to)}.` : 'Водитель снят.', by, at: now });
     if (to && !(opts && opts.silent)) {
-      Notify.push(st, STEP_KIND, by, `Вам назначена отправка ${d.number}: ${d.to.name}, ${d.address}, на ${fD(d.when.date)}.`, now, [to]);
+      Notify.push(st, STEP_KIND, by, `Вам назначена отправка ${d.number}: ${d.to.name}, ${d.address}, на ${fD(d.when.date)}.`, now, [to], { t: 'dispatch', id: d.id });
     }
     return { ok: true, reason: '' };
   }

@@ -244,22 +244,31 @@ const Deals = (() => {
     if (err) return err;
     if (lostOf(d)) return fail('Сделка уже провалена.');
     if (state(st, d) === 'won') return fail('Сделка успешно закрыта — провалить её нельзя, сначала верните на другой этап.');
+    // Решение директора: у проваленной сделки резервы снимаются, товар возвращается в свободный остаток. Тем же путём,
+    // что и ручное снятие (drop), но право reserve не нужно: провалить сделку может и тот, у кого его нет.
+    const held = reservesOf(st, d);
     d.lostReason = why;
     d.lostAt = now;
-    log(st, d, 'lose', `Провалена: ${why}`, by, now, { reason: why });
-    return { ok: true, reason: '' };
+    log(st, d, 'lose', `Провалена: ${why}`, by, now, { reason: why, released: held.length });
+    for (const r of held) drop(st, r, 'Сделка провалена.', by, now);
+    if (held.length) d.lostReleased = held.length;
+    return { ok: true, reason: '', released: held.length };
   }
+
+  // Что сказать при возврате в работу, если при провале резервы были сняты: вернуть их ядро не возвращает.
+  const RELEASED_NOTE = 'Резервы при провале были сняты, поставьте заново при необходимости.';
 
   // Вернуть проваленную сделку в работу (ошибка при отказе): причина снимается, этап прежний.
   function reopen(st, id, by, now) {
     const { d, err } = open(st, id, by);
     if (err) return err;
     if (!lostOf(d)) return fail('Сделка не провалена.');
-    const was = d.lostReason;
+    const was = d.lostReason, freed = d.lostReleased > 0;
     delete d.lostReason;
     delete d.lostAt;
-    log(st, d, 'stage', `Возвращена в работу (была провалена: ${was})`, by, now);
-    return { ok: true, reason: '' };
+    delete d.lostReleased;
+    log(st, d, 'stage', `Возвращена в работу (была провалена: ${was}).${freed ? ' ' + RELEASED_NOTE : ''}`, by, now);
+    return { ok: true, reason: '', released: freed };
   }
 
   // ——— строки товаров ———
@@ -326,9 +335,11 @@ const Deals = (() => {
   const managerOf = d => (d && d.managerId ? [d.managerId] : []);
   // Уведомление о резерве сделки d: адресаты те же (Notify.RECIPIENTS и менеджер сделки), но номер сделки и клиента читают
   // только те, кому сделка видна (Stock.dealRef); остальным (склад) уходит текст без них. textOf(withDeal) → текст.
-  const notifyReserve = (st, d, by, now, textOf) => Notify.pushFor(st, 'reserve', by, id => textOf(!!Stock.dealRef(st, d.id, id)), now, managerOf(d));
+  const notifyReserve = (st, d, by, now, textOf) => Notify.pushFor(st, 'reserve', by, id => textOf(!!Stock.dealRef(st, d.id, id)), now, managerOf(d), { t: 'deal', id: d.id });
   // Сколько товара сделки ещё можно зарезервировать: «в строках − уже в резерве». Единственный расчёт: ядро и экран зовут его.
   const left = (st, d, productId) => round2(lined(d, productId) - reserved(st, d, productId));
+  // Все резервы сделки (со склада и из поставки). Провал сделки снимает именно их; окно «Провалена» говорит, сколько их.
+  const reservesOf = (st, d) => (st.reserves || []).filter(r => r.dealId === d.id);
 
   // Один путь резерва под сделку — из строки сделки (reserveItem) и из карточки товара.
   // o: {productId, qty?, src? ('stock' | id поставки), entityId?, cityId?, until?}. Нужно право править сделку (canEdit) и право
@@ -403,10 +414,15 @@ const Deals = (() => {
     if (!Perms.can(st, by, 'reserve')) return fail('У вашей роли нет права снимать резервы.');
     const r = (st.reserves || []).find(x => x.id === reserveId && x.dealId === d.id);
     if (!r) return fail('Такого резерва в сделке нет.');
-    noteRelease(st, r, r.qty, '', by, now);
-    const res = Stock.unreserve(st, reserveId, by, now);
+    const res = drop(st, r, '', by, now);
     if (!res.ok) return fail(res.reason);
     return { ok: true, reason: '' };
+  }
+  // Один путь снятия резерва целиком: запись «Снят резерв» в ленту, уведомление, возврат в свободный остаток.
+  // Зовут ручное снятие (unreserve) и провал сделки (lose).
+  function drop(st, r, why, by, now) {
+    noteRelease(st, r, r.qty, why, by, now);
+    return Stock.unreserve(st, r.id, by, now);
   }
 
   // ——— выборка и колонки канбана ———
@@ -437,8 +453,8 @@ const Deals = (() => {
   }
 
   return {
-    defaultReasons, reasons, lineSum, total, sumOf, noPrice, state, canEdit, itemName, reserved, lined, left, byId,
-    create, update, move, win, lose, reopen, addItem, setItem, removeItem, reserve, reserveItem, keepTrail, noteRelease, unreserve, query, columns,
+    defaultReasons, reasons, lineSum, total, sumOf, noPrice, state, canEdit, itemName, reserved, lined, left, reservesOf, byId,
+    create, update, move, win, lose, reopen, RELEASED_NOTE, addItem, setItem, removeItem, reserve, reserveItem, keepTrail, noteRelease, unreserve, query, columns,
   };
 })();
 

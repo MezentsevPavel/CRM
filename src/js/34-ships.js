@@ -233,7 +233,7 @@ const Ships = (() => {
     if (source !== SRC.receipt) {
       const when = s.dir === 'out' ? 'Доставка' : 'На складе ожидается';
       const here = hasRoute(s) ? ` Сейчас: ${where_}.` : '';
-      note = Notify.push(st, 'ship', by || null, `${s.id}: ${brief(st, s)} — этап «${stage.name}».${here} ${when} ${s.eta ? fD(s.eta) : 'нет данных: дата'}.`, now);
+      note = Notify.push(st, 'ship', by || null, `${s.id}: ${brief(st, s)} — этап «${stage.name}».${here} ${when} ${s.eta ? fD(s.eta) : 'нет данных: дата'}.`, now, [], { t: 'ship', id: s.id });
     }
     return { ok: true, from: was, to: stage, note, text: entry.text };
   }

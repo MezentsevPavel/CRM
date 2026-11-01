@@ -75,13 +75,14 @@ function taskTake(id){
   if(!t||!taskTakable(t)){toast('Эту задачу взять нельзя: она уже у кого-то или закрыта.','warn');return false}
   const dept=t.to.id,now=new Date();
   t.to={t:'p',id:m.id};t.took={dept,at:now};
-  Notify.push(S,'task',m.id,`${m.name} взял(а) задачу «${t.title}» отдела «${deptName(dept)}».`,now,[t.from,...S.people.filter(p=>p.dept===dept).map(p=>p.id)]);
+  Notify.push(S,'task',m.id,`${m.name} взял(а) задачу «${t.title}» отдела «${deptName(dept)}».`,now,[t.from,...S.people.filter(p=>p.dept===dept).map(p=>p.id)],{t:'task',id:t.id});
   render();toast(`Задача «${t.title}» теперь ваша. Автору и отделу ушло уведомление.`);
   return true;
 }
 
 // ——— регистрация в реестрах оболочки ———
 DRAWERS.task=id=>{const t=S.tasks.find(x=>x.id===id);return t&&taskVisible(t)?dTask(t):null};
+regRef('task','задача',id=>S.tasks.some(t=>t.id===id),'open-task');
 SEARCH.push({kind:'task',label:'Задача',order:70,find:q=>S.tasks.filter(t=>taskVisible(t)&&searchHas(q,t.title)).map(t=>({title:t.title,sub:`${targetName(t)} · ${fRel(t.due)}`,open:`data-act="open-task" data-id="${esc(t.id)}"`}))});
 ON.change['task-dept']=t=>{S.ui.taskDept=t.value;render()};
 A['task-take']=el=>taskTake(el.dataset.id);

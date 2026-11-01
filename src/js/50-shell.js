@@ -210,6 +210,30 @@ function renderDrawer(){
   root.dataset.k=k;
 }
 
+// ——— ссылки уведомлений на объекты ———
+// Реестр: REFS.<вид> = {label, exists, see, open} — раздел регистрирует свой в своём файле, как DRAWERS. Виды — Notify.REF_KINDS.
+//   label — как назвать объект по-русски («сделка»); exists(id) — запись ещё есть в данных; see(id) — человеку её можно открыть
+//   (то же правило, что у карточки: DRAWERS вернёт не null); open(id) — то же действие, которым карточка открывается из раздела.
+const REFS={};
+// Короткая регистрация для карточек из DRAWERS: act — действие раздела, key — имя поля с номером в его data-атрибутах.
+const regRef=(t,label,exists,act,key='id')=>{REFS[t]={label,exists,see:id=>!!DRAWERS[t](id),open:id=>A[act]({dataset:{[key]:id}})}};
+// Что случится, если нажать на ссылку ref: {state: 'none' | 'ok' | 'gone' | 'denied', text} — text для сообщения, когда не 'ok'.
+function refState(ref){
+  const r=ref&&Object.hasOwn(REFS,ref.t)?REFS[ref.t]:null;
+  if(!r) return {state:'none',text:''};
+  // номер в сообщении не называем: человек, которому сделку не видно, номера знать не должен
+  if(!r.exists(ref.id)) return {state:'gone',text:`Запись удалена (${r.label}).`};
+  if(!r.see(ref.id)) return {state:'denied',text:`Нет доступа (${r.label}).`};
+  return {state:'ok',text:''};
+}
+// Открыть объект по ссылке. Нельзя — короткое сообщение, не ошибка. → state из refState
+function openRef(ref){
+  const st=refState(ref);
+  if(st.state==='ok') REFS[ref.t].open(ref.id);
+  else if(st.state!=='none') toast(st.text,'warn');
+  return st.state;
+}
+
 // ——— всплывающие подсказки ———
 function toast(msg,kind){
   const el=document.createElement('div');el.className='toast';
@@ -259,7 +283,7 @@ function setTaskStatus(id,stageId){
   const t=S.tasks.find(x=>x.id===id);if(!t||t.stageId===stageId) return;
   const stg=Pipes.stage(S,t.boardId,stageId);if(!stg) return;
   const m=me();t.stageId=stageId;
-  Notify.push(S,'task',m.id,`Задача «${t.title}» — теперь «${stg.name}». Отметка: ${m.name}.`,new Date(),[t.from,...targetPeople(t.to)]);
+  Notify.push(S,'task',m.id,`Задача «${t.title}» — теперь «${stg.name}». Отметка: ${m.name}.`,new Date(),[t.from,...targetPeople(t.to)],{t:'task',id:t.id});
   render();toast(`Статус «${stg.name}». Уведомление ушло тому, кто поставил задачу.`);
 }
 
@@ -410,6 +434,13 @@ const A={
     pop.innerHTML=`<div class="pop-h"><b>Уведомления · ${esc(m.name)}</b><span class="muted sm">${un.size?'новых: '+un.size:'новых нет'}</span></div><ul class="pop-l notes">${list.map(n=>noteRow(n,un.has(n.id))).join('')||'<li class="empty">Пока пусто</li>'}</ul><div class="pop-f"><button class="btn sm ghost" data-act="go" data-view="notifications">Все уведомления ${ic('arrow')}</button></div>`;
     pop.hidden=false;list.forEach(n=>Notify.markRead(S,S.me,n.id));updBell();renderSide();save();
   },
+  // нажатие на уведомление: прочитано (всегда, даже если объект открыть нельзя) и открыта карточка объекта (openRef)
+  'note-open':el=>{
+    const n=S.notes.find(x=>x.id===el.dataset.id);if(!n) return;
+    Notify.markRead(S,S.me,n.id);
+    if(n.ref) openRef(n.ref);
+    render();
+  },
   'open-product':el=>openDrawer('product',el.dataset.pid),
   'open-deal':el=>openDrawer('deal',el.dataset.id),
   'open-task':el=>openDrawer('task',el.dataset.id),
@@ -472,7 +503,7 @@ const FORMS={
     const [tt,id]=byId('t-to').value.split(':'),due=byId('t-due').value,m=me(),now=new Date(),board=curBoard();
     const t={id:Store.freeId(S.tasks,'t'),title,desc:byId('t-desc').value.trim(),to:{t:tt,id},from:m.id,due:due?fromIso(due,18):day(2,18),boardId:board.id,stageId:startStage(board.id).id,prio:byId('t-prio').value,deal:byId('t-deal')?.value||'',at:now};
     S.tasks.push(t);
-    Notify.push(S,'task',m.id,`Новая задача: «${title}», срок ${fD(t.due)}.${t.deal?' Сделка '+t.deal+'.':''} От: ${m.name}.`,now,targetPeople(t.to));
+    Notify.push(S,'task',m.id,`Новая задача: «${title}», срок ${fD(t.due)}.${t.deal?' Сделка '+t.deal+'.':''} От: ${m.name}.`,now,targetPeople(t.to),{t:'task',id:t.id});
     closeModal();render();toast(`Задача поставлена. ${targetName(t)} — уведомление отправлено.`);
   },
   ship:f=>shipCreate(f),
@@ -481,8 +512,9 @@ const FORMS={
     if(!name) return showErr('np-err','Нужно наименование.');
     if(S.products.some(p=>Catalog.norm(p.name)===Catalog.norm(name))) return showErr('np-err',`Товар «${name}» уже есть в номенклатуре.`);
     const price=pr&&pr.value!==''?Math.max(0,Number(pr.value)):null;
-    S.products.push({id:Store.freeId(S.products,'u'),name,brand:null,cat:byId('np-cat').value,unit:byId('np-unit').value,price,avail:null,url:null,src:'user',inCatalog:false});
-    Notify.push(S,'arrive',m.id,`В номенклатуру добавлен товар: ${name}.`,new Date());
+    const pid=Store.freeId(S.products,'u');
+    S.products.push({id:pid,name,brand:null,cat:byId('np-cat').value,unit:byId('np-unit').value,price,avail:null,url:null,src:'user',inCatalog:false});
+    Notify.push(S,'arrive',m.id,`В номенклатуру добавлен товар: ${name}.`,new Date(),[],{t:'product',id:pid});
     closeModal();S.ui.cat='Все';S.ui.sq='';render();toast('Товар добавлен. Остатка нет — он появится после первой приёмки.');
   },
   msg:f=>{

@@ -283,7 +283,7 @@ test('демо: открытые дела просрочены, на сегод�
   assert.equal(back.acts[0].due.getTime(), S.acts[0].due.getTime(), 'срок не вернулся датой');
 });
 
-test('бейджи меню: «Сделки» и «Лиды» показывают мои дела на сегодня и просроченные из Acts.counts', () => {
+test('бейджи меню: «Сделки» — мои дела на сегодня и просроченные из Acts.counts; «Лиды» — только необработанные лиды', () => {
   const app = load(), { S, Acts, NAV } = app;
   // человек, у которого по сделкам есть и дела на сегодня, и просроченные, а по лидам — хоть что-то: в бейдж должны попасть оба числа
   const sum = (id, t) => { const c = Acts.counts(S, id, new Date(), t); return c.today + c.overdue; };
@@ -298,8 +298,9 @@ test('бейджи меню: «Сделки» и «Лиды» показываю
   const shown = side.match(/data-view="deals"><svg.*?<\/svg><span>Сделки<\/span><span class="cnt hot">(\d+)</);
   assert.ok(shown, 'на пункте «Сделки» нет числа');
   assert.equal(Number(shown[1]), want);
-  // «Лиды»: новые лиды и мои дела по лидам
-  assert.equal(NAV.find(n => n.id === 'leads').badge(), app.Leads.fresh(S, p.id).length + sum(p.id, 'lead'));
+  // «Лиды»: только необработанные лиды (Leads.fresh); дела по лидам в число не входят (решение директора)
+  assert.ok(sum(p.id, 'lead') > 0, 'у человека нет дел по лидам — проверка пустая');
+  assert.equal(NAV.find(n => n.id === 'leads').badge(), app.Leads.fresh(S, p.id).length);
 });
 
 test('render: при каждой перерисовке дела, которым пора, напоминают ответственному один раз', () => {

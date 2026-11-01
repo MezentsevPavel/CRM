@@ -423,3 +423,4 @@ NAV.push({id:'dispatch',label:'Отправки',icon:'truck',group:'Товар'
 VIEWS.dispatch=vDispatch;
 SEARCH.push({kind:'dispatch',label:'Отправка',order:50,find:q=>Dispatch.query(S,{q}).map(d=>({title:`${d.number} · ${d.to.name}`,sub:`${dspStageName(d)} · ${dspWhen(d)}`,open:`data-act="open-dispatch" data-id="${esc(d.id)}"`}))});
 DRAWERS.dispatch=id=>{const d=Dispatch.byId(S,id);return d?dDispatch(d):null};
+regRef('dispatch','отправка',id=>!!Dispatch.byId(S,id),'open-dispatch');

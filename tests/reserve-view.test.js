@@ -196,6 +196,43 @@ test('превью приёмки у директора и у менеджера
   assert.ok(!b2b.includes('Иванов') && !b2b.includes('Смирнова') && count(b2b, HIDDEN) === 2);
 });
 
+// ——— 4а. Экран после приёмки ———
+// «Кому что ушло» и «Сообщения клиентам»: клиента и номер сделки называет только тот, кому сделка видна; количество видно всем.
+const received = (who = 'p5') => {
+  const app = load(), S = app.S;
+  S.rules.find(r => r.id === 'arrive').on = true;       // авто-сообщения клиентам включены
+  app.setMe(who);
+  app.initRcv('П-1044');
+  S.rcv.photos.push('data:image/jpeg;base64,AAAA');
+  const done = app.receiveShip(who, NOW);
+  assert.equal(done.ok, true, done.reason);
+  return app;
+};
+test('экран после приёмки у кладовщика: ни клиентов, ни номеров сделок, но что и сколько ушло — видно', () => {
+  const app = received('p5');
+  const html = app.rcvAfterHtml();
+  for (const t of ['Смирнова', 'Иванов', 'Д-318', 'Д-311', 'Менеджер: ', 'здравствуйте']) assert.ok(!html.includes(t), `экран после приёмки называет «${t}»`);
+  assert.ok(html.includes('Кому что ушло') && html.includes('Сообщения клиентам'), 'блоков нет');
+  assert.ok(count(html, HIDDEN) >= 4, `«сделка скрыта» должна стоять у каждой ожидавшей сделки и в блоке сообщений: ${count(html, HIDDEN)}`);
+  // количество и товар остались: в «Уведомите клиента» назван товар и число
+  const asks = (html.match(/Уведомите клиента \(сделка скрыта\) — товар на складе: [^<]*/g) || []);
+  assert.equal(asks.length, 2, 'не по одной строке «Уведомите клиента» на ожидавшую сделку');
+  assert.ok(asks.every(t => /\d/.test(t)), 'в строке нет количества');
+});
+
+test('экран после приёмки у директора: клиенты, сделки и тексты сообщений на месте; у менеджера B2B (сделки B2C ему не видны) — как у кладовщика', () => {
+  const dir = received('p5');          // приняла кладовщик, смотрит директор
+  dir.setMe('p1');
+  const html = dir.rcvAfterHtml();
+  assert.ok(html.includes('Иванов Сергей') && html.includes('Д-311') && html.includes('Смирнова Елена') && html.includes('Д-318'), 'директор не видит клиентов');
+  assert.ok(html.includes('Уведомите клиента: ') && html.includes('bub out') && !html.includes(HIDDEN));
+  dir.setMe('p2');                     // менеджер B2C: сделки Д-311 и Д-318 его типа
+  assert.ok(dir.rcvAfterHtml().includes('Иванов Сергей'));
+  dir.setMe('p3');                     // менеджер B2B: сделки B2C не видит
+  const b2b = dir.rcvAfterHtml();
+  assert.ok(!b2b.includes('Иванов') && !b2b.includes('Смирнова') && !b2b.includes('Д-311') && b2b.includes(HIDDEN));
+});
+
 // ——— 5. Текст уведомления о резерве ———
 test('уведомление о резерве: склад получает текст без сделки и клиента, директор и менеджер сделки — с ними', () => {
   const app = load(), S = app.S;

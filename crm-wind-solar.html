@@ -254,6 +254,10 @@ button.chip:disabled{opacity:.5;cursor:not-allowed}
 .note{display:grid;grid-template-columns:32px minmax(0,1fr);gap:11px;padding:11px 16px;border-top:1px solid var(--line)}
 .notes>.note:first-child{border-top:0}
 .note.unread{background:var(--surface-2)}
+/* уведомление со ссылкой на объект: нажатие открывает его карточку */
+.note.click{cursor:pointer}
+.note.click:hover{background:var(--surface-2)}
+.note.click:focus-visible{outline:2px solid var(--primary);outline-offset:-2px}
 .nic{display:grid;place-items:center;width:32px;height:32px;border-radius:9px}
 .nic .ic{width:17px;height:17px}
 .nic.info{background:var(--info-soft);color:var(--info)}.nic.ok{background:var(--ok-soft);color:var(--ok)}.nic.pri{background:var(--primary-soft);color:var(--primary)}
@@ -1851,18 +1855,19 @@ SEEDS.push(st=>{
 // От старых к новым: push кладёт новое в начало. Вчерашнее и раньше — уже прочитано всеми адресатами.
 SEEDS.push(st=>{
   st.notes=[];
-  const N=(kind,by,at,text,extra)=>{const n=Notify.push(st,kind,by,text,at,extra);if(dd(at)<0) n.read=n.to.slice()};
+  // ref — объект, который открывает уведомление: Notify.push требует его у каждого вызова
+  const N=(kind,by,at,text,extra,ref)=>{const n=Notify.push(st,kind,by,text,at,extra,ref);if(dd(at)<0) n.read=n.to.slice()};
   const dept=id=>st.people.filter(p=>p.dept===id).map(p=>p.id);
-  N('arrive','p5',day(-2,15,30),'П-1038 принята на склад: крепёж на скатную кровлю, 24 компл. Фото: 3.');
-  N('msg',null,day(-2,15,32),'Авто-сообщение в MAX: Волкова Мария (Д-305) — крепёж пришёл на склад.',['p2']);
-  N('reserve','p2',day(-1,10,5),`Резерв: солнечная панель 550 Вт — 22 шт со склада для Д-311 (Иванов Сергей) до ${fD(day(9))}.`);
-  N('task','p3',day(-1,11,20),`Новая задача: «Подготовить КП на СЭС 30 кВт» (Д-320), срок ${fD(day(2))}. От: Максим Л.`,['p4']);
-  N('warn','p6',day(-1,12,0),'Поставщик-пример 7 сократил П-1042: ветрогенераторов 2 шт вместо 3. Под резервы не хватает 1 шт.');
-  N('task','p2',day(-1,16,0),'Новая задача отделу «Инженерный»: согласовать с клиентом дату пуска станции (Д-305). От: Анна С.',dept('eng'));
-  N('warn',null,day(-1,18,5),'П-1042 задерживается: груз стоит на перегоне Чита → Иркутск. Ветрогенераторы ждут сделки Д-305 и Д-314.');
-  N('ship','p6',day(0,8,15),'П-1044 прибыла в Иркутск, на терминал транспортной компании: кабель, разъёмы MC4, контроллеры, щиты DC. Ждёт приёмки, на склад — сегодня.');
-  N('ship','p6',day(0,9,40),`П-1041 (инверторы, АКБ) прошла Читу и идёт в Иркутск. На складе ожидается ${fD(day(3))}.`);
-  N('ship','p6',day(0,11,0),'Отгрузка О-207 выехала на объект Д-305 (Волкова Мария). Привезём к 16:00.');
+  N('arrive','p5',day(-2,15,30),'П-1038 принята на склад: крепёж на скатную кровлю, 24 компл. Фото: 3.',[],{t:'ship',id:'П-1038'});
+  N('msg',null,day(-2,15,32),'Авто-сообщение в MAX: Волкова Мария (Д-305) — крепёж пришёл на склад.',['p2'],{t:'deal',id:'Д-305'});
+  N('reserve','p2',day(-1,10,5),`Резерв: солнечная панель 550 Вт — 22 шт со склада для Д-311 (Иванов Сергей) до ${fD(day(9))}.`,[],{t:'deal',id:'Д-311'});
+  N('task','p3',day(-1,11,20),`Новая задача: «Подготовить КП на СЭС 30 кВт» (Д-320), срок ${fD(day(2))}. От: Максим Л.`,['p4'],{t:'task',id:'t1'});
+  N('warn','p6',day(-1,12,0),'Поставщик-пример 7 сократил П-1042: ветрогенераторов 2 шт вместо 3. Под резервы не хватает 1 шт.',[],{t:'ship',id:'П-1042'});
+  N('task','p2',day(-1,16,0),'Новая задача отделу «Инженерный»: согласовать с клиентом дату пуска станции (Д-305). От: Анна С.',dept('eng'),{t:'task',id:'t6'});
+  N('warn',null,day(-1,18,5),'П-1042 задерживается: груз стоит на перегоне Чита → Иркутск. Ветрогенераторы ждут сделки Д-305 и Д-314.',[],{t:'ship',id:'П-1042'});
+  N('ship','p6',day(0,8,15),'П-1044 прибыла в Иркутск, на терминал транспортной компании: кабель, разъёмы MC4, контроллеры, щиты DC. Ждёт приёмки, на склад — сегодня.',[],{t:'ship',id:'П-1044'});
+  N('ship','p6',day(0,9,40),`П-1041 (инверторы, АКБ) прошла Читу и идёт в Иркутск. На складе ожидается ${fD(day(3))}.`,[],{t:'ship',id:'П-1041'});
+  N('ship','p6',day(0,11,0),'Отгрузка О-207 выехала на объект Д-305 (Волкова Мария). Привезём к 16:00.',[],{t:'ship',id:'О-207'});
 });
 
 const defaultUi=()=>({taskF:'all',taskDept:'all',cat:'Все',sq:'',deficit:false,logTab:'in',noteK:'all',noteScope:'all',tplCh:'telegram',drawer:null,modal:null,navOpen:false});
@@ -1937,7 +1942,9 @@ function noteRow(n,hl,showTo){
   const k=KIND[n.kind]||KIND.warn,by=n.by?person(n.by):null;
   const everyone=n.to.length>1&&n.to.length>=S.people.length;
   const to=showTo?`<div class="to">${everyone?'<span class="pill sm">все сотрудники</span>':n.to.map(id=>`<span class="pill sm">${esc(person(id)?.name||'нет данных: сотрудник')}</span>`).join('')}</div>`:'';
-  return `<li class="note ${hl?'unread':''}"><span class="nic ${k.c}">${ic(k.ic)}</span><div class="nt"><p>${esc(n.text)}</p><small>${by?esc(by.name):'Система'} · ${fWhen(n.at)}${hl?' · <b class="new-b">новое</b>':''}</small>${to}</div></li>`;
+  // есть ссылка на объект (n.ref) — строка нажимается: 'note-open' прочитает уведомление и откроет карточку (50-shell.js, REFS)
+  const open=n.ref?` data-act="note-open" data-id="${esc(n.id)}" tabindex="0" role="button" title="Открыть карточку"`:'';
+  return `<li class="note ${hl?'unread':''}${n.ref?' click':''}"${open}><span class="nic ${k.c}">${ic(k.ic)}</span><div class="nt"><p>${esc(n.text)}</p><small>${by?esc(by.name):'Система'} · ${fWhen(n.at)}${hl?' · <b class="new-b">новое</b>':''}</small>${to}</div></li>`;
 }
 
 // ——— шаблон сообщения клиенту ———
@@ -1972,7 +1979,8 @@ const Store = (() => {
   // 10 — отправки (таск 07): st.dispatches, права dispatch и sell, роль «Водитель», вид воронки dispatch.
   // 12 — звук уведомлений у каждого свой (таск 06): prefs.sound = {personId: {on, kind}} вместо одного {on, kind}.
   // 13 — ремонт F1: право dealsEdit, резервы только по строкам сделки, демо-перемещения не увозят товар, правило поставок sr3.
-  const REV = 13;
+  // 14 — уведомления со ссылкой на объект (ref: {t, id}); демо-уведомления проставлены заново; у проваленной сделки lostReleased.
+  const REV = 14;
   // Браузер даёт сайту около 5 млн символов на всё; берём с запасом.
   const LIMIT = 4500000;
   const NO_SPACE = 'не сохранено — мало места в браузере';
@@ -3046,7 +3054,7 @@ const Ships = (() => {
     if (source !== SRC.receipt) {
       const when = s.dir === 'out' ? 'Доставка' : 'На складе ожидается';
       const here = hasRoute(s) ? ` Сейчас: ${where_}.` : '';
-      note = Notify.push(st, 'ship', by || null, `${s.id}: ${brief(st, s)} — этап «${stage.name}».${here} ${when} ${s.eta ? fD(s.eta) : 'нет данных: дата'}.`, now);
+      note = Notify.push(st, 'ship', by || null, `${s.id}: ${brief(st, s)} — этап «${stage.name}».${here} ${when} ${s.eta ? fD(s.eta) : 'нет данных: дата'}.`, now, [], { t: 'ship', id: s.id });
     }
     return { ok: true, from: was, to: stage, note, text: entry.text };
   }
@@ -3403,7 +3411,7 @@ const Leads = (() => {
     st.leads.push(lead);
     if (!(opts && opts.silent)) {
       const who = lead.managerId ? `менеджер — ${nameOf(st, lead.managerId)}` : 'нераспределённый';
-      Notify.push(st, 'lead', by, `Новый лид ${lead.id} (${SOURCE[source]}): ${title(lead)}${lead.type ? ', ' + TYPE[lead.type] : ''}, ${who}.`, now, lead.managerId ? [lead.managerId] : []);
+      Notify.push(st, 'lead', by, `Новый лид ${lead.id} (${SOURCE[source]}): ${title(lead)}${lead.type ? ', ' + TYPE[lead.type] : ''}, ${who}.`, now, lead.managerId ? [lead.managerId] : [], { t: 'lead', id: lead.id });
     }
     return lead;
   }
@@ -3450,14 +3458,21 @@ const Leads = (() => {
     if (!pipe || !(gone > waitMin(st) * MINUTE) || !isOpen(st, lead) || lead.stageId !== firstOf(pipe).id || touched(st, lead)) return null;
     return Math.floor(gone / MINUTE);
   }
-  // Разослать уведомление «leadWait» (РОП) о лидах, которые ждут, — по одному разу на лид (lead.waitNoted). → [уведомление…]
+  // Кому уходит «лид ждёт», кроме директора (он в Notify.RECIPIENTS.leadWait и получает всегда; выключить может сам в
+  // «Настройки → Уведомления»): есть РОП — он; РОП нет — менеджеры типа лида (B2B — менеджеры B2B, B2C — менеджеры B2C),
+  // а у лида без типа — менеджеры обоих типов. Единственное место, где это решается.
+  function waitRecipients(st, lead) {
+    const rops = (st.people || []).filter(p => p.role === 'rop').map(p => p.id);
+    return rops.length ? rops : managers(st, lead.type).map(p => p.id);
+  }
+  // Разослать уведомление «leadWait» (директору и waitRecipients) о лидах, которые ждут, — по одному разу на лид (lead.waitNoted). → [уведомление…]
   function notifyWaiting(st, now) {
     const out = [];
     for (const l of st.leads || []) {
       const min = l.waitNoted ? null : waiting(st, l, now);
       if (min === null) continue;
       l.waitNoted = now;
-      out.push(Notify.push(st, 'leadWait', null, `Лид ${l.id} ждёт ${waitText(min)}: ${title(l)} — с ним никто не работал. ${l.managerId ? 'Менеджер — ' + nameOf(st, l.managerId) : 'Менеджера нет, лид нераспределённый.'}`, now));
+      out.push(Notify.push(st, 'leadWait', null, `Лид ${l.id} ждёт ${waitText(min)}: ${title(l)} — с ним никто не работал. ${l.managerId ? 'Менеджер — ' + nameOf(st, l.managerId) : 'Менеджера нет, лид нераспределённый.'}`, now, waitRecipients(st, l), { t: 'lead', id: l.id }));
     }
     return out;
   }
@@ -3584,7 +3599,7 @@ const Leads = (() => {
     } else return null;
     log(lead, now, by, text);
     if (lead.managerId) {
-      Notify.push(st, 'lead', by, `Вам передан лид ${lead.id} (${SOURCE[lead.source]}): ${title(lead)}.`, now, [lead.managerId]);
+      Notify.push(st, 'lead', by, `Вам передан лид ${lead.id} (${SOURCE[lead.source]}): ${title(lead)}.`, now, [lead.managerId], { t: 'lead', id: lead.id });
     }
     return lead;
   }
@@ -3651,7 +3666,7 @@ const Leads = (() => {
     return all.filter(d => d.managerId === personId || (!!scope && d.type === scope));
   }
 
-  return { SOURCE, SOURCES, TYPE, STAGE, nextId, firstOf, title, managers, classify, route, pick, openCount, create, add, waitMin, setWaitMin, waitText, waiting, notifyWaiting, canTake, take, contacted, close, move, canWork, can, fresh, allows, setSource, canTransfer, transfer, toDeal, visible, dealsVisible };
+  return { SOURCE, SOURCES, TYPE, STAGE, nextId, firstOf, title, managers, classify, route, pick, openCount, create, add, waitMin, setWaitMin, waitText, waiting, waitRecipients, notifyWaiting, canTake, take, contacted, close, move, canWork, can, fresh, allows, setSource, canTransfer, transfer, toDeal, visible, dealsVisible };
 })();
 
 // Этапы воронки лидов, на которые опирается логика по id: Pipes.removeStage их не удаляет, их можно только переименовать.
@@ -3830,7 +3845,7 @@ const Mail = (() => {
     const viewers = (st.people || []).filter(p => boxesFor(st, p.id).some(b => b.id === box.id)).map(p => p.id);
     const sup = m.suppliers.find(s => s.id === l.folder);
     const where = sup ? `папка «${sup.name}»` : box.kind === 'purchase' ? 'папка «Разобрать»' : 'входящие';
-    Notify.push(st, NOTE_KIND, null, `Новое письмо в ящике «${box.title}» (${where}): ${l.subject} — от ${l.fromName || l.from}.`, now, viewers);
+    Notify.push(st, NOTE_KIND, null, `Новое письмо в ящике «${box.title}» (${where}): ${l.subject} — от ${l.fromName || l.from}.`, now, viewers, { t: 'mail', id: l.id });
     return l;
   }
 
@@ -3957,7 +3972,8 @@ const Notify = (() => {
     act: [],                                                   // напоминание о деле — ответственный (extraPersons)
     dispatch: ['logist', 'warehouse'],                         // новая заявка на отправку — логист и кладовщик
     dispatchStep: [],                                          // этап и водитель заявки — автор или водитель (extraPersons), исполнителям не рассылаем
-    leadWait: ['rop'],                                         // новый лид долго без действий — РОП
+    leadWait: ['director'],                                    // новый лид долго без действий — директору всегда, плюс РОП, а если РОП нет —
+                                                               // менеджеры типа лида (Leads.waitRecipients через extraPersons)
   };
 
   const wants = (st, personId, kind) => {
@@ -4007,28 +4023,39 @@ const Notify = (() => {
     return [...new Set(ids)].filter(id => known.has(id) && wants(st, id, kind));
   }
 
+  // На какой объект ссылается уведомление: ref = {t, id}. Виды t — REF_KINDS; в разделе у каждого вида своя карточка
+  // (реестр REFS в 50-shell.js). Нет ссылки — null (так бывает только у уведомлений, созданных вне кода страницы).
+  // Неизвестный вид или пустой номер — ошибка: опечатка не должна тихо превращаться в уведомление, которое ничего не открывает.
+  const REF_KINDS = ['task', 'deal', 'lead', 'client', 'ship', 'dispatch', 'mail', 'product'];
+  function cleanRef(ref) {
+    if (ref === undefined || ref === null) return null;
+    if (!REF_KINDS.includes(ref.t) || ref.id === undefined || ref.id === null || String(ref.id) === '') throw new Error(`Неизвестная ссылка уведомления: ${JSON.stringify(ref)}`);
+    return { t: ref.t, id: String(ref.id) };
+  }
+
   // Новое уведомление адресатам to — в начало списка. Автор, если он среди адресатов, своё уже прочитал.
-  function add(st, kind, by, text, now, to) {
+  function add(st, kind, by, text, now, to, ref) {
     st.notes = st.notes || [];
-    const note = { id: Store.freeId(st.notes, 'n'), kind, by: by || null, at: now, text, to, read: by && to.includes(by) ? [by] : [] };
+    const note = { id: Store.freeId(st.notes, 'n'), kind, by: by || null, at: now, text, to, read: by && to.includes(by) ? [by] : [], ref: cleanRef(ref) };
     st.notes.unshift(note);
     return note;
   }
-  function push(st, kind, by, text, now, extraPersons) {
-    return add(st, kind, by, text, now, recipients(st, kind, extraPersons));
+  // Новое уведомление вида kind: кому — по карте RECIPIENTS плюс extraPersons; ref — объект, который оно открывает по нажатию.
+  function push(st, kind, by, text, now, extraPersons, ref) {
+    return add(st, kind, by, text, now, recipients(st, kind, extraPersons), ref);
   }
 
   // Уведомление, текст которого зависит от читателя: textFor(personId) → текст. Адресаты — те же, что у push; кому выходит
   // одинаковый текст, получают одно уведомление, так что разных текстов — столько уведомлений. Первым в списке — то, что
   // получает первый адресат. Возвращает уведомления в том же порядке.
-  function pushFor(st, kind, by, textFor, now, extraPersons) {
+  function pushFor(st, kind, by, textFor, now, extraPersons, ref) {
     const groups = new Map();
     for (const id of recipients(st, kind, extraPersons)) {
       const text = textFor(id);
       if (!groups.has(text)) groups.set(text, []);
       groups.get(text).push(id);
     }
-    return [...groups].reverse().map(([text, to]) => add(st, kind, by, text, now, to)).reverse();
+    return [...groups].reverse().map(([text, to]) => add(st, kind, by, text, now, to, ref)).reverse();
   }
 
   // Непрочитанные этим человеком.
@@ -4058,7 +4085,7 @@ const Notify = (() => {
     return (after || []).some(id => !had.has(id)) ? pref.kind : null;
   }
 
-  return { RECIPIENTS, SOUNDS, wants, setWanted, soundPref, setSound, soundFor, recipients, push, pushFor, unread, unreadIds, markRead };
+  return { RECIPIENTS, REF_KINDS, SOUNDS, wants, setWanted, soundPref, setSound, soundFor, recipients, push, pushFor, unread, unreadIds, markRead };
 })();
 
 // Ядро: каталог товаров и склейка снимка остатков с каталогом. Чистая логика, без DOM.
@@ -4515,7 +4542,7 @@ const Dispatch = (() => {
     st.dispatches.push(d);
     const what = `${PURPOSE[d.purpose]}, кому: ${d.to.name}, на ${fD(d.when.date)}, ${d.items.length} ${pl(d.items.length, 'позиция', 'позиции', 'позиций')}`;
     Feed.add(st, ref(d), { kind: 'create', text: `Заявка создана: ${what}.`, by, at: now });
-    if (!(opts && opts.silent)) Notify.push(st, 'dispatch', by, `Новая заявка на отправку ${d.number}: ${what}. Создал: ${personName(st, by)}.`, now);
+    if (!(opts && opts.silent)) Notify.push(st, 'dispatch', by, `Новая заявка на отправку ${d.number}: ${what}. Создал: ${personName(st, by)}.`, now, [], { t: 'dispatch', id: d.id });
     return { ok: true, id: d.id, missing: [], reason: '' };
   }
 
@@ -4584,7 +4611,7 @@ const Dispatch = (() => {
       // автору — каждая смена этапа его заявки, кроме тех, что он сделал сам. Вид STEP_KIND без постоянных адресатов
       // (Notify.RECIPIENTS): логист и кладовщик новую заявку получают, а ход каждой — нет. Некому слать — записи нет.
       const extra = d.by && d.by !== by ? [d.by] : [];
-      if (extra.length) Notify.push(st, STEP_KIND, by, `${d.number} (${d.to.name}): ${personName(st, by)} перевёл заявку на этап «${stageName(st, d, stageId)}».${g.note ? ' ' + g.note : ''}`, now, extra);
+      if (extra.length) Notify.push(st, STEP_KIND, by, `${d.number} (${d.to.name}): ${personName(st, by)} перевёл заявку на этап «${stageName(st, d, stageId)}».${g.note ? ' ' + g.note : ''}`, now, extra, { t: 'dispatch', id: d.id });
     }
     return { ok: true, from, to: stageId, note: g.note || '' };
   }
@@ -4601,7 +4628,7 @@ const Dispatch = (() => {
     if (to) d.driverId = to; else delete d.driverId;
     Feed.add(st, ref(d), { kind: 'field', text: to ? `Водитель: ${personName(st, to)}.` : 'Водитель снят.', by, at: now });
     if (to && !(opts && opts.silent)) {
-      Notify.push(st, STEP_KIND, by, `Вам назначена отправка ${d.number}: ${d.to.name}, ${d.address}, на ${fD(d.when.date)}.`, now, [to]);
+      Notify.push(st, STEP_KIND, by, `Вам назначена отправка ${d.number}: ${d.to.name}, ${d.address}, на ${fD(d.when.date)}.`, now, [to], { t: 'dispatch', id: d.id });
     }
     return { ok: true, reason: '' };
   }
@@ -5502,22 +5529,31 @@ const Deals = (() => {
     if (err) return err;
     if (lostOf(d)) return fail('Сделка уже провалена.');
     if (state(st, d) === 'won') return fail('Сделка успешно закрыта — провалить её нельзя, сначала верните на другой этап.');
+    // Решение директора: у проваленной сделки резервы снимаются, товар возвращается в свободный остаток. Тем же путём,
+    // что и ручное снятие (drop), но право reserve не нужно: провалить сделку может и тот, у кого его нет.
+    const held = reservesOf(st, d);
     d.lostReason = why;
     d.lostAt = now;
-    log(st, d, 'lose', `Провалена: ${why}`, by, now, { reason: why });
-    return { ok: true, reason: '' };
+    log(st, d, 'lose', `Провалена: ${why}`, by, now, { reason: why, released: held.length });
+    for (const r of held) drop(st, r, 'Сделка провалена.', by, now);
+    if (held.length) d.lostReleased = held.length;
+    return { ok: true, reason: '', released: held.length };
   }
+
+  // Что сказать при возврате в работу, если при провале резервы были сняты: вернуть их ядро не возвращает.
+  const RELEASED_NOTE = 'Резервы при провале были сняты, поставьте заново при необходимости.';
 
   // Вернуть проваленную сделку в работу (ошибка при отказе): причина снимается, этап прежний.
   function reopen(st, id, by, now) {
     const { d, err } = open(st, id, by);
     if (err) return err;
     if (!lostOf(d)) return fail('Сделка не провалена.');
-    const was = d.lostReason;
+    const was = d.lostReason, freed = d.lostReleased > 0;
     delete d.lostReason;
     delete d.lostAt;
-    log(st, d, 'stage', `Возвращена в работу (была провалена: ${was})`, by, now);
-    return { ok: true, reason: '' };
+    delete d.lostReleased;
+    log(st, d, 'stage', `Возвращена в работу (была провалена: ${was}).${freed ? ' ' + RELEASED_NOTE : ''}`, by, now);
+    return { ok: true, reason: '', released: freed };
   }
 
   // ——— строки товаров ———
@@ -5584,9 +5620,11 @@ const Deals = (() => {
   const managerOf = d => (d && d.managerId ? [d.managerId] : []);
   // Уведомление о резерве сделки d: адресаты те же (Notify.RECIPIENTS и менеджер сделки), но номер сделки и клиента читают
   // только те, кому сделка видна (Stock.dealRef); остальным (склад) уходит текст без них. textOf(withDeal) → текст.
-  const notifyReserve = (st, d, by, now, textOf) => Notify.pushFor(st, 'reserve', by, id => textOf(!!Stock.dealRef(st, d.id, id)), now, managerOf(d));
+  const notifyReserve = (st, d, by, now, textOf) => Notify.pushFor(st, 'reserve', by, id => textOf(!!Stock.dealRef(st, d.id, id)), now, managerOf(d), { t: 'deal', id: d.id });
   // Сколько товара сделки ещё можно зарезервировать: «в строках − уже в резерве». Единственный расчёт: ядро и экран зовут его.
   const left = (st, d, productId) => round2(lined(d, productId) - reserved(st, d, productId));
+  // Все резервы сделки (со склада и из поставки). Провал сделки снимает именно их; окно «Провалена» говорит, сколько их.
+  const reservesOf = (st, d) => (st.reserves || []).filter(r => r.dealId === d.id);
 
   // Один путь резерва под сделку — из строки сделки (reserveItem) и из карточки товара.
   // o: {productId, qty?, src? ('stock' | id поставки), entityId?, cityId?, until?}. Нужно право править сделку (canEdit) и право
@@ -5661,10 +5699,15 @@ const Deals = (() => {
     if (!Perms.can(st, by, 'reserve')) return fail('У вашей роли нет права снимать резервы.');
     const r = (st.reserves || []).find(x => x.id === reserveId && x.dealId === d.id);
     if (!r) return fail('Такого резерва в сделке нет.');
-    noteRelease(st, r, r.qty, '', by, now);
-    const res = Stock.unreserve(st, reserveId, by, now);
+    const res = drop(st, r, '', by, now);
     if (!res.ok) return fail(res.reason);
     return { ok: true, reason: '' };
+  }
+  // Один путь снятия резерва целиком: запись «Снят резерв» в ленту, уведомление, возврат в свободный остаток.
+  // Зовут ручное снятие (unreserve) и провал сделки (lose).
+  function drop(st, r, why, by, now) {
+    noteRelease(st, r, r.qty, why, by, now);
+    return Stock.unreserve(st, r.id, by, now);
   }
 
   // ——— выборка и колонки канбана ———
@@ -5695,8 +5738,8 @@ const Deals = (() => {
   }
 
   return {
-    defaultReasons, reasons, lineSum, total, sumOf, noPrice, state, canEdit, itemName, reserved, lined, left, byId,
-    create, update, move, win, lose, reopen, addItem, setItem, removeItem, reserve, reserveItem, keepTrail, noteRelease, unreserve, query, columns,
+    defaultReasons, reasons, lineSum, total, sumOf, noPrice, state, canEdit, itemName, reserved, lined, left, reservesOf, byId,
+    create, update, move, win, lose, reopen, RELEASED_NOTE, addItem, setItem, removeItem, reserve, reserveItem, keepTrail, noteRelease, unreserve, query, columns,
   };
 })();
 
@@ -5988,7 +6031,7 @@ const Acts = (() => {
   function notify(st, now) {
     return due(st, now).map(a => {
       a.remindedAt = now;
-      return Notify.push(st, 'act', null, `Пора: ${label(a)} — «${a.title}». ${refTitle(st, a.ref)}.`, now, [a.ownerId]);
+      return Notify.push(st, 'act', null, `Пора: ${label(a)} — «${a.title}». ${refTitle(st, a.ref)}.`, now, [a.ownerId], a.ref);
     });
   }
 
@@ -6248,6 +6291,30 @@ function renderDrawer(){
   root.dataset.k=k;
 }
 
+// ——— ссылки уведомлений на объекты ———
+// Реестр: REFS.<вид> = {label, exists, see, open} — раздел регистрирует свой в своём файле, как DRAWERS. Виды — Notify.REF_KINDS.
+//   label — как назвать объект по-русски («сделка»); exists(id) — запись ещё есть в данных; see(id) — человеку её можно открыть
+//   (то же правило, что у карточки: DRAWERS вернёт не null); open(id) — то же действие, которым карточка открывается из раздела.
+const REFS={};
+// Короткая регистрация для карточек из DRAWERS: act — действие раздела, key — имя поля с номером в его data-атрибутах.
+const regRef=(t,label,exists,act,key='id')=>{REFS[t]={label,exists,see:id=>!!DRAWERS[t](id),open:id=>A[act]({dataset:{[key]:id}})}};
+// Что случится, если нажать на ссылку ref: {state: 'none' | 'ok' | 'gone' | 'denied', text} — text для сообщения, когда не 'ok'.
+function refState(ref){
+  const r=ref&&Object.hasOwn(REFS,ref.t)?REFS[ref.t]:null;
+  if(!r) return {state:'none',text:''};
+  // номер в сообщении не называем: человек, которому сделку не видно, номера знать не должен
+  if(!r.exists(ref.id)) return {state:'gone',text:`Запись удалена (${r.label}).`};
+  if(!r.see(ref.id)) return {state:'denied',text:`Нет доступа (${r.label}).`};
+  return {state:'ok',text:''};
+}
+// Открыть объект по ссылке. Нельзя — короткое сообщение, не ошибка. → state из refState
+function openRef(ref){
+  const st=refState(ref);
+  if(st.state==='ok') REFS[ref.t].open(ref.id);
+  else if(st.state!=='none') toast(st.text,'warn');
+  return st.state;
+}
+
 // ——— всплывающие подсказки ———
 function toast(msg,kind){
   const el=document.createElement('div');el.className='toast';
@@ -6297,7 +6364,7 @@ function setTaskStatus(id,stageId){
   const t=S.tasks.find(x=>x.id===id);if(!t||t.stageId===stageId) return;
   const stg=Pipes.stage(S,t.boardId,stageId);if(!stg) return;
   const m=me();t.stageId=stageId;
-  Notify.push(S,'task',m.id,`Задача «${t.title}» — теперь «${stg.name}». Отметка: ${m.name}.`,new Date(),[t.from,...targetPeople(t.to)]);
+  Notify.push(S,'task',m.id,`Задача «${t.title}» — теперь «${stg.name}». Отметка: ${m.name}.`,new Date(),[t.from,...targetPeople(t.to)],{t:'task',id:t.id});
   render();toast(`Статус «${stg.name}». Уведомление ушло тому, кто поставил задачу.`);
 }
 
@@ -6448,6 +6515,13 @@ const A={
     pop.innerHTML=`<div class="pop-h"><b>Уведомления · ${esc(m.name)}</b><span class="muted sm">${un.size?'новых: '+un.size:'новых нет'}</span></div><ul class="pop-l notes">${list.map(n=>noteRow(n,un.has(n.id))).join('')||'<li class="empty">Пока пусто</li>'}</ul><div class="pop-f"><button class="btn sm ghost" data-act="go" data-view="notifications">Все уведомления ${ic('arrow')}</button></div>`;
     pop.hidden=false;list.forEach(n=>Notify.markRead(S,S.me,n.id));updBell();renderSide();save();
   },
+  // нажатие на уведомление: прочитано (всегда, даже если объект открыть нельзя) и открыта карточка объекта (openRef)
+  'note-open':el=>{
+    const n=S.notes.find(x=>x.id===el.dataset.id);if(!n) return;
+    Notify.markRead(S,S.me,n.id);
+    if(n.ref) openRef(n.ref);
+    render();
+  },
   'open-product':el=>openDrawer('product',el.dataset.pid),
   'open-deal':el=>openDrawer('deal',el.dataset.id),
   'open-task':el=>openDrawer('task',el.dataset.id),
@@ -6510,7 +6584,7 @@ const FORMS={
     const [tt,id]=byId('t-to').value.split(':'),due=byId('t-due').value,m=me(),now=new Date(),board=curBoard();
     const t={id:Store.freeId(S.tasks,'t'),title,desc:byId('t-desc').value.trim(),to:{t:tt,id},from:m.id,due:due?fromIso(due,18):day(2,18),boardId:board.id,stageId:startStage(board.id).id,prio:byId('t-prio').value,deal:byId('t-deal')?.value||'',at:now};
     S.tasks.push(t);
-    Notify.push(S,'task',m.id,`Новая задача: «${title}», срок ${fD(t.due)}.${t.deal?' Сделка '+t.deal+'.':''} От: ${m.name}.`,now,targetPeople(t.to));
+    Notify.push(S,'task',m.id,`Новая задача: «${title}», срок ${fD(t.due)}.${t.deal?' Сделка '+t.deal+'.':''} От: ${m.name}.`,now,targetPeople(t.to),{t:'task',id:t.id});
     closeModal();render();toast(`Задача поставлена. ${targetName(t)} — уведомление отправлено.`);
   },
   ship:f=>shipCreate(f),
@@ -6519,8 +6593,9 @@ const FORMS={
     if(!name) return showErr('np-err','Нужно наименование.');
     if(S.products.some(p=>Catalog.norm(p.name)===Catalog.norm(name))) return showErr('np-err',`Товар «${name}» уже есть в номенклатуре.`);
     const price=pr&&pr.value!==''?Math.max(0,Number(pr.value)):null;
-    S.products.push({id:Store.freeId(S.products,'u'),name,brand:null,cat:byId('np-cat').value,unit:byId('np-unit').value,price,avail:null,url:null,src:'user',inCatalog:false});
-    Notify.push(S,'arrive',m.id,`В номенклатуру добавлен товар: ${name}.`,new Date());
+    const pid=Store.freeId(S.products,'u');
+    S.products.push({id:pid,name,brand:null,cat:byId('np-cat').value,unit:byId('np-unit').value,price,avail:null,url:null,src:'user',inCatalog:false});
+    Notify.push(S,'arrive',m.id,`В номенклатуру добавлен товар: ${name}.`,new Date(),[],{t:'product',id:pid});
     closeModal();S.ui.cat='Все';S.ui.sq='';render();toast('Товар добавлен. Остатка нет — он появится после первой приёмки.');
   },
   msg:f=>{
@@ -6813,13 +6888,14 @@ function taskTake(id){
   if(!t||!taskTakable(t)){toast('Эту задачу взять нельзя: она уже у кого-то или закрыта.','warn');return false}
   const dept=t.to.id,now=new Date();
   t.to={t:'p',id:m.id};t.took={dept,at:now};
-  Notify.push(S,'task',m.id,`${m.name} взял(а) задачу «${t.title}» отдела «${deptName(dept)}».`,now,[t.from,...S.people.filter(p=>p.dept===dept).map(p=>p.id)]);
+  Notify.push(S,'task',m.id,`${m.name} взял(а) задачу «${t.title}» отдела «${deptName(dept)}».`,now,[t.from,...S.people.filter(p=>p.dept===dept).map(p=>p.id)],{t:'task',id:t.id});
   render();toast(`Задача «${t.title}» теперь ваша. Автору и отделу ушло уведомление.`);
   return true;
 }
 
 // ——— регистрация в реестрах оболочки ———
 DRAWERS.task=id=>{const t=S.tasks.find(x=>x.id===id);return t&&taskVisible(t)?dTask(t):null};
+regRef('task','задача',id=>S.tasks.some(t=>t.id===id),'open-task');
 SEARCH.push({kind:'task',label:'Задача',order:70,find:q=>S.tasks.filter(t=>taskVisible(t)&&searchHas(q,t.title)).map(t=>({title:t.title,sub:`${targetName(t)} · ${fRel(t.due)}`,open:`data-act="open-task" data-id="${esc(t.id)}"`}))});
 ON.change['task-dept']=t=>{S.ui.taskDept=t.value;render()};
 A['task-take']=el=>taskTake(el.dataset.id);
@@ -7056,6 +7132,7 @@ MODALS.stockSell=o=>{
 // ——— регистрация в реестрах оболочки ———
 SEARCH.push({kind:'product',label:'Товар',order:10,find:q=>!can('stock')?[]:Catalog.query(S,{q}).slice(0,6).map(p=>{const k=stockOf(p.id);return {title:p.name,sub:k.known?`свободно ${qtyOf(k.free,p)}`:'остаток: нет данных',open:`data-act="open-product" data-pid="${esc(p.id)}"`}})});
 DRAWERS.product=id=>{const p=can('stock')?product(id):null;return p?dProduct(p):null};
+regRef('product','товар',id=>!!product(id),'open-product','pid');
 ON.input.sq=t=>{S.ui.sq=t.value;refreshStock()};
 ON.change.deficit=t=>{S.ui.deficit=t.checked;refreshStock()};
 ON.change.brand=t=>{S.ui.brand=t.value;refreshStock()};
@@ -7460,7 +7537,7 @@ function shipStageForm(f){
     if(moved) termNote();
   }else if(moved){
     s.eta=ne;termNote();
-    Notify.push(S,'ship',m.id,`${s.id}: срок прихода — ${fD(ne)} (было ${fD(old)}). Сейчас: ${shipWhere(s)}.`,now);
+    Notify.push(S,'ship',m.id,`${s.id}: срок прихода — ${fD(ne)} (было ${fD(old)}). Сейчас: ${shipWhere(s)}.`,now,[],{t:'ship',id:s.id});
   }
   if(note) s.history.push({at:now,by:m.id,text:'Комментарий: '+note,source:Ships.SRC.manual});
   closeModal();render();
@@ -7480,7 +7557,7 @@ function shipCreate(f){
   S.shipments.push(s);
   // сразу на нужный этап — тоже через ядро: оно расставит груз на маршруте, запишет историю и разошлёт уведомление
   if(wanted&&wanted.id!==start.id) Ships.setStage(S,id,wanted.id,m.id,now,Ships.SRC.manual);
-  else Notify.push(S,'ship',m.id,`Новая поставка ${id} из «${from}»: ${Ships.brief(S,s)}. Маршрут: ${Ships.routeText(route)}. На складе ожидается ${fD(eta)}.`,now);
+  else Notify.push(S,'ship',m.id,`Новая поставка ${id} из «${from}»: ${Ships.brief(S,s)}. Маршрут: ${Ships.routeText(route)}. На складе ожидается ${fD(eta)}.`,now,[],{t:'ship',id:id});
   closeModal();S.ui.logTab='in';render();toast(`Поставка ${id} создана. Менеджеры уже видят её в остатках как «едет к нам».`);
 }
 
@@ -7565,6 +7642,7 @@ function dShip(s){
 // ——— регистрация в реестрах оболочки ———
 SEARCH.push({kind:'ship',label:'Перевозка',order:60,find:q=>!(can('stock')||can('logistics'))?[]:S.shipments.filter(s=>searchHas(q,s.id,s.supplier,s.to,s.track)).map(s=>({title:`${s.id} · ${s.supplier}`,sub:`${stageName(s)} · ${fD(s.eta)}`,open:`data-act="open-ship" data-id="${esc(s.id)}"`}))});
 DRAWERS.ship=id=>{const s=(can('stock')||can('logistics'))?ship(id):null;return s?dShip(s):null};
+regRef('ship','поставка',id=>!!ship(id),'open-ship');
 MODALS.shipItems=id=>mShipItems(ship(id));
 
 Object.assign(A,{
@@ -7744,19 +7822,23 @@ function receiveShip(by,now){
   s.history.push({at:now,by,text:`Принято на склад: ${P.cell.entityName}, ${P.cell.cityName}. Фото: ${r.photos.length}.${r.note.trim()?' Комментарий: '+r.note.trim():''}`,source:Ships.SRC.receipt,auto:true});
   const fired=Ships.applyRules(S,'received',s.id,by,now);
   s.received={at:now,by,photos:r.photos.length,urls:r.photos.slice(),note:r.note.trim()};
-  const notes=S.notes.slice(0,S.notes.length-before),msgIds=[],taskIds=[];
-  notes.push(Notify.push(S,'arrive',by,`${s.id} принята на склад (${P.cell.entityName}, ${P.cell.cityName}): ${s.items.map(it=>`${low(product(it.productId).name)} ${qtyOf(it.got,product(it.productId))}`).join(', ')}. Фото: ${r.photos.length}.${s.received.note?' Комментарий: '+s.received.note:''}`,now));
-  if(P.issues.length||P.dmg.length) notes.push(Notify.push(S,'warn',by,`Приёмка ${s.id} с замечаниями. ${[P.issues.join('; '),P.dmg.length?'Повреждено: '+P.dmg.join(', '):''].filter(Boolean).join('. ')}. Фото в карточке поставки.`,now));
+  const notes=S.notes.slice(0,S.notes.length-before),msgIds=[],taskIds=[],asked=[];
+  notes.push(Notify.push(S,'arrive',by,`${s.id} принята на склад (${P.cell.entityName}, ${P.cell.cityName}): ${s.items.map(it=>`${low(product(it.productId).name)} ${qtyOf(it.got,product(it.productId))}`).join(', ')}. Фото: ${r.photos.length}.${s.received.note?' Комментарий: '+s.received.note:''}`,now,[],{t:'ship',id:s.id}));
+  if(P.issues.length||P.dmg.length) notes.push(Notify.push(S,'warn',by,`Приёмка ${s.id} с замечаниями. ${[P.issues.join('; '),P.dmg.length?'Повреждено: '+P.dmg.join(', '):''].filter(Boolean).join('. ')}. Фото в карточке поставки.`,now,[],{t:'ship',id:s.id}));
   P.waits.forEach(({d,items,how})=>{
     const mg=person(d.managerId);let tail;
     if(how==='call'){const board=taskBoard();const t={id:Store.freeId(S.tasks,'t'),title:`Позвонить клиенту: товар по ${d.id} на складе`,desc:items,to:{t:'p',id:d.managerId},from:by,due:day(0,18),boardId:board.id,stageId:startStage(board.id).id,prio:'high',deal:d.id,at:now};S.tasks.push(t);taskIds.push(t.id);tail='Менеджеру поставлена задача позвонить клиенту.'}
     else if(how==='auto'){const x={id:Store.freeId(S.msgs,'m'),at:now,deal:d.id,channel:d.channel,auto:true,sim:true,text:fillTpl(d,items,false)};S.msgs.push(x);msgIds.push(x.id);tail=`Клиенту ушло авто-сообщение в ${CH[d.channel]} (имитация, не отправлено).`}
     else tail='Авто-сообщения выключены — напишите клиенту.';
-    // менеджеру сделки — отдельно: уведомите клиента (R15)
-    notes.push(Notify.push(S,'msg',null,`Уведомите клиента: ${d.client} (${d.id}) — товар на складе: ${items}. ${tail} Менеджер: ${mg?.name||'нет данных'}.`,now,[d.managerId]));
+    // менеджеру сделки — отдельно: уведомите клиента (R15). Клиента, номер сделки и менеджера называем только тому, кому сделка
+    // видна (Stock.dealRef); остальные читают тот же текст со словами «сделка скрыта» — он же в asked для экрана после приёмки
+    const text=withDeal=>withDeal?`Уведомите клиента: ${d.client} (${d.id}) — товар на складе: ${items}. ${tail} Менеджер: ${mg?.name||'нет данных'}.`:`Уведомите клиента (${Stock.HIDDEN_DEAL}) — товар на складе: ${items}. ${tail}`;
+    const made=Notify.pushFor(S,'msg',null,id=>text(!!Stock.dealRef(S,d.id,id)),now,[d.managerId],{t:'deal',id:d.id});
+    notes.push(...made);
+    asked.push({dealId:d.id,noteIds:made.map(n=>n.id),hidden:text(false)});
   });
   const notified=new Set(notes.flatMap(n=>n.to).filter(id=>id!==by)).size;
-  r.done={ok:true,shipId:s.id,noteIds:notes.map(n=>n.id),msgIds,taskIds,stock,cell:{entityId:P.cell.entityId,cityId:P.cell.cityId,entityName:P.cell.entityName,cityName:P.cell.cityName},stage:P.final.name,fired,notified,issues:P.issues.length+P.dmg.length,by:who?.id||by};
+  r.done={ok:true,shipId:s.id,noteIds:notes.map(n=>n.id),msgIds,taskIds,asked,stock,cell:{entityId:P.cell.entityId,cityId:P.cell.cityId,entityName:P.cell.entityName,cityName:P.cell.cityName},stage:P.final.name,fired,notified,issues:P.issues.length+P.dmg.length,by:who?.id||by};
   return r.done;
 }
 function rcvConfirm(){
@@ -7769,10 +7851,18 @@ function rcvDoneHtml(rc=S.rcv){
   const r=rc.done,s=ship(r.shipId);
   return `<div class="done-box"><span class="done-ic">${ic('check')}</span><h3 class="m0">${s.id} на складе</h3><p class="m0 muted">Остатки обновлены (${esc(r.cell.entityName)}, ${esc(r.cell.cityName)}), поставка на этапе «${esc(r.stage)}», резервы под неё стали резервами со склада. Уведомили ${r.notified} ${pl(r.notified,'сотрудника','сотрудников','сотрудников')}.${r.msgIds.length?` Клиентам подготовлено сообщений: ${r.msgIds.length} — имитация, не отправлено.`:''}${r.taskIds&&r.taskIds.length?` Менеджерам поставлено задач позвонить клиенту: ${r.taskIds.length}.`:''}</p>${r.issues?'<p class="m0 warn-t">Расхождения и повреждения отправлены отдельным предупреждением.</p>':''}<div class="bar"><button class="btn pri" data-act="rcv-again">Принять другую поставку</button><button class="btn" data-act="go" data-view="notifications">Уведомления</button></div></div>`;
 }
+// Экран после приёмки. Клиентов и номера сделок называем только тому, кому сделка видна (Stock.dealRef, как в превью приёмки):
+// остальным (кладовщику) — «сделка скрыта» и количество; текст сообщения клиенту ему не показываем: в нём имя и номер сделки.
 function rcvAfterHtml(rc=S.rcv){
-  const r=rc.done,notes=S.notes.filter(n=>r.noteIds.includes(n.id)),msgs=S.msgs.filter(x=>r.msgIds.includes(x.id));
+  const r=rc.done,asked=r.asked||[],seen=id=>!!Stock.dealRef(S,id,S.me);
+  // уведомление «Уведомите клиента…» по сделке, которую человек не видит, читает в безымянном виде
+  const hiddenText=n=>{const a=asked.find(x=>x.noteIds.includes(n.id));return a&&!seen(a.dealId)?a.hidden:null};
+  const notes=S.notes.filter(n=>r.noteIds.includes(n.id)).map(n=>{const t=hiddenText(n);return t===null?n:Object.assign({},n,{text:t})});
+  const msgs=S.msgs.filter(x=>r.msgIds.includes(x.id));
   let h=`<section class="card"><div class="card-h"><h3>Кому что ушло</h3></div><ul class="notes">${notes.map(n=>noteRow(n,false,true)).join('')}</ul></section>`;
-  if(msgs.length) h+=`<section class="card"><div class="card-h"><h3>Сообщения клиентам</h3><span class="pill sun sm">имитация: не отправлены</span></div><div class="card-b stack-s">${msgs.map(x=>{const d=deal(x.deal);return `<div class="stack-s" style="gap:6px"><p class="sm m0"><b>${esc(d.client)}</b> · ${CH[x.channel]}</p><div class="chat"><div class="bub out">${esc(x.text)}<small>${fT(x.at)} · авто · имитация, не отправлено</small></div></div></div>`}).join('')}</div></section>`;
+  if(msgs.length) h+=`<section class="card"><div class="card-h"><h3>Сообщения клиентам</h3><span class="pill sun sm">имитация: не отправлены</span></div><div class="card-b stack-s">${msgs.map(x=>{
+    if(!seen(x.deal)) return `<div class="stack-s" style="gap:6px"><p class="sm m0"><b class="muted">${Stock.HIDDEN_DEAL}</b> · ${CH[x.channel]}</p><p class="sm m0 muted">Клиенту ушло авто-сообщение (${fT(x.at)}, имитация, не отправлено). Текст видит тот, кому сделка видна.</p></div>`;
+    const d=deal(x.deal);return `<div class="stack-s" style="gap:6px"><p class="sm m0"><b>${esc(d.client)}</b> · ${CH[x.channel]}</p><div class="chat"><div class="bub out">${esc(x.text)}<small>${fT(x.at)} · авто · имитация, не отправлено</small></div></div></div>`}).join('')}</div></section>`;
   return h;
 }
 function addPhotos(files){
@@ -8058,12 +8148,13 @@ MODALS.dealKp=id=>{
 
 // ——— окна «Провалена» и «Зарезервировать» ———
 MODALS.dealLose=id=>{
-  const d=Deals.byId(S,id),why=Deals.reasons(S);
+  const d=Deals.byId(S,id),why=Deals.reasons(S),held=d?Deals.reservesOf(S,d).length:0;
   return `<form data-form="deal-lose" data-id="${esc(id)}" novalidate>${mHead('Провалена: сделка '+esc(id))}<div class="modal-b">
     <p class="m0">${d?esc(d.client):''}</p>
     <div class="field"><label for="dl-reason">Причина отказа</label>${why.length?`<select id="dl-reason" class="inp">${why.map(r=>`<option value="${esc(r)}">${esc(r)}</option>`).join('')}</select>`:'<input id="dl-reason" class="inp" placeholder="Напишите причину" autocomplete="off">'}</div>
     <div class="field"><label for="dl-note">Комментарий (необязательно)</label><textarea id="dl-note" class="inp" rows="3" placeholder="Что именно сказал клиент"></textarea></div>
     <p class="hint">Сделка уйдёт из колонок в фильтр «Провалены», этап останется тем, где она сорвалась. Причина и комментарий запишутся в ленту; сделку можно вернуть в работу.</p>
+    ${held?`<p class="hint">Резервы сделки (${held}) будут сняты, товар вернётся в свободный остаток. При возврате в работу резервы придётся поставить заново.</p>`:''}
     <p class="err" id="dl-err" hidden></p></div>${mFoot('Провалена')}</form>`;
 };
 // Ключ строки в окне резерва: «Д-301:0»
@@ -8115,7 +8206,10 @@ A['deal-lose']=el=>{
   if(Deals.state(S,d)==='won'){toast('Сделка успешно закрыта — провалить её нельзя, сначала верните на другой этап.','warn');return}
   openModal('dealLose',d.id);
 };
-A['deal-reopen']=el=>dealRun(Deals.reopen(S,el.dataset.id,S.me,new Date()),`Сделка ${el.dataset.id} возвращена в работу. Запись в ленте есть.`);
+A['deal-reopen']=el=>{
+  const r=Deals.reopen(S,el.dataset.id,S.me,new Date());
+  dealRun(r,`Сделка ${el.dataset.id} возвращена в работу. Запись в ленте есть.${r.released?' '+Deals.RELEASED_NOTE:''}`);
+};
 A['deal-kp']=el=>{
   openModal('dealKp',el.dataset.id);
   // логотип — тот же, что в боковом меню (картинка в странице одна)
@@ -8245,7 +8339,7 @@ FORMS['deal-lose']=f=>{
   if(!r.ok) return showErr('dl-err',r.reason);
   if(note) Feed.comment(S,{t:'deal',id},note,S.me,now);
   closeModal();render();
-  toast(`Сделка ${id} провалена: ${why}. Причина записана в ленту.`);
+  toast(`Сделка ${id} провалена: ${why}. Причина записана в ленту.${r.released?` Снято резервов: ${r.released}, товар вернулся в свободный остаток.`:''}`);
 };
 FORMS['deal-reserve']=f=>{
   const id=f.dataset.id,i=+f.dataset.i,until=byId('dr-until').value;
@@ -8283,6 +8377,7 @@ VIEWS.deals=vDeals;
 Object.assign(NAV.find(n=>n.id==='deals'),{badge:()=>actsBadge('deal'),hot:true});
 SEARCH.push({kind:'deal',label:'Сделка',order:20,find:q=>!can('clients')?[]:Leads.dealsVisible(S,S.me).filter(d=>searchHas(q,d.client,d.id,d.object)).map(d=>({title:d.client,sub:`${d.id} · ${d.object}`,open:`data-act="open-deal" data-id="${esc(d.id)}"`}))});
 DRAWERS.deal=id=>{const d=Leads.dealsVisible(S,S.me).find(x=>x.id===id);return d?dealCard(d):null};
+regRef('deal','сделка',id=>!!deal(id),'open-deal');
 
 // Раздел «Сообщения клиентам»
 // Перенесено из прототипа v2. Сообщение называет сделку и клиента, поэтому журнал и пример шаблона — только по сделкам,
@@ -8740,10 +8835,11 @@ SIMS.push({id:'lead-site',label:'Имитация: пришёл лид с сай
 SIMS.push({id:'lead-bitrix',label:'Имитация: пришёл лид из Битрикса24',run:()=>leadSimResult('bitrix')});
 
 // ——— регистрация в реестрах оболочки ———
-NAV.push({id:'leads',label:'Лиды',icon:'funnel',group:'Продажи',order:5,hint:'Заявки, которые ещё не стали сделками. Возьмите лид, свяжитесь с человеком и сделайте из него сделку.',ok:()=>can('leads'),badge:()=>Leads.fresh(S,S.me).length+actsBadge('lead'),hot:true});
+NAV.push({id:'leads',label:'Лиды',icon:'funnel',group:'Продажи',order:5,hint:'Заявки, которые ещё не стали сделками. Возьмите лид, свяжитесь с человеком и сделайте из него сделку.',ok:()=>can('leads'),badge:()=>Leads.fresh(S,S.me).length,hot:true});
 VIEWS.leads=vLeads;
 SEARCH.push({kind:'lead',label:'Лид',order:30,find:q=>!can('leads')?[]:Leads.visible(S,S.me).filter(l=>searchHas(q,l.id,l.name,l.company,l.phone,l.email,l.inn,l.text)).map(l=>({title:Leads.title(l),sub:`${l.id} · ${stageName(l)}`,open:`data-act="open-lead" data-id="${esc(l.id)}"`}))});
 DRAWERS.lead=id=>{const l=Leads.visible(S,S.me).find(x=>x.id===id);return l?dLead(l):null};
+regRef('lead','лид',id=>S.leads.some(l=>l.id===id),'open-lead');
 
 // Раздел «Почта»: слева ящики и папки поставщиков со счётчиками непрочитанных, в середине список писем с поиском,
 // справа письмо. Это имитация: ответ только ложится в ветку письма с пометкой, наружу ничего не уходит.
@@ -8865,6 +8961,12 @@ A['mail-open']=el=>{
   l.read=true;                       // открытое письмо — прочитано
   Object.assign(mailU(),{letter:l.id,pane:'letter',reply:null});render();
 };
+// Ссылка уведомления «Новое письмо»: письмо видно тому, кто видит его ящик (Mail.boxesFor). Открывается там же, где из раздела:
+// ящик письма, все папки, письмо открыто и прочитано (mail-open).
+REFS.mail={label:'письмо',
+  exists:id=>mailData().letters.some(l=>l.id===id),
+  see:id=>{const l=mailData().letters.find(x=>x.id===id);return !!l&&can('mail')&&Mail.boxesFor(S,S.me).some(b=>b.id===l.boxId)},
+  open:id=>{const l=mailData().letters.find(x=>x.id===id);Object.assign(mailU(),{box:l.boxId,folder:'all',q:''});go('mail');A['mail-open']({dataset:{id}})}};
 A['mail-back']=()=>{const u=mailU();u.pane=u.pane==='letter'?'list':'nav';render()};
 A['mail-reply']=()=>{const sel=mailSel();if(!sel.letter) return;mailU().reply=sel.letter.id;render();setTimeout(()=>byId('mail-reply-text')?.focus(),0)};
 A['mail-reply-cancel']=()=>{mailU().reply=null;render()};
@@ -9105,7 +9207,7 @@ const NOTIFY_GROUPS=[
   ]},
   {title:'Продажи',kinds:[
     ['lead','Лиды','Пришёл новый лид или лид передали вам.'],
-    ['leadWait','Лид долго без действий','Новый лид ждёт дольше заданного времени. Приходит руководителю отдела продаж.'],
+    ['leadWait','Лид долго без действий','Новый лид ждёт дольше заданного времени. Приходит РОП, а если РОП нет — менеджерам типа лида; директору — всегда.'],
     ['msg','Сообщения клиентам','Пора сообщить клиенту, что его товар на складе.'],
     ['mail','Почта','Пришло новое письмо в ящик, который вы видите.'],
   ]},
@@ -9513,12 +9615,12 @@ function lostReasonsCard(){
 
 // ——— время реакции ———
 // Лид на первом этапе, с которым никто не работал дольше этого времени, получает метку «ждёт N мин» в списке и воронке,
-// а РОП — уведомление (один раз на лид). Что считать «ждёт» — Leads.waiting; здесь только поле и число ждущих сейчас.
+// а директор, РОП или менеджеры типа лида — уведомление (один раз на лид). Что считать «ждёт» — Leads.waiting; здесь только поле и число ждущих сейчас.
 function leadWaitCard(){
   const now=new Date(),n=(S.leads||[]).filter(l=>Leads.waiting(S,l,now)!==null).length,ro=!can('settings');
   return `<section class="card"><div class="card-h"><h3>Время реакции на новый лид</h3></div><div class="card-b stack-s">
     <div class="field lwait"><label for="lead-wait">Новый лид ждёт не дольше, мин</label><input id="lead-wait" class="inp" type="number" min="1" max="10080" step="1" inputmode="numeric" value="${esc(Leads.waitMin(S))}" data-on="lead-wait"${ro?' disabled':''}></div>
-    <p class="hint">Если лид лежит на первом этапе дольше этого времени и с ним не сделано ни одного действия (никто не взял, не позвонил, не запланировал дело), в списке и воронке у него появляется метка «ждёт N мин», а РОП получает уведомление — один раз на лид. Сейчас ждут: <b>${n}</b>. Изначально — 15 минут.</p>
+    <p class="hint">Если лид лежит на первом этапе дольше этого времени и с ним не сделано ни одного действия (никто не взял, не позвонил, не запланировал дело), в списке и воронке у него появляется метка «ждёт N мин», а уведомление получают директор и РОП (если РОП нет — менеджеры типа лида) — один раз на лид. Сейчас ждут: <b>${n}</b>. Изначально — 15 минут.</p>
   </div></section>`;
 }
 
@@ -10188,6 +10290,7 @@ NAV.push({id:'dispatch',label:'Отправки',icon:'truck',group:'Товар'
 VIEWS.dispatch=vDispatch;
 SEARCH.push({kind:'dispatch',label:'Отправка',order:50,find:q=>Dispatch.query(S,{q}).map(d=>({title:`${d.number} · ${d.to.name}`,sub:`${dspStageName(d)} · ${dspWhen(d)}`,open:`data-act="open-dispatch" data-id="${esc(d.id)}"`}))});
 DRAWERS.dispatch=id=>{const d=Dispatch.byId(S,id);return d?dDispatch(d):null};
+regRef('dispatch','отправка',id=>!!Dispatch.byId(S,id),'open-dispatch');
 
 // Раздел «Клиенты»: список с поиском по имени, телефону и ИНН, карточка клиента справа (данные правятся на месте,
 // связанные сделки, лиды и сообщения, лента), окно «Новый клиент» и подсказка «Похоже, это …» против дублей.
@@ -10399,6 +10502,7 @@ NAV.push({id:'clients',label:'Клиенты',icon:'person',group:'Продаж�
 VIEWS.clients=vClients;
 SEARCH.push({kind:'client',label:'Клиент',order:40,find:q=>!can('clients')?[]:clientsSeen(Clients.search(S,q)).map(c=>({title:c.name,sub:`${c.id}${c.inn?' · ИНН '+c.inn:''}`,open:`data-act="open-client" data-id="${esc(c.id)}"`}))});
 DRAWERS.client=id=>{const c=can('clients')?Clients.byId(S,id):null;return c&&clientVisible(c)?dClient(c):null};
+regRef('client','клиент',id=>!!Clients.byId(S,id),'open-client');
 
 // Запуск: состояние из браузера (localStorage[Store.KEY]); нет или битое — демо seed(). Затем первая отрисовка.
 

@@ -228,6 +228,7 @@ MODALS.stockSell=o=>{
 // ——— регистрация в реестрах оболочки ———
 SEARCH.push({kind:'product',label:'Товар',order:10,find:q=>!can('stock')?[]:Catalog.query(S,{q}).slice(0,6).map(p=>{const k=stockOf(p.id);return {title:p.name,sub:k.known?`свободно ${qtyOf(k.free,p)}`:'остаток: нет данных',open:`data-act="open-product" data-pid="${esc(p.id)}"`}})});
 DRAWERS.product=id=>{const p=can('stock')?product(id):null;return p?dProduct(p):null};
+regRef('product','товар',id=>!!product(id),'open-product','pid');
 ON.input.sq=t=>{S.ui.sq=t.value;refreshStock()};
 ON.change.deficit=t=>{S.ui.deficit=t.checked;refreshStock()};
 ON.change.brand=t=>{S.ui.brand=t.value;refreshStock()};

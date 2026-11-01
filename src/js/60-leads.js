@@ -318,7 +318,8 @@ SIMS.push({id:'lead-site',label:'Имитация: пришёл лид с сай
 SIMS.push({id:'lead-bitrix',label:'Имитация: пришёл лид из Битрикса24',run:()=>leadSimResult('bitrix')});
 
 // ——— регистрация в реестрах оболочки ———
-NAV.push({id:'leads',label:'Лиды',icon:'funnel',group:'Продажи',order:5,hint:'Заявки, которые ещё не стали сделками. Возьмите лид, свяжитесь с человеком и сделайте из него сделку.',ok:()=>can('leads'),badge:()=>Leads.fresh(S,S.me).length+actsBadge('lead'),hot:true});
+NAV.push({id:'leads',label:'Лиды',icon:'funnel',group:'Продажи',order:5,hint:'Заявки, которые ещё не стали сделками. Возьмите лид, свяжитесь с человеком и сделайте из него сделку.',ok:()=>can('leads'),badge:()=>Leads.fresh(S,S.me).length,hot:true});
 VIEWS.leads=vLeads;
 SEARCH.push({kind:'lead',label:'Лид',order:30,find:q=>!can('leads')?[]:Leads.visible(S,S.me).filter(l=>searchHas(q,l.id,l.name,l.company,l.phone,l.email,l.inn,l.text)).map(l=>({title:Leads.title(l),sub:`${l.id} · ${stageName(l)}`,open:`data-act="open-lead" data-id="${esc(l.id)}"`}))});
 DRAWERS.lead=id=>{const l=Leads.visible(S,S.me).find(x=>x.id===id);return l?dLead(l):null};
+regRef('lead','лид',id=>S.leads.some(l=>l.id===id),'open-lead');

@@ -490,7 +490,7 @@ test('Leads.allows / setSource: сайт и Битрикс24 включаютс�
   assert.equal(st.leadSource, 'both', 'неизвестный источник записался');
 });
 
-test('раздел «Лиды»: пункт меню есть у директора, РОП и менеджеров, у кладовщика, инженера и логиста нет; число — новые лиды человека и его дела по лидам (сегодня и просроченные)', () => {
+test('раздел «Лиды»: пункт меню есть у директора, РОП и менеджеров, у кладовщика, инженера и логиста нет; число — только необработанные лиды человека, дела по лидам в него не входят', () => {
   const app = load();
   for (const role of ['director', 'rop', 'managerB2b', 'managerB2c']) {
     asRole(app, role);
@@ -501,19 +501,52 @@ test('раздел «Лиды»: пункт меню есть у директо�
     asRole(app, role);
     assert.ok(!app.navItems().some(n => n.id === 'leads'), `${role}: пункт «Лиды» есть`);
   }
-  // число на пункте менеджера — его лиды на первом этапе (считаем по данным) и его дела по лидам на сегодня и просроченные (таск 10)
+  // число на пункте менеджера — его лиды на первом этапе (считаем по данным); его дела по лидам в число не входят
   const mgr = app.S.leads.find(l => l.managerId && l.type === 'b2b' && l.stageId === 'new').managerId;
   app.setMe(mgr);
   const fresh = app.S.leads.filter(l => l.managerId === mgr && l.stageId === 'new').length;
   assert.ok(fresh > 0, 'в демо у менеджера нет новых лидов — проверка пустая');
-  const acts = app.Acts.counts(app.S, mgr, new Date(), 'lead');
-  const expected = fresh + acts.today + acts.overdue;
+  const expected = fresh;
   const badge = app.document.getElementById('side').innerHTML.match(/data-view="leads"><svg.*?<\/svg><span>Лиды<\/span><span class="cnt hot">(\d+)</);
   assert.ok(badge, 'на пункте нет числа');
   assert.equal(Number(badge[1]), expected);
   // прямой переход туда, где нет права, — «Нет доступа»
   asRole(app, 'warehouse'); app.S.view = 'leads'; app.render();
   assert.ok(viewHtml(app).includes('Нет доступа'));
+});
+
+test('счётчик у «Лидов» — число необработанных лидов; дело по лиду его не меняет; плитка «Новые лиды» на главном экране считает тем же Leads.fresh', () => {
+  const app = load(), { S, Leads, Acts } = app;
+  const badge = () => app.NAV.find(n => n.id === 'leads').badge();
+  const side = () => (app.document.getElementById('side').innerHTML.match(/data-view="leads"><svg.*?<\/svg><span>Лиды<\/span><span class="cnt hot">(\d+)</) || [])[1];
+  const tile = () => app.HOME_TILES.find(t => t.id === 'leads').calc().value;
+  // независимый подсчёт по данным: открытый лид на первом этапе («Новый»), который ведёт сам человек;
+  // директору и РОП — ещё и нераспределённые
+  const byData = id => S.leads.filter(l => l.stageId === 'new' && (l.managerId === id || (!l.managerId && ['director', 'rop'].includes(S.people.find(p => p.id === id).role)))).length;
+  for (const role of ['director', 'rop', 'managerB2b', 'managerB2c']) {
+    // тот из людей роли, у кого есть необработанные лиды
+    const who = S.people.filter(p => p.role === role).find(p => byData(p.id) > 0);
+    assert.ok(who, `${role}: в демо нет необработанных лидов — проверка пустая`);
+    app.setMe(who.id);
+    const me = S.me, n = byData(me);
+    assert.equal(badge(), n, `${role}: число в бейдже не равно числу необработанных лидов`);
+    assert.equal(Leads.fresh(S, me).length, n);
+    assert.equal(tile(), n, `${role}: плитка на главном экране считает иначе`);
+    assert.equal(side(), String(n), `${role}: на пункте меню другое число`);
+    // дело по лиду (просроченное) в число не входит — ни в бейдж, ни в плитку
+    const lead = Leads.fresh(S, me)[0];
+    const before = Acts.counts(S, me, new Date(), 'lead');
+    const r = Acts.plan(S, { t: 'lead', id: lead.id }, { type: 'call', title: 'Перезвонить', due: new Date(Date.now() - 6e4), ownerId: me }, me, new Date());
+    assert.equal(r.ok, true, r.reason);
+    const after = Acts.counts(S, me, new Date(), 'lead');
+    assert.equal(after.today + after.overdue, before.today + before.overdue + 1, 'дело по лиду не посчиталось — проверка пустая');
+    assert.equal(badge(), n, `${role}: дело по лиду изменило число в бейдже`);
+    assert.equal(tile(), n);
+  }
+  // лид взяли в работу («Связались») — он уходит из числа
+  const n0 = badge(), lead = Leads.fresh(S, S.me)[0];
+  Leads.contacted(S, lead.id, S.me, new Date());
+  assert.equal(badge(), n0 - 1);
 });
 
 test('раздел «Лиды», список: директор видит все лиды и «Нераспределённые», менеджер B2B — ни одного лида B2C', () => {
@@ -890,6 +923,39 @@ test('toDeal: открытые дела лида переходят в сдел�
   assert.ok(!Feed.of(st, { t: 'deal', id: did2 }).some(e => /перенесены/.test(e.text)));
 });
 
+test('«лид ждёт»: есть РОП — получают РОП и директор; РОП нет — менеджеры типа лида (B2B, B2C, без типа — оба) и директор; директор выключает вид сам', () => {
+  const app = load(), { Leads, Notify } = app;
+  const MIN = 6e4, late = new Date(NOW.getTime() + 20 * MIN);
+  // менеджеры: b1, b2 — B2B; c1 — B2C; кладовщик и директор — не менеджеры
+  const wait = (st, data) => {
+    const lead = Leads.create(st, data, NOW, { silent: true });
+    const made = Leads.notifyWaiting(st, late);
+    assert.equal(made.length, 1, 'ждёт один лид — одно уведомление');
+    assert.equal(made[0].kind, 'leadWait');
+    return { lead, to: [...made[0].to].sort() };
+  };
+  // РОП нет
+  assert.deepEqual(wait(mini(app), B2B).to, ['b1', 'b2', 'dir'], 'лид B2B: менеджеры B2B и директор, менеджер B2C не получает');
+  assert.deepEqual(wait(mini(app), B2C).to, ['c1', 'dir'], 'лид B2C: менеджеры B2C и директор');
+  assert.deepEqual(wait(mini(app), NONE).to, ['b1', 'b2', 'c1', 'dir'], 'лид без типа: менеджеры обоих типов и директор');
+  // нет менеджеров нужного типа — только директор
+  const noB2b = mini(app, { people: mini(app).people.filter(p => p.role !== 'managerB2b') });
+  assert.deepEqual(wait(noB2b, B2B).to, ['dir']);
+  // есть РОП — РОП и директор, менеджеры не получают ни при каком типе
+  for (const data of [B2B, B2C, NONE]) {
+    const st = mini(app);
+    st.roles = st.roles.concat(app.S.roles.filter(r => r.id === 'rop'));
+    st.people.push({ id: 'rop1', name: 'РОП', role: 'rop' });
+    assert.deepEqual(wait(st, data).to, ['dir', 'rop1']);
+  }
+  // директор выключил этот вид у себя («Настройки → Уведомления») — ему не приходит, остальным как раньше
+  const st = mini(app);
+  assert.equal(Notify.setWanted(st, 'dir', 'leadWait', false), true);
+  assert.deepEqual(wait(st, B2C).to, ['c1']);
+  // получатели считает одна функция
+  assert.deepEqual([...Leads.waitRecipients(mini(app), { type: 'b2b' })].sort(), ['b1', 'b2']);
+});
+
 test('время реакции: «ждёт» только у открытого лида на первом этапе без действий дольше порога; уведомление РОП — один раз', () => {
   const app = load(), { Leads, Acts, Notify } = app, st = mini(app);
   st.roles = st.roles.concat(app.S.roles.filter(r => r.id === 'rop'));
@@ -924,11 +990,11 @@ test('время реакции: «ждёт» только у открытого
   const made = Leads.notifyWaiting(st, plusMin(20));
   assert.equal(made.length, 1, 'ждёт один лид — одно уведомление');
   assert.equal(made[0].kind, 'leadWait');
-  assert.deepEqual([...made[0].to].sort(), ['rop1', 'rop2']);
+  assert.deepEqual([...made[0].to].sort(), ['dir', 'rop1', 'rop2'], 'есть РОП: получают РОП и директор, менеджеры нет');
   assert.ok(made[0].text.includes(lead.id) && made[0].text.includes('20 мин'), made[0].text);
   assert.equal(Leads.notifyWaiting(st, plusMin(40)).length, 0, 'второй раз то же уведомление ушло снова');
   assert.equal(st.notes.length, before + 1);
-  assert.deepEqual([...Notify.RECIPIENTS.leadWait], ['rop']);
+  assert.deepEqual([...Notify.RECIPIENTS.leadWait], ['director'], 'по карте — только директор; РОП или менеджеров добавляет Leads.waitRecipients');
   // новый лид — новое уведомление
   Leads.create(st, B2C, plusMin(41), { silent: true });
   assert.equal(Leads.notifyWaiting(st, plusMin(60)).length, 1);
@@ -1051,11 +1117,11 @@ test('«ждёт N мин»: метка в списке и воронке; «И�
   assert.ok(card.includes('ждёт 20 мин'), 'в воронке нет метки');
   assert.ok(app.DRAWERS.lead(lead.id).body.includes('lead-waitnote'), 'в карточке нет пояснения');
   // РОП получает уведомление один раз
-  const rop = S.people.find(p => p.role === 'rop').id;
+  const rop = S.people.find(p => p.role === 'rop').id, boss = S.people.find(p => p.role === 'director').id;
   app.render();
   let notes = S.notes.filter(n => n.kind === 'leadWait');
   assert.equal(notes.length, 1);
-  assert.deepEqual(plain(notes[0].to), [rop]);
+  assert.deepEqual(plain(notes[0].to).sort(), [boss, rop].sort(), 'получают РОП и директор');
   assert.ok(notes[0].text.includes(lead.id));
   app.render(); app.actsTick();
   assert.equal(S.notes.filter(n => n.kind === 'leadWait').length, 1, 'уведомление ушло повторно');

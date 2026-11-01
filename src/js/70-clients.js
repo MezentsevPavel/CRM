@@ -208,3 +208,4 @@ NAV.push({id:'clients',label:'Клиенты',icon:'person',group:'Продаж�
 VIEWS.clients=vClients;
 SEARCH.push({kind:'client',label:'Клиент',order:40,find:q=>!can('clients')?[]:clientsSeen(Clients.search(S,q)).map(c=>({title:c.name,sub:`${c.id}${c.inn?' · ИНН '+c.inn:''}`,open:`data-act="open-client" data-id="${esc(c.id)}"`}))});
 DRAWERS.client=id=>{const c=can('clients')?Clients.byId(S,id):null;return c&&clientVisible(c)?dClient(c):null};
+regRef('client','клиент',id=>!!Clients.byId(S,id),'open-client');

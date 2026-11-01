@@ -139,6 +139,10 @@ button.chip:disabled{opacity:.5;cursor:not-allowed}
 .note{display:grid;grid-template-columns:32px minmax(0,1fr);gap:11px;padding:11px 16px;border-top:1px solid var(--line)}
 .notes>.note:first-child{border-top:0}
 .note.unread{background:var(--surface-2)}
+/* уведомление со ссылкой на объект: нажатие открывает его карточку */
+.note.click{cursor:pointer}
+.note.click:hover{background:var(--surface-2)}
+.note.click:focus-visible{outline:2px solid var(--primary);outline-offset:-2px}
 .nic{display:grid;place-items:center;width:32px;height:32px;border-radius:9px}
 .nic .ic{width:17px;height:17px}
 .nic.info{background:var(--info-soft);color:var(--info)}.nic.ok{background:var(--ok-soft);color:var(--ok)}.nic.pri{background:var(--primary-soft);color:var(--primary)}

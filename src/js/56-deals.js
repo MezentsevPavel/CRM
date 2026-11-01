@@ -261,12 +261,13 @@ MODALS.dealKp=id=>{
 
 // ——— окна «Провалена» и «Зарезервировать» ———
 MODALS.dealLose=id=>{
-  const d=Deals.byId(S,id),why=Deals.reasons(S);
+  const d=Deals.byId(S,id),why=Deals.reasons(S),held=d?Deals.reservesOf(S,d).length:0;
   return `<form data-form="deal-lose" data-id="${esc(id)}" novalidate>${mHead('Провалена: сделка '+esc(id))}<div class="modal-b">
     <p class="m0">${d?esc(d.client):''}</p>
     <div class="field"><label for="dl-reason">Причина отказа</label>${why.length?`<select id="dl-reason" class="inp">${why.map(r=>`<option value="${esc(r)}">${esc(r)}</option>`).join('')}</select>`:'<input id="dl-reason" class="inp" placeholder="Напишите причину" autocomplete="off">'}</div>
     <div class="field"><label for="dl-note">Комментарий (необязательно)</label><textarea id="dl-note" class="inp" rows="3" placeholder="Что именно сказал клиент"></textarea></div>
     <p class="hint">Сделка уйдёт из колонок в фильтр «Провалены», этап останется тем, где она сорвалась. Причина и комментарий запишутся в ленту; сделку можно вернуть в работу.</p>
+    ${held?`<p class="hint">Резервы сделки (${held}) будут сняты, товар вернётся в свободный остаток. При возврате в работу резервы придётся поставить заново.</p>`:''}
     <p class="err" id="dl-err" hidden></p></div>${mFoot('Провалена')}</form>`;
 };
 // Ключ строки в окне резерва: «Д-301:0»
@@ -318,7 +319,10 @@ A['deal-lose']=el=>{
   if(Deals.state(S,d)==='won'){toast('Сделка успешно закрыта — провалить её нельзя, сначала верните на другой этап.','warn');return}
   openModal('dealLose',d.id);
 };
-A['deal-reopen']=el=>dealRun(Deals.reopen(S,el.dataset.id,S.me,new Date()),`Сделка ${el.dataset.id} возвращена в работу. Запись в ленте есть.`);
+A['deal-reopen']=el=>{
+  const r=Deals.reopen(S,el.dataset.id,S.me,new Date());
+  dealRun(r,`Сделка ${el.dataset.id} возвращена в работу. Запись в ленте есть.${r.released?' '+Deals.RELEASED_NOTE:''}`);
+};
 A['deal-kp']=el=>{
   openModal('dealKp',el.dataset.id);
   // логотип — тот же, что в боковом меню (картинка в странице одна)
@@ -448,7 +452,7 @@ FORMS['deal-lose']=f=>{
   if(!r.ok) return showErr('dl-err',r.reason);
   if(note) Feed.comment(S,{t:'deal',id},note,S.me,now);
   closeModal();render();
-  toast(`Сделка ${id} провалена: ${why}. Причина записана в ленту.`);
+  toast(`Сделка ${id} провалена: ${why}. Причина записана в ленту.${r.released?` Снято резервов: ${r.released}, товар вернулся в свободный остаток.`:''}`);
 };
 FORMS['deal-reserve']=f=>{
   const id=f.dataset.id,i=+f.dataset.i,until=byId('dr-until').value;
@@ -486,3 +490,4 @@ VIEWS.deals=vDeals;
 Object.assign(NAV.find(n=>n.id==='deals'),{badge:()=>actsBadge('deal'),hot:true});
 SEARCH.push({kind:'deal',label:'Сделка',order:20,find:q=>!can('clients')?[]:Leads.dealsVisible(S,S.me).filter(d=>searchHas(q,d.client,d.id,d.object)).map(d=>({title:d.client,sub:`${d.id} · ${d.object}`,open:`data-act="open-deal" data-id="${esc(d.id)}"`}))});
 DRAWERS.deal=id=>{const d=Leads.dealsVisible(S,S.me).find(x=>x.id===id);return d?dealCard(d):null};
+regRef('deal','сделка',id=>!!deal(id),'open-deal');

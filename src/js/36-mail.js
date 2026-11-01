@@ -107,7 +107,7 @@ const Mail = (() => {
     const viewers = (st.people || []).filter(p => boxesFor(st, p.id).some(b => b.id === box.id)).map(p => p.id);
     const sup = m.suppliers.find(s => s.id === l.folder);
     const where = sup ? `папка «${sup.name}»` : box.kind === 'purchase' ? 'папка «Разобрать»' : 'входящие';
-    Notify.push(st, NOTE_KIND, null, `Новое письмо в ящике «${box.title}» (${where}): ${l.subject} — от ${l.fromName || l.from}.`, now, viewers);
+    Notify.push(st, NOTE_KIND, null, `Новое письмо в ящике «${box.title}» (${where}): ${l.subject} — от ${l.fromName || l.from}.`, now, viewers, { t: 'mail', id: l.id });
     return l;
   }
 

@@ -20,7 +20,8 @@ const Notify = (() => {
     act: [],                                                   // напоминание о деле — ответственный (extraPersons)
     dispatch: ['logist', 'warehouse'],                         // новая заявка на отправку — логист и кладовщик
     dispatchStep: [],                                          // этап и водитель заявки — автор или водитель (extraPersons), исполнителям не рассылаем
-    leadWait: ['rop'],                                         // новый лид долго без действий — РОП
+    leadWait: ['director'],                                    // новый лид долго без действий — директору всегда, плюс РОП, а если РОП нет —
+                                                               // менеджеры типа лида (Leads.waitRecipients через extraPersons)
   };
 
   const wants = (st, personId, kind) => {
@@ -70,28 +71,39 @@ const Notify = (() => {
     return [...new Set(ids)].filter(id => known.has(id) && wants(st, id, kind));
   }
 
+  // На какой объект ссылается уведомление: ref = {t, id}. Виды t — REF_KINDS; в разделе у каждого вида своя карточка
+  // (реестр REFS в 50-shell.js). Нет ссылки — null (так бывает только у уведомлений, созданных вне кода страницы).
+  // Неизвестный вид или пустой номер — ошибка: опечатка не должна тихо превращаться в уведомление, которое ничего не открывает.
+  const REF_KINDS = ['task', 'deal', 'lead', 'client', 'ship', 'dispatch', 'mail', 'product'];
+  function cleanRef(ref) {
+    if (ref === undefined || ref === null) return null;
+    if (!REF_KINDS.includes(ref.t) || ref.id === undefined || ref.id === null || String(ref.id) === '') throw new Error(`Неизвестная ссылка уведомления: ${JSON.stringify(ref)}`);
+    return { t: ref.t, id: String(ref.id) };
+  }
+
   // Новое уведомление адресатам to — в начало списка. Автор, если он среди адресатов, своё уже прочитал.
-  function add(st, kind, by, text, now, to) {
+  function add(st, kind, by, text, now, to, ref) {
     st.notes = st.notes || [];
-    const note = { id: Store.freeId(st.notes, 'n'), kind, by: by || null, at: now, text, to, read: by && to.includes(by) ? [by] : [] };
+    const note = { id: Store.freeId(st.notes, 'n'), kind, by: by || null, at: now, text, to, read: by && to.includes(by) ? [by] : [], ref: cleanRef(ref) };
     st.notes.unshift(note);
     return note;
   }
-  function push(st, kind, by, text, now, extraPersons) {
-    return add(st, kind, by, text, now, recipients(st, kind, extraPersons));
+  // Новое уведомление вида kind: кому — по карте RECIPIENTS плюс extraPersons; ref — объект, который оно открывает по нажатию.
+  function push(st, kind, by, text, now, extraPersons, ref) {
+    return add(st, kind, by, text, now, recipients(st, kind, extraPersons), ref);
   }
 
   // Уведомление, текст которого зависит от читателя: textFor(personId) → текст. Адресаты — те же, что у push; кому выходит
   // одинаковый текст, получают одно уведомление, так что разных текстов — столько уведомлений. Первым в списке — то, что
   // получает первый адресат. Возвращает уведомления в том же порядке.
-  function pushFor(st, kind, by, textFor, now, extraPersons) {
+  function pushFor(st, kind, by, textFor, now, extraPersons, ref) {
     const groups = new Map();
     for (const id of recipients(st, kind, extraPersons)) {
       const text = textFor(id);
       if (!groups.has(text)) groups.set(text, []);
       groups.get(text).push(id);
     }
-    return [...groups].reverse().map(([text, to]) => add(st, kind, by, text, now, to)).reverse();
+    return [...groups].reverse().map(([text, to]) => add(st, kind, by, text, now, to, ref)).reverse();
   }
 
   // Непрочитанные этим человеком.
@@ -121,5 +133,5 @@ const Notify = (() => {
     return (after || []).some(id => !had.has(id)) ? pref.kind : null;
   }
 
-  return { RECIPIENTS, SOUNDS, wants, setWanted, soundPref, setSound, soundFor, recipients, push, pushFor, unread, unreadIds, markRead };
+  return { RECIPIENTS, REF_KINDS, SOUNDS, wants, setWanted, soundPref, setSound, soundFor, recipients, push, pushFor, unread, unreadIds, markRead };
 })();

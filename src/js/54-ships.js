@@ -361,7 +361,7 @@ function shipStageForm(f){
     if(moved) termNote();
   }else if(moved){
     s.eta=ne;termNote();
-    Notify.push(S,'ship',m.id,`${s.id}: срок прихода — ${fD(ne)} (было ${fD(old)}). Сейчас: ${shipWhere(s)}.`,now);
+    Notify.push(S,'ship',m.id,`${s.id}: срок прихода — ${fD(ne)} (было ${fD(old)}). Сейчас: ${shipWhere(s)}.`,now,[],{t:'ship',id:s.id});
   }
   if(note) s.history.push({at:now,by:m.id,text:'Комментарий: '+note,source:Ships.SRC.manual});
   closeModal();render();
@@ -381,7 +381,7 @@ function shipCreate(f){
   S.shipments.push(s);
   // сразу на нужный этап — тоже через ядро: оно расставит груз на маршруте, запишет историю и разошлёт уведомление
   if(wanted&&wanted.id!==start.id) Ships.setStage(S,id,wanted.id,m.id,now,Ships.SRC.manual);
-  else Notify.push(S,'ship',m.id,`Новая поставка ${id} из «${from}»: ${Ships.brief(S,s)}. Маршрут: ${Ships.routeText(route)}. На складе ожидается ${fD(eta)}.`,now);
+  else Notify.push(S,'ship',m.id,`Новая поставка ${id} из «${from}»: ${Ships.brief(S,s)}. Маршрут: ${Ships.routeText(route)}. На складе ожидается ${fD(eta)}.`,now,[],{t:'ship',id:id});
   closeModal();S.ui.logTab='in';render();toast(`Поставка ${id} создана. Менеджеры уже видят её в остатках как «едет к нам».`);
 }
 
@@ -466,6 +466,7 @@ function dShip(s){
 // ——— регистрация в реестрах оболочки ———
 SEARCH.push({kind:'ship',label:'Перевозка',order:60,find:q=>!(can('stock')||can('logistics'))?[]:S.shipments.filter(s=>searchHas(q,s.id,s.supplier,s.to,s.track)).map(s=>({title:`${s.id} · ${s.supplier}`,sub:`${stageName(s)} · ${fD(s.eta)}`,open:`data-act="open-ship" data-id="${esc(s.id)}"`}))});
 DRAWERS.ship=id=>{const s=(can('stock')||can('logistics'))?ship(id):null;return s?dShip(s):null};
+regRef('ship','поставка',id=>!!ship(id),'open-ship');
 MODALS.shipItems=id=>mShipItems(ship(id));
 
 Object.assign(A,{

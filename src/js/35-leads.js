@@ -106,7 +106,7 @@ const Leads = (() => {
     st.leads.push(lead);
     if (!(opts && opts.silent)) {
       const who = lead.managerId ? `менеджер — ${nameOf(st, lead.managerId)}` : 'нераспределённый';
-      Notify.push(st, 'lead', by, `Новый лид ${lead.id} (${SOURCE[source]}): ${title(lead)}${lead.type ? ', ' + TYPE[lead.type] : ''}, ${who}.`, now, lead.managerId ? [lead.managerId] : []);
+      Notify.push(st, 'lead', by, `Новый лид ${lead.id} (${SOURCE[source]}): ${title(lead)}${lead.type ? ', ' + TYPE[lead.type] : ''}, ${who}.`, now, lead.managerId ? [lead.managerId] : [], { t: 'lead', id: lead.id });
     }
     return lead;
   }
@@ -153,14 +153,21 @@ const Leads = (() => {
     if (!pipe || !(gone > waitMin(st) * MINUTE) || !isOpen(st, lead) || lead.stageId !== firstOf(pipe).id || touched(st, lead)) return null;
     return Math.floor(gone / MINUTE);
   }
-  // Разослать уведомление «leadWait» (РОП) о лидах, которые ждут, — по одному разу на лид (lead.waitNoted). → [уведомление…]
+  // Кому уходит «лид ждёт», кроме директора (он в Notify.RECIPIENTS.leadWait и получает всегда; выключить может сам в
+  // «Настройки → Уведомления»): есть РОП — он; РОП нет — менеджеры типа лида (B2B — менеджеры B2B, B2C — менеджеры B2C),
+  // а у лида без типа — менеджеры обоих типов. Единственное место, где это решается.
+  function waitRecipients(st, lead) {
+    const rops = (st.people || []).filter(p => p.role === 'rop').map(p => p.id);
+    return rops.length ? rops : managers(st, lead.type).map(p => p.id);
+  }
+  // Разослать уведомление «leadWait» (директору и waitRecipients) о лидах, которые ждут, — по одному разу на лид (lead.waitNoted). → [уведомление…]
   function notifyWaiting(st, now) {
     const out = [];
     for (const l of st.leads || []) {
       const min = l.waitNoted ? null : waiting(st, l, now);
       if (min === null) continue;
       l.waitNoted = now;
-      out.push(Notify.push(st, 'leadWait', null, `Лид ${l.id} ждёт ${waitText(min)}: ${title(l)} — с ним никто не работал. ${l.managerId ? 'Менеджер — ' + nameOf(st, l.managerId) : 'Менеджера нет, лид нераспределённый.'}`, now));
+      out.push(Notify.push(st, 'leadWait', null, `Лид ${l.id} ждёт ${waitText(min)}: ${title(l)} — с ним никто не работал. ${l.managerId ? 'Менеджер — ' + nameOf(st, l.managerId) : 'Менеджера нет, лид нераспределённый.'}`, now, waitRecipients(st, l), { t: 'lead', id: l.id }));
     }
     return out;
   }
@@ -287,7 +294,7 @@ const Leads = (() => {
     } else return null;
     log(lead, now, by, text);
     if (lead.managerId) {
-      Notify.push(st, 'lead', by, `Вам передан лид ${lead.id} (${SOURCE[lead.source]}): ${title(lead)}.`, now, [lead.managerId]);
+      Notify.push(st, 'lead', by, `Вам передан лид ${lead.id} (${SOURCE[lead.source]}): ${title(lead)}.`, now, [lead.managerId], { t: 'lead', id: lead.id });
     }
     return lead;
   }
@@ -354,7 +361,7 @@ const Leads = (() => {
     return all.filter(d => d.managerId === personId || (!!scope && d.type === scope));
   }
 
-  return { SOURCE, SOURCES, TYPE, STAGE, nextId, firstOf, title, managers, classify, route, pick, openCount, create, add, waitMin, setWaitMin, waitText, waiting, notifyWaiting, canTake, take, contacted, close, move, canWork, can, fresh, allows, setSource, canTransfer, transfer, toDeal, visible, dealsVisible };
+  return { SOURCE, SOURCES, TYPE, STAGE, nextId, firstOf, title, managers, classify, route, pick, openCount, create, add, waitMin, setWaitMin, waitText, waiting, waitRecipients, notifyWaiting, canTake, take, contacted, close, move, canWork, can, fresh, allows, setSource, canTransfer, transfer, toDeal, visible, dealsVisible };
 })();
 
 // Этапы воронки лидов, на которые опирается логика по id: Pipes.removeStage их не удаляет, их можно только переименовать.

@@ -194,6 +194,88 @@ test('lose: без причины — отказ, сделка на месте; 
   assert.deepEqual([...Deals.reasons(st)], ['Дорого', 'Выбрали другого', 'Не дозвонились', 'Передумали', 'Другое']);
 });
 
+test('lose: резервы проваленной сделки снимаются — со склада и из поставки; свободный остаток растёт, в ленте «Снят резерв»; reopen резервы не возвращает и говорит об этом', () => {
+  const app = load(), { Deals, Stock, Feed } = app;
+  const st = mini(app);
+  const id = make(app, st, 'b2b', 'b1'), other = make(app, st, 'b2b', 'b1');
+  Deals.addItem(st, id, { productId: 'pa', qty: 8 }, 'b1', T1);
+  Deals.addItem(st, id, { productId: 'pc', qty: 30 }, 'b1', T1);
+  Deals.addItem(st, other, { productId: 'pa', qty: 2 }, 'b1', T1);
+  const cell = { entityId: 'ip', cityId: 'irk' };
+  assert.equal(Deals.reserveItem(st, id, 0, { ...cell, qty: 4 }, 'b1', T1).ok, true);
+  assert.equal(Deals.reserveItem(st, id, 0, { ...cell, qty: 3 }, 'b1', T1).ok, true);
+  assert.equal(Deals.reserveItem(st, id, 1, { ...cell, qty: 20 }, 'b1', T1).ok, true);
+  assert.equal(Deals.reserveItem(st, other, 0, { ...cell, qty: 2 }, 'b1', T1).ok, true);
+  // резерв из поставки (поставка едет, на складе товара ещё нет)
+  st.reserves.push({ id: 'rS', productId: 'pc', qty: 5, entityId: 'ip', cityId: 'irk', src: 'П-9', dealId: id, at: T1, by: 'b1' });
+  const free = pid => Stock.summary(st, pid, T2).free;
+  assert.deepEqual([free('pa'), free('pc'), Stock.summary(st, 'pc', T2).reservedIncoming], [10 - 4 - 3 - 2, 100 - 20, 5]);
+  const before = Feed.of(st, { t: 'deal', id }).filter(e => e.text.startsWith('Снят резерв')).length;
+  assert.equal(before, 0);
+
+  const r = Deals.lose(st, id, 'Дорого', 'b1', T2);
+  assert.equal(r.ok, true, r.reason);
+  assert.equal(r.released, 4, 'не назвали, сколько резервов снято');
+  assert.equal(Deals.reservesOf(st, deal(st, id)).length, 0, 'у проваленной сделки остались резервы');
+  assert.equal(st.reserves.filter(x => x.dealId === id).length, 0);
+  // свободно выросло ровно на количество снятого: панели +4 +3, кабель +20; поставка 5 больше не занята
+  assert.deepEqual([free('pa'), free('pc'), Stock.summary(st, 'pc', T2).reservedIncoming], [10 - 2, 100, 0]);
+  // чужой резерв на месте
+  assert.deepEqual(st.reserves.map(x => [x.dealId, x.qty]), [[other, 2]]);
+  // в ленте по «Снят резерв» на каждый резерв
+  const gone = Feed.of(st, { t: 'deal', id }).filter(e => e.text.startsWith('Снят резерв'));
+  assert.equal(gone.length, 4, gone.map(e => e.text).join(' | '));
+  assert.ok(gone.some(e => e.text.includes('панель А') && e.text.includes('4')) && gone.some(e => e.text.includes('кабель В') && e.text.includes('20')));
+  assert.ok(gone.every(e => e.at === T2 && e.by === 'b1'), 'у записей о снятии не то время или автор');
+  // журнал склада: снятия записаны
+  assert.equal(st.moves.filter(m => m.kind === Stock.KINDS.unreserve && m.doc === id).length, 4);
+  // склад и директор узнали о снятии
+  assert.ok(st.notes.some(n => n.kind === 'reserve' && n.text.startsWith('Снят резерв') && n.to.includes('wh')), 'склад не узнал о снятии');
+
+  // менеджеру без права на резервы провал сделки не мешает: резервы всё равно снимаются
+  const id3 = make(app, st, 'b2b', 'b1');
+  Deals.addItem(st, id3, { productId: 'pc', qty: 10 }, 'b1', T1);
+  assert.equal(Deals.reserveItem(st, id3, 0, { ...cell, qty: 10 }, 'b1', T1).ok, true);
+  st.roles.find(x => x.id === 'managerB2b').perms.reserve = false;
+  assert.equal(Deals.unreserve(st, id3, st.reserves.find(x => x.dealId === id3).id, 'b1', T2).ok, false, 'без права reserve ручное снятие прошло');
+  assert.equal(Deals.lose(st, id3, 'Дорого', 'b1', T2).released, 1);
+  assert.equal(st.reserves.filter(x => x.dealId === id3).length, 0);
+
+  // «Вернуть в работу» резервы не возвращает, зато пишет об этом в ленту
+  assert.equal(Deals.reopen(st, id, 'b1', T3).ok, true);
+  assert.equal(st.reserves.filter(x => x.dealId === id).length, 0, 'reopen вернул резервы');
+  assert.ok(Feed.of(st, { t: 'deal', id })[0].text.includes('езервы при провале были сняты, поставьте заново при необходимости'), Feed.of(st, { t: 'deal', id })[0].text);
+  assert.equal(deal(st, id).lostReleased, undefined);
+
+  // у сделки без резервов — ни «Снят резерв», ни пометки при возврате
+  const bare = make(app, st, 'b2b', 'b1');
+  const rb = Deals.lose(st, bare, 'Дорого', 'b1', T2);
+  assert.deepEqual([rb.ok, rb.released], [true, 0]);
+  assert.equal(Feed.of(st, { t: 'deal', id: bare }).filter(e => e.text.startsWith('Снят резерв')).length, 0);
+  Deals.reopen(st, bare, 'b1', T3);
+  assert.ok(!Feed.of(st, { t: 'deal', id: bare }).some(e => e.text.includes('при провале были сняты')), 'пометка о снятых резервах у сделки без резервов');
+});
+
+test('экран «Провалена»: окно называет число резервов, сообщение после провала — сколько снято; при возврате в работу — что резервы не вернулись', () => {
+  const app = load();
+  asRole(app, 'director');
+  const withRes = app.S.deals.find(d => !d.lostReason && !app.isDone(d) && app.S.reserves.some(r => r.dealId === d.id));
+  assert.ok(withRes, 'в демо нет открытой сделки с резервами');
+  const n = app.S.reserves.filter(r => r.dealId === withRes.id).length;
+  assert.ok(app.MODALS.dealLose(withRes.id).includes(`Резервы сделки (${n}) будут сняты`), 'окно не говорит о резервах');
+  const noRes = app.S.deals.find(d => !d.lostReason && !app.isDone(d) && !app.S.reserves.some(r => r.dealId === d.id));
+  assert.ok(!app.MODALS.dealLose(noRes.id).includes('Резервы сделки'), 'окно говорит о резервах там, где их нет');
+  const said = [];
+  app.document.getElementById('toasts').appendChild = el => said.push(el.innerHTML || '');
+  el(app, 'dl-reason').value = 'Дорого';
+  el(app, 'dl-note').value = '';
+  app.FORMS['deal-lose']({ dataset: { id: withRes.id } });
+  assert.ok(said.some(t => t.includes(`Снято резервов: ${n}`)), said.join(' | '));
+  assert.equal(app.S.reserves.filter(r => r.dealId === withRes.id).length, 0);
+  app.A['deal-reopen']({ dataset: { id: withRes.id } });
+  assert.ok(said.some(t => t.includes('Резервы при провале были сняты, поставьте заново при необходимости')), said.join(' | '));
+});
+
 test('columns: сумма колонки равна сумме total её сделок; менеджер B2B не видит в колонках сделки B2C; «Мои» и поиск сужают', () => {
   const app = load(), { Deals } = app;
   const st = mini(app);

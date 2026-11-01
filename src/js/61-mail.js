@@ -118,6 +118,12 @@ A['mail-open']=el=>{
   l.read=true;                       // открытое письмо — прочитано
   Object.assign(mailU(),{letter:l.id,pane:'letter',reply:null});render();
 };
+// Ссылка уведомления «Новое письмо»: письмо видно тому, кто видит его ящик (Mail.boxesFor). Открывается там же, где из раздела:
+// ящик письма, все папки, письмо открыто и прочитано (mail-open).
+REFS.mail={label:'письмо',
+  exists:id=>mailData().letters.some(l=>l.id===id),
+  see:id=>{const l=mailData().letters.find(x=>x.id===id);return !!l&&can('mail')&&Mail.boxesFor(S,S.me).some(b=>b.id===l.boxId)},
+  open:id=>{const l=mailData().letters.find(x=>x.id===id);Object.assign(mailU(),{box:l.boxId,folder:'all',q:''});go('mail');A['mail-open']({dataset:{id}})}};
 A['mail-back']=()=>{const u=mailU();u.pane=u.pane==='letter'?'list':'nav';render()};
 A['mail-reply']=()=>{const sel=mailSel();if(!sel.letter) return;mailU().reply=sel.letter.id;render();setTimeout(()=>byId('mail-reply-text')?.focus(),0)};
 A['mail-reply-cancel']=()=>{mailU().reply=null;render()};
