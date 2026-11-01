@@ -16,7 +16,8 @@ const T3 = new Date(2026, 9, 31, 15, 0);
 //   pa «Панель А» — цена сайта 10 000; pb «Инвертор Б» — цены нет; pc «Кабель В» — цена 1 500.
 function mini(app) {
   const st = Object.assign({
-    roles: app.Perms.defaultRoles(),
+    // кладовщик без права «клиенты»: эти тесты проверяют отказ без права (по умолчанию у кладовщика оно есть)
+    roles: app.Perms.defaultRoles().map(r => r.id === 'warehouse' ? { ...r, perms: { ...r.perms, clients: false, dealsAll: false } } : r),
     people: [
       { id: 'dir', name: 'Директор', role: 'director' },
       { id: 'b1', name: 'Менеджер B2B', role: 'managerB2b' },
@@ -621,10 +622,10 @@ test('демо: колонки по демо-данным — суммы и чи
   assert.equal(count('dealsB2c', 'p3'), 0);
   assert.equal(count('dealsB2b', 'p2'), 0);
   assert.equal(count('dealsB2c', 'p2'), open('b2c').length);
-  // p12 — РОП (право «все типы»): обе воронки; p5 — кладовщик: ничего
+  // p12 — РОП (право «все типы»): обе воронки; p6 — логист: ничего
   assert.equal(count('dealsB2b', 'p12'), open('b2b').length);
   assert.equal(count('dealsB2c', 'p12'), open('b2c').length);
-  assert.equal(count('dealsB2c', 'p5'), 0);
+  assert.equal(count('dealsB2c', 'p6'), 0);
 });
 
 test('демо: в ленте прежней сделки — все её резервы и сообщения клиенту, как раньше; каждый шаг по воронке — запись в ленте; время не в будущем', () => {

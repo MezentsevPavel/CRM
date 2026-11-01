@@ -14,7 +14,8 @@ const at = (d, h = 0, m = 0) => new Date(2026, 9, d, h, m);
 // Сделка Д-301 у b1 (B2B); лид Л-101 у c1 (B2C, телефон).
 function mini(app) {
   const st = Object.assign({
-    roles: app.Perms.defaultRoles(),
+    // кладовщик без права «клиенты»: эти тесты проверяют отказ без права (по умолчанию у кладовщика оно есть)
+    roles: app.Perms.defaultRoles().map(r => r.id === 'warehouse' ? { ...r, perms: { ...r.perms, clients: false, dealsAll: false } } : r),
     people: [
       { id: 'dir', name: 'Директор', role: 'director' },
       { id: 'b1', name: 'Менеджер B2B', role: 'managerB2b' },
@@ -284,10 +285,12 @@ test('демо: открытые дела просрочены, на сегод�
 });
 
 test('бейджи меню: «Сделки» — мои дела на сегодня и просроченные из Acts.counts; «Лиды» — только необработанные лиды', () => {
-  const app = load(), { S, Acts, NAV } = app;
+  // «сейчас» закреплено на полдень: демо-дела «на сегодня» стоят на 17:00 и 18:00, вечером настоящих часов их уже не остаётся
+  const noon = new Date(); noon.setHours(12, 0, 0, 0);
+  const app = load({ now: noon }), { S, Acts, NAV } = app;
   // человек, у которого по сделкам есть и дела на сегодня, и просроченные, а по лидам — хоть что-то: в бейдж должны попасть оба числа
-  const sum = (id, t) => { const c = Acts.counts(S, id, new Date(), t); return c.today + c.overdue; };
-  const both = id => { const c = Acts.counts(S, id, new Date(), 'deal'); return c.today > 0 && c.overdue > 0; };
+  const sum = (id, t) => { const c = Acts.counts(S, id, noon, t); return c.today + c.overdue; };
+  const both = id => { const c = Acts.counts(S, id, noon, 'deal'); return c.today > 0 && c.overdue > 0; };
   const p = S.people.find(x => both(x.id) && sum(x.id, 'lead') > 0);
   assert.ok(p, 'в демо нет человека с делами на сегодня и просроченными по сделкам и с делами по лидам');
   app.setMe(p.id);

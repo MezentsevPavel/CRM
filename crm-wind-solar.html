@@ -1980,7 +1980,8 @@ const Store = (() => {
   // 12 — звук уведомлений у каждого свой (таск 06): prefs.sound = {personId: {on, kind}} вместо одного {on, kind}.
   // 13 — ремонт F1: право dealsEdit, резервы только по строкам сделки, демо-перемещения не увозят товар, правило поставок sr3.
   // 14 — уведомления со ссылкой на объект (ref: {t, id}); демо-уведомления проставлены заново; у проваленной сделки lostReleased.
-  const REV = 14;
+  // 15 — кладовщик по умолчанию видит клиентов и сделки всех типов (права clients и dealsAll).
+  const REV = 15;
   // Браузер даёт сайту около 5 млн символов на всё; берём с запасом.
   const LIMIT = 4500000;
   const NO_SPACE = 'не сохранено — мало места в браузере';
@@ -2157,7 +2158,8 @@ const Perms = (() => {
     { id: 'managerB2b', name: 'Менеджер B2B', scope: 'b2b', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'dealsEdit', 'write', 'mail', 'sell', 'tasksAssign'] },
     { id: 'managerB2c', name: 'Менеджер B2C', scope: 'b2c', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'dealsEdit', 'write', 'mail', 'sell', 'tasksAssign'] },
     { id: 'logist', name: 'Логист', on: ['stock', 'logistics', 'mail', 'tasksAssign', 'dispatch'] },
-    { id: 'warehouse', name: 'Кладовщик', on: ['stock', 'receive', 'dispatch'] },
+    // Клиентов и сделки всех типов кладовщик видит — слово директора 2026-11-01: «Отметь сам по умолчанию».
+    { id: 'warehouse', name: 'Кладовщик', on: ['stock', 'receive', 'dispatch', 'clients', 'dealsAll'] },
     // Главный инженер и инженер — одна матрица (R30).
     { id: 'chiefEngineer', name: 'Главный инженер', on: ENGINEER },
     { id: 'engineer', name: 'Инженер', on: ENGINEER },

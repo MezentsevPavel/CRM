@@ -6,12 +6,15 @@
 // Числа считаются руками по демо-данным: резерв r1 — 22 шт панели для Д-311 (B2C, Иванов Сергей) со склада «ИП» без города,
 // r2 — 36 шт для Д-314 (B2B, КФХ Петровых) оттуда же, r3 — 54 шт для Д-320 (B2B, ИП Кузнецов) из поставки П-1043.
 // Люди: p1 директор, p2 менеджер B2C, p3 менеджер B2B, p5 кладовщик, p6 логист.
+// По умолчанию кладовщик видит клиентов и сделки (слово директора 2026-11-01), поэтому «кладовщик без сделки и клиента» здесь —
+// кладовщик, у которого директор в «Настройках → Роли» снял «клиенты» и «все типы» (hidden); без этого — отдельный тест внизу.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { load } = require('./load.js');
 
 const plain = x => JSON.parse(JSON.stringify(x));
+const hidden = app => { Object.assign(app.S.roles.find(r => r.id === 'warehouse').perms, { clients: false, dealsAll: false }); return app; };
 
 const NOW = new Date(2026, 10, 1, 12, 0);
 const PANEL = 'sheet-004';
@@ -33,7 +36,7 @@ const journalOf = app => { app.S.ui.mvPid = ''; app.S.ui.mvKind = ''; return app
 
 // ——— 1. Кладовщик: резерв виден, сделка и клиент — нет ———
 test('кладовщик в карточке товара видит количество, место и срок каждого резерва, но ни номера сделки, ни клиента, ни кнопок', () => {
-  const app = load(), S = app.S;
+  const app = hidden(load()), S = app.S;
   app.setMe('p5');
   assert.equal(app.can('clients'), false, 'у кладовщика появилось право «клиенты» — тест о другом');
   const body = app.DRAWERS.product(PANEL).body;
@@ -99,7 +102,7 @@ test('менеджер B2B: вкладка «Журнал движений» н�
 });
 
 test('кладовщик: в журнале движений нет ни одного номера сделки', () => {
-  const app = load(), S = app.S;
+  const app = hidden(load()), S = app.S;
   app.setMe('p5');
   const html = journalOf(app);
   for (const d of S.deals) assert.ok(!html.includes(d.id), `журнал кладовщика называет ${d.id}`);
@@ -155,7 +158,7 @@ test('директор видит все сделки и клиентов рез
 // ——— 4. Превью приёмки ———
 // П-1044 «ждёт приёмки»: под неё резервы r10 (Д-318, B2C, Смирнова Елена, 1 шт) и r15 (Д-311, B2C, Иванов Сергей, 1 шт)
 test('превью приёмки у кладовщика: клиентов и сделок нет, сколько ждут — есть', () => {
-  const app = load(), S = app.S;
+  const app = hidden(load()), S = app.S;
   assert.ok(app.Ships.awaitingReceipt(S).some(s => s.id === 'П-1044'));
   const waiting = S.reserves.filter(r => r.src === 'П-1044');
   assert.equal(waiting.length, 2);
@@ -173,7 +176,7 @@ test('превью приёмки у кладовщика: клиентов и �
 });
 
 test('превью приёмки у кладовщика: сокращённый резерв называется без сделки и клиента, но с числами', () => {
-  const app = load(), S = app.S;
+  const app = hidden(load()), S = app.S;
   app.setMe('p5');
   app.initRcv('П-1044');
   const r15 = S.reserves.find(r => r.id === 'r15');
@@ -199,7 +202,7 @@ test('превью приёмки у директора и у менеджера
 // ——— 4а. Экран после приёмки ———
 // «Кому что ушло» и «Сообщения клиентам»: клиента и номер сделки называет только тот, кому сделка видна; количество видно всем.
 const received = (who = 'p5') => {
-  const app = load(), S = app.S;
+  const app = hidden(load()), S = app.S;
   S.rules.find(r => r.id === 'arrive').on = true;       // авто-сообщения клиентам включены
   app.setMe(who);
   app.initRcv('П-1044');
@@ -235,7 +238,7 @@ test('экран после приёмки у директора: клиенты
 
 // ——— 5. Текст уведомления о резерве ———
 test('уведомление о резерве: склад получает текст без сделки и клиента, директор и менеджер сделки — с ними', () => {
-  const app = load(), S = app.S;
+  const app = hidden(load()), S = app.S;
   const before = S.notes.length;
   const d = S.deals.find(x => x.id === 'Д-346');
   const idx = d.items.findIndex(it => it.productId === '342718442');
@@ -256,7 +259,7 @@ test('уведомление о резерве: склад получает те
 });
 
 test('уведомление «Снят резерв»: кладовщику — без сделки и клиента, менеджеру сделки — с ними', () => {
-  const app = load(), S = app.S;
+  const app = hidden(load()), S = app.S;
   const d = S.deals.find(x => x.id === 'Д-346');
   const idx = d.items.findIndex(it => it.productId === '342718442');
   const r = app.Deals.reserveItem(S, 'Д-346', idx, { qty: 1 }, 'p2', NOW);
@@ -269,7 +272,7 @@ test('уведомление «Снят резерв»: кладовщику —
 });
 
 test('уведомление о резерве сделки B2B: менеджеру B2B — с клиентом, кладовщику — без', () => {
-  const app = load(), S = app.S;
+  const app = hidden(load()), S = app.S;
   // строка, под которую можно поставить резерв: товар есть в сделке и на складе
   const can = (x, it) => it.productId && app.Deals.left(S, x, it.productId) > 0
     && app.Stock.canReserve(S, Object.assign({ productId: it.productId, qty: 1 }, app.Stock.bestCell(S, it.productId))).ok;
@@ -309,7 +312,7 @@ test('свободный остаток и сумма резервов на де
 });
 
 test('Stock.reserveView: сколько, где, до какого числа; сделка — только видимая; HIDDEN в docView', () => {
-  const app = load(), S = app.S, { Stock } = app;
+  const app = hidden(load()), S = app.S, { Stock } = app;
   const r1 = S.reserves.find(r => r.id === 'r1'), r3 = S.reserves.find(r => r.id === 'r3');
   const wh = Stock.reserveView(S, r1, 'p5');
   assert.deepEqual(plain({ qty: wh.qty, where: wh.where, deal: wh.deal, inTransit: wh.inTransit }), { qty: 22, where: 'ИП · нет данных: город', deal: null, inTransit: false });
@@ -322,4 +325,17 @@ test('Stock.reserveView: сколько, где, до какого числа; �
   assert.equal(Stock.docView(S, 'Д-311', 'p2'), 'Д-311');
   assert.equal(Stock.docView(S, 'П-1043', 'p5'), 'П-1043', 'поставка — не сделка, её номер не прячется');
   assert.equal(Stock.docView(S, '', 'p5'), '');
+});
+
+// ——— Кладовщик по умолчанию: клиенты и сделки видны ———
+test('кладовщик по умолчанию видит в резервах номер сделки и клиента: права «клиенты» и «все типы» у него включены', () => {
+  const app = load(), S = app.S, { Stock } = app;
+  app.setMe('p5');
+  assert.equal(app.can('clients'), true);
+  const r1 = S.reserves.find(r => r.productId === PANEL && r.dealId === 'Д-311');
+  assert.ok(r1, 'в демо нет резерва по Д-311');
+  assert.equal(Stock.reserveView(S, r1, 'p5').deal.id, 'Д-311');
+  const body = app.DRAWERS.product(PANEL).body;
+  for (const t of ['Д-311', 'Иванов Сергей']) assert.ok(body.includes(t), `кладовщик не видит «${t}»`);
+  assert.ok(!section(body, 'Резервы').includes(HIDDEN), 'остались «сделка скрыта»');
 });

@@ -236,7 +236,9 @@ test('dealsVisible: менеджер не видит сделок чужого �
   assert.deepEqual(ids('b1'), ['Д-1', 'Д-3'], 'B2B — обе сделки типа, чужого типа нет');
   assert.deepEqual(ids('c1'), ['Д-2']);
   assert.deepEqual(ids('dir'), ['Д-1', 'Д-2', 'Д-3']);
-  assert.deepEqual(ids('wh'), [], 'у кладовщика нет права «клиенты»');
+  assert.deepEqual(ids('wh'), ['Д-1', 'Д-2', 'Д-3'], 'у кладовщика по умолчанию права «клиенты» и «все типы»');
+  st.roles.find(r => r.id === 'warehouse').perms.clients = false;
+  assert.deepEqual(ids('wh'), [], 'без права «клиенты» сделок нет');
   st.roles.find(r => r.id === 'managerB2b').perms.dealsAll = true;
   assert.deepEqual(ids('b1'), ['Д-1', 'Д-2', 'Д-3'], 'с правом «все типы» видит и B2C');
   assert.deepEqual(ids('c1'), ['Д-2'], 'право выдано только роли B2B');

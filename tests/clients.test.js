@@ -13,7 +13,8 @@ const LATER = new Date(2026, 9, 31, 13, 0);
 // Маленькое состояние: директор, менеджеры B2B (b1) и B2C (c1), кладовщик (без права «клиенты»).
 function mini(app, over = {}) {
   return Object.assign({
-    roles: app.Perms.defaultRoles(),
+    // кладовщик без права «клиенты»: эти тесты проверяют отказ без права (по умолчанию у кладовщика оно есть)
+    roles: app.Perms.defaultRoles().map(r => r.id === 'warehouse' ? { ...r, perms: { ...r.perms, clients: false, dealsAll: false } } : r),
     people: [
       { id: 'dir', name: 'Директор', role: 'director' },
       { id: 'b1', name: 'Менеджер B2B', role: 'managerB2b' },
@@ -245,9 +246,9 @@ test('раздел «Клиенты»: пункт меню в «Продажах
   const nav = app.NAV.find(n => n.id === 'clients');
   assert.ok(nav && nav.group === 'Продажи' && nav.label === 'Клиенты', 'нет пункта «Клиенты» в «Продажах»');
   assert.equal(nav.ok(), true, 'директору раздел закрыт');
-  asPerson(app, 'p5');                                   // кладовщик: права «клиенты» нет
-  assert.equal(nav.ok(), false, 'кладовщику открыт раздел «Клиенты»');
-  assert.equal(app.DRAWERS.client('К-1'), null, 'кладовщику открылась карточка клиента');
+  asPerson(app, 'p6');                                   // логист: права «клиенты» нет
+  assert.equal(nav.ok(), false, 'логисту открыт раздел «Клиенты»');
+  assert.equal(app.DRAWERS.client('К-1'), null, 'логисту открылась карточка клиента');
   asPerson(app, 'p1');
 
   app.go('clients');
@@ -330,8 +331,8 @@ test('карточка клиента: данные правятся на мес
   assert.ok(S.feed.some(e => e.ref.t === 'client' && e.ref.id === id && e.kind === 'field' && e.text.includes('Телефоны')), 'правка не записана в ленту');
   change(app, 'client-f', '   ', { id, f: 'name' });
   assert.equal(Clients.byId(S, id).name, 'Иванов Сергей Петрович (пример)', 'пустое название принято');
-  // кладовщик: права «клиенты» нет — карточка закрыта
-  asPerson(app, 'p5');
+  // логист: права «клиенты» нет — карточка закрыта
+  asPerson(app, 'p6');
   assert.equal(app.DRAWERS.client(id), null);
 });
 

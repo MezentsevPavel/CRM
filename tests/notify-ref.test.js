@@ -173,7 +173,8 @@ test('живые события кладут ссылку: задача, пос�
   const prod = S.products.find(p => p.name === 'Товар для ссылки');
   seen('новый товар', n0, 'product');
   assert.equal(fresh(n0)[0].ref.id, prod.id);
-  assert.ok(refs.length >= 9);
+  // считаем виды ссылок, а не записи: склад теперь видит тот же текст, что директор, и pushFor кладёт им одно уведомление на двоих
+  for (const t of ['task', 'ship', 'lead', 'mail', 'deal', 'product']) assert.ok(refs.some(x => x.t === t), `ни одно живое событие не положило ссылку «${t}»`);
   assert.ok(refs.every(x => Notify.REF_KINDS.includes(x.t)));
 });
 
@@ -249,7 +250,7 @@ test('нажатие открывает карточку тем же дейст�
   assert.equal(letter.read, true);
 });
 
-test('нажатие на уведомление у менеджера B2C: свои сделки и лиды открываются, у кладовщика — «нет доступа»', () => {
+test('нажатие на уведомление у менеджера B2C: свои сделки и лиды открываются, у логиста (без права «клиенты») — «нет доступа»', () => {
   const app = load(), { S, Leads } = app;
   const push = (ref, to) => app.Notify.push(S, 'reserve', null, 'проверка', new Date(), [to], ref);
   app.setMe('p2');
@@ -260,14 +261,14 @@ test('нажатие на уведомление у менеджера B2C: св
     clickNote(app, n.id);
     assert.equal(S.ui.drawer && S.ui.drawer.type, want, `менеджер B2C: ${want} своего типа не открылся`);
   }
-  app.setMe('p5');
+  app.setMe('p6');
   const said = toasts(app);
   for (const ref of [{ t: 'deal', id: mine.id }, { t: 'lead', id: myLead.id }, { t: 'client', id: S.clients[0].id }]) {
-    const n = push(ref, 'p5');
+    const n = push(ref, 'p6');
     S.ui.drawer = null;
     clickNote(app, n.id);
-    assert.equal(S.ui.drawer, null, `кладовщик открыл ${ref.t}`);
-    assert.ok(n.read.includes('p5'), 'без доступа уведомление осталось непрочитанным');
+    assert.equal(S.ui.drawer, null, `логист открыл ${ref.t}`);
+    assert.ok(n.read.includes('p6'), 'без доступа уведомление осталось непрочитанным');
   }
   assert.equal(said.filter(t => t.includes('Нет доступа')).length, 3, said.join(' | '));
   assert.ok(said.every(t => !t.includes(mine.id) && !t.includes(mine.client)), 'сообщение называет сделку, которую человек не видит');

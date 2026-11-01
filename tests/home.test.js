@@ -487,8 +487,8 @@ test('поиск: менеджер B2C находит сделку своего 
   asRole(app, 'managerB2b');
   assert.ok(found(b2b.client, b2b.id), 'менеджер B2B не нашёл сделку своего типа');
   assert.ok(!found(b2c.client, b2c.id), 'менеджер B2B нашёл сделку B2C');
-  // права: у кладовщика нет ни сделок, ни лидов, ни клиентов — только то, что ему открыто
-  asRole(app, 'warehouse');
+  // права: у логиста нет ни сделок, ни лидов, ни клиентов — только то, что ему открыто
+  asRole(app, 'logist');
   const kinds = new Set(app.searchRes(b2c.client).map(x => x.kind));
   assert.ok(!kinds.has('deal') && !kinds.has('lead') && !kinds.has('client'));
 });

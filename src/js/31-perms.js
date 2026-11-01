@@ -37,7 +37,8 @@ const Perms = (() => {
     { id: 'managerB2b', name: 'Менеджер B2B', scope: 'b2b', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'dealsEdit', 'write', 'mail', 'sell', 'tasksAssign'] },
     { id: 'managerB2c', name: 'Менеджер B2C', scope: 'b2c', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'dealsEdit', 'write', 'mail', 'sell', 'tasksAssign'] },
     { id: 'logist', name: 'Логист', on: ['stock', 'logistics', 'mail', 'tasksAssign', 'dispatch'] },
-    { id: 'warehouse', name: 'Кладовщик', on: ['stock', 'receive', 'dispatch'] },
+    // Клиентов и сделки всех типов кладовщик видит — слово директора 2026-11-01: «Отметь сам по умолчанию».
+    { id: 'warehouse', name: 'Кладовщик', on: ['stock', 'receive', 'dispatch', 'clients', 'dealsAll'] },
     // Главный инженер и инженер — одна матрица (R30).
     { id: 'chiefEngineer', name: 'Главный инженер', on: ENGINEER },
     { id: 'engineer', name: 'Инженер', on: ENGINEER },

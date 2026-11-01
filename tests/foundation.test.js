@@ -238,7 +238,7 @@ const DEFAULT_ON = {
   'Менеджер B2B': MANAGER,
   'Менеджер B2C': MANAGER,
   'Логист': ['stock', 'logistics', 'mail', 'tasksAssign', 'dispatch'],
-  'Кладовщик': ['stock', 'receive', 'dispatch'],
+  'Кладовщик': ['stock', 'receive', 'dispatch', 'clients', 'dealsAll'],   // клиенты и сделки — слово директора 2026-11-01
   'Главный инженер': ['tasksAssign', 'stock', 'clients', 'dealsAll'],
   'Инженер': ['tasksAssign', 'stock', 'clients', 'dealsAll'],
 };
@@ -628,10 +628,10 @@ test('меню: раздела без права у текущего челов�
   const app = load();
   app.render();
   assert.ok(app.byId('side').innerHTML.includes('data-view="team"'), 'директор не видит «Сотрудники и права»');
-  app.setMe('p5'); // Игорь К., кладовщик: права «stock» и «receive»
+  app.setMe('p5'); // Игорь К., кладовщик: «stock», «receive», «clients»; прав «admin» и сообщений клиентам нет
   const side = app.byId('side').innerHTML;
-  for (const id of ['team', 'clients', 'messages']) assert.ok(!side.includes(`data-view="${id}"`), `кладовщику в меню виден раздел ${id}`);
-  for (const id of ['home', 'stock', 'receiving', 'settings']) assert.ok(side.includes(`data-view="${id}"`), `кладовщику в меню не виден раздел ${id}`);
+  for (const id of ['team', 'messages']) assert.ok(!side.includes(`data-view="${id}"`), `кладовщику в меню виден раздел ${id}`);
+  for (const id of ['home', 'stock', 'receiving', 'clients', 'settings']) assert.ok(side.includes(`data-view="${id}"`), `кладовщику в меню не виден раздел ${id}`);
   const views = [...side.matchAll(/data-view="(\w+)"/g)].map(m => m[1]);
   assert.equal(views.at(-1), 'settings', '«Настройки» — не последняя в меню');
   assert.ok(side.includes('<h4>Настройки</h4>'), 'нет группы «Настройки»');
@@ -746,14 +746,14 @@ test('реестры ON, DRAWERS, SIMS: поля data-on и карточки с�
   app.openDrawer('probe', 'нет');
   assert.equal(root.innerHTML, '');
   assert.equal(app.S.ui.drawer, null);
-  // карточки v2 — тоже записи DRAWERS, с правами внутри: сделка открыта директору, закрыта кладовщику
+  // карточки v2 — тоже записи DRAWERS, с правами внутри: сделка открыта директору, закрыта логисту
   for (const k of ['product', 'deal', 'task']) assert.equal(typeof app.DRAWERS[k], 'function', `нет DRAWERS.${k}`);
   const d = app.S.deals[0];
   app.openDrawer('deal', d.id);
   assert.ok(root.innerHTML.includes(app.esc(d.client)), 'директору не открылась карточка сделки');
-  app.setMe('p5'); // кладовщик: права «Клиенты и сделки» нет
+  app.setMe('p6'); // логист: права «Клиенты и сделки» нет
   app.openDrawer('deal', d.id);
-  assert.equal(root.innerHTML, '', 'кладовщику открылась карточка сделки');
+  assert.equal(root.innerHTML, '', 'логисту открылась карточка сделки');
 });
 
 // Фото, которые не влезли в браузер (Store.dump с малым лимитом), после перезагрузки — не значки,

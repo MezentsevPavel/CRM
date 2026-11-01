@@ -36,8 +36,9 @@ function fakeEl(id) {
 }
 
 // Заглушки окружения браузера. storage — содержимое localStorage, hash — location.hash,
-// dark — ответ prefers-color-scheme: dark (undefined — в окружении нет matchMedia).
-function fakeWindow({ storage = {}, hash = '', dark } = {}) {
+// dark — ответ prefers-color-scheme: dark (undefined — в окружении нет matchMedia),
+// now — «сейчас» страницы: new Date() и Date.now() без аргументов отдают его (undefined — настоящие часы).
+function fakeWindow({ storage = {}, hash = '', dark, now } = {}) {
   const els = new Map();
   const byId = id => { if (!els.has(id)) els.set(id, fakeEl(id)); return els.get(id); };
   // слушатели страницы на document запоминаются: тест шлёт событие через dispatchEvent({type, target})
@@ -59,6 +60,13 @@ function fakeWindow({ storage = {}, hash = '', dark } = {}) {
   // таймеры страницы (тосты, отложенное сохранение) не держат процесс тестов
   const timer = (f, ms) => { const t = setTimeout(f, ms); t.unref?.(); return t; };
   const sandbox = { document, localStorage, location: { hash }, console, setTimeout: timer, clearTimeout };
+  if (now !== undefined) {
+    const at = new Date(now).getTime();
+    sandbox.Date = new Proxy(Date, {
+      construct: (D, args) => new D(...(args.length ? args : [at])),
+      get: (D, key) => (key === 'now' ? () => at : Reflect.get(D, key)),
+    });
+  }
   if (dark !== undefined) {
     sandbox.matchMedia = q => ({ matches: /prefers-color-scheme:\s*dark/.test(q) && !!dark, addEventListener() {}, removeEventListener() {} });
   }
