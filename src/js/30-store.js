@@ -19,7 +19,8 @@ const Store = (() => {
   // 13 — ремонт F1: право dealsEdit, резервы только по строкам сделки, демо-перемещения не увозят товар, правило поставок sr3.
   // 14 — уведомления со ссылкой на объект (ref: {t, id}); демо-уведомления проставлены заново; у проваленной сделки lostReleased.
   // 15 — кладовщик по умолчанию видит клиентов и сделки всех типов (права clients и dealsAll).
-  const REV = 15;
+  // 16 — у движений склада свой id (mv…): запись журнала — документ общей базы (Docs, серверная сборка, таск 01).
+  const REV = 16;
   // Браузер даёт сайту около 5 млн символов на всё; берём с запасом.
   const LIMIT = 4500000;
   const NO_SPACE = 'не сохранено — мало места в браузере';
@@ -130,19 +131,22 @@ const Store = (() => {
     return { text: out, droppedPhotos, droppedFiles, fits: out.length <= limit };
   }
 
+  // Обратно к живым датам: {$date: ISO} → Date. Второй аргумент JSON.parse; им же собирает документы общей базы Docs.join.
+  function revive(k, v) {
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      const keys = Object.keys(v);
+      if (keys.length === 1 && keys[0] === '$date') return new Date(v.$date === null ? NaN : v.$date);
+    }
+    return v;
+  }
+
   // Строка из localStorage → состояние с живыми датами; пусто, мусор или чужая версия схемы → null
   // (тогда запуск берёт seed()).
   function load(raw) {
     if (typeof raw !== 'string' || !raw) return null;
     let st;
     try {
-      st = JSON.parse(raw, (k, v) => {
-        if (v && typeof v === 'object' && !Array.isArray(v)) {
-          const keys = Object.keys(v);
-          if (keys.length === 1 && keys[0] === '$date') return new Date(v.$date === null ? NaN : v.$date);
-        }
-        return v;
-      });
+      st = JSON.parse(raw, revive);
     } catch (_) { return null; }
     if (!st || typeof st !== 'object' || Array.isArray(st) || st.v !== VERSION || st.rev !== REV) return null;
     delete st.rev;
@@ -150,12 +154,15 @@ const Store = (() => {
   }
 
   // Свободный id для новой записи списка: не совпадёт ни с одним сохранённым (общий для ядра).
+  // Есть поставщик номеров (Ids.use, серверный режим) — id берётся у него.
   function freeId(list, prefix) {
-    const used = new Set((list || []).map(x => x && x.id));
-    let n = (list || []).length + 1;
-    while (used.has(prefix + n)) n++;
-    return prefix + n;
+    return Ids.next(prefix, () => {
+      const used = new Set((list || []).map(x => x && x.id));
+      let n = (list || []).length + 1;
+      while (used.has(prefix + n)) n++;
+      return prefix + n;
+    });
   }
 
-  return { KEY, VERSION, REV, LIMIT, NO_SPACE, FILE_MAX, fileTooBig, load, dump, freeId };
+  return { KEY, VERSION, REV, LIMIT, NO_SPACE, FILE_MAX, fileTooBig, load, dump, freeId, revive, plain: v => plain(v, false) };
 })();

@@ -1203,12 +1203,17 @@ button.crow:hover{border-color:var(--line-2);background:var(--surface-2)}
 <div id="modal-root"></div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
+<!--CRM-SERVER-->
 <script>
 (()=>{
 'use strict';
 
 // Общие помощники: даты, числа, экранирование, иконки
 // Перенесено из прототипа v2 без изменений логики.
+
+// Режим страницы: демо (false) или серверная CRM (true). Сервер вставляет на место метки CRM-SERVER в page.html
+// скрипт, который ставит window.CRM_SERVER=1; файл, открытый с диска, остаётся демо.
+const SERVER=typeof CRM_SERVER!=='undefined'&&!!CRM_SERVER;
 
 // ——— даты и форматы ———
 const DAY=864e5;
@@ -1745,41 +1750,70 @@ const KIND={ship:{l:'Перевозки',ic:'truck',c:'info'},arrive:{l:'Скл�
 // Специализация инженера — главного инженера и инженера (R30)
 const SPECIALTY={designer:'проектировщик',installer:'монтажник'};
 
-// ——— демо-данные (примеры, не данные фирмы) ———
-// seed() = базовое состояние + шаги SEEDS по порядку. Шаг — функция st => {…}, дописывает в st свой раздел.
-// Следующие таски кладут свой шаг в своём файле: SEEDS.push(st => { … }).
+// ——— чистая база и демо-данные (примеры, не данные фирмы) ———
+// seedBase() — новая база фирмы без демо: роли, отделы, воронки, юрлица, города, причины отказа, настройки, каталог.
+// Людей и записей (сделок, лидов, клиентов, задач, поставок, отправок, уведомлений, ленты) в ней нет.
+// seedBase() = ядро ниже + шаги BASES по порядку; шаг — функция st => {…}, кладёт свою часть структуры в своём файле.
+// seed() = seedBase() + демо-команда + шаги SEEDS по порядку: шаг дописывает в st свои демо-записи.
+const BASES=[];
 const SEEDS=[];
-function seed(){
+function seedBase(){
   const st={
-    v:3,me:'p1',view:'home',
+    v:3,me:null,view:'home',
     prefs:{theme:'auto',sound:{},notify:{},ship:{}},
     roles:Perms.defaultRoles(),
     depts:[{id:'mgmt',name:'Руководство'},{id:'sales',name:'Продажи'},{id:'eng',name:'Инженерный'},{id:'stock',name:'Склад'},{id:'logistics',name:'Логистика'}],
-    // демо-команда: все семь ролей, по два менеджера B2B и B2C; имена — примеры
-    people:[
-      {id:'p1',name:'Павел М.',role:'director',dept:'mgmt',demo:true},
-      {id:'p2',name:'Анна С.',role:'managerB2c',dept:'sales',demo:true},
-      {id:'p3',name:'Максим Л.',role:'managerB2b',dept:'sales',demo:true},
-      {id:'p4',name:'Дмитрий В.',role:'chiefEngineer',dept:'eng',specialty:'designer',demo:true},
-      {id:'p5',name:'Игорь К.',role:'warehouse',dept:'stock',demo:true},
-      {id:'p6',name:'Ольга Д.',role:'logist',dept:'logistics',demo:true},
-      {id:'p7',name:'Сергей Т.',role:'engineer',dept:'eng',specialty:'installer',demo:true},
-      {id:'p8',name:'Артём Б.',role:'engineer',dept:'eng',specialty:'installer',demo:true},
-      {id:'p9',name:'Ирина П.',role:'managerB2b',dept:'sales',demo:true},
-      {id:'p10',name:'Олег Н.',role:'managerB2c',dept:'sales',demo:true},
-      {id:'p11',name:'Наталья Р.',role:'engineer',dept:'eng',specialty:'designer',demo:true}
-    ],
+    people:[],
     pipelines:Pipes.defaults()
   };
+  for(const step of BASES) step(st);
+  return st;
+}
+function seed(){
+  const st=seedBase();
+  st.me='p1';
+  // демо-команда: все семь ролей, по два менеджера B2B и B2C; имена — примеры
+  st.people.push(
+    {id:'p1',name:'Павел М.',role:'director',dept:'mgmt',demo:true},
+    {id:'p2',name:'Анна С.',role:'managerB2c',dept:'sales',demo:true},
+    {id:'p3',name:'Максим Л.',role:'managerB2b',dept:'sales',demo:true},
+    {id:'p4',name:'Дмитрий В.',role:'chiefEngineer',dept:'eng',specialty:'designer',demo:true},
+    {id:'p5',name:'Игорь К.',role:'warehouse',dept:'stock',demo:true},
+    {id:'p6',name:'Ольга Д.',role:'logist',dept:'logistics',demo:true},
+    {id:'p7',name:'Сергей Т.',role:'engineer',dept:'eng',specialty:'installer',demo:true},
+    {id:'p8',name:'Артём Б.',role:'engineer',dept:'eng',specialty:'installer',demo:true},
+    {id:'p9',name:'Ирина П.',role:'managerB2b',dept:'sales',demo:true},
+    {id:'p10',name:'Олег Н.',role:'managerB2c',dept:'sales',demo:true},
+    {id:'p11',name:'Наталья Р.',role:'engineer',dept:'eng',specialty:'designer',demo:true}
+  );
   for(const step of SEEDS) step(st);
   return st;
 }
 
-// Шаг 1: демо-записи v2 — товары, поставки, резервы, сделки, задачи, переписка, движения, правила.
-// Этап записи — id этапа её воронки (pipeId/boardId + stageId), не номер.
-SEEDS.push(st=>{
+// База, шаг 1: воронка отгрузок клиентам, правила автоматизации, шаблон сообщения клиенту, пустые списки записей.
+BASES.push(st=>{
   // отгрузки клиентам (исходящие) — своя воронка, как ST_OUT в v2
   st.pipelines.push({id:'shipsOut',kind:'ships',dir:'out',name:'Отгрузки клиентам',stages:[{id:'packed',name:'Собрано'},{id:'sent',name:'Отгружено'},{id:'onWay',name:'В пути'},{id:'delivered',name:'Доставлено',flag:'final'}]});
+  Object.assign(st,{
+    products:[],shipments:[],reserves:[],deals:[],tasks:[],msgs:[],moves:[],
+    rules:[
+      {id:'arrive',on:true,when:'Товар клиента принят на склад',then:'Пишем клиенту в его мессенджер по шаблону ниже, менеджеру — уведомление'},
+      {id:'late',on:true,when:'Поставка опаздывает больше чем на 1 день',then:'Уведомляем менеджеров сделок, которые ждут товар, и директора'},
+      {id:'shipped',on:false,when:'Товар отгружен на объект клиента',then:'Пишем клиенту номер отгрузки и дату доставки'},
+      {id:'resexp',on:true,when:'Резерв истекает через 2 дня',then:'Напоминаем менеджеру продлить или снять резерв'},
+      {id:'overdue',on:true,when:'Задача просрочена',then:'Уведомляем исполнителя и того, кто поставил задачу'}
+    ],
+    tpl:'{имя}, здравствуйте! Ваш заказ пришёл на склад: {товар}. Можно забирать или договоримся о доставке. Адрес склада: {адрес_склада}. Ваш менеджер — {менеджер}, сделка {сделка}.',
+    address:'',
+    rcv:null,
+    notes:[],
+    feed:[]
+  });
+});
+
+// Шаг 1: демо-записи v2 — товары, поставки, резервы, сделки, задачи, переписка, движения.
+// Этап записи — id этапа её воронки (pipeId/boardId + stageId), не номер.
+SEEDS.push(st=>{
   const T=(id,title,deal,to,from,due,stageId,prio,desc,at)=>({id,title,deal,to,from,due,boardId:'tasksCommon',stageId,prio,desc,at});
   const D=(id,client,contact,kind,object,type,stageId,managerId,channel,amount)=>({id,client,contact,kind,object,type,pipeId:type==='b2b'?'dealsB2b':'dealsB2c',stageId,managerId,channel,amount,demo:true});
   Object.assign(st,{
@@ -1832,26 +1866,17 @@ SEEDS.push(st=>{
       {id:'m4',at:day(-3,17,45),deal:'Д-318',channel:'max',by:'p2',text:'Елена, контроллер и аккумуляторы уже в пути. Как придут на склад — напишем сюда же.'},
       {id:'m3',at:day(-2,15,32),deal:'Д-305',channel:'max',auto:true,text:'Мария, здравствуйте! Крепёж для вашей станции пришёл на склад. Отгрузку на объект согласуем с вами отдельно. Ваш менеджер — Анна С.'}
     ],
+    // журнал склада: новые сверху, у самого нового — самый большой номер
     moves:[
-      {at:day(0,11,0),productId:'PV-550M',kind:'Отгрузка',qty:12,doc:'О-207',by:'p5'},
-      {at:day(0,11,0),productId:'MNT-R4',kind:'Отгрузка',qty:3,doc:'О-207',by:'p5'},
-      {at:day(0,11,0),productId:'CAB-6R',kind:'Отгрузка',qty:60,doc:'О-207',by:'p5'},
-      {at:day(-1,10,5),productId:'PV-550M',kind:'Резерв',qty:22,doc:'Д-311',by:'p2'},
-      {at:day(-2,15,30),productId:'MNT-R4',kind:'Приход',qty:24,doc:'П-1038',by:'p5'},
-      {at:day(-3,12,40),productId:'PV-550M',kind:'Резерв',qty:36,doc:'Д-314',by:'p3'},
-      {at:day(-5,9,30),productId:'INV-H6',kind:'Приход',qty:6,doc:'П-1035',by:'p5'},
-      {at:day(-5,9,30),productId:'PV-550M',kind:'Приход',qty:60,doc:'П-1035',by:'p5'}
-    ],
-    rules:[
-      {id:'arrive',on:true,when:'Товар клиента принят на склад',then:'Пишем клиенту в его мессенджер по шаблону ниже, менеджеру — уведомление'},
-      {id:'late',on:true,when:'Поставка опаздывает больше чем на 1 день',then:'Уведомляем менеджеров сделок, которые ждут товар, и директора'},
-      {id:'shipped',on:false,when:'Товар отгружен на объект клиента',then:'Пишем клиенту номер отгрузки и дату доставки'},
-      {id:'resexp',on:true,when:'Резерв истекает через 2 дня',then:'Напоминаем менеджеру продлить или снять резерв'},
-      {id:'overdue',on:true,when:'Задача просрочена',then:'Уведомляем исполнителя и того, кто поставил задачу'}
-    ],
-    tpl:'{имя}, здравствуйте! Ваш заказ пришёл на склад: {товар}. Можно забирать или договоримся о доставке. Адрес склада: {адрес_склада}. Ваш менеджер — {менеджер}, сделка {сделка}.',
-    address:'',
-    rcv:null
+      {id:'mv8',at:day(0,11,0),productId:'PV-550M',kind:'Отгрузка',qty:12,doc:'О-207',by:'p5'},
+      {id:'mv7',at:day(0,11,0),productId:'MNT-R4',kind:'Отгрузка',qty:3,doc:'О-207',by:'p5'},
+      {id:'mv6',at:day(0,11,0),productId:'CAB-6R',kind:'Отгрузка',qty:60,doc:'О-207',by:'p5'},
+      {id:'mv5',at:day(-1,10,5),productId:'PV-550M',kind:'Резерв',qty:22,doc:'Д-311',by:'p2'},
+      {id:'mv4',at:day(-2,15,30),productId:'MNT-R4',kind:'Приход',qty:24,doc:'П-1038',by:'p5'},
+      {id:'mv3',at:day(-3,12,40),productId:'PV-550M',kind:'Резерв',qty:36,doc:'Д-314',by:'p3'},
+      {id:'mv2',at:day(-5,9,30),productId:'INV-H6',kind:'Приход',qty:6,doc:'П-1035',by:'p5'},
+      {id:'mv1',at:day(-5,9,30),productId:'PV-550M',kind:'Приход',qty:60,doc:'П-1035',by:'p5'}
+    ]
   });
 });
 
@@ -1931,8 +1956,9 @@ const itemsText=list=>list.map(r=>{const p=product(r.productId);return `${low(p.
 function shortItems(s){const c=[...new Set(s.items.map(i=>product(i.productId)?.cat).filter(Boolean))].map(low);return c.length>2?c.slice(0,2).join(', ')+` и ещё ${c.length-2}`:c.join(', ')}
 
 // ——— задачи ———
-const taskMine=t=>{const m=me();return (t.to.t==='p'&&t.to.id===m.id)||(t.to.t==='d'&&t.to.id===m.dept)};
-const taskVisible=t=>can('tasksAll')||taskMine(t)||t.from===me().id;
+// «Моя» и «видна» — правила Visible.taskMine и Visible.task (46-visible.js), здесь — для текущего человека
+const taskMine=t=>Visible.taskMine(S,t,me().id);
+const taskVisible=t=>Visible.task(S,t,me().id);
 // «Просрочена» — единственное определение
 const taskOverdue=t=>!isDone(t)&&dd(t.due)<0;
 const targetName=t=>t.to.t==='p'?(person(t.to.id)?.name||'нет данных: сотрудник'):`Отдел «${deptName(t.to.id)}»`;
@@ -1985,7 +2011,8 @@ const Store = (() => {
   // 13 — ремонт F1: право dealsEdit, резервы только по строкам сделки, демо-перемещения не увозят товар, правило поставок sr3.
   // 14 — уведомления со ссылкой на объект (ref: {t, id}); демо-уведомления проставлены заново; у проваленной сделки lostReleased.
   // 15 — кладовщик по умолчанию видит клиентов и сделки всех типов (права clients и dealsAll).
-  const REV = 15;
+  // 16 — у движений склада свой id (mv…): запись журнала — документ общей базы (Docs, серверная сборка, таск 01).
+  const REV = 16;
   // Браузер даёт сайту около 5 млн символов на всё; берём с запасом.
   const LIMIT = 4500000;
   const NO_SPACE = 'не сохранено — мало места в браузере';
@@ -2096,19 +2123,22 @@ const Store = (() => {
     return { text: out, droppedPhotos, droppedFiles, fits: out.length <= limit };
   }
 
+  // Обратно к живым датам: {$date: ISO} → Date. Второй аргумент JSON.parse; им же собирает документы общей базы Docs.join.
+  function revive(k, v) {
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      const keys = Object.keys(v);
+      if (keys.length === 1 && keys[0] === '$date') return new Date(v.$date === null ? NaN : v.$date);
+    }
+    return v;
+  }
+
   // Строка из localStorage → состояние с живыми датами; пусто, мусор или чужая версия схемы → null
   // (тогда запуск берёт seed()).
   function load(raw) {
     if (typeof raw !== 'string' || !raw) return null;
     let st;
     try {
-      st = JSON.parse(raw, (k, v) => {
-        if (v && typeof v === 'object' && !Array.isArray(v)) {
-          const keys = Object.keys(v);
-          if (keys.length === 1 && keys[0] === '$date') return new Date(v.$date === null ? NaN : v.$date);
-        }
-        return v;
-      });
+      st = JSON.parse(raw, revive);
     } catch (_) { return null; }
     if (!st || typeof st !== 'object' || Array.isArray(st) || st.v !== VERSION || st.rev !== REV) return null;
     delete st.rev;
@@ -2116,14 +2146,17 @@ const Store = (() => {
   }
 
   // Свободный id для новой записи списка: не совпадёт ни с одним сохранённым (общий для ядра).
+  // Есть поставщик номеров (Ids.use, серверный режим) — id берётся у него.
   function freeId(list, prefix) {
-    const used = new Set((list || []).map(x => x && x.id));
-    let n = (list || []).length + 1;
-    while (used.has(prefix + n)) n++;
-    return prefix + n;
+    return Ids.next(prefix, () => {
+      const used = new Set((list || []).map(x => x && x.id));
+      let n = (list || []).length + 1;
+      while (used.has(prefix + n)) n++;
+      return prefix + n;
+    });
   }
 
-  return { KEY, VERSION, REV, LIMIT, NO_SPACE, FILE_MAX, fileTooBig, load, dump, freeId };
+  return { KEY, VERSION, REV, LIMIT, NO_SPACE, FILE_MAX, fileTooBig, load, dump, freeId, revive, plain: v => plain(v, false) };
 })();
 
 // Ядро: роли и права. Роли — данные (st.roles), проверки спрашивают право, а не название роли.
@@ -2654,8 +2687,10 @@ const Stock = (() => {
   }
 
   // ——— журнал движений ———
+  // У каждой записи журнала свой id (mv…): запись — документ общей базы, её не правят и не удаляют.
   function log(st, rec) {
     if (!st.moves) st.moves = [];
+    if (!rec.id) rec.id = Store.freeId(st.moves, 'mv');
     st.moves.unshift(rec);
     return rec;
   }
@@ -2794,6 +2829,8 @@ const Stock = (() => {
   // HIDDEN_DEAL, без ссылки и без кнопок «Снять» и «Списать». Карточка товара, журнал, карточка поставки, превью приёмки
   // и текст уведомления зовут эти функции, своих проверок не заводят.
   const HIDDEN_DEAL = 'сделка скрыта';
+  // Номер сделки, которую человек не видит, в его копии состояния (Visible.of): резерв и движение остаются, номера нет.
+  const HIDDEN_ID = 'hidden';
 
   // «Юрлицо · город» клетки склада; неизвестный id показывается как есть.
   const cellText = (st, e, c) => `${entityName(st, e || ANY) ?? e} · ${cityName(st, c || ANY) ?? c}`;
@@ -2815,17 +2852,18 @@ const Stock = (() => {
       where: inTransit ? `в пути: ${src}` : cellText(st, r.entityId, r.cityId),
       until: r.until || null,
       deal: dealRef(st, r.dealId, personId),
-      hasDeal: (st.deals || []).some(d => d.id === r.dealId),
+      hasDeal: r.dealId === HIDDEN_ID || (st.deals || []).some(d => d.id === r.dealId),
     };
   }
 
   // Документ движения глазами человека: номер своей сделки как есть, чужой — HIDDEN_DEAL; поставка, накладная — как есть.
   function docView(st, doc, personId) {
+    if (doc === HIDDEN_ID) return HIDDEN_DEAL;
     if (!doc || !(st.deals || []).some(d => d.id === doc)) return doc || '';
     return dealRef(st, doc, personId) ? doc : HIDDEN_DEAL;
   }
 
-  return { ANY, KINDS, NO_ENTITY, NO_CITY, HIDDEN_DEAL, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, canReserve, bestCell, move, reserve, unreserve, release, expired, sellMax, sell, cellText, dealRef, reserveView, docView };
+  return { ANY, KINDS, NO_ENTITY, NO_CITY, HIDDEN_DEAL, HIDDEN_ID, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, canReserve, bestCell, move, reserve, unreserve, release, expired, sellMax, sell, cellText, dealRef, reserveView, docView };
 })();
 
 // Ядро: поставки и маршрут. Чистые функции, без DOM; текущее время приходит аргументом now.
@@ -3133,10 +3171,17 @@ const Ships = (() => {
     return fired;
   }
 
+  // Номер новой поставки к нам: «П-» и следующий после самого большого из входящих. Есть поставщик номеров
+  // (Ids.use, серверный режим) — номер выдаёт он.
+  function nextNumber(st) {
+    return Ids.next('П-', () => 'П-' + (Math.max(0, ...(st.shipments || []).filter(s => s.dir === 'in')
+      .map(s => parseInt(String(s.id).replace(/\D/g, ''), 10) || 0)) + 1));
+  }
+
   return {
     NODES, ST, SRC, EVENTS, nodeOf, nodeName, routeText, units, brief,
     where, plan, progress, awaitingReceipt, isLate, mapCounts, query,
-    advance, setStage, applyRules, eventLabel,
+    advance, setStage, applyRules, eventLabel, nextNumber,
   };
 })();
 
@@ -3303,8 +3348,11 @@ SEEDS.push(st => {
   });
 
   st.shipments = shipments;
-  // правила директора по умолчанию (Настройки → Поставки); третье выключено — пример выключенного. «Прибыло в город»
-  // и «На складе» ставит только «принято на складе» (Pipes.ruleMayTo): прибытие отмечает шаг перевозчика, склад — приёмка
+});
+
+// База: правила директора по умолчанию (Настройки → Поставки); третье выключено — пример выключенного. «Прибыло в город»
+// и «На складе» ставит только «принято на складе» (Pipes.ruleMayTo): прибытие отмечает шаг перевозчика, склад — приёмка
+BASES.push(st => {
   st.shipRules = [
     { id: 'sr1', on: true, when: 'received', then: 'inStock' },
     { id: 'sr2', on: true, when: 'customs', then: 'transship' },
@@ -3344,11 +3392,14 @@ const Leads = (() => {
   const firstOf = pipe => pipe.stages.find(s => !s.flag) || pipe.stages[0];
 
   // Следующий номер вида «Л-101»: после самого большого из занятых, но не меньше min + 1.
+  // Есть поставщик номеров (Ids.use, серверный режим) — номер выдаёт он.
   function nextId(list, prefix, min) {
-    const re = new RegExp('^' + prefix + '-(\\d+)$');
-    let n = min;
-    for (const x of list || []) { const m = re.exec(String(x.id)); if (m) n = Math.max(n, +m[1]); }
-    return prefix + '-' + (n + 1);
+    return Ids.next(prefix + '-', () => {
+      const re = new RegExp('^' + prefix + '-(\\d+)$');
+      let n = min;
+      for (const x of list || []) { const m = re.exec(String(x.id)); if (m) n = Math.max(n, +m[1]); }
+      return prefix + '-' + (n + 1);
+    });
   }
 
   // start — запись о приходе лида (как пришёл, кем заведён, кому достался): сама по себе действием с лидом не считается
@@ -3691,11 +3742,18 @@ Pipes.guard('leads', pipe => ({
 // Вид уведомления «Лид ждёт» в «Уведомления»: подпись и значок (список видов — KIND в 20-model.js)
 KIND.leadWait = { l: 'Лид ждёт', ic: 'clock', c: 'bad' };
 
-// Шаг SEEDS: роль РОП и демо-человек с этой ролью. РОП распределяет лиды (право leadsAssign) и сам лидов не получает:
-// у роли нет типа (scope), поэтому Leads.route и Leads.pick его не выбирают. Шаг стоит до лидов — чтобы человек уже был в команде.
-SEEDS.push(st => {
+// База: роль РОП. РОП распределяет лиды (право leadsAssign) и сам лидов не получает: у роли нет типа (scope),
+// поэтому Leads.route и Leads.pick его не выбирают. Шаг SEEDS ниже — демо-человек с этой ролью; стоит до лидов,
+// чтобы человек уже был в команде.
+BASES.push(st => {
   const on = ['leads', 'leadsAssign', 'dealsAll', 'clients', 'stock', 'prices', 'reserve', 'write', 'mail', 'tasksAssign'];
   st.roles.push({ id: 'rop', name: 'РОП (руководитель отдела продаж)', builtin: true, perms: Object.fromEntries(Perms.LIST.map(([k]) => [k, on.includes(k)])) });
+  // источник лидов и время реакции по умолчанию; лидов в новой базе нет
+  st.leadSource = 'both';
+  st.leadWaitMin = 15;
+  st.leads = [];
+});
+SEEDS.push(st => {
   st.people.push({ id: Store.freeId(st.people, 'p'), name: 'Елена Г.', role: 'rop', dept: 'sales', demo: true });
 });
 
@@ -3704,9 +3762,6 @@ SEEDS.push(st => {
 // Лиды заводятся теми же функциями, что и в работе (create, contacted, close, toDeal), но без уведомлений:
 // менеджера выбирает route, поэтому «Нераспределённые» — лиды без компании и контакта.
 SEEDS.push(st => {
-  st.leadSource = 'both';
-  st.leadWaitMin = 15;
-  st.leads = [];
   const pad = (n, w) => String(n).padStart(w, '0');
   const COMPANIES = ['ООО „Пример-Строй“', 'ИП Пример-Агро', 'КФХ „Пример“', 'ООО „Пример-Сервис“', 'АО „Пример-Энерго“', 'ООО „Пример-Склад“', 'ООО „Пример-Дом“', 'ООО „Пример-Транс“'];
   const TEXTS = {
@@ -3874,6 +3929,9 @@ const Mail = (() => {
 
   return { INBOX, SIM_NOTE, NOTE_KIND, boxesFor, folderOf, remember, search, deliver, reply };
 })();
+
+// База: почта пустая — ни ящиков, ни поставщиков, ни писем (в серверной CRM раздела «Почта» нет).
+BASES.push(st => { st.mail = { boxes: [], suppliers: [], letters: [] }; });
 
 // ——— демо-данные ———
 // Шаг SEEDS: два ящика, шесть поставщиков-примеров и письма за две недели до фиксированной даты демо.
@@ -4249,9 +4307,13 @@ const DEMO_LINKS = {
   'MTR-3F': { cat: 'Защита и соединения', name: 'Токоизмерительные клещи SPLIT CORE CTSA016 на 100 А / 50 mA' },
   'WND-3K': { cat: 'Инверторы', name: 'Гибридный инвертор ASTERION INV ECO II 1.5 кВт (1500W / 12V / PV 900W 30-160V / MPPT 60A)' },
 };
+// База: юрлица и города по умолчанию, товары — каталог сайта без снимка остатков; остатков и отложенного нет.
+BASES.push(st => {
+  Object.assign(st, Stock.defaults(), { products: Catalog.build(CATALOG, { rows: [] }).products, stock: {}, aside: {} });
+});
 SEEDS.push(st => {
   const built = Catalog.build(CATALOG, STOCK_SNAPSHOT);
-  Object.assign(st, Stock.defaults(), { products: built.products, stock: built.stock, aside: built.aside });
+  Object.assign(st, { products: built.products, stock: built.stock, aside: built.aside });
   const pick = ({ cat, name }) => st.products.find(p => p.cat === cat && Catalog.norm(p.name) === Catalog.norm(name))
     || st.products.find(p => p.cat === cat);
   const link = Object.fromEntries(Object.entries(DEMO_LINKS).map(([sku, rule]) => [sku, pick(rule).id]));
@@ -4511,9 +4573,12 @@ const Dispatch = (() => {
 
   // ——— заявки ———
   // Следующий номер: больше всех выданных (удалять заявки нельзя, но номер от длины списка не берём).
+  // Есть поставщик номеров (Ids.use, серверный режим) — номер выдаёт он.
   function nextNumber(st) {
-    const used = (st.dispatches || []).map(d => Number(String(d.number).replace(/\D/g, '')) || 0);
-    return 'ОТ-' + String(Math.max(0, ...used) + 1).padStart(3, '0');
+    return Ids.next('ОТ-', () => {
+      const used = (st.dispatches || []).map(d => Number(String(d.number).replace(/\D/g, '')) || 0);
+      return 'ОТ-' + String(Math.max(0, ...used) + 1).padStart(3, '0');
+    });
   }
   function firstPipe(st) {
     const p = Pipes.of(st, PIPE)[0];
@@ -4699,7 +4764,7 @@ const Dispatch = (() => {
   }
 
   return {
-    PIPE, ST, STEP_KIND, PURPOSE, MISSING, NO_ADDRESS, byId, create, update, canWork, canEdit, canCancel, canComment, canSell,
+    PIPE, ST, STEP_KIND, PURPOSE, MISSING, NO_ADDRESS, byId, nextNumber, create, update, canWork, canEdit, canCancel, canComment, canSell,
     setStage, assign, drivers, pick, picked, comment, sell, soldText, query, transit, inTransit, warehouseAddress, lineName,
   };
 })();
@@ -4727,22 +4792,25 @@ KIND.dispatchStep = { l: 'Ход отправок', ic: 'truck', c: 'info' };
 // Демо-перемещения не доходят дальше «Готова к отправке»: «В пути» увозит товар из клетки, а демо не должно менять
 // настоящий снимок остатков — сразу после «Сбросить» остатки равны Catalog.build(снимок).
 // Заявки заводятся теми же функциями, что и в работе, но без уведомлений (silent).
-SEEDS.push(st => {
+// База: роль «Водитель», право РОП списывать при продаже, воронка отправок; заявок в новой базе нет.
+BASES.push(st => {
   const perms = on => Object.fromEntries(Perms.LIST.map(([k]) => [k, on.includes(k)]));
   st.roles.push({ id: 'driver', name: 'Водитель', builtin: true, perms: perms(['dispatch']) });
-  // РОП (роль заводит шаг лидов, 35-leads.js) списывает при продаже, как менеджеры
+  // РОП (роль заводит база лидов, 35-leads.js) списывает при продаже, как менеджеры
   const rop = st.roles.find(r => r.id === 'rop');
   if (rop) rop.perms.sell = true;
-  const driverIds = ['Роман Е.', 'Василий Т.'].map(name => {
-    const p = { id: Store.freeId(st.people, 'p'), name, role: 'driver', dept: 'logistics', demo: true };
-    st.people.push(p);
-    return p.id;
-  });
   st.pipelines.push({ id: Dispatch.PIPE, kind: 'dispatch', name: 'Отправки', stages: [
     { id: 'new', name: 'Новая' }, { id: 'picking', name: 'Собирается' }, { id: 'ready', name: 'Готова к отправке' },
     { id: 'onWay', name: 'В пути' }, { id: 'delivered', name: 'Доставлена', flag: 'final' }, { id: 'cancelled', name: 'Отменена', flag: 'final' },
   ] });
   st.dispatches = [];
+});
+SEEDS.push(st => {
+  const driverIds = ['Роман Е.', 'Василий Т.'].map(name => {
+    const p = { id: Store.freeId(st.people, 'p'), name, role: 'driver', dept: 'logistics', demo: true };
+    st.people.push(p);
+    return p.id;
+  });
 
   const pad = (n, w) => String(n).padStart(w, '0');
   const catalog = st.products.filter(p => p.inCatalog);
@@ -4885,8 +4953,9 @@ const Clients = (() => {
     return { ok: true, id: c.id, client: c, missing: [], reason: '' };
   }
 
-  // Может ли человек заводить и править клиентов: право «клиенты». by пустой — это система (демо, импорт).
-  const canEdit = (st, by) => !by || (!!personOf(st, by) && Perms.can(st, by, 'clients'));
+  // Может ли человек заводить и править клиентов: право «клиенты» и право «Заводить и править сделки» (G01: инженер клиентов
+  // видит, но не правит). by пустой — это система (демо, импорт). Единственное место правила: экран и Guard зовут его.
+  const canEdit = (st, by) => !by || (!!personOf(st, by) && Perms.can(st, by, 'clients') && Perms.can(st, by, 'dealsEdit'));
   const NO_RIGHT = { ok: false, id: null, client: null, missing: [], reason: 'У вашей роли нет права заводить и править клиентов.' };
 
   // Новый клиент: {name, kind?, inn?, phone | phones?, email?, address?, managerId?, demo?}.
@@ -4985,7 +5054,7 @@ const Clients = (() => {
       || (ik.length >= 3 && innKey(c.inn).includes(ik)));
   }
 
-  return { KIND, phoneKey, byId, find, create, update, findOrCreate, related, search };
+  return { KIND, phoneKey, byId, find, canEdit, create, update, findOrCreate, related, search };
 })();
 
 // Шаг SEEDS: демо-клиенты. Каждая сделка получает клиента (clientId) из своего названия, контакта и телефона: сделки из лидов
@@ -4994,6 +5063,8 @@ const Clients = (() => {
 // У прежних сделок v2 текст deal.client остаётся как был (его читают уведомления приёмки), «(пример)» — в названии клиента.
 // Лиды с тем же телефоном или ИНН привязываются к тому же клиенту: два открытых лида повторно обращаются под данными
 // клиентов Д-311 и Д-314 — это и есть образец «Похоже, это …».
+// База: клиентов нет.
+BASES.push(st => { st.clients = []; });
 SEEDS.push(st => {
   st.clients = st.clients || [];
   const when = day(-12, 9, 0);
@@ -5132,11 +5203,12 @@ const Feed = (() => {
       .map(x => ({ ...x.e }));
   }
 
-  // Кто может писать в ленту карточки: сделка и клиент — право «клиенты» (сделку человек должен видеть), лид — «лиды»
-  // (и видеть лид), отправка — Dispatch.canComment: любой сотрудник (раздел видят все).
+  // Кто может писать в ленту карточки и ставить в ней дела: сделка — кто её видит и заводит и правит сделки (dealsEdit;
+  // G01: инженер ленту сделки читает, но не пишет), клиент — право «клиенты», лид — «лиды» (и видеть лид),
+  // отправка — Dispatch.canComment: любой сотрудник (раздел видят все). Экран, Acts и Guard зовут это правило.
   function canComment(st, personId, ref) {
     if (!ref || !(st.people || []).some(p => p.id === personId)) return false;
-    if (ref.t === 'deal') return Leads.dealsVisible(st, personId).some(d => d.id === ref.id);
+    if (ref.t === 'deal') return Perms.can(st, personId, 'dealsEdit') && Leads.dealsVisible(st, personId).some(d => d.id === ref.id);
     if (ref.t === 'lead') return Leads.visible(st, personId).some(l => l.id === ref.id);
     if (ref.t === 'client') return Perms.can(st, personId, 'clients');
     if (ref.t === 'dispatch') return Dispatch.canComment(st, personId, Dispatch.byId(st, ref.id));
@@ -5743,11 +5815,13 @@ const Deals = (() => {
 // этапах воронки, четыре из них провалены с причиной. Строки — из настоящего каталога (товар, цена сайта на снимок 31.10.2026);
 // где цены сайта у товара нет, в строке «нет данных: цена». Новых резервов шаг не ставит: остатки и свободное прежние.
 // Всё помечено «пример» (demo:true и слово в названиях клиентов), телефоны вида +7 900 000-00-NN.
-SEEDS.push(st => {
+// База: причины отказа по умолчанию; РОП (роль заводит база лидов, 35-leads.js) заводит и правит сделки, как менеджеры.
+BASES.push(st => {
   st.lostReasons = Deals.defaultReasons();
-  // РОП (роль заводит шаг лидов, 35-leads.js) заводит и правит сделки, как менеджеры
   const rop = st.roles.find(r => r.id === 'rop');
   if (rop) rop.perms.dealsEdit = true;
+});
+SEEDS.push(st => {
   const DAY = 864e5, STAGES = ['request', 'calc', 'offer', 'contract', 'payment', 'delivery', 'install', 'done'];
   const pad = (n, w) => String(n).padStart(w, '0');
   const mgrs = type => Leads.managers(st, type).map(p => p.id);
@@ -6040,8 +6114,9 @@ KIND.act = { l: 'Дела', ic: 'clock', c: 'sun' };
 // дальше, у части — ни одного («нет следующего шага»); у части сделок есть и выполненные дела с результатом. Ответственный —
 // менеджер карточки, а каждое четвёртое дело — тот, кто сейчас в системе (st.me), чтобы счётчики не были пустыми.
 // Всё помечено «пример». Напоминаний у демо-дел нет: при первом запуске в уведомления ничего не сыплется.
+// База: дел нет.
+BASES.push(st => { st.acts = []; });
 SEEDS.push(st => {
-  st.acts = [];
   const TITLES = {
     call: ['Перезвонить по расчёту', 'Уточнить сроки по поставке', 'Согласовать время замера'],
     meet: ['Встреча на объекте', 'Показать КП в офисе'],
@@ -6132,6 +6207,699 @@ const Attach = (() => {
   }
 
   return { clean, tooBig, add, canRemove, remove };
+})();
+
+// Ядро общей базы: состояние режется на документы и собирается обратно (Docs), номера записей берутся у поставщика (Ids).
+// Без DOM и сети: сервер и браузер зовут одни и те же функции. Документ — запись списка (ключ + id), строка остатков
+// товара (stock/aside по id товара) или целый ключ (id ''). Значение документа — чистый JSON: даты как {$date: ISO}.
+
+// ——— номера ———
+// Поставщик номеров: в демо его нет — номера считает сам код по списку; в серверном режиме (72-server.js) номер выдаёт
+// сервер, и два человека не получат один «Д-…». fn(prefix) → номер целиком ('Д-512', 'mv1840') или null — тогда как в демо.
+const Ids = (() => {
+  let supplier = null;
+  function use(fn) { supplier = typeof fn === 'function' ? fn : null; }
+  function next(prefix, fallback) {
+    const got = supplier ? supplier(prefix) : null;
+    return got === null || got === undefined || got === '' ? fallback() : String(got);
+  }
+  return { use, next };
+})();
+
+// ——— документы ———
+const Docs = (() => {
+  const SEP = '\u0001';
+  // Классификация ключей верхнего уровня S. Новый ключ состояния обязан попасть сюда: тест сверяет с seed().
+  const KEYS = {
+    // массивы записей с id: документ — запись
+    ARRAY: ['products', 'moves', 'reserves', 'shipments', 'shipRules', 'deals', 'leads', 'clients', 'feed', 'acts', 'tasks', 'msgs',
+      'notes', 'dispatches', 'pipelines', 'depts', 'entities', 'cities', 'roles', 'people', 'rules', 'lostReasons'],
+    // по id товара: документ — строка остатков (stock) или отложенного (aside) одного товара
+    MAP: ['stock', 'aside'],
+    // целиком одним документом с id ''
+    WHOLE: ['mail', 'leadSource', 'leadWaitMin', 'tpl', 'address', 'prefs', 'stockSheet'],
+    // личное: на сервер не уходит никогда
+    LOCAL: ['me', 'view', 'ui', 'rcv', 'v'],
+    // личные поля внутри prefs: тема и вид карты поставок
+    LOCAL_PREFS: ['theme', 'ship'],
+  };
+  const kind = key => ['ARRAY', 'MAP', 'WHOLE', 'LOCAL'].find(c => KEYS[c].includes(key)) || null;
+  const docId = (key, id) => key + SEP + (id === undefined || id === null ? '' : id);
+  const parse = d => { const i = d.indexOf(SEP); return { key: d.slice(0, i), id: d.slice(i + 1) }; };
+  const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
+  const live = v => (v === undefined ? undefined : JSON.parse(JSON.stringify(v), Store.revive));
+
+  // Равенство значений документа: объекты — по полям в любом порядке, массивы — по порядку
+  function same(a, b) {
+    if (a === b) return true;
+    if (Array.isArray(a) || Array.isArray(b)) {
+      return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => same(x, b[i]));
+    }
+    if (!isObj(a) || !isObj(b)) return false;
+    const ka = Object.keys(a).filter(k => a[k] !== undefined), kb = Object.keys(b).filter(k => b[k] !== undefined);
+    return ka.length === kb.length && ka.every(k => same(a[k], b[k]));
+  }
+
+  // Общая часть prefs: всё, кроме личных полей
+  function sharedPrefs(p) {
+    const o = { ...(p || {}) };
+    for (const k of KEYS.LOCAL_PREFS) delete o[k];
+    return o;
+  }
+
+  // Товары — как в Catalog.pack: нетронутый товар снимка каталога документом не идёт (он константа файла), правленый —
+  // документом с полной записью, снятый из списка — документом null; товары, добавленные руками, — документами как есть.
+  function splitProducts(products, docs) {
+    const packed = Catalog.pack(products);
+    if (!packed) { for (const p of products || []) docs[docId('products', p.id)] = Store.plain(p); return; }
+    const own = new Set(packed.products), edited = new Set(Object.keys(packed.productEdits || {}));
+    for (const p of products) if (own.has(p) || edited.has(p.id)) docs[docId('products', p.id)] = Store.plain(p);
+    for (const id of packed.productsRemoved || []) docs[docId('products', id)] = null;
+  }
+
+  // Состояние → { 'key\u0001id': value }. Личное (LOCAL, prefs.theme, prefs.ship) не идёт. Ключ вне классификации
+  // идёт целиком: данные не теряются, а права на него — только у admin (Guard).
+  function split(st) {
+    const docs = {};
+    for (const key of Object.keys(st || {})) {
+      const k = kind(key), v = st[key];
+      if (k === 'LOCAL' || v === undefined) continue;
+      if (key === 'products') { splitProducts(v, docs); continue; }
+      if (k === 'ARRAY') {
+        for (const r of v || []) {
+          if (!r || r.id === undefined || r.id === null || r.id === '') throw new Error(`Docs.split: запись без id в «${key}»`);
+          docs[docId(key, r.id)] = Store.plain(r);
+        }
+      } else if (k === 'MAP') {
+        for (const id of Object.keys(v || {})) docs[docId(key, id)] = Store.plain(v[id]);
+      } else {
+        docs[docId(key, '')] = Store.plain(key === 'prefs' ? sharedPrefs(v) : v);
+      }
+    }
+    return docs;
+  }
+
+  // Номер в конце id (n12 → 12): при равном времени новее запись с большим номером
+  const tail = id => { const m = /(\d+)$/.exec(String(id)); return m ? +m[1] : -1; };
+  const atOf = r => { const t = r && r.at ? new Date(r.at).getTime() : NaN; return isNaN(t) ? -Infinity : t; };
+  // уведомления и журнал склада — новые сверху, в каком бы порядке ни пришли документы
+  const NEWEST_FIRST = ['notes', 'moves'];
+
+  // Документы → состояние. into — состояние, в которое собрать: его личное (LOCAL, prefs.theme, prefs.ship) остаётся,
+  // общее заменяется целиком. Записи списков — в порядке документов; товары снимка — сначала, как в Catalog.unpack.
+  function join(docs, into) {
+    const st = into || {};
+    const localPrefs = {};
+    for (const k of KEYS.LOCAL_PREFS) if (st.prefs && st.prefs[k] !== undefined) localPrefs[k] = st.prefs[k];
+    for (const key of Object.keys(st)) if (kind(key) !== 'LOCAL') delete st[key];
+    for (const key of KEYS.ARRAY) st[key] = [];
+    for (const key of KEYS.MAP) st[key] = {};
+    const prods = new Map();
+    for (const d of Object.keys(docs || {})) {
+      const { key, id } = parse(d), v = docs[d];
+      if (key === 'products') { prods.set(id, v); continue; }
+      const k = kind(key);
+      if (k === 'ARRAY') { if (v !== null && v !== undefined) st[key].push(live(v)); }
+      else if (k === 'MAP') { if (v !== null && v !== undefined) st[key][id] = live(v); }
+      else if (k !== 'LOCAL') st[key] = live(v);
+    }
+    // товары: снимок каталога с правками и без снятых, затем свои
+    const base = Catalog.base();
+    for (const p of base.products) {
+      if (!prods.has(p.id)) st.products.push({ ...p });
+      else if (prods.get(p.id) !== null) st.products.push(live(prods.get(p.id)));
+    }
+    for (const [id, v] of prods) if (!base.byId.has(id) && v !== null && v !== undefined) st.products.push(live(v));
+    for (const key of NEWEST_FIRST) {
+      st[key] = st[key].map((r, i) => [r, i]).sort((a, b) => atOf(b[0]) - atOf(a[0]) || tail(b[0].id) - tail(a[0].id) || a[1] - b[1]).map(x => x[0]);
+    }
+    if (st.prefs || Object.keys(localPrefs).length) st.prefs = { ...(st.prefs || {}), ...localPrefs };
+    return st;
+  }
+
+  // Прежнее значение документа, которого не было среди документов: у товара снимка — его запись из снимка
+  function snapBase(key, id) {
+    if (key !== 'products') return null;
+    const p = Catalog.base().byId.get(id);
+    return p ? Store.plain(p) : null;
+  }
+
+  // Что изменилось между двумя наборами документов: [{key, id, base, data}] — новые и изменённые,
+  // [{key, id, base, deleted: true}] — удалённые. base — прежнее значение, у новой записи null.
+  function diff(baseDocs, curDocs) {
+    const out = [], b = baseDocs || {}, c = curDocs || {};
+    for (const d of Object.keys(c)) {
+      const { key, id } = parse(d);
+      if (!(d in b)) {
+        const prev = snapBase(key, id);
+        if (!same(prev, c[d])) out.push({ key, id, base: prev, data: c[d] });
+      } else if (!same(b[d], c[d])) out.push({ key, id, base: b[d], data: c[d] });
+    }
+    for (const d of Object.keys(b)) if (!(d in c)) { const { key, id } = parse(d); out.push({ key, id, base: b[d], deleted: true }); }
+    return out;
+  }
+
+  const hasId = x => isObj(x) && x.id !== undefined && x.id !== null && x.id !== '';
+  const byIdList = list => list.every(hasId) && new Set(list.map(x => String(x.id))).size === list.length;
+  const isPrefix = (p, list) => p.length <= list.length && p.every((x, i) => same(x, list[i]));
+  const at = (path, k) => (path ? path + '.' + k : String(k));
+
+  // Трёхстороннее слияние: base — общее прошлое, mine — моя правка, theirs — то, что уже лежит у сервера.
+  // Объекты — по полям; массивы записей с id — по id (добавленные с обеих сторон остаются); дописанные в конец
+  // списки (история, прочитавшие) — обе дописки; одно место изменено по-разному — конфликт с путём к нему.
+  // Удалённая запись — null. → {ok: true, value} | {ok: false, path}
+  function merge(base, mine, theirs, path = '') {
+    if (same(mine, theirs)) return { ok: true, value: mine };
+    if (same(base, mine)) return { ok: true, value: theirs };
+    if (same(base, theirs)) return { ok: true, value: mine };
+    if (isObj(mine) && isObj(theirs) && (base === null || base === undefined || isObj(base))) {
+      const b = base || {}, out = {};
+      const keys = [...Object.keys(mine), ...Object.keys(theirs).filter(k => !(k in mine)), ...Object.keys(b).filter(k => !(k in mine) && !(k in theirs))];
+      for (const k of keys) {
+        const r = merge(b[k], mine[k], theirs[k], at(path, k));
+        if (!r.ok) return r;
+        if (r.value !== undefined) out[k] = r.value;
+      }
+      return { ok: true, value: out };
+    }
+    if (Array.isArray(mine) && Array.isArray(theirs) && (base === null || base === undefined || Array.isArray(base))) {
+      const b = base || [];
+      if (byIdList(b) && byIdList(mine) && byIdList(theirs)) {
+        const get = (list, id) => list.find(x => String(x.id) === id);
+        const ids = [...theirs.map(x => String(x.id)), ...mine.map(x => String(x.id)).filter(id => !get(theirs, id))];
+        const out = [];
+        for (const id of ids) {
+          const r = merge(get(b, id) ?? null, get(mine, id) ?? null, get(theirs, id) ?? null, at(path, id));
+          if (!r.ok) return r;
+          if (r.value !== null && r.value !== undefined) out.push(r.value);
+        }
+        return { ok: true, value: out };
+      }
+      if (isPrefix(b, mine) && isPrefix(b, theirs)) {
+        const mt = mine.slice(b.length), tt = theirs.slice(b.length).filter(x => !mt.some(y => same(x, y)));
+        return { ok: true, value: [...b, ...mt, ...tt] };
+      }
+      if (b.length === mine.length && b.length === theirs.length) {
+        const out = [];
+        for (let i = 0; i < b.length; i++) {
+          const r = merge(b[i], mine[i], theirs[i], at(path, i));
+          if (!r.ok) return r;
+          out.push(r.value);
+        }
+        return { ok: true, value: out };
+      }
+    }
+    return { ok: false, path };
+  }
+
+  // Состояние после пачки изменений (формы Docs.diff): исходное st не меняется — затронутые списки и карты копируются,
+  // остальное общее. Изменения личного (LOCAL) пропускаются. Товар снимка с документом null — снят из списка.
+  function apply(st, changes) {
+    const out = Object.assign({}, st), copied = new Set();
+    const own = key => {
+      if (!copied.has(key)) {
+        copied.add(key);
+        out[key] = kind(key) === 'MAP' ? Object.assign({}, st[key] || {}) : (Array.isArray(st[key]) ? st[key].slice() : []);
+      }
+      return out[key];
+    };
+    for (const c of changes || []) {
+      const k = c.key === 'products' ? 'ARRAY' : kind(c.key);
+      if (k === 'LOCAL') continue;
+      const v = c.deleted ? null : live(c.data);
+      if (k === 'ARRAY') {
+        const list = own(c.key), i = list.findIndex(x => x && String(x.id) === String(c.id));
+        if (v === null || v === undefined) { if (i >= 0) list.splice(i, 1); } else if (i >= 0) list[i] = v; else list.push(v);
+      } else if (k === 'MAP') {
+        const map = own(c.key);
+        if (v === null || v === undefined) delete map[c.id]; else map[c.id] = v;
+      } else if (c.deleted) delete out[c.key];
+      else out[c.key] = c.key === 'prefs' ? Object.assign({}, v, Object.fromEntries(KEYS.LOCAL_PREFS.filter(f => st.prefs && st.prefs[f] !== undefined).map(f => [f, st.prefs[f]]))) : v;
+    }
+    return out;
+  }
+
+  // Текущее значение одного документа состояния (чистый JSON) или undefined, если его нет
+  function get(st, key, id) {
+    const d = docId(key, id);
+    if (key === 'products' || kind(key) === 'ARRAY') {
+      if (key === 'products') { const docs = {}; splitProducts(st.products, docs); return docs[d]; }
+      const r = (st[key] || []).find(x => x && String(x.id) === String(id));
+      return r ? Store.plain(r) : undefined;
+    }
+    if (kind(key) === 'MAP') { const v = (st[key] || {})[id]; return v === undefined ? undefined : Store.plain(v); }
+    if (kind(key) === 'LOCAL' || st[key] === undefined) return undefined;
+    return Store.plain(key === 'prefs' ? sharedPrefs(st.prefs) : st[key]);
+  }
+
+  return { SEP, KEYS, kind, docId, parse, same, split, join, diff, merge, get, apply };
+})();
+
+// Ядро: что человек видит (права на чтение). Без DOM; st первым аргументом.
+// Visible.of — копия общего состояния для человека: сервер отдаёт браузеру только её. Правила видимости карточек живут
+// здесь и в Leads (лиды, сделки); экраны зовут Visible.client и Visible.task, своих копий условий не держат.
+
+const Visible = (() => {
+  const can = (st, pid, right) => Perms.can(st, pid, right);
+  const personOf = (st, pid) => (st.people || []).find(p => p.id === pid) || null;
+  // Глубокая копия с живыми датами: исходное состояние не меняется
+  const copy = v => (v === undefined ? undefined : JSON.parse(JSON.stringify(Store.plain(v)), Store.revive));
+  // Цена в тексте ленты («80 × 300 ₽», «Сумма: 1 180 000 ₽») — для человека без права «цены»
+  const PRICE_RE = /\d[\d   ]*₽/g;
+  const HIDDEN_PRICE = 'цена скрыта';
+
+  // Клиент виден человеку с правом «клиенты»: клиент называет сделку, поэтому отбор — через видимые сделки и лиды
+  // (Clients.related с personId: Leads.dealsVisible и Leads.visible). Виден, если у него есть видимая сделка или лид,
+  // если человек — его менеджер, или если у клиента ещё нет ни сделок, ни лидов (только что заведён).
+  function client(st, c, pid) {
+    if (!c || !can(st, pid, 'clients')) return false;
+    if (c.managerId && c.managerId === pid) return true;
+    const mine = Clients.related(st, c.id, pid);
+    if (mine.deals.length || mine.leads.length) return true;
+    const all = Clients.related(st, c.id);
+    return !all.deals.length && !all.leads.length;
+  }
+
+  // Задача «моя»: поставлена мне или моему отделу
+  function taskMine(st, t, pid) {
+    if (!t || !t.to) return false;
+    const p = personOf(st, pid);
+    return (t.to.t === 'p' && t.to.id === pid) || (t.to.t === 'd' && !!p && t.to.id === p.dept);
+  }
+  // Задача видна: право «все задачи», моя (мне или моему отделу) или поставлена мной
+  const task = (st, t, pid) => !!t && (can(st, pid, 'tasksAll') || taskMine(st, t, pid) || t.from === pid);
+
+  // Видимые карточки, на которые ссылаются лента и дела: {deal, lead, client} — множества id
+  function seen(st, pid) {
+    return {
+      deal: new Set(Leads.dealsVisible(st, pid).map(d => d.id)),
+      lead: new Set(Leads.visible(st, pid).map(l => l.id)),
+      client: new Set((st.clients || []).filter(c => client(st, c, pid)).map(c => c.id)),
+    };
+  }
+  // Карточка по ссылке ref = {t, id} видна: сделка, лид, клиент — по своим правилам, отправку видят все сотрудники
+  function refSeen(st, pid, ref, s) {
+    if (!ref) return false;
+    if (ref.t === 'dispatch') return !!personOf(st, pid) && (st.dispatches || []).some(d => d.id === ref.id);
+    return !!(s[ref.t] && s[ref.t].has(ref.id));
+  }
+  const shipsSeen = (st, pid) => can(st, pid, 'stock') || can(st, pid, 'logistics') || can(st, pid, 'receive');
+  const notesAll = (st, pid) => can(st, pid, 'firm');
+
+  // Видит ли человек запись key/id (скачивание файла, ссылка уведомления). Нет записи — false.
+  function canSee(st, pid, key, id) {
+    if (!personOf(st, pid)) return false;
+    const rec = Array.isArray(st[key]) ? st[key].find(x => x && x.id === id) : undefined;
+    switch (key) {
+      case 'deals': return !!rec && Leads.dealsVisible(st, pid).some(d => d.id === id);
+      case 'leads': return !!rec && Leads.visible(st, pid).some(l => l.id === id);
+      case 'clients': return client(st, rec, pid);
+      case 'tasks': return task(st, rec, pid);
+      case 'feed': case 'acts': return !!rec && refSeen(st, pid, rec.ref, seen(st, pid));
+      case 'notes': return !!rec && (notesAll(st, pid) || (rec.to || []).includes(pid));
+      case 'shipments': return !!rec && shipsSeen(st, pid);
+      case 'reserves': return !!rec && (can(st, pid, 'stock') || Leads.dealsVisible(st, pid).some(d => d.id === rec.dealId));
+      case 'dispatches': return !!rec;
+      case 'mail': case 'msgs': return false;
+      default: {
+        const k = Docs.kind(key);
+        if (k === 'ARRAY') return !!rec;
+        if (k === 'MAP') return !!(st[key] && st[key][id] !== undefined);
+        return k === 'WHOLE';
+      }
+    }
+  }
+
+  // Копия общего состояния для человека (без личного: me, view, ui, rcv, v). Сделки — Leads.dealsVisible, лиды — Leads.visible,
+  // клиенты — client, задачи — task, лента и дела — по видимости карточки; резерв и движение невидимой сделки остаются,
+  // но вместо номера сделки — Stock.HIDDEN_ID; уведомления — свои (с правом «вся фирма» — все); без права «цены» — без цен
+  // (товары, суммы и строки сделок, цены в тексте ленты); почта и переписка — пустые; prefs — только свои строки;
+  // поставки — с правом остатков, перевозок или приёмки. Исходное состояние не меняется.
+  function of(st, pid) {
+    const s = seen(st, pid), out = {};
+    const exists = new Set((st.deals || []).map(d => d.id));
+    const hideDeal = id => (id && exists.has(id) && !s.deal.has(id) ? Stock.HIDDEN_ID : id);
+    const stockRight = can(st, pid, 'stock'), prices = can(st, pid, 'prices');
+    for (const key of Object.keys(st)) {
+      if (Docs.kind(key) === 'LOCAL') continue;
+      const v = st[key];
+      switch (key) {
+        case 'deals': out.deals = (v || []).filter(d => s.deal.has(d.id)).map(copy); break;
+        case 'leads': out.leads = (v || []).filter(l => s.lead.has(l.id)).map(copy); break;
+        case 'clients': out.clients = (v || []).filter(c => s.client.has(c.id)).map(copy); break;
+        case 'tasks': out.tasks = (v || []).filter(t => task(st, t, pid)).map(copy); break;
+        case 'feed': case 'acts': out[key] = (v || []).filter(e => refSeen(st, pid, e.ref, s)).map(copy); break;
+        case 'notes': out.notes = (v || []).filter(n => notesAll(st, pid) || (n.to || []).includes(pid)).map(copy); break;
+        case 'shipments': out.shipments = shipsSeen(st, pid) ? copy(v) : []; break;
+        case 'reserves':
+          out.reserves = (v || []).filter(r => stockRight || s.deal.has(r.dealId)).map(r => {
+            const c = copy(r);
+            if (c.dealId) c.dealId = hideDeal(c.dealId);
+            return c;
+          });
+          break;
+        case 'moves':
+          out.moves = (v || []).map(m => { const c = copy(m); if (c.doc) c.doc = hideDeal(c.doc); return c; });
+          break;
+        case 'mail': out.mail = { boxes: [], suppliers: [], letters: [] }; break;
+        case 'msgs': out.msgs = []; break;
+        case 'prefs': {
+          const p = v || {}, o = {};
+          for (const f of ['notify', 'sound']) o[f] = p[f] && p[f][pid] !== undefined ? { [pid]: copy(p[f][pid]) } : {};
+          out.prefs = o;
+          break;
+        }
+        default: out[key] = copy(v);
+      }
+    }
+    if (!prices) {
+      for (const p of out.products || []) delete p.price;
+      for (const d of out.deals || []) { delete d.amount; for (const it of d.items || []) delete it.price; }
+      for (const e of out.feed || []) if (typeof e.text === 'string') e.text = e.text.replace(PRICE_RE, HIDDEN_PRICE);
+    }
+    return out;
+  }
+
+  return { HIDDEN_PRICE, client, task, taskMine, canSee, of };
+})();
+
+// Ядро: может ли человек провести пачку изменений (права на запись). Без DOM; st первым аргументом, время now аргументом.
+// st — состояние сервера до пачки, changes — пачка после слияния (формы Docs.diff: {key, id, base, data} | {key, id, base,
+// deleted}). Прежнее значение берётся из st (Docs.get), а не из change.base: прислать можно что угодно.
+// Остаток склада меняется только движением: изменение stock/aside должно сойтись с суммой новых записей moves той же пачки
+// (как их считает Stock.move). Правила по ключам — Guard.RULES[key](ctx, change) → null | текст «Нет прав: …».
+
+const Guard = (() => {
+  const isNum = v => typeof v === 'number' && isFinite(v);
+  const no = text => 'Нет прав: ' + text;
+  const label = right => ((Perms.LIST.find(([k]) => k === right) || [])[1]) || right;
+  const needs = (what, ...rights) => no(`${what} — нужно право «${rights.map(label).join('» или «')}»`);
+  const same = (a, b) => Docs.same(a === undefined ? null : a, b === undefined ? null : b);
+  const SEP = '\u0001';
+  // Движение «Ввод остатков» пишет перенос таблицы остатков (Import.applyStock): остаток товара заменяется целиком
+  const INPUT = 'Ввод остатков';
+  const STOCK_TEXT = no('остаток склада меняется только движением в журнале склада и ровно на его количество');
+
+  // Поля, которые изменились между двумя записями
+  const changedFields = (b, a) => [...new Set([...Object.keys(b || {}), ...Object.keys(a || {})])].filter(f => !same((b || {})[f], (a || {})[f]));
+  const recOf = (st, key, id) => (Array.isArray(st[key]) ? st[key].find(x => x && String(x.id) === String(id)) : undefined);
+  const personOf = (st, pid) => (st.people || []).find(p => p.id === pid);
+
+  // ——— склад ———
+  // Чего ждать от новых движений пачки: {stock: {productId: {'e\u0001c': Δ}}, damaged: {productId: Δ}, input: Set(productId)}
+  function expected(moves) {
+    const K = Stock.KINDS, ANY = Stock.ANY, exp = { stock: {}, damaged: {}, input: new Set() };
+    for (const m of moves) {
+      const q = Number(m.qty), p = m.productId;
+      const add = (e, c, d) => { const cell = exp.stock[p] || (exp.stock[p] = {}), k = (e || ANY) + SEP + (c || ANY); cell[k] = (cell[k] || 0) + d; };
+      if (m.kind === K.receive) add(m.entityId, m.cityId, q);
+      else if (m.kind === K.ship) add(m.entityId, m.cityId, -q);
+      else if (m.kind === K.damage) { add(m.entityId, m.cityId, -q); exp.damaged[p] = (exp.damaged[p] || 0) + q; }
+      else if (m.kind === K.transfer) { add(m.entityId, m.cityId, -q); add(m.toEntityId, m.toCityId, q); }
+      else if (m.kind === INPUT) exp.input.add(p);
+    }
+    return exp;
+  }
+  // Строка остатков товара {e: {c: n}} → Map('e\u0001c' → n)
+  function cells(doc) {
+    const out = new Map();
+    for (const e of Object.keys(doc || {})) for (const c of Object.keys(doc[e] || {})) out.set(e + SEP + c, doc[e][c]);
+    return out;
+  }
+  function stockRule(ctx, c) {
+    if (ctx.exp.input.has(c.id)) return ctx.can('admin') ? null : needs('перенос остатков', 'admin');
+    const b = cells(ctx.before(c)), a = cells(ctx.data(c)), exp = ctx.exp.stock[c.id] || {};
+    for (const k of new Set([...b.keys(), ...a.keys(), ...Object.keys(exp)])) {
+      const was = b.get(k), now = a.get(k);
+      if (k in exp) { if (!isNum(now) || (isNum(was) ? was : 0) + exp[k] !== now) return STOCK_TEXT; }
+      else if (!same(was, now)) return STOCK_TEXT;
+    }
+    return null;
+  }
+  function asideRule(ctx, c) {
+    if (ctx.exp.input.has(c.id)) return ctx.can('admin') ? null : needs('перенос остатков', 'admin');
+    const b = ctx.before(c) || {}, a = ctx.data(c) || {}, dq = ctx.exp.damaged[c.id] || 0;
+    for (const f of new Set([...Object.keys(b), ...Object.keys(a), ...(dq ? ['damaged'] : [])])) {
+      if (f === 'damaged' && dq) { if (!isNum(a.damaged) || (isNum(b.damaged) ? b.damaged : 0) + dq !== a.damaged) return STOCK_TEXT; }
+      else if (!same(b[f], a[f])) return STOCK_TEXT;
+    }
+    return null;
+  }
+  // Каждое движение пачки должно найти свой остаток: товар с ненулевым Δ без изменения stock (aside) в пачке — отказ
+  function stockCovered(ctx) {
+    const has = (key, id) => ctx.list.some(x => x.key === key && String(x.id) === String(id));
+    for (const p of Object.keys(ctx.exp.stock)) {
+      if (Object.values(ctx.exp.stock[p]).some(d => d !== 0) && !has('stock', p)) return { key: 'stock', id: p, text: STOCK_TEXT };
+    }
+    for (const p of Object.keys(ctx.exp.damaged)) if (ctx.exp.damaged[p] && !has('aside', p)) return { key: 'aside', id: p, text: STOCK_TEXT };
+    return null;
+  }
+
+  // Какое право нужно на вид движения — то, с которым этот вид создаётся в интерфейсе
+  function moveRights(ctx, m) {
+    const K = Stock.KINDS;
+    const transfer = (ctx.after.dispatches || []).some(d => d.purpose === 'transfer' && d.number === m.doc);
+    if (m.kind === K.receive) return transfer ? ['dispatch', 'logistics'] : ['receive'];
+    if (m.kind === K.ship) return transfer ? ['dispatch', 'logistics'] : ['sell'];
+    if (m.kind === K.transfer) return ['logistics', 'dispatch'];
+    if (m.kind === K.damage) return ['stock'];
+    if (m.kind === K.reserve) return ['reserve'];
+    if (m.kind === K.unreserve) return ['reserve', 'dealsEdit', 'sell', 'receive'];
+    return ['admin'];
+  }
+  function movesRule(ctx, c) {
+    if (ctx.before(c) !== undefined || c.deleted) return no('записи журнала склада не правят и не удаляют');
+    const m = c.data || {};
+    if (m.by !== ctx.pid) return no('движение в журнале склада — только от своего имени');
+    const need = moveRights(ctx, m);
+    return need.some(ctx.can) ? null : needs(`движение «${m.kind || 'нет данных: вид'}»`, ...need);
+  }
+
+  // ——— резервы ———
+  // Сделку можно править (Deals.canEdit): по состоянию до пачки, а новую сделку пачки — по состоянию после
+  function dealEditable(ctx, id) {
+    if (!id) return true;
+    const d = recOf(ctx.st, 'deals', id);
+    if (d) return Deals.canEdit(ctx.st, d, ctx.pid);
+    const n = recOf(ctx.after, 'deals', id);
+    return !!n && Deals.canEdit(ctx.after, n, ctx.pid);
+  }
+  const changeOf = (ctx, key, id) => ctx.list.find(x => x.key === key && String(x.id) === String(id));
+  // Сделка проваливается в этой пачке
+  function dealLost(ctx, id) {
+    const c = changeOf(ctx, 'deals', id), b = recOf(ctx.st, 'deals', id);
+    return !!c && !c.deleted && !!c.data && !!c.data.lostReason && !(b && b.lostReason);
+  }
+  // Поставка принимается в этой пачке: received появилось
+  function received(ctx, id) {
+    const c = changeOf(ctx, 'shipments', id), b = recOf(ctx.st, 'shipments', id);
+    return !!c && !c.deleted && !!c.data && !!c.data.received && !(b && b.received);
+  }
+  const shrinks = (b, a) => !a || (changedFields(b, a).every(f => f === 'qty') && a.qty < b.qty);
+  function reservesRule(ctx, c) {
+    const b = ctx.before(c), a = ctx.data(c);
+    if (ctx.can('reserve') && [b && b.dealId, a && a.dealId].every(id => dealEditable(ctx, id))) return null;
+    if (b) {
+      // провал своей видимой сделки снимает её резервы
+      if (b.dealId && dealLost(ctx, b.dealId) && dealEditable(ctx, b.dealId) && shrinks(b, a)) return null;
+      // продажа по резерву: резерв уменьшается вместе с «Отгрузкой» этого товара в той же пачке
+      if (ctx.can('sell') && shrinks(b, a) && ctx.moves.some(m => m.kind === Stock.KINDS.ship && m.productId === b.productId)) return null;
+      // приёмка: резерв «под поставку» становится резервом со склада (излишек над принятым снимается)
+      if (ctx.can('receive') && b.src && b.src !== 'stock' && received(ctx, b.src)
+        && (!a || (a.src === 'stock' && a.qty <= b.qty && changedFields(b, a).every(f => ['src', 'entityId', 'cityId', 'qty'].includes(f))))) return null;
+    }
+    return no('ставить и снимать резервы — нужно право «Ставить и снимать резервы» и право править сделку резерва');
+  }
+
+  // ——— поставки ———
+  const RECEIVE_FIELDS = ['received', 'items', 'entityId', 'cityId', 'history', 'stageId', 'pos'];
+  const onlyIn = (b, a, fields) => Array.isArray(b) && Array.isArray(a) && b.length === a.length
+    && b.every((x, i) => changedFields(x, a[i]).every(f => fields.includes(f)));
+  // Файлы записи: добавить и убрать можно свои; чужие убирает тот, кому разрешено (any)
+  function filesOk(bf, af, pid, any) {
+    const B = new Map((bf || []).map(f => [f.id, f])), A = new Map((af || []).map(f => [f.id, f]));
+    for (const [id, f] of B) if (!A.has(id) ? !(any || f.by === pid) : !same(f, A.get(id))) return false;
+    for (const [id, f] of A) if (!B.has(id) && f.by !== pid) return false;
+    return true;
+  }
+  function shipmentsRule(ctx, c) {
+    if (ctx.can('logistics')) return null;
+    const b = ctx.before(c), a = ctx.data(c);
+    if (b && a) {
+      const ch = changedFields(b, a);
+      if (ctx.can('receive') && !b.received && a.received && ch.every(f => RECEIVE_FIELDS.includes(f)) && onlyIn(b.items, a.items, ['got'])) return null;
+      if (ctx.can('stock') && ch.length && ch.every(f => f === 'files') && filesOk(b.files, a.files, ctx.pid, false)) return null;
+    }
+    return needs('менять поставки', 'logistics');
+  }
+
+  // ——— сделки, лиды, клиенты ———
+  const sees = (list, id) => list.some(x => String(x.id) === String(id));
+  function dealsRule(ctx, c) {
+    if (!ctx.can('dealsEdit')) return needs('заводить и править сделки', 'dealsEdit');
+    if (ctx.before(c) !== undefined && !sees(Leads.dealsVisible(ctx.st, ctx.pid), c.id)) return no('править эту сделку');
+    if (!c.deleted && !sees(Leads.dealsVisible(ctx.after, ctx.pid), c.id)) return no('после правки сделка не была бы вам видна');
+    return null;
+  }
+  function leadsRule(ctx, c) {
+    if (!ctx.can('leads')) return needs('вести лиды', 'leads');
+    const b = ctx.before(c), a = ctx.data(c);
+    if (!b) return null;
+    if (!sees(Leads.visible(ctx.st, ctx.pid), c.id)) return no('править этот лид');
+    if (!a) return Leads.canTransfer(ctx.st, ctx.pid) ? null : needs('удалять лиды', 'leadsAssign');
+    if (!sees(Leads.visible(ctx.after, ctx.pid), c.id)) return no('после правки лид не был бы вам виден');
+    if ((b.managerId || null) !== (a.managerId || null)) {
+      const take = !b.managerId && a.managerId === ctx.pid && Leads.canTake(ctx.st, recOf(ctx.st, 'leads', c.id), ctx.pid);
+      if (!take && !Leads.canTransfer(ctx.st, ctx.pid)) return needs('передать лид другому менеджеру', 'leadsAssign');
+    }
+    return null;
+  }
+  function clientsRule(ctx, c) {
+    if (!Clients.canEdit(ctx.st, ctx.pid)) return no('заводить и править клиентов — нужны права «Видеть клиентов и сделки» и «Заводить и править сделки»');
+    const b = recOf(ctx.st, 'clients', c.id);
+    if (b && !Visible.client(ctx.st, b, ctx.pid)) return no('править этого клиента');
+    return null;
+  }
+
+  // ——— лента и дела ———
+  const REF_KEY = { deal: 'deals', lead: 'leads', client: 'clients', dispatch: 'dispatches' };
+  // Писать в карточку: может комментировать её (Feed.canComment, G01) или меняет её в той же пачке (её правило проверено
+  // отдельно); в ленту сделки пишет и тот, кто в этой пачке меняет её резерв (приёмка, продажа)
+  function parentOk(ctx, ref) {
+    if (!ref || !REF_KEY[ref.t]) return false;
+    if (Feed.canComment(ctx.st, ctx.pid, ref) || Feed.canComment(ctx.after, ctx.pid, ref)) return true;
+    if (changeOf(ctx, REF_KEY[ref.t], ref.id)) return true;
+    return ref.t === 'deal' && ctx.list.some(x => x.key === 'reserves'
+      && [(ctx.before(x) || {}).dealId, ((x.deleted ? null : x.data) || {}).dealId].includes(ref.id));
+  }
+  function feedRule(ctx, c) {
+    if (ctx.before(c) !== undefined || c.deleted) return no('записи ленты не правят и не удаляют');
+    const e = c.data || {};
+    // запись о резерве (Deals.keepTrail) хранит того, кто его ставил
+    if (e.by && e.by !== ctx.pid && e.kind !== 'reserve') return no('запись в ленте — только от своего имени');
+    return parentOk(ctx, e.ref) ? null : no('писать в эту ленту');
+  }
+  function actsRule(ctx, c) {
+    const b = ctx.before(c), a = ctx.data(c);
+    if (!b) {
+      if (!a) return null;
+      if (a.by && a.by !== ctx.pid) return no('дело — только от своего имени');
+      return parentOk(ctx, a.ref) ? null : no('ставить дела в эту карточку');
+    }
+    if (!a) return no('дела не удаляют');
+    const ch = changedFields(b, a);
+    // лид стал сделкой: открытые дела переезжают на неё вместе с лидом той же пачки
+    if (ch.length === 1 && ch[0] === 'ref' && b.ref && b.ref.t === 'lead' && a.ref && a.ref.t === 'deal') {
+      const lc = changeOf(ctx, 'leads', b.ref.id);
+      if (lc && !lc.deleted && lc.data && lc.data.dealId === a.ref.id) return null;
+    }
+    // отметка «сделано» — кто может закрывать дела карточки (Acts.done: Feed.canComment)
+    if (!b.doneAt && a.doneAt && a.doneBy === ctx.pid && ch.every(f => ['doneAt', 'doneBy', 'result'].includes(f))
+      && Feed.canComment(ctx.st, ctx.pid, b.ref)) return null;
+    return no('дело можно только отметить выполненным');
+  }
+
+  // ——— задачи, отправки, уведомления ———
+  function targetOk(ctx, t) {
+    const to = t.to || {}, me = personOf(ctx.st, ctx.pid);
+    const p = to.t === 'p' ? personOf(ctx.st, to.id) : null;
+    if (to.t === 'p' ? !p : !(to.t === 'd' && (ctx.st.depts || []).some(d => d.id === to.id))) return false;
+    if (ctx.can('tasksAssign')) return true;
+    if (to.t === 'd' ? to.id === me.dept : p.dept === me.dept) return true;
+    // приёмка ставит менеджеру сделки задачу позвонить клиенту
+    const d = t.deal ? recOf(ctx.st, 'deals', t.deal) : null;
+    return !!d && to.t === 'p' && d.managerId === to.id && ctx.list.some(x => x.key === 'shipments' && received(ctx, x.id));
+  }
+  function tasksRule(ctx, c) {
+    const b = ctx.before(c), a = ctx.data(c);
+    const TO_TEXT = needs('ставить задачи другому отделу', 'tasksAssign');
+    if (!b) {
+      if (!a) return null;
+      if (a.from !== ctx.pid) return no('задача — только от своего имени');
+      return targetOk(ctx, a) ? null : TO_TEXT;
+    }
+    if (!Visible.task(ctx.st, recOf(ctx.st, 'tasks', c.id), ctx.pid)) return no('править эту задачу');
+    if (!a) return b.from === ctx.pid || ctx.can('tasksAll') ? null : no('удалить задачу может её автор');
+    if (a.from !== b.from) return no('автора задачи не меняют');
+    return same(a.to, b.to) || targetOk(ctx, a) ? null : TO_TEXT;
+  }
+  function dispatchesRule(ctx, c) {
+    const b = ctx.before(c), a = ctx.data(c);
+    if (!b) return !a || a.by === ctx.pid ? null : no('заявка — только от своего имени');
+    if (!a) return no('заявки на отправку не удаляют');
+    const d = recOf(ctx.st, 'dispatches', c.id), ch = changedFields(b, a);
+    if (ch.includes('stageId')) {
+      const ok = a.stageId === Dispatch.ST.cancelled ? Dispatch.canCancel(ctx.st, ctx.pid, d) : Dispatch.canWork(ctx.st, ctx.pid);
+      return ok ? null : needs('двигать этапы заявки', 'dispatch');
+    }
+    if (Dispatch.canEdit(ctx.st, ctx.pid, d)) return null;
+    // продажа строки заявки: только отметка «списано» у строк
+    if (ch.length === 1 && ch[0] === 'items' && Dispatch.canSell(ctx.st, ctx.pid) && onlyIn(b.items, a.items, ['sold'])) return null;
+    return no('править эту заявку — автору до начала сборки или тому, кто ведёт отправки');
+  }
+  function notesRule(ctx, c) {
+    const b = ctx.before(c), a = ctx.data(c);
+    if (!b) {
+      if (!a) return null;
+      if (a.by && a.by !== ctx.pid) return no('уведомление — только от своего имени');
+      return (a.to || []).every(id => personOf(ctx.st, id)) ? null : no('уведомление несуществующему сотруднику');
+    }
+    if (!a) return no('уведомления не удаляют');
+    const ch = changedFields(b, a), was = new Set(b.read || []), now = new Set(a.read || []);
+    const added = [...now].filter(id => !was.has(id));
+    if (ch.length === 1 && ch[0] === 'read' && [...was].every(id => now.has(id)) && added.length === 1 && added[0] === ctx.pid
+      && (b.to || []).includes(ctx.pid)) return null;
+    return no('в уведомлении можно только отметить своё прочтение');
+  }
+  function prefsRule(ctx, c) {
+    const b = ctx.before(c) || {}, a = ctx.data(c) || {};
+    for (const f of new Set([...Object.keys(b), ...Object.keys(a)])) {
+      if (f === 'notify' || f === 'sound') {
+        const bf = b[f] || {}, af = a[f] || {};
+        for (const k of new Set([...Object.keys(bf), ...Object.keys(af)])) if (k !== ctx.pid && !same(bf[k], af[k])) return no('менять чужие настройки уведомлений и звука');
+      } else if (!same(b[f], a[f])) return no('в общих настройках можно менять только свои уведомления и звук');
+    }
+    return null;
+  }
+
+  const right = (r, what) => ctx => (ctx.can(r) ? null : needs(what, r));
+  const SETTINGS = right('settings', 'менять настройки фирмы');
+  const ADMIN = right('admin', 'менять эти данные');
+  const RULES = {
+    products: right('catalog', 'менять товары и каталог'),
+    stock: stockRule, aside: asideRule, moves: movesRule, reserves: reservesRule, shipments: shipmentsRule,
+    deals: dealsRule, leads: leadsRule, clients: clientsRule, feed: feedRule, acts: actsRule,
+    tasks: tasksRule, dispatches: dispatchesRule, notes: notesRule,
+    pipelines: SETTINGS, depts: SETTINGS, entities: SETTINGS, cities: SETTINGS, lostReasons: SETTINGS, shipRules: SETTINGS,
+    leadSource: SETTINGS, leadWaitMin: SETTINGS,
+    roles: right('admin', 'управлять ролями и правами'), people: right('admin', 'управлять сотрудниками'),
+    prefs: prefsRule,
+    mail: ADMIN, msgs: ADMIN, tpl: ADMIN, address: ADMIN, rules: ADMIN, stockSheet: ADMIN,
+  };
+  const LOCAL_TEXT = no('личное (кто я, раздел, тема) в общую базу не пишется');
+
+  // Пачка целиком: первая запрещённая правка → {key, id, text}; всё можно → null
+  function check(st, pid, changes, now) {
+    const list = Array.isArray(changes) ? changes : [];
+    if (!list.length) return null;
+    if (!personOf(st, pid)) return { key: list[0].key, id: list[0].id, text: no('такого сотрудника нет') };
+    const after = Docs.apply(st, list);
+    const moves = list.filter(x => x.key === 'moves' && !x.deleted && x.data && Docs.get(st, 'moves', x.id) === undefined).map(x => x.data);
+    const ctx = {
+      st, after, pid, now, list, moves, exp: expected(moves),
+      can: r => Perms.can(st, pid, r),
+      before: x => Docs.get(st, x.key, x.id),
+      data: x => (x.deleted ? null : x.data),
+    };
+    for (const x of list) {
+      const rule = Object.hasOwn(RULES, x.key) ? RULES[x.key] : (Docs.kind(x.key) === 'LOCAL' ? () => LOCAL_TEXT : ADMIN);
+      const text = rule(ctx, x);
+      if (text) return { key: x.key, id: x.id, text };
+    }
+    return stockCovered(ctx);
+  }
+
+  return { RULES, check };
 })();
 
 // Оболочка: состояние S и его сохранение, тема, разделы NAV, боковая панель, «Кто я», уведомления, окна,
@@ -7607,7 +8375,7 @@ function shipCreate(f){
   f.querySelectorAll('.irow').forEach(r=>{const sku=r.querySelector('select').value,q=parseInt(r.querySelector('input').value,10)||0;if(q<1) return;const e=items.find(i=>i.productId===sku);if(e) e.qty+=q;else items.push({productId:sku,qty:q})});
   if(!from||!items.length) return showErr('ns-err','Укажите, откуда едет груз, и хотя бы одну позицию с количеством.');
   const city=byId('ns-city').value,route=['cn','chita',city];
-  const id='П-'+(Math.max(0,...S.shipments.filter(s=>s.dir==='in').map(s=>parseInt(s.id.replace(/\D/g,''),10)||0))+1);
+  const id=Ships.nextNumber(S);
   const eta=byId('ns-eta').value?fromIso(byId('ns-eta').value):day(7,12);
   const start=startStage(pipe.id),wanted=Pipes.stage(S,pipe.id,byId('ns-stage').value);
   const s={id,number:id,dir:'in',supplier:from,to:'Наш склад',carrier:byId('ns-car').value,track:byId('ns-doc').value.trim()||'нет данных: номер накладной',
@@ -10350,20 +11118,13 @@ const clientsSel=()=>Object.assign({},CLIENTS_DEF,S.ui.clients||{});
 const clientNoData=t=>`<span class="muted">нет данных: ${t}</span>`;
 const clientWho=id=>person(id)?.name||'нет данных: менеджер';
 const clientKindPill=c=>`<span class="pill sm${c.kind==='company'?' info':''}">${esc(Clients.KIND[c.kind]||'нет данных: вид')}</span>`;
-// Виден ли клиент человеку: клиент называет сделку, поэтому отбор — через видимые сделки и лиды (Clients.related с personId:
-// Leads.dealsVisible и Leads.visible). Виден, если у него есть видимая сделка или лид, если человек — его менеджер, или если
-// у клиента ещё нет ни сделок, ни лидов (только что заведён). Один отбор на список, поиск, карточку и подсказку о дублях.
-function clientVisible(c,pid=S.me){
-  if(!c) return false;
-  if(c.managerId&&c.managerId===pid) return true;
-  const mine=Clients.related(S,c.id,pid);
-  if(mine.deals.length||mine.leads.length) return true;
-  const all=Clients.related(S,c.id);
-  return !all.deals.length&&!all.leads.length;
-}
+// Виден ли клиент человеку — правило Visible.client (46-visible.js): через видимые сделки и лиды, свой клиент или
+// только что заведённый. Один отбор на список, поиск, карточку и подсказку о дублях.
+const clientVisible=(c,pid=S.me)=>Visible.client(S,c,pid);
 const clientsSeen=list=>list.filter(c=>clientVisible(c));
-// Заводить и править клиентов — тем, кто заводит и правит сделки (право dealsEdit); право clients — только смотреть (R30)
-const clientCanEdit=()=>can('clients')&&can('dealsEdit');
+// Заводить и править клиентов — тем, кто заводит и правит сделки (право dealsEdit); право clients — только смотреть
+// (R30, G01). Правило — Clients.canEdit (40-clients.js), его же проверяют ядро и Guard.
+const clientCanEdit=()=>!!S.me&&Clients.canEdit(S,S.me);
 const CLIENT_NO_EDIT='Заводить и править клиентов могут те, у кого есть право «Заводить и править сделки».';
 // Телефоны из одной строки: через запятую, точку с запятой или с новой строки
 const clientPhonesOf=s=>String(s||'').split(/[,;\n]+/).map(x=>x.trim()).filter(Boolean);

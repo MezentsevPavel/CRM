@@ -151,8 +151,10 @@ const Stock = (() => {
   }
 
   // ——— журнал движений ———
+  // У каждой записи журнала свой id (mv…): запись — документ общей базы, её не правят и не удаляют.
   function log(st, rec) {
     if (!st.moves) st.moves = [];
+    if (!rec.id) rec.id = Store.freeId(st.moves, 'mv');
     st.moves.unshift(rec);
     return rec;
   }
@@ -291,6 +293,8 @@ const Stock = (() => {
   // HIDDEN_DEAL, без ссылки и без кнопок «Снять» и «Списать». Карточка товара, журнал, карточка поставки, превью приёмки
   // и текст уведомления зовут эти функции, своих проверок не заводят.
   const HIDDEN_DEAL = 'сделка скрыта';
+  // Номер сделки, которую человек не видит, в его копии состояния (Visible.of): резерв и движение остаются, номера нет.
+  const HIDDEN_ID = 'hidden';
 
   // «Юрлицо · город» клетки склада; неизвестный id показывается как есть.
   const cellText = (st, e, c) => `${entityName(st, e || ANY) ?? e} · ${cityName(st, c || ANY) ?? c}`;
@@ -312,15 +316,16 @@ const Stock = (() => {
       where: inTransit ? `в пути: ${src}` : cellText(st, r.entityId, r.cityId),
       until: r.until || null,
       deal: dealRef(st, r.dealId, personId),
-      hasDeal: (st.deals || []).some(d => d.id === r.dealId),
+      hasDeal: r.dealId === HIDDEN_ID || (st.deals || []).some(d => d.id === r.dealId),
     };
   }
 
   // Документ движения глазами человека: номер своей сделки как есть, чужой — HIDDEN_DEAL; поставка, накладная — как есть.
   function docView(st, doc, personId) {
+    if (doc === HIDDEN_ID) return HIDDEN_DEAL;
     if (!doc || !(st.deals || []).some(d => d.id === doc)) return doc || '';
     return dealRef(st, doc, personId) ? doc : HIDDEN_DEAL;
   }
 
-  return { ANY, KINDS, NO_ENTITY, NO_CITY, HIDDEN_DEAL, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, canReserve, bestCell, move, reserve, unreserve, release, expired, sellMax, sell, cellText, dealRef, reserveView, docView };
+  return { ANY, KINDS, NO_ENTITY, NO_CITY, HIDDEN_DEAL, HIDDEN_ID, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, canReserve, bestCell, move, reserve, unreserve, release, expired, sellMax, sell, cellText, dealRef, reserveView, docView };
 })();

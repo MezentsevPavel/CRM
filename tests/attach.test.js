@@ -78,8 +78,10 @@ test('Store.dump: не влезло — сначала выкинут более
   const app = load(), { S, Store } = app;
   const old = 'data:application/pdf;base64,' + 'A'.repeat(200000), fresh = 'data:image/png;base64,' + 'B'.repeat(200000);
   const t = S.tasks[0], s = S.shipments[0];
-  t.files = [{ id: 'fl1', name: 'старый.pdf', type: 'application/pdf', size: 150000, data: old, by: 'p1', at: new Date(2026, 9, 1) }];
-  s.files = [{ id: 'fl1', name: 'новый.png', type: 'image/png', size: 150000, data: fresh, by: 'p1', at: new Date(2026, 10, 1) }];
+  // «Новый» файл считаем от текущих часов: он обязан быть новее любого демо-файла, а демо датируется «сейчас».
+  const nowMs = Date.now();
+  t.files = [{ id: 'fl1', name: 'старый.pdf', type: 'application/pdf', size: 150000, data: old, by: 'p1', at: new Date(nowMs - 400 * 86400000) }];
+  s.files = [{ id: 'fl1', name: 'новый.png', type: 'image/png', size: 150000, data: fresh, by: 'p1', at: new Date(nowMs + 365 * 86400000) }];
   const full = Store.dump(S);
   assert.equal(full.droppedFiles, 0);
   assert.equal(Store.load(full.text).tasks.find(x => x.id === t.id).files[0].data, old, 'места хватает — файл задачи не сохранился');

@@ -98,11 +98,12 @@ const Feed = (() => {
       .map(x => ({ ...x.e }));
   }
 
-  // Кто может писать в ленту карточки: сделка и клиент — право «клиенты» (сделку человек должен видеть), лид — «лиды»
-  // (и видеть лид), отправка — Dispatch.canComment: любой сотрудник (раздел видят все).
+  // Кто может писать в ленту карточки и ставить в ней дела: сделка — кто её видит и заводит и правит сделки (dealsEdit;
+  // G01: инженер ленту сделки читает, но не пишет), клиент — право «клиенты», лид — «лиды» (и видеть лид),
+  // отправка — Dispatch.canComment: любой сотрудник (раздел видят все). Экран, Acts и Guard зовут это правило.
   function canComment(st, personId, ref) {
     if (!ref || !(st.people || []).some(p => p.id === personId)) return false;
-    if (ref.t === 'deal') return Leads.dealsVisible(st, personId).some(d => d.id === ref.id);
+    if (ref.t === 'deal') return Perms.can(st, personId, 'dealsEdit') && Leads.dealsVisible(st, personId).some(d => d.id === ref.id);
     if (ref.t === 'lead') return Leads.visible(st, personId).some(l => l.id === ref.id);
     if (ref.t === 'client') return Perms.can(st, personId, 'clients');
     if (ref.t === 'dispatch') return Dispatch.canComment(st, personId, Dispatch.byId(st, ref.id));

@@ -232,9 +232,12 @@ const Dispatch = (() => {
 
   // ——— заявки ———
   // Следующий номер: больше всех выданных (удалять заявки нельзя, но номер от длины списка не берём).
+  // Есть поставщик номеров (Ids.use, серверный режим) — номер выдаёт он.
   function nextNumber(st) {
-    const used = (st.dispatches || []).map(d => Number(String(d.number).replace(/\D/g, '')) || 0);
-    return 'ОТ-' + String(Math.max(0, ...used) + 1).padStart(3, '0');
+    return Ids.next('ОТ-', () => {
+      const used = (st.dispatches || []).map(d => Number(String(d.number).replace(/\D/g, '')) || 0);
+      return 'ОТ-' + String(Math.max(0, ...used) + 1).padStart(3, '0');
+    });
   }
   function firstPipe(st) {
     const p = Pipes.of(st, PIPE)[0];
@@ -420,7 +423,7 @@ const Dispatch = (() => {
   }
 
   return {
-    PIPE, ST, STEP_KIND, PURPOSE, MISSING, NO_ADDRESS, byId, create, update, canWork, canEdit, canCancel, canComment, canSell,
+    PIPE, ST, STEP_KIND, PURPOSE, MISSING, NO_ADDRESS, byId, nextNumber, create, update, canWork, canEdit, canCancel, canComment, canSell,
     setStage, assign, drivers, pick, picked, comment, sell, soldText, query, transit, inTransit, warehouseAddress, lineName,
   };
 })();
@@ -448,22 +451,25 @@ KIND.dispatchStep = { l: 'Ход отправок', ic: 'truck', c: 'info' };
 // Демо-перемещения не доходят дальше «Готова к отправке»: «В пути» увозит товар из клетки, а демо не должно менять
 // настоящий снимок остатков — сразу после «Сбросить» остатки равны Catalog.build(снимок).
 // Заявки заводятся теми же функциями, что и в работе, но без уведомлений (silent).
-SEEDS.push(st => {
+// База: роль «Водитель», право РОП списывать при продаже, воронка отправок; заявок в новой базе нет.
+BASES.push(st => {
   const perms = on => Object.fromEntries(Perms.LIST.map(([k]) => [k, on.includes(k)]));
   st.roles.push({ id: 'driver', name: 'Водитель', builtin: true, perms: perms(['dispatch']) });
-  // РОП (роль заводит шаг лидов, 35-leads.js) списывает при продаже, как менеджеры
+  // РОП (роль заводит база лидов, 35-leads.js) списывает при продаже, как менеджеры
   const rop = st.roles.find(r => r.id === 'rop');
   if (rop) rop.perms.sell = true;
-  const driverIds = ['Роман Е.', 'Василий Т.'].map(name => {
-    const p = { id: Store.freeId(st.people, 'p'), name, role: 'driver', dept: 'logistics', demo: true };
-    st.people.push(p);
-    return p.id;
-  });
   st.pipelines.push({ id: Dispatch.PIPE, kind: 'dispatch', name: 'Отправки', stages: [
     { id: 'new', name: 'Новая' }, { id: 'picking', name: 'Собирается' }, { id: 'ready', name: 'Готова к отправке' },
     { id: 'onWay', name: 'В пути' }, { id: 'delivered', name: 'Доставлена', flag: 'final' }, { id: 'cancelled', name: 'Отменена', flag: 'final' },
   ] });
   st.dispatches = [];
+});
+SEEDS.push(st => {
+  const driverIds = ['Роман Е.', 'Василий Т.'].map(name => {
+    const p = { id: Store.freeId(st.people, 'p'), name, role: 'driver', dept: 'logistics', demo: true };
+    st.people.push(p);
+    return p.id;
+  });
 
   const pad = (n, w) => String(n).padStart(w, '0');
   const catalog = st.products.filter(p => p.inCatalog);

@@ -64,8 +64,9 @@ const Clients = (() => {
     return { ok: true, id: c.id, client: c, missing: [], reason: '' };
   }
 
-  // Может ли человек заводить и править клиентов: право «клиенты». by пустой — это система (демо, импорт).
-  const canEdit = (st, by) => !by || (!!personOf(st, by) && Perms.can(st, by, 'clients'));
+  // Может ли человек заводить и править клиентов: право «клиенты» и право «Заводить и править сделки» (G01: инженер клиентов
+  // видит, но не правит). by пустой — это система (демо, импорт). Единственное место правила: экран и Guard зовут его.
+  const canEdit = (st, by) => !by || (!!personOf(st, by) && Perms.can(st, by, 'clients') && Perms.can(st, by, 'dealsEdit'));
   const NO_RIGHT = { ok: false, id: null, client: null, missing: [], reason: 'У вашей роли нет права заводить и править клиентов.' };
 
   // Новый клиент: {name, kind?, inn?, phone | phones?, email?, address?, managerId?, demo?}.
@@ -164,7 +165,7 @@ const Clients = (() => {
       || (ik.length >= 3 && innKey(c.inn).includes(ik)));
   }
 
-  return { KIND, phoneKey, byId, find, create, update, findOrCreate, related, search };
+  return { KIND, phoneKey, byId, find, canEdit, create, update, findOrCreate, related, search };
 })();
 
 // Шаг SEEDS: демо-клиенты. Каждая сделка получает клиента (clientId) из своего названия, контакта и телефона: сделки из лидов
@@ -173,6 +174,8 @@ const Clients = (() => {
 // У прежних сделок v2 текст deal.client остаётся как был (его читают уведомления приёмки), «(пример)» — в названии клиента.
 // Лиды с тем же телефоном или ИНН привязываются к тому же клиенту: два открытых лида повторно обращаются под данными
 // клиентов Д-311 и Д-314 — это и есть образец «Похоже, это …».
+// База: клиентов нет.
+BASES.push(st => { st.clients = []; });
 SEEDS.push(st => {
   st.clients = st.clients || [];
   const when = day(-12, 9, 0);

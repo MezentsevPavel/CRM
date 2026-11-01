@@ -10,41 +10,70 @@ const KIND={ship:{l:'Перевозки',ic:'truck',c:'info'},arrive:{l:'Скл�
 // Специализация инженера — главного инженера и инженера (R30)
 const SPECIALTY={designer:'проектировщик',installer:'монтажник'};
 
-// ——— демо-данные (примеры, не данные фирмы) ———
-// seed() = базовое состояние + шаги SEEDS по порядку. Шаг — функция st => {…}, дописывает в st свой раздел.
-// Следующие таски кладут свой шаг в своём файле: SEEDS.push(st => { … }).
+// ——— чистая база и демо-данные (примеры, не данные фирмы) ———
+// seedBase() — новая база фирмы без демо: роли, отделы, воронки, юрлица, города, причины отказа, настройки, каталог.
+// Людей и записей (сделок, лидов, клиентов, задач, поставок, отправок, уведомлений, ленты) в ней нет.
+// seedBase() = ядро ниже + шаги BASES по порядку; шаг — функция st => {…}, кладёт свою часть структуры в своём файле.
+// seed() = seedBase() + демо-команда + шаги SEEDS по порядку: шаг дописывает в st свои демо-записи.
+const BASES=[];
 const SEEDS=[];
-function seed(){
+function seedBase(){
   const st={
-    v:3,me:'p1',view:'home',
+    v:3,me:null,view:'home',
     prefs:{theme:'auto',sound:{},notify:{},ship:{}},
     roles:Perms.defaultRoles(),
     depts:[{id:'mgmt',name:'Руководство'},{id:'sales',name:'Продажи'},{id:'eng',name:'Инженерный'},{id:'stock',name:'Склад'},{id:'logistics',name:'Логистика'}],
-    // демо-команда: все семь ролей, по два менеджера B2B и B2C; имена — примеры
-    people:[
-      {id:'p1',name:'Павел М.',role:'director',dept:'mgmt',demo:true},
-      {id:'p2',name:'Анна С.',role:'managerB2c',dept:'sales',demo:true},
-      {id:'p3',name:'Максим Л.',role:'managerB2b',dept:'sales',demo:true},
-      {id:'p4',name:'Дмитрий В.',role:'chiefEngineer',dept:'eng',specialty:'designer',demo:true},
-      {id:'p5',name:'Игорь К.',role:'warehouse',dept:'stock',demo:true},
-      {id:'p6',name:'Ольга Д.',role:'logist',dept:'logistics',demo:true},
-      {id:'p7',name:'Сергей Т.',role:'engineer',dept:'eng',specialty:'installer',demo:true},
-      {id:'p8',name:'Артём Б.',role:'engineer',dept:'eng',specialty:'installer',demo:true},
-      {id:'p9',name:'Ирина П.',role:'managerB2b',dept:'sales',demo:true},
-      {id:'p10',name:'Олег Н.',role:'managerB2c',dept:'sales',demo:true},
-      {id:'p11',name:'Наталья Р.',role:'engineer',dept:'eng',specialty:'designer',demo:true}
-    ],
+    people:[],
     pipelines:Pipes.defaults()
   };
+  for(const step of BASES) step(st);
+  return st;
+}
+function seed(){
+  const st=seedBase();
+  st.me='p1';
+  // демо-команда: все семь ролей, по два менеджера B2B и B2C; имена — примеры
+  st.people.push(
+    {id:'p1',name:'Павел М.',role:'director',dept:'mgmt',demo:true},
+    {id:'p2',name:'Анна С.',role:'managerB2c',dept:'sales',demo:true},
+    {id:'p3',name:'Максим Л.',role:'managerB2b',dept:'sales',demo:true},
+    {id:'p4',name:'Дмитрий В.',role:'chiefEngineer',dept:'eng',specialty:'designer',demo:true},
+    {id:'p5',name:'Игорь К.',role:'warehouse',dept:'stock',demo:true},
+    {id:'p6',name:'Ольга Д.',role:'logist',dept:'logistics',demo:true},
+    {id:'p7',name:'Сергей Т.',role:'engineer',dept:'eng',specialty:'installer',demo:true},
+    {id:'p8',name:'Артём Б.',role:'engineer',dept:'eng',specialty:'installer',demo:true},
+    {id:'p9',name:'Ирина П.',role:'managerB2b',dept:'sales',demo:true},
+    {id:'p10',name:'Олег Н.',role:'managerB2c',dept:'sales',demo:true},
+    {id:'p11',name:'Наталья Р.',role:'engineer',dept:'eng',specialty:'designer',demo:true}
+  );
   for(const step of SEEDS) step(st);
   return st;
 }
 
-// Шаг 1: демо-записи v2 — товары, поставки, резервы, сделки, задачи, переписка, движения, правила.
-// Этап записи — id этапа её воронки (pipeId/boardId + stageId), не номер.
-SEEDS.push(st=>{
+// База, шаг 1: воронка отгрузок клиентам, правила автоматизации, шаблон сообщения клиенту, пустые списки записей.
+BASES.push(st=>{
   // отгрузки клиентам (исходящие) — своя воронка, как ST_OUT в v2
   st.pipelines.push({id:'shipsOut',kind:'ships',dir:'out',name:'Отгрузки клиентам',stages:[{id:'packed',name:'Собрано'},{id:'sent',name:'Отгружено'},{id:'onWay',name:'В пути'},{id:'delivered',name:'Доставлено',flag:'final'}]});
+  Object.assign(st,{
+    products:[],shipments:[],reserves:[],deals:[],tasks:[],msgs:[],moves:[],
+    rules:[
+      {id:'arrive',on:true,when:'Товар клиента принят на склад',then:'Пишем клиенту в его мессенджер по шаблону ниже, менеджеру — уведомление'},
+      {id:'late',on:true,when:'Поставка опаздывает больше чем на 1 день',then:'Уведомляем менеджеров сделок, которые ждут товар, и директора'},
+      {id:'shipped',on:false,when:'Товар отгружен на объект клиента',then:'Пишем клиенту номер отгрузки и дату доставки'},
+      {id:'resexp',on:true,when:'Резерв истекает через 2 дня',then:'Напоминаем менеджеру продлить или снять резерв'},
+      {id:'overdue',on:true,when:'Задача просрочена',then:'Уведомляем исполнителя и того, кто поставил задачу'}
+    ],
+    tpl:'{имя}, здравствуйте! Ваш заказ пришёл на склад: {товар}. Можно забирать или договоримся о доставке. Адрес склада: {адрес_склада}. Ваш менеджер — {менеджер}, сделка {сделка}.',
+    address:'',
+    rcv:null,
+    notes:[],
+    feed:[]
+  });
+});
+
+// Шаг 1: демо-записи v2 — товары, поставки, резервы, сделки, задачи, переписка, движения.
+// Этап записи — id этапа её воронки (pipeId/boardId + stageId), не номер.
+SEEDS.push(st=>{
   const T=(id,title,deal,to,from,due,stageId,prio,desc,at)=>({id,title,deal,to,from,due,boardId:'tasksCommon',stageId,prio,desc,at});
   const D=(id,client,contact,kind,object,type,stageId,managerId,channel,amount)=>({id,client,contact,kind,object,type,pipeId:type==='b2b'?'dealsB2b':'dealsB2c',stageId,managerId,channel,amount,demo:true});
   Object.assign(st,{
@@ -97,26 +126,17 @@ SEEDS.push(st=>{
       {id:'m4',at:day(-3,17,45),deal:'Д-318',channel:'max',by:'p2',text:'Елена, контроллер и аккумуляторы уже в пути. Как придут на склад — напишем сюда же.'},
       {id:'m3',at:day(-2,15,32),deal:'Д-305',channel:'max',auto:true,text:'Мария, здравствуйте! Крепёж для вашей станции пришёл на склад. Отгрузку на объект согласуем с вами отдельно. Ваш менеджер — Анна С.'}
     ],
+    // журнал склада: новые сверху, у самого нового — самый большой номер
     moves:[
-      {at:day(0,11,0),productId:'PV-550M',kind:'Отгрузка',qty:12,doc:'О-207',by:'p5'},
-      {at:day(0,11,0),productId:'MNT-R4',kind:'Отгрузка',qty:3,doc:'О-207',by:'p5'},
-      {at:day(0,11,0),productId:'CAB-6R',kind:'Отгрузка',qty:60,doc:'О-207',by:'p5'},
-      {at:day(-1,10,5),productId:'PV-550M',kind:'Резерв',qty:22,doc:'Д-311',by:'p2'},
-      {at:day(-2,15,30),productId:'MNT-R4',kind:'Приход',qty:24,doc:'П-1038',by:'p5'},
-      {at:day(-3,12,40),productId:'PV-550M',kind:'Резерв',qty:36,doc:'Д-314',by:'p3'},
-      {at:day(-5,9,30),productId:'INV-H6',kind:'Приход',qty:6,doc:'П-1035',by:'p5'},
-      {at:day(-5,9,30),productId:'PV-550M',kind:'Приход',qty:60,doc:'П-1035',by:'p5'}
-    ],
-    rules:[
-      {id:'arrive',on:true,when:'Товар клиента принят на склад',then:'Пишем клиенту в его мессенджер по шаблону ниже, менеджеру — уведомление'},
-      {id:'late',on:true,when:'Поставка опаздывает больше чем на 1 день',then:'Уведомляем менеджеров сделок, которые ждут товар, и директора'},
-      {id:'shipped',on:false,when:'Товар отгружен на объект клиента',then:'Пишем клиенту номер отгрузки и дату доставки'},
-      {id:'resexp',on:true,when:'Резерв истекает через 2 дня',then:'Напоминаем менеджеру продлить или снять резерв'},
-      {id:'overdue',on:true,when:'Задача просрочена',then:'Уведомляем исполнителя и того, кто поставил задачу'}
-    ],
-    tpl:'{имя}, здравствуйте! Ваш заказ пришёл на склад: {товар}. Можно забирать или договоримся о доставке. Адрес склада: {адрес_склада}. Ваш менеджер — {менеджер}, сделка {сделка}.',
-    address:'',
-    rcv:null
+      {id:'mv8',at:day(0,11,0),productId:'PV-550M',kind:'Отгрузка',qty:12,doc:'О-207',by:'p5'},
+      {id:'mv7',at:day(0,11,0),productId:'MNT-R4',kind:'Отгрузка',qty:3,doc:'О-207',by:'p5'},
+      {id:'mv6',at:day(0,11,0),productId:'CAB-6R',kind:'Отгрузка',qty:60,doc:'О-207',by:'p5'},
+      {id:'mv5',at:day(-1,10,5),productId:'PV-550M',kind:'Резерв',qty:22,doc:'Д-311',by:'p2'},
+      {id:'mv4',at:day(-2,15,30),productId:'MNT-R4',kind:'Приход',qty:24,doc:'П-1038',by:'p5'},
+      {id:'mv3',at:day(-3,12,40),productId:'PV-550M',kind:'Резерв',qty:36,doc:'Д-314',by:'p3'},
+      {id:'mv2',at:day(-5,9,30),productId:'INV-H6',kind:'Приход',qty:6,doc:'П-1035',by:'p5'},
+      {id:'mv1',at:day(-5,9,30),productId:'PV-550M',kind:'Приход',qty:60,doc:'П-1035',by:'p5'}
+    ]
   });
 });
 
@@ -196,8 +216,9 @@ const itemsText=list=>list.map(r=>{const p=product(r.productId);return `${low(p.
 function shortItems(s){const c=[...new Set(s.items.map(i=>product(i.productId)?.cat).filter(Boolean))].map(low);return c.length>2?c.slice(0,2).join(', ')+` и ещё ${c.length-2}`:c.join(', ')}
 
 // ——— задачи ———
-const taskMine=t=>{const m=me();return (t.to.t==='p'&&t.to.id===m.id)||(t.to.t==='d'&&t.to.id===m.dept)};
-const taskVisible=t=>can('tasksAll')||taskMine(t)||t.from===me().id;
+// «Моя» и «видна» — правила Visible.taskMine и Visible.task (46-visible.js), здесь — для текущего человека
+const taskMine=t=>Visible.taskMine(S,t,me().id);
+const taskVisible=t=>Visible.task(S,t,me().id);
 // «Просрочена» — единственное определение
 const taskOverdue=t=>!isDone(t)&&dd(t.due)<0;
 const targetName=t=>t.to.t==='p'?(person(t.to.id)?.name||'нет данных: сотрудник'):`Отдел «${deptName(t.to.id)}»`;

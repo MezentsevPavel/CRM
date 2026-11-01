@@ -150,9 +150,13 @@ const DEMO_LINKS = {
   'MTR-3F': { cat: 'Защита и соединения', name: 'Токоизмерительные клещи SPLIT CORE CTSA016 на 100 А / 50 mA' },
   'WND-3K': { cat: 'Инверторы', name: 'Гибридный инвертор ASTERION INV ECO II 1.5 кВт (1500W / 12V / PV 900W 30-160V / MPPT 60A)' },
 };
+// База: юрлица и города по умолчанию, товары — каталог сайта без снимка остатков; остатков и отложенного нет.
+BASES.push(st => {
+  Object.assign(st, Stock.defaults(), { products: Catalog.build(CATALOG, { rows: [] }).products, stock: {}, aside: {} });
+});
 SEEDS.push(st => {
   const built = Catalog.build(CATALOG, STOCK_SNAPSHOT);
-  Object.assign(st, Stock.defaults(), { products: built.products, stock: built.stock, aside: built.aside });
+  Object.assign(st, { products: built.products, stock: built.stock, aside: built.aside });
   const pick = ({ cat, name }) => st.products.find(p => p.cat === cat && Catalog.norm(p.name) === Catalog.norm(name))
     || st.products.find(p => p.cat === cat);
   const link = Object.fromEntries(Object.entries(DEMO_LINKS).map(([sku, rule]) => [sku, pick(rule).id]));

@@ -14,20 +14,13 @@ const clientsSel=()=>Object.assign({},CLIENTS_DEF,S.ui.clients||{});
 const clientNoData=t=>`<span class="muted">нет данных: ${t}</span>`;
 const clientWho=id=>person(id)?.name||'нет данных: менеджер';
 const clientKindPill=c=>`<span class="pill sm${c.kind==='company'?' info':''}">${esc(Clients.KIND[c.kind]||'нет данных: вид')}</span>`;
-// Виден ли клиент человеку: клиент называет сделку, поэтому отбор — через видимые сделки и лиды (Clients.related с personId:
-// Leads.dealsVisible и Leads.visible). Виден, если у него есть видимая сделка или лид, если человек — его менеджер, или если
-// у клиента ещё нет ни сделок, ни лидов (только что заведён). Один отбор на список, поиск, карточку и подсказку о дублях.
-function clientVisible(c,pid=S.me){
-  if(!c) return false;
-  if(c.managerId&&c.managerId===pid) return true;
-  const mine=Clients.related(S,c.id,pid);
-  if(mine.deals.length||mine.leads.length) return true;
-  const all=Clients.related(S,c.id);
-  return !all.deals.length&&!all.leads.length;
-}
+// Виден ли клиент человеку — правило Visible.client (46-visible.js): через видимые сделки и лиды, свой клиент или
+// только что заведённый. Один отбор на список, поиск, карточку и подсказку о дублях.
+const clientVisible=(c,pid=S.me)=>Visible.client(S,c,pid);
 const clientsSeen=list=>list.filter(c=>clientVisible(c));
-// Заводить и править клиентов — тем, кто заводит и правит сделки (право dealsEdit); право clients — только смотреть (R30)
-const clientCanEdit=()=>can('clients')&&can('dealsEdit');
+// Заводить и править клиентов — тем, кто заводит и правит сделки (право dealsEdit); право clients — только смотреть
+// (R30, G01). Правило — Clients.canEdit (40-clients.js), его же проверяют ядро и Guard.
+const clientCanEdit=()=>!!S.me&&Clients.canEdit(S,S.me);
 const CLIENT_NO_EDIT='Заводить и править клиентов могут те, у кого есть право «Заводить и править сделки».';
 // Телефоны из одной строки: через запятую, точку с запятой или с новой строки
 const clientPhonesOf=s=>String(s||'').split(/[,;\n]+/).map(x=>x.trim()).filter(Boolean);

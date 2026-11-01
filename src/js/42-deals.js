@@ -463,11 +463,13 @@ const Deals = (() => {
 // этапах воронки, четыре из них провалены с причиной. Строки — из настоящего каталога (товар, цена сайта на снимок 31.10.2026);
 // где цены сайта у товара нет, в строке «нет данных: цена». Новых резервов шаг не ставит: остатки и свободное прежние.
 // Всё помечено «пример» (demo:true и слово в названиях клиентов), телефоны вида +7 900 000-00-NN.
-SEEDS.push(st => {
+// База: причины отказа по умолчанию; РОП (роль заводит база лидов, 35-leads.js) заводит и правит сделки, как менеджеры.
+BASES.push(st => {
   st.lostReasons = Deals.defaultReasons();
-  // РОП (роль заводит шаг лидов, 35-leads.js) заводит и правит сделки, как менеджеры
   const rop = st.roles.find(r => r.id === 'rop');
   if (rop) rop.perms.dealsEdit = true;
+});
+SEEDS.push(st => {
   const DAY = 864e5, STAGES = ['request', 'calc', 'offer', 'contract', 'payment', 'delivery', 'install', 'done'];
   const pad = (n, w) => String(n).padStart(w, '0');
   const mgrs = type => Leads.managers(st, type).map(p => p.id);

@@ -1,6 +1,10 @@
 // Общие помощники: даты, числа, экранирование, иконки
 // Перенесено из прототипа v2 без изменений логики.
 
+// Режим страницы: демо (false) или серверная CRM (true). Сервер вставляет на место метки CRM-SERVER в page.html
+// скрипт, который ставит window.CRM_SERVER=1; файл, открытый с диска, остаётся демо.
+const SERVER=typeof CRM_SERVER!=='undefined'&&!!CRM_SERVER;
+
 // ——— даты и форматы ———
 const DAY=864e5;
 const T0=(()=>{const d=new Date();d.setHours(0,0,0,0);return d})();

@@ -372,7 +372,7 @@ function shipCreate(f){
   f.querySelectorAll('.irow').forEach(r=>{const sku=r.querySelector('select').value,q=parseInt(r.querySelector('input').value,10)||0;if(q<1) return;const e=items.find(i=>i.productId===sku);if(e) e.qty+=q;else items.push({productId:sku,qty:q})});
   if(!from||!items.length) return showErr('ns-err','Укажите, откуда едет груз, и хотя бы одну позицию с количеством.');
   const city=byId('ns-city').value,route=['cn','chita',city];
-  const id='П-'+(Math.max(0,...S.shipments.filter(s=>s.dir==='in').map(s=>parseInt(s.id.replace(/\D/g,''),10)||0))+1);
+  const id=Ships.nextNumber(S);
   const eta=byId('ns-eta').value?fromIso(byId('ns-eta').value):day(7,12);
   const start=startStage(pipe.id),wanted=Pipes.stage(S,pipe.id,byId('ns-stage').value);
   const s={id,number:id,dir:'in',supplier:from,to:'Наш склад',carrier:byId('ns-car').value,track:byId('ns-doc').value.trim()||'нет данных: номер накладной',

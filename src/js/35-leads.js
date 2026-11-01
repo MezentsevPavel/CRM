@@ -30,11 +30,14 @@ const Leads = (() => {
   const firstOf = pipe => pipe.stages.find(s => !s.flag) || pipe.stages[0];
 
   // Следующий номер вида «Л-101»: после самого большого из занятых, но не меньше min + 1.
+  // Есть поставщик номеров (Ids.use, серверный режим) — номер выдаёт он.
   function nextId(list, prefix, min) {
-    const re = new RegExp('^' + prefix + '-(\\d+)$');
-    let n = min;
-    for (const x of list || []) { const m = re.exec(String(x.id)); if (m) n = Math.max(n, +m[1]); }
-    return prefix + '-' + (n + 1);
+    return Ids.next(prefix + '-', () => {
+      const re = new RegExp('^' + prefix + '-(\\d+)$');
+      let n = min;
+      for (const x of list || []) { const m = re.exec(String(x.id)); if (m) n = Math.max(n, +m[1]); }
+      return prefix + '-' + (n + 1);
+    });
   }
 
   // start — запись о приходе лида (как пришёл, кем заведён, кому достался): сама по себе действием с лидом не считается
@@ -377,11 +380,18 @@ Pipes.guard('leads', pipe => ({
 // Вид уведомления «Лид ждёт» в «Уведомления»: подпись и значок (список видов — KIND в 20-model.js)
 KIND.leadWait = { l: 'Лид ждёт', ic: 'clock', c: 'bad' };
 
-// Шаг SEEDS: роль РОП и демо-человек с этой ролью. РОП распределяет лиды (право leadsAssign) и сам лидов не получает:
-// у роли нет типа (scope), поэтому Leads.route и Leads.pick его не выбирают. Шаг стоит до лидов — чтобы человек уже был в команде.
-SEEDS.push(st => {
+// База: роль РОП. РОП распределяет лиды (право leadsAssign) и сам лидов не получает: у роли нет типа (scope),
+// поэтому Leads.route и Leads.pick его не выбирают. Шаг SEEDS ниже — демо-человек с этой ролью; стоит до лидов,
+// чтобы человек уже был в команде.
+BASES.push(st => {
   const on = ['leads', 'leadsAssign', 'dealsAll', 'clients', 'stock', 'prices', 'reserve', 'write', 'mail', 'tasksAssign'];
   st.roles.push({ id: 'rop', name: 'РОП (руководитель отдела продаж)', builtin: true, perms: Object.fromEntries(Perms.LIST.map(([k]) => [k, on.includes(k)])) });
+  // источник лидов и время реакции по умолчанию; лидов в новой базе нет
+  st.leadSource = 'both';
+  st.leadWaitMin = 15;
+  st.leads = [];
+});
+SEEDS.push(st => {
   st.people.push({ id: Store.freeId(st.people, 'p'), name: 'Елена Г.', role: 'rop', dept: 'sales', demo: true });
 });
 
@@ -390,9 +400,6 @@ SEEDS.push(st => {
 // Лиды заводятся теми же функциями, что и в работе (create, contacted, close, toDeal), но без уведомлений:
 // менеджера выбирает route, поэтому «Нераспределённые» — лиды без компании и контакта.
 SEEDS.push(st => {
-  st.leadSource = 'both';
-  st.leadWaitMin = 15;
-  st.leads = [];
   const pad = (n, w) => String(n).padStart(w, '0');
   const COMPANIES = ['ООО „Пример-Строй“', 'ИП Пример-Агро', 'КФХ „Пример“', 'ООО „Пример-Сервис“', 'АО „Пример-Энерго“', 'ООО „Пример-Склад“', 'ООО „Пример-Дом“', 'ООО „Пример-Транс“'];
   const TEXTS = {

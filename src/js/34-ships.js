@@ -303,10 +303,17 @@ const Ships = (() => {
     return fired;
   }
 
+  // Номер новой поставки к нам: «П-» и следующий после самого большого из входящих. Есть поставщик номеров
+  // (Ids.use, серверный режим) — номер выдаёт он.
+  function nextNumber(st) {
+    return Ids.next('П-', () => 'П-' + (Math.max(0, ...(st.shipments || []).filter(s => s.dir === 'in')
+      .map(s => parseInt(String(s.id).replace(/\D/g, ''), 10) || 0)) + 1));
+  }
+
   return {
     NODES, ST, SRC, EVENTS, nodeOf, nodeName, routeText, units, brief,
     where, plan, progress, awaitingReceipt, isLate, mapCounts, query,
-    advance, setStage, applyRules, eventLabel,
+    advance, setStage, applyRules, eventLabel, nextNumber,
   };
 })();
 
@@ -473,8 +480,11 @@ SEEDS.push(st => {
   });
 
   st.shipments = shipments;
-  // правила директора по умолчанию (Настройки → Поставки); третье выключено — пример выключенного. «Прибыло в город»
-  // и «На складе» ставит только «принято на складе» (Pipes.ruleMayTo): прибытие отмечает шаг перевозчика, склад — приёмка
+});
+
+// База: правила директора по умолчанию (Настройки → Поставки); третье выключено — пример выключенного. «Прибыло в город»
+// и «На складе» ставит только «принято на складе» (Pipes.ruleMayTo): прибытие отмечает шаг перевозчика, склад — приёмка
+BASES.push(st => {
   st.shipRules = [
     { id: 'sr1', on: true, when: 'received', then: 'inStock' },
     { id: 'sr2', on: true, when: 'customs', then: 'transship' },
