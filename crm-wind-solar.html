@@ -6655,11 +6655,33 @@ const Guard = (() => {
     return null;
   }
 
+  const changeOf = (ctx, key, id) => ctx.list.find(x => x.key === key && String(x.id) === String(id));
   // Какое право нужно на вид движения — то, с которым этот вид создаётся в интерфейсе
+  // Приход и отгрузка по номеру заявки-перемещения: права dispatch/logistics только у настоящего перемещения — парного
+  // движения той же пачки (тот же товар и количество, другая клетка) или прихода груза, уже ушедшего в путь по этой заявке
+  const cellOf = (e, c) => (e || Stock.ANY) + SEP + (c || Stock.ANY);
+  function pairedLeg(ctx, m) {
+    const K = Stock.KINDS, other = m.kind === K.receive ? K.ship : K.receive;
+    // пара берётся один раз: одна отгрузка подтверждает один приход
+    const used = ctx.paired || (ctx.paired = new Set());
+    const i = ctx.moves.findIndex((x, j) => !used.has(j) && x !== m && x.kind === other && x.productId === m.productId
+      && Number(x.qty) === Number(m.qty) && x.doc === m.doc && cellOf(x.entityId, x.cityId) !== cellOf(m.entityId, m.cityId));
+    if (i < 0) return false;
+    used.add(i);
+    return true;
+  }
+  // Груз по заявке уже в пути (до пачки), и в этой пачке заявка его «принимает» (landed) или возвращает (moved снят)
+  function arrives(ctx, m) {
+    const d = (ctx.st.dispatches || []).find(x => x.purpose === 'transfer' && x.number === m.doc);
+    if (!d || !d.moved || d.landed) return false;
+    if (!(d.items || []).some(it => it.productId === m.productId && Number(it.qty) === Number(m.qty))) return false;
+    const c = changeOf(ctx, 'dispatches', d.id);
+    return !!c && !c.deleted && !!c.data && (!!c.data.landed || !c.data.moved);
+  }
   function moveRights(ctx, m) {
     const K = Stock.KINDS;
     const transfer = (ctx.after.dispatches || []).some(d => d.purpose === 'transfer' && d.number === m.doc);
-    if (m.kind === K.receive) return transfer ? ['dispatch', 'logistics'] : ['receive'];
+    if (m.kind === K.receive) return transfer && (arrives(ctx, m) || pairedLeg(ctx, m)) ? ['dispatch', 'logistics'] : ['receive'];
     if (m.kind === K.ship) return transfer ? ['dispatch', 'logistics'] : ['sell'];
     if (m.kind === K.transfer) return ['logistics', 'dispatch'];
     if (m.kind === K.damage) return ['stock'];
@@ -6671,6 +6693,7 @@ const Guard = (() => {
     if (ctx.before(c) !== undefined || c.deleted) return no('записи журнала склада не правят и не удаляют');
     const m = c.data || {};
     if (m.by !== ctx.pid) return no('движение в журнале склада — только от своего имени');
+    if ('qty' in m && !(isNum(m.qty) && m.qty > 0)) return no('количество в движении журнала склада — число больше нуля');
     const need = moveRights(ctx, m);
     return need.some(ctx.can) ? null : needs(`движение «${m.kind || 'нет данных: вид'}»`, ...need);
   }
@@ -6684,7 +6707,6 @@ const Guard = (() => {
     const n = recOf(ctx.after, 'deals', id);
     return !!n && Deals.canEdit(ctx.after, n, ctx.pid);
   }
-  const changeOf = (ctx, key, id) => ctx.list.find(x => x.key === key && String(x.id) === String(id));
   // Сделка проваливается в этой пачке
   function dealLost(ctx, id) {
     const c = changeOf(ctx, 'deals', id), b = recOf(ctx.st, 'deals', id);
@@ -6892,6 +6914,10 @@ const Guard = (() => {
       data: x => (x.deleted ? null : x.data),
     };
     for (const x of list) {
+      // запись массива живёт под своим id: подменить чужую запись через свой ключ нельзя
+      if (!x.deleted && x.data && (x.key === 'products' || Docs.kind(x.key) === 'ARRAY') && String(x.data.id) !== String(x.id)) {
+        return { key: x.key, id: x.id, text: no('id записи должен совпадать с id документа') };
+      }
       const rule = Object.hasOwn(RULES, x.key) ? RULES[x.key] : (Docs.kind(x.key) === 'LOCAL' ? () => LOCAL_TEXT : ADMIN);
       const text = rule(ctx, x);
       if (text) return { key: x.key, id: x.id, text };

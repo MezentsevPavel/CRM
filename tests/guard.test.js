@@ -473,3 +473,76 @@ test('G01: инженер и главный инженер — Clients.create/up
     assert.equal(feed.includes('Запланировать'), can, `${pid}: «Запланировать» в ленте сделки`);
   }
 });
+
+// ——— дыры, найденные ревью: количество движения, парный приход перемещения, id документа ———
+test('Guard журнал: количество движения — конечное число больше нуля; отрицательная «Отгрузка» с прибавкой к остатку — нельзя', () => {
+  const a = app();
+  const [p, e, c] = cellWith(a.S);
+  const forge = qty => batch(a, st => {
+    st.moves.unshift({ id: a.Store.freeId(st.moves, 'mv'), at: NOW, productId: p, kind: 'Отгрузка', qty, entityId: e, cityId: c, doc: 'Д-311', by: 'p2' });
+    st.stock[p][e][c] -= qty;
+  }, a.Docs.join(a.Docs.split(a.S)));
+  assert.equal(a.Perms.can(a.S, 'p2', 'sell'), true, 'у менеджера нет права sell — тест ничего не проверит');
+  denied(check(a, forge(-1000), 'p2'), 'отгрузка на −1000 с прибавкой к остатку', /количеств/);
+  denied(check(a, forge(0), 'p2'), 'отгрузка на 0', /количеств/);
+  denied(check(a, forge(Infinity), 'p2'), 'отгрузка на бесконечность', /количеств/);
+  allowed(check(a, forge(2), 'p2'), 'обычная отгрузка на 2');
+});
+
+test('Guard журнал: «Приход» по номеру перемещения — только в паре с отгрузкой из другой клетки; без пары нужно «receive»', () => {
+  const a = app(), S = a.S;
+  const [p, e, c] = cellWith(S, 2);
+  const driver = S.people.find(x => x.role === 'driver').id;
+  assert.equal(a.Perms.can(S, driver, 'dispatch'), true);
+  assert.equal(a.Perms.can(S, driver, 'receive'), false, 'у водителя есть receive — тест ничего не проверит');
+  const prep = a.Dispatch.create(S, { purpose: 'transfer', to: { name: 'Склад Москва', phone: '+7 900 000-00-95' }, from: { entityId: e, cityId: c }, toCell: { entityId: 'ip', cityId: 'msk' }, when: { date: NOW }, items: [{ productId: p, qty: 2 }] }, 'p6', NOW, { silent: true });
+  assert.equal(prep.ok, true, prep.reason || JSON.stringify(prep.missing));
+  const id = prep.id || prep.dispatch.id, num = S.dispatches.find(x => x.id === id).number;
+  const copy = () => a.Docs.join(a.Docs.split(S));
+  const mv = (st, kind, q, cell) => st.moves.unshift({ id: a.Store.freeId(st.moves, 'mv'), at: NOW, productId: p, kind, qty: q, entityId: cell[0], cityId: cell[1], doc: num, by: driver });
+  // водитель сам себе «принимает» 500 штук по номеру перемещения — без отгрузки
+  const lone = batch(a, st => { mv(st, 'Приход', 500, [e, c]); st.stock[p][e][c] += 500; }, copy());
+  denied(check(a, lone, driver), 'приход по номеру перемещения без пары', /Принимать товар/);
+  // пара «отгрузка + приход» на одну и ту же клетку остатка не двигает, но и перемещением не является
+  const same = batch(a, st => { mv(st, 'Отгрузка', 2, [e, c]); mv(st, 'Приход', 2, [e, c]); }, copy());
+  denied(check(a, same, driver), 'приход в ту же клетку, откуда отгрузка', /Принимать товар/);
+  // пара с другим количеством
+  const odd = batch(a, st => { mv(st, 'Отгрузка', 1, [e, c]); mv(st, 'Приход', 2, ['ip', 'msk']); st.stock[p][e][c] -= 1; st.stock[p].ip = st.stock[p].ip || {}; st.stock[p].ip.msk = (st.stock[p].ip.msk || 0) + 2; }, copy());
+  denied(check(a, odd, driver), 'приход на другое количество, чем отгрузка', /Принимать товар/);
+  // настоящее перемещение по заявке: отгрузка на этапе «В пути», приход на «Доставлено»
+  const way = batch(a, st => { const r = a.Dispatch.setStage(st, id, 'onWay', driver, NOW, { silent: true }); assert.equal(r.ok, true, r.reason); });
+  allowed(check(a, way, driver), 'отгрузка перемещения водителем');
+  const done = batch(a, st => { const r = a.Dispatch.setStage(st, id, 'delivered', driver, NOW, { silent: true }); assert.equal(r.ok, true, r.reason); });
+  assert.ok(done.changes.some(x => x.key === 'moves'), 'в пачке доставки нет прихода');
+  allowed(check(a, done, driver), 'приход перемещения водителем при доставке');
+  // пара «отгрузка + приход» одной пачкой, на другую клетку и на то же количество — настоящее перемещение
+  const pair = batch(a, st => {
+    mv(st, 'Отгрузка', 2, [e, c]); mv(st, 'Приход', 2, ['ip', 'msk']);
+    st.stock[p][e][c] -= 2; st.stock[p].ip = st.stock[p].ip || {}; st.stock[p].ip.msk = (st.stock[p].ip.msk || 0) + 2;
+  }, copy());
+  allowed(check(a, pair, driver), 'пара «отгрузка + приход» в одной пачке');
+});
+
+test('Guard id: у записи массива id документа и data.id совпадают — иначе можно подменить чужую запись через свой ключ', () => {
+  const a = app();
+  const tamper = (b, key, id, realId) => { const c = b.changes.find(x => x.key === key && x.id === id); assert.ok(c, `нет изменения ${key}/${id}`); c.data.id = realId; return b; };
+  // задача: p5 заводит «tNEW», а в data.id пишет существующую t5
+  const t = batch(a, st => st.tasks.push({ id: 'tNEW', title: 'Задача-пример', deal: '', to: { t: 'd', id: 'stock' }, from: 'p5', due: NOW, boardId: 'tasksCommon', stageId: 'new', prio: 'normal', desc: '', at: NOW }));
+  allowed(check(a, t, 'p5'), 'честная новая задача');
+  denied(check(a, tamper(t, 'tasks', 'tNEW', 't5'), 'p5'), 'задача tNEW с id существующей t5', /Нет прав/);
+  // клиент: p2 заводит «Knew» с id клиента, которого не видит
+  const other = a.S.clients.find(cl => !a.Visible.client(a.S, cl, 'p2'));
+  assert.ok(other, 'нет клиента, невидимого p2');
+  const cl = batch(a, st => { const r = a.Clients.create(st, { name: 'Клиент-пример новый', phone: '+7 900 000-00-98' }, 'p2', NOW); assert.equal(r.ok, true, r.reason); });
+  const cc = cl.changes.find(x => x.key === 'clients');
+  allowed(check(a, cl, 'p2'), 'честный новый клиент');
+  denied(check(a, tamper(cl, 'clients', cc.id, other.id), 'p2'), 'клиент с id чужого невидимого', /Нет прав/);
+  // уведомление
+  const n = batch(a, st => st.notes.push({ id: 'nNEW', to: ['p2'], by: 'p5', text: 'Пример', at: NOW, read: [] }));
+  allowed(check(a, n, 'p5'), 'честное уведомление');
+  denied(check(a, tamper(n, 'notes', 'nNEW', a.S.notes[0].id), 'p5'), 'уведомление с id существующего', /Нет прав/);
+  // товар
+  const pr = batch(a, st => { st.products.push({ ...st.products[0], id: 'tov-primer', src: 'manual', name: 'Товар-пример' }); });
+  allowed(check(a, pr, 'p1'), 'честный товар');
+  denied(check(a, tamper(pr, 'products', 'tov-primer', a.S.products[0].id), 'p1'), 'товар с id существующего', /Нет прав/);
+});
