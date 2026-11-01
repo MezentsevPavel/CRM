@@ -28,7 +28,8 @@ function diffHtml(it,r=S.rcv){const d=qv(it.productId,r)-it.qty;return d<0?`<spa
 // План приёмки — один на предпросмотр и подтверждение: что ляжет на склад и куда, на какой этап встанет поставка,
 // расхождения, сделки-ждуны и что с каждой, кому уведомления. receiveShip делает ровно это и ничего сверх.
 function rcvPlan(r=S.rcv){
-  const s=ship(r.shipId),auto=rule('arrive').on,issues=[],dmg=[];
+  // авто-сообщений клиентам в рабочей версии нет: менеджеру — напоминание написать клиенту
+  const s=ship(r.shipId),auto=!SERVER&&rule('arrive').on,issues=[],dmg=[];
   s.items.forEach(it=>{
     const p=product(it.productId),q=qv(it.productId,r);
     if(q<it.qty) issues.push(`${p.name}: принято ${num(q)} из ${qtyOf(it.qty,p)}`);
@@ -175,8 +176,14 @@ function rcvAfterHtml(rc=S.rcv){
     const d=deal(x.deal);return `<div class="stack-s" style="gap:6px"><p class="sm m0"><b>${esc(d.client)}</b> · ${CH[x.channel]}</p><div class="chat"><div class="bub out">${esc(x.text)}<small>${fT(x.at)} · авто · имитация, не отправлено</small></div></div></div>`}).join('')}</div></section>`;
   return h;
 }
+// Фото сжимаются (до 720 px, JPEG); в рабочей версии сжатое сразу уходит на сервер, в черновик — его адрес (url)
 function addPhotos(files){
-  const push=u=>{if(!S.rcv||S.rcv.done) return;S.rcv.photos.push(u);const b=byId('rcv-photos');if(b) b.innerHTML=photosHtml();saveSoon()};
+  const keep=u=>{if(!S.rcv||S.rcv.done) return;S.rcv.photos.push(u);const b=byId('rcv-photos');if(b) b.innerHTML=photosHtml();saveSoon()};
+  const push=u=>{
+    if(!SERVER) return keep(u);
+    const r=S.rcv;if(!r||r.done) return;
+    serverUpload(srvBlob(u),`приёмка-${r.shipId}-${r.photos.length+1}.jpg`).then(x=>{if(x&&S.rcv===r) keep(x.url)});
+  };
   [...files].slice(0,9).forEach(f=>{
     if(!/^image\//.test(f.type)) return;
     const fr=new FileReader();

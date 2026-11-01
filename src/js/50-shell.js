@@ -22,7 +22,9 @@ function savedState(){
 }
 // Раздел из адреса страницы (#team) или ''.
 function hashView(){try{return /^#[a-z]+$/.test(location.hash)?location.hash.slice(1):''}catch(_){return ''}}
+// В серверном режиме состояние приходит с сервера после входа (serverBoot, 72-server.js): до этого S — null.
 function startState(){
+  if(SERVER) return null;
   const st=savedState()||freshState();
   const v=hashView();if(v) st.view=v;
   return st;
@@ -31,6 +33,8 @@ function startState(){
 let _photoWarn=0,_saveT=0;
 function save(){
   if(!S) return null;
+  // серверный режим: личное — в этот браузер, общее — на сервер (72-server.js)
+  if(SERVER) return serverSave();
   let r=Store.dump(S),ok=true;
   try{localStorage.setItem(Store.KEY,r.text)}catch(_){
     // браузер дал меньше места, чем рассчитывает Store: предел ужимается по шагу, и выкидывается только то,
@@ -50,6 +54,7 @@ function save(){
 const saveSoon=()=>{clearTimeout(_saveT);_saveT=setTimeout(save,400)};
 // Сброс к демо: человек, раздел и тема остаются, данные — как в seed()
 function resetData(){
+  if(SERVER) return;
   const m=S?.me,v=S?.view,th=S?.prefs?.theme;
   S=freshState();
   if(S.people.some(p=>p.id===m)) S.me=m;
@@ -116,7 +121,7 @@ function renderSide(){
     if(!items.length) continue;
     h+=`<div class="nav-g"><h4>${g}</h4>${items.map(n=>{const b=n.badge?n.badge():0;return `<button class="nav-i ${S.view===n.id?'on':''}" data-act="go" data-view="${n.id}">${ic(n.icon)}<span>${n.label}</span>${b?`<span class="cnt ${n.hot?'hot':''}">${b}</span>`:''}</button>`}).join('')}</div>`;
   }
-  h+=`<div class="me">${av(m)}<div><b>${esc(m.name)}</b><small>${esc(roleName(m))}</small></div></div>`;
+  h+=`<div class="me">${av(m)}<div><b>${esc(m.name)}</b><small>${esc(roleName(m))}</small></div></div>${SERVER?serverMeHtml():''}`;
   byId('side').innerHTML=h;
 }
 function updBell(){const n=unread().length,b=byId('bell-n');b.hidden=!n;b.textContent=n>99?'99+':n}
@@ -274,7 +279,7 @@ function go(v,tab){
 function setNav(open){S.ui.navOpen=open;byId('app').classList.toggle('nav-open',open)}
 // «Кто я»: смотреть CRM глазами этого человека — его права, задачи, уведомления
 function setMe(pid){
-  if(!person(pid)) return;
+  if(SERVER||!person(pid)) return;
   S.me=pid;S.ui.drawer=null;S.ui.taskF='all';closeModal();
   const vis=navItems(),hidden=NAV.filter(n=>!vis.includes(n)).map(n=>n.label),m=me();
   if(!vis.some(n=>n.id===S.view)) S.view='home';
@@ -408,7 +413,8 @@ function render(){
   try{const h=hashView();if(h&&h!==S.view) history.replaceState(null,'','#'+S.view)}catch(_){}
   // открыл раздел «Уведомления» — свои прочитаны (подсвечены один раз, при этой отрисовке)
   if(ok&&S.view==='notifications') Notify.markRead(S,S.me);
-  Acts.notify(S,new Date());Leads.notifyWaiting(S,new Date());
+  // напоминания о делах и «лид ждёт» в серверном режиме создаёт только сервер
+  if(!SERVER){Acts.notify(S,new Date());Leads.notifyWaiting(S,new Date())}
   renderSide();
   byId('ttl').textContent=n.label;
   byId('role').innerHTML=whoOptions();
@@ -552,6 +558,7 @@ document.addEventListener('input',e=>onField('input',e));
 document.addEventListener('change',e=>onField('change',e));
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
+    if(!S) return;
     if(S.ui.modal) closeModal();else if(S.ui.drawer) closeDrawer();else{byId('pop').hidden=true;byId('q-res').hidden=true;if(S.ui.navOpen) setNav(false)}
     return;
   }
@@ -591,7 +598,7 @@ if(typeof window!=='undefined') window.addEventListener('resize',()=>hscrollSync
 try{if(typeof MutationObserver==='function') new MutationObserver(()=>hscrollSync()).observe(byId('view'),{childList:true,subtree:true})}catch(_){}
 byId('role').addEventListener('change',e=>setMe(e.target.value));
 // напоминания о делах: раз в минуту (в тестах таймера нет)
-if(typeof setInterval==='function') setInterval(actsTick,60000);
+if(!SERVER&&typeof setInterval==='function') setInterval(actsTick,60000);
 // адрес поменяли руками (#team) — показать этот раздел (или «Нет доступа»)
 if(typeof window!=='undefined') window.addEventListener('hashchange',()=>{const v=hashView();if(v&&S&&v!==S.view){S.view=v;S.ui.drawer=null;render()}});
 // «как в системе»: устройство переключило светлую/тёмную — тема следом

@@ -2,7 +2,9 @@
 // чтение) берут и отправки (69-dispatch.js), здесь же — поле «Файлы» в формах новой задачи и поставки и блок «Файлы»
 // в карточках задачи и поставки. Черновик формы лежит в S.ui.attDraft ({kind, files}) и не сохраняется.
 
-const ATT_MAX_HINT='Фото и документы любого типа, каждый до 2 МБ. Большие файлы могут не поместиться в браузер: тогда у них будет пометка.';
+// Серверный режим: предел файла — как у сервера (CRM_FILE_MAX_MB по умолчанию); больше — отказ до загрузки (serverUpload)
+const ATT_SERVER_MAX_MB=20;
+const ATT_MAX_HINT=SERVER?`Фото и документы любого типа, каждый до ${ATT_SERVER_MAX_MB} МБ. Файлы хранятся на сервере CRM.`:'Фото и документы любого типа, каждый до 2 МБ. Большие файлы могут не поместиться в браузер: тогда у них будет пометка.';
 
 // Чьи файлы и кто что может: kind → запись, видна ли она человеку и может ли он убирать чужие файлы.
 // Видна — так же, как открывается её карточка (taskVisible, право на остатки или перевозки).
@@ -12,32 +14,40 @@ const ATT={
 };
 
 function attSize(n){return n<1024?n+' Б':n<1048576?Math.round(n/1024)+' КБ':(n/1048576).toFixed(1).replace('.',',')+' МБ'}
-function attIsImage(f){return /^image\//.test(f.type||'')&&typeof f.data==='string'&&f.data.startsWith('data:image/')}
+// Откуда брать файл: на сервере — url (серверный режим), в браузере — data-URL
+const attSrc=f=>(typeof f.url==='string'&&f.url)||(typeof f.data==='string'&&f.data)||'';
+function attIsImage(f){return /^image\//.test(f.type||'')&&(typeof f.data==='string'&&f.data.startsWith('data:image/')||!f.data&&typeof f.url==='string'&&!!f.url)}
 
 // Файл в карточке: картинка — миниатюра, она открывается крупно (act, key); остальное — название, размер, «скачать».
 // Не поместился в браузер (unsaved) — пометка вместо файла. who — подпись «кто приложил», если известна.
 function attFileHtml(f,act,key,who){
   const size=attSize(f.size||0);
-  if(f.unsaved||!f.data) return `<div class="dsp-fl bad">${ic('file')}<span>${esc(f.name)}<small>${size}</small><small class="warn-t">${f.unsaved?'не сохранено — мало места в браузере':'нет данных: файл'}</small></span></div>`;
-  if(attIsImage(f)) return `<button type="button" class="dsp-th" data-act="${act}" data-key="${esc(key)}" aria-label="Открыть: ${esc(f.name)}"><img src="${esc(f.data)}" alt="${esc(f.name)}"><small>${esc(f.name)}</small></button>`;
-  return `<a class="dsp-fl" href="${esc(f.data)}" download="${esc(f.name)}">${ic('file')}<span>${esc(f.name)}<small>${size} · скачать${who?' · '+esc(who):''}</small></span></a>`;
+  if(f.unsaved||!attSrc(f)) return `<div class="dsp-fl bad">${ic('file')}<span>${esc(f.name)}<small>${size}</small><small class="warn-t">${f.unsaved?'не сохранено — мало места в браузере':'нет данных: файл'}</small></span></div>`;
+  if(attIsImage(f)) return `<button type="button" class="dsp-th" data-act="${act}" data-key="${esc(key)}" aria-label="Открыть: ${esc(f.name)}"><img src="${esc(attSrc(f))}" alt="${esc(f.name)}"><small>${esc(f.name)}</small></button>`;
+  return `<a class="dsp-fl" href="${esc(attSrc(f))}" download="${esc(f.name)}">${ic('file')}<span>${esc(f.name)}<small>${size} · скачать${who?' · '+esc(who):''}</small></span></a>`;
 }
 // Список файлов в форме: у каждого крестик (act убирает файл по номеру data-i).
 function attEditHtml(files,delAct){
   if(!files.length) return '<p class="muted m0">Файлов нет.</p>';
   return files.map((f,i)=>{
     const rm=`<button type="button" class="btn ghost icon dsp-rm" data-act="${delAct}" data-i="${i}" aria-label="Убрать файл: ${esc(f.name)}">${ic('x')}</button>`;
-    return attIsImage(f)?`<figure class="dsp-th"><img src="${esc(f.data)}" alt="${esc(f.name)}"><small>${esc(f.name)}</small>${rm}</figure>`
+    return attIsImage(f)?`<figure class="dsp-th"><img src="${esc(attSrc(f))}" alt="${esc(f.name)}"><small>${esc(f.name)}</small>${rm}</figure>`
       :`<div class="dsp-fl">${ic('file')}<span>${esc(f.name)}<small>${attSize(f.size||0)}${f.unsaved?' · не сохранено — мало места в браузере':''}</small></span>${rm}</div>`;
   }).join('');
 }
 // Крупно: картинка и кнопка «Скачать» — тело окна файла.
 function attBigHtml(f){
-  return `${attIsImage(f)?`<img class="dsp-big" src="${esc(f.data)}" alt="${esc(f.name)}">`:''}<a class="btn" href="${esc(f.data)}" download="${esc(f.name)}">${ic('file')}Скачать · ${esc(attSize(f.size||0))}</a>`;
+  return `${attIsImage(f)?`<img class="dsp-big" src="${esc(attSrc(f))}" alt="${esc(f.name)}">`:''}<a class="btn" href="${esc(attSrc(f))}" download="${esc(f.name)}">${ic('file')}Скачать · ${esc(attSize(f.size||0))}</a>`;
 }
 // Выбранные на диске файлы читаются в data-URL; каждый готовый уходит в onAdd({name, type, size, data}).
 // Файл больше Store.FILE_MAX (2 МБ) не читается: сразу отказ, те же слова, что у ядра.
+// Серверный режим: файл не читается, а загружается на сервер (serverUpload, больше 20 МБ — отказ до загрузки);
+// в onAdd уходит {id, name, type, size, url, data: null}.
 function attReadFiles(files,onAdd){
+  if(SERVER){
+    [...files].forEach(f=>serverUpload(f).then(u=>{if(u) onAdd({id:u.id,name:u.name,type:u.type||'',size:u.size,url:u.url,data:null})}));
+    return;
+  }
   if(typeof FileReader==='undefined') return;
   [...files].forEach(f=>{
     const big=Store.fileTooBig(f);if(big){toast(big,'warn');return}

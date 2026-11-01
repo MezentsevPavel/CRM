@@ -1167,6 +1167,29 @@ button.crow:hover{border-color:var(--line-2);background:var(--surface-2)}
 /* Файлы у задачи и поставки: сами файлы рисуются классами отправок (.dsp-files, .dsp-th, .dsp-fl) */
 .att-item{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:0;max-width:100%}
 .att-add{align-self:flex-start;margin-top:8px;cursor:pointer}
+
+/* Серверный режим (72-server.js): окно входа и смены пароля, плашка «Нет связи», «Сменить пароль» и «Выйти» под именем.
+   На <html> стоит data-mode="server": прячутся «Кто я», полоса «Прототип» и подпись «прототип» у логотипа. */
+html[data-mode="server"] .as,html[data-mode="server"] .demo,html[data-mode="server"] .brand small{display:none}
+
+.srv-gate{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;padding:16px;background:var(--bg);overflow-y:auto}
+.srv-gate.over{background:var(--overlay)}
+.srv-box{display:flex;flex-direction:column;gap:14px;width:min(400px,100%);padding:28px 26px 26px;border-radius:26px;background:var(--surface);box-shadow:var(--shadow);border:1px solid var(--line)}
+.srv-box h2{margin:0;font-family:var(--f-display);font-size:21px;font-weight:700}
+.srv-box .field{margin:0}
+.srv-box .check small{font-size:12px}
+.srv-box .bar{justify-content:flex-end}
+.srv-brand{display:flex;align-items:baseline;gap:8px;color:var(--primary-deep)}
+.srv-brand b{font-family:var(--f-display);font-size:15px;font-weight:800;letter-spacing:.01em}
+.srv-brand small{font-size:12px;color:var(--ink-3)}
+
+.srv-off{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);z-index:90;display:flex;align-items:center;gap:8px;max-width:calc(100% - 32px);padding:9px 14px;border-radius:14px;background:var(--warn-soft);color:var(--warn);border:1px solid var(--line-2);box-shadow:var(--shadow-1);font-size:13px;font-weight:600}
+.srv-off[hidden]{display:none}
+.srv-off .ic{width:16px;height:16px;flex:none}
+
+.srv-me{display:flex;flex-wrap:wrap;gap:4px;padding:6px 2px 0}
+.srv-me .btn{flex:1 1 auto;justify-content:flex-start}
+.srv-pw{font-size:17px;letter-spacing:.04em;user-select:all}
 </style>
 
 <div class="app" id="app">
@@ -6153,6 +6176,7 @@ SEEDS.push(st => {
 // Файл: {id, name, type, size, data|null, by?, at?, unsaved?}. data — data-URL; null — файл не поместился в браузер
 // (тогда unsaved:true, это ставит Store.dump). Запись держит файлы в поле files. Предел одного файла — Store.FILE_MAX;
 // сколько файлов влезет в браузер всего, решает Store.dump: выкидывает новые и крупные, остальное остаётся.
+// Серверный режим: файл лежит на сервере — {id, name, type, size, url, by, at}, data: null; id — номер файла сервера.
 
 const Attach = (() => {
   const str = v => (v == null ? '' : String(v).trim());
@@ -6166,6 +6190,7 @@ const Attach = (() => {
     for (const f of all) {
       if (!f || !str(f.name)) continue;
       const file = { id: f.id || Store.freeId(used, 'fl'), name: str(f.name), type: str(f.type), size: Number(f.size) || 0, data: typeof f.data === 'string' && f.data ? f.data : null };
+      if (typeof f.url === 'string' && f.url) file.url = f.url;
       if (f.by) file.by = str(f.by);
       if (f.at) file.at = f.at;
       if (f.unsaved) file.unsaved = true;
@@ -6184,12 +6209,14 @@ const Attach = (() => {
 
   // Приложить файлы к готовой записи. → {ok:true, added:[файл…]} | {ok:false, reason}. Либо все, либо ни одного.
   function add(rec, list, by, now) {
-    const fresh = (Array.isArray(list) ? list : []).filter(f => f && str(f.name) && typeof f.data === 'string' && f.data);
+    const has = f => (typeof f.data === 'string' && f.data) || (typeof f.url === 'string' && f.url);
+    const fresh = (Array.isArray(list) ? list : []).filter(f => f && str(f.name) && has(f));
     if (!fresh.length) return { ok: false, reason: 'Нет файла, который можно приложить.' };
     const files = Array.isArray(rec.files) ? rec.files : (rec.files = []);
     const big = tooBig(fresh, files);
     if (big) return { ok: false, reason: big };
-    const added = clean(fresh.map(f => ({ ...f, id: '', by, at: now })), files);
+    // файл на сервере сохраняет свой номер; файл из браузера получает новый
+    const added = clean(fresh.map(f => ({ ...f, id: f.url && f.id ? f.id : '', by, at: now })), files);
     files.push(...added);
     return { ok: true, added };
   }
@@ -6957,7 +6984,9 @@ function savedState(){
 }
 // Раздел из адреса страницы (#team) или ''.
 function hashView(){try{return /^#[a-z]+$/.test(location.hash)?location.hash.slice(1):''}catch(_){return ''}}
+// В серверном режиме состояние приходит с сервера после входа (serverBoot, 72-server.js): до этого S — null.
 function startState(){
+  if(SERVER) return null;
   const st=savedState()||freshState();
   const v=hashView();if(v) st.view=v;
   return st;
@@ -6966,6 +6995,8 @@ function startState(){
 let _photoWarn=0,_saveT=0;
 function save(){
   if(!S) return null;
+  // серверный режим: личное — в этот браузер, общее — на сервер (72-server.js)
+  if(SERVER) return serverSave();
   let r=Store.dump(S),ok=true;
   try{localStorage.setItem(Store.KEY,r.text)}catch(_){
     // браузер дал меньше места, чем рассчитывает Store: предел ужимается по шагу, и выкидывается только то,
@@ -6985,6 +7016,7 @@ function save(){
 const saveSoon=()=>{clearTimeout(_saveT);_saveT=setTimeout(save,400)};
 // Сброс к демо: человек, раздел и тема остаются, данные — как в seed()
 function resetData(){
+  if(SERVER) return;
   const m=S?.me,v=S?.view,th=S?.prefs?.theme;
   S=freshState();
   if(S.people.some(p=>p.id===m)) S.me=m;
@@ -7051,7 +7083,7 @@ function renderSide(){
     if(!items.length) continue;
     h+=`<div class="nav-g"><h4>${g}</h4>${items.map(n=>{const b=n.badge?n.badge():0;return `<button class="nav-i ${S.view===n.id?'on':''}" data-act="go" data-view="${n.id}">${ic(n.icon)}<span>${n.label}</span>${b?`<span class="cnt ${n.hot?'hot':''}">${b}</span>`:''}</button>`}).join('')}</div>`;
   }
-  h+=`<div class="me">${av(m)}<div><b>${esc(m.name)}</b><small>${esc(roleName(m))}</small></div></div>`;
+  h+=`<div class="me">${av(m)}<div><b>${esc(m.name)}</b><small>${esc(roleName(m))}</small></div></div>${SERVER?serverMeHtml():''}`;
   byId('side').innerHTML=h;
 }
 function updBell(){const n=unread().length,b=byId('bell-n');b.hidden=!n;b.textContent=n>99?'99+':n}
@@ -7209,7 +7241,7 @@ function go(v,tab){
 function setNav(open){S.ui.navOpen=open;byId('app').classList.toggle('nav-open',open)}
 // «Кто я»: смотреть CRM глазами этого человека — его права, задачи, уведомления
 function setMe(pid){
-  if(!person(pid)) return;
+  if(SERVER||!person(pid)) return;
   S.me=pid;S.ui.drawer=null;S.ui.taskF='all';closeModal();
   const vis=navItems(),hidden=NAV.filter(n=>!vis.includes(n)).map(n=>n.label),m=me();
   if(!vis.some(n=>n.id===S.view)) S.view='home';
@@ -7343,7 +7375,8 @@ function render(){
   try{const h=hashView();if(h&&h!==S.view) history.replaceState(null,'','#'+S.view)}catch(_){}
   // открыл раздел «Уведомления» — свои прочитаны (подсвечены один раз, при этой отрисовке)
   if(ok&&S.view==='notifications') Notify.markRead(S,S.me);
-  Acts.notify(S,new Date());Leads.notifyWaiting(S,new Date());
+  // напоминания о делах и «лид ждёт» в серверном режиме создаёт только сервер
+  if(!SERVER){Acts.notify(S,new Date());Leads.notifyWaiting(S,new Date())}
   renderSide();
   byId('ttl').textContent=n.label;
   byId('role').innerHTML=whoOptions();
@@ -7487,6 +7520,7 @@ document.addEventListener('input',e=>onField('input',e));
 document.addEventListener('change',e=>onField('change',e));
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
+    if(!S) return;
     if(S.ui.modal) closeModal();else if(S.ui.drawer) closeDrawer();else{byId('pop').hidden=true;byId('q-res').hidden=true;if(S.ui.navOpen) setNav(false)}
     return;
   }
@@ -7526,7 +7560,7 @@ if(typeof window!=='undefined') window.addEventListener('resize',()=>hscrollSync
 try{if(typeof MutationObserver==='function') new MutationObserver(()=>hscrollSync()).observe(byId('view'),{childList:true,subtree:true})}catch(_){}
 byId('role').addEventListener('change',e=>setMe(e.target.value));
 // напоминания о делах: раз в минуту (в тестах таймера нет)
-if(typeof setInterval==='function') setInterval(actsTick,60000);
+if(!SERVER&&typeof setInterval==='function') setInterval(actsTick,60000);
 // адрес поменяли руками (#team) — показать этот раздел (или «Нет доступа»)
 if(typeof window!=='undefined') window.addEventListener('hashchange',()=>{const v=hashView();if(v&&S&&v!==S.view){S.view=v;S.ui.drawer=null;render()}});
 // «как в системе»: устройство переключило светлую/тёмную — тема следом
@@ -8371,8 +8405,8 @@ function shipMark(shipId,stageId){
   const wasOut=s.dir==='out'&&leftStart(s);
   const r=Ships.setStage(S,s.id,stageId,m.id,now,Ships.SRC.manual);
   if(!r.ok) return fail(r.reason);
-  // отгрузка клиенту ушла со склада — автосообщение клиенту, как в v2
-  if(s.dir==='out'&&!wasOut&&leftStart(s)&&rule('shipped')?.on&&s.deal){
+  // отгрузка клиенту ушла со склада — автосообщение клиенту, как в v2 (в рабочей версии сообщений клиентам нет)
+  if(!SERVER&&s.dir==='out'&&!wasOut&&leftStart(s)&&rule('shipped')?.on&&s.deal){
     const d=deal(s.deal);
     if(d&&d.channel!=='phone') S.msgs.push({id:Store.freeId(S.msgs,'m'),at:now,deal:d.id,channel:d.channel,auto:true,text:`${d.contact}, здравствуйте! Ваш заказ отгружен: ${s.track}. Привезём ${fD(s.eta)}. Ваш менеджер — ${person(d.managerId)?.name||''}.`});
   }
@@ -8578,7 +8612,8 @@ function diffHtml(it,r=S.rcv){const d=qv(it.productId,r)-it.qty;return d<0?`<spa
 // План приёмки — один на предпросмотр и подтверждение: что ляжет на склад и куда, на какой этап встанет поставка,
 // расхождения, сделки-ждуны и что с каждой, кому уведомления. receiveShip делает ровно это и ничего сверх.
 function rcvPlan(r=S.rcv){
-  const s=ship(r.shipId),auto=rule('arrive').on,issues=[],dmg=[];
+  // авто-сообщений клиентам в рабочей версии нет: менеджеру — напоминание написать клиенту
+  const s=ship(r.shipId),auto=!SERVER&&rule('arrive').on,issues=[],dmg=[];
   s.items.forEach(it=>{
     const p=product(it.productId),q=qv(it.productId,r);
     if(q<it.qty) issues.push(`${p.name}: принято ${num(q)} из ${qtyOf(it.qty,p)}`);
@@ -8725,8 +8760,14 @@ function rcvAfterHtml(rc=S.rcv){
     const d=deal(x.deal);return `<div class="stack-s" style="gap:6px"><p class="sm m0"><b>${esc(d.client)}</b> · ${CH[x.channel]}</p><div class="chat"><div class="bub out">${esc(x.text)}<small>${fT(x.at)} · авто · имитация, не отправлено</small></div></div></div>`}).join('')}</div></section>`;
   return h;
 }
+// Фото сжимаются (до 720 px, JPEG); в рабочей версии сжатое сразу уходит на сервер, в черновик — его адрес (url)
 function addPhotos(files){
-  const push=u=>{if(!S.rcv||S.rcv.done) return;S.rcv.photos.push(u);const b=byId('rcv-photos');if(b) b.innerHTML=photosHtml();saveSoon()};
+  const keep=u=>{if(!S.rcv||S.rcv.done) return;S.rcv.photos.push(u);const b=byId('rcv-photos');if(b) b.innerHTML=photosHtml();saveSoon()};
+  const push=u=>{
+    if(!SERVER) return keep(u);
+    const r=S.rcv;if(!r||r.done) return;
+    serverUpload(srvBlob(u),`приёмка-${r.shipId}-${r.photos.length+1}.jpg`).then(x=>{if(x&&S.rcv===r) keep(x.url)});
+  };
   [...files].slice(0,9).forEach(f=>{
     if(!/^image\//.test(f.type)) return;
     const fr=new FileReader();
@@ -9275,6 +9316,7 @@ function vTeam(){
   const pick=S.roles.filter(r=>!r.all);
   const roleCell=p=>Perms.roleOf(S,p.id)?.all?esc(roleName(p)):`<select class="inp sm w-auto" id="pr-${esc(p.id)}" data-on="person-role" data-id="${esc(p.id)}" aria-label="Роль: ${esc(p.name)}">${pick.map(r=>`<option value="${esc(r.id)}" ${p.role===r.id?'selected':''}>${esc(r.name)}</option>`).join('')}</select>`;
   const specCell=p=>isEngineer(p)?`<select class="inp sm w-auto" id="ps-${esc(p.id)}" data-on="person-spec" data-id="${esc(p.id)}" aria-label="Специализация: ${esc(p.name)}">${p.specialty?'':'<option value="">нет данных</option>'}${Object.entries(SPECIALTY).map(([k,v])=>`<option value="${k}" ${p.specialty===k?'selected':''}>${v}</option>`).join('')}</select>`:'<span class="muted">—</span>';
+  if(SERVER) return teamServerHtml(roleCell,specCell)+roleMatrix(false);
   const emp=`<section class="card clip"><div class="card-h"><h3>Сотрудники</h3><span class="muted sm">${S.people.length} ${pl(S.people.length,'человек','человека','человек')}${S.people.some(p=>p.demo)?' · демо: примеры, не ваши сотрудники':''}</span></div><div class="xs"><table class="tbl"><thead><tr><th>Сотрудник</th><th>Отдел</th><th>Роль</th><th>Специализация</th><th></th></tr></thead><tbody>${S.people.map(p=>`<tr><td><span class="who">${av(p)}${esc(p.name)}${p.demo?' <span class="pill sm">демо</span>':''}</span></td><td>${esc(deptName(p.dept))}</td><td>${roleCell(p)}</td><td>${specCell(p)}</td><td class="num"><button class="btn sm ghost" data-act="view-as" data-id="${esc(p.id)}">${ic('eye')}Войти как</button></td></tr>`).join('')}</tbody></table></div></section>`;
   return emp+roleMatrix(false);
 }
@@ -9283,7 +9325,9 @@ function vTeam(){
 // Галочка меняет право сразу (ON.change.perm). Свою роль (не встроенную) можно удалить крестиком в шапке — withDel.
 function roleMatrix(withDel){
   const head=r=>`<th class="c"><span class="mx-h">${esc(r.name)}${withDel&&!r.builtin?`<button type="button" class="btn ghost icon sm" data-act="role-del" data-id="${esc(r.id)}" title="Удалить роль" aria-label="Удалить роль «${esc(r.name)}»">${ic('x')}</button>`:''}</span>${r.builtin?'':'<small class="mx-own">своя роль</small>'}</th>`;
-  const hint=withDel
+  const hint=SERVER&&!withDel
+    ?'Галочки работают сразу и действуют на всех сотрудников этой роли. У директора права не снимаются. Свою роль добавляют в «Настройки → Роли и права».'
+    :withDel
     ?'Галочки работают сразу. У директора права не снимаются. Встроенные роли удалить нельзя; свою роль можно удалить, когда на ней никого нет.'
     :'Галочки работают сразу. Попробуйте: снимите «Видеть цены и суммы» у менеджера B2B, затем вверху выберите менеджера B2B — колонка цен пропадёт. У директора права не снимаются. Свою роль добавляют в «Настройки → Роли и права».';
   return `<section class="card clip"><div class="card-h"><h3>Что может каждая роль</h3></div><div class="card-b"><p class="hint">${hint}</p></div><div class="xs"><table class="tbl matrix"><thead><tr><th>Право</th>${S.roles.map(head).join('')}</tr></thead><tbody>${Perms.LIST.map(([k,l])=>`<tr><td>${l}</td>${S.roles.map(r=>`<td class="c"><input type="checkbox" id="pm-${esc(r.id)}-${k}" data-on="perm" data-role="${esc(r.id)}" data-perm="${k}" ${r.all||r.perms[k]?'checked':''} ${r.all?'disabled':''} aria-label="${l} — ${esc(r.name)}"></td>`).join('')}</tr>`).join('')}</tbody></table></div></section>`;
@@ -9339,6 +9383,105 @@ FORMS['role-del']=f=>{
   if(!res.ok) return showErr('rd-err',res.reason);
   closeModal();render();
   toast(`Роль «${r.name}» удалена.`);
+};
+
+// ——— серверный режим: вход сотрудников (раздел открыт только директору — право admin) ———
+// Логины, пароли и сеансы живут на сервере (/api/users), в S их нет. Пароль придумывает сервер и показывает один раз.
+function teamServerHtml(roleCell,specCell){
+  if(!srv.users&&!srv.usersErr) srvUsersLoad();
+  const u=pid=>srv.users?srv.users.get(pid)||null:null;
+  const loginCell=p=>{
+    if(!srv.users) return `<span class="muted">${esc(srv.usersErr||'загрузка…')}</span>`;
+    const x=u(p.id);
+    if(!x||!x.login) return '<span class="muted">нет входа</span>';
+    return `<span class="mono">${esc(x.login)}</span>${x.disabled?' <span class="pill bad sm">отключён</span>':''}${x.mustChange&&!x.disabled?' <span class="pill sm">ждёт смены пароля</span>':''}`;
+  };
+  const btn=(act,p,label)=>`<button type="button" class="btn sm ghost" data-act="${act}" data-id="${esc(p.id)}">${label}</button>`;
+  const acts=p=>{
+    if(!srv.users) return '';
+    const x=u(p.id),self=p.id===S.me,has=!!(x&&x.login);
+    // себе пароль директор меняет сам («Сменить пароль»), себя не отключает
+    return (self?'':btn('team-pass',p,'Выдать пароль'))+(has&&!self?btn(x.disabled?'team-on':'team-off',p,x.disabled?'Включить':'Отключить'):'')+(has?btn('team-logout',p,'Завершить сеансы'):'');
+  };
+  const rows=S.people.map(p=>`<tr><td><span class="who">${av(p)}${esc(p.name)}</span></td><td>${esc(deptName(p.dept))}</td><td>${roleCell(p)}</td><td>${specCell(p)}</td><td>${loginCell(p)}</td><td class="num nowrap">${acts(p)}</td></tr>`).join('');
+  const pick=S.roles.filter(r=>!r.all);
+  const add=`<section class="card"><div class="card-h"><h3>Новый сотрудник</h3></div><form data-form="team-add" class="card-b stack-s" novalidate>
+    <div class="grid2"><div class="field"><label for="ta-name">Имя и фамилия</label><input id="ta-name" class="inp" maxlength="80" autocomplete="off"></div><div class="field"><label for="ta-login">Логин для входа</label><input id="ta-login" class="inp" maxlength="64" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Например: ivanov"></div></div>
+    <div class="grid2"><div class="field"><label for="ta-dept">Отдел</label><select id="ta-dept" class="inp">${S.depts.map(d=>`<option value="${esc(d.id)}">${esc(d.name)}</option>`).join('')}</select></div><div class="field"><label for="ta-role">Роль</label><select id="ta-role" class="inp">${pick.map(r=>`<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('')}</select></div></div>
+    <p class="hint">Пароль CRM придумает сама и покажет один раз — передайте его сотруднику. При первом входе он задаст свой пароль.</p>
+    <p class="err" id="ta-err" hidden></p>
+    <div><button type="submit" class="btn pri">${ic('plus')}Добавить и выдать пароль</button></div>
+  </form></section>`;
+  return `<section class="card clip"><div class="card-h"><h3>Сотрудники</h3><span class="muted sm">${S.people.length} ${pl(S.people.length,'человек','человека','человек')}</span></div><div class="xs"><table class="tbl"><thead><tr><th>Сотрудник</th><th>Отдел</th><th>Роль</th><th>Специализация</th><th>Логин</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></section>${add}`;
+}
+const teamLoginTaken=(pid,login)=>!!srv.users&&[...srv.users.values()].some(x=>x.personId!==pid&&x.login===login.toLowerCase());
+const teamLoginBad=login=>!login?'Придумайте логин для входа.':/\s/.test(login)?'Логин — без пробелов.':'';
+// Логин (если новый или другой) и новый пароль → окно с паролем. → true, если выдан
+async function teamIssue(pid,login){
+  const x=srv.users&&srv.users.get(pid);
+  if(!x||x.login!==login.toLowerCase()){
+    const r=await srvUserAct(pid,'login',{login});
+    if(r.status!==200){toast(r.body.error||'Логин не сохранён.','warn');srvUsersLoad();return false}
+  }
+  const r=await srvUserAct(pid,'password');
+  if(r.status!==200){toast(r.body.error||'Пароль не выдан.','warn');srvUsersLoad();return false}
+  srv.shown={name:person(pid)?.name||'',login:r.body.login||login,password:r.body.password};
+  openModal('teamShown');
+  srvUsersLoad();
+  return true;
+}
+FORMS['team-add']=async()=>{
+  const name=byId('ta-name').value.trim(),login=byId('ta-login').value.trim();
+  if(!name) return showErr('ta-err','Напишите имя сотрудника.');
+  const bad=teamLoginBad(login)||(teamLoginTaken('',login)?'Такой логин уже занят.':'');
+  if(bad) return showErr('ta-err',bad);
+  const id=Store.freeId(S.people,'p');
+  S.people.push({id,name,role:byId('ta-role').value,dept:byId('ta-dept').value});
+  render();
+  await serverIdle();
+  if(!(Docs.docId('people',id) in srv.confirmed)) return toast('Сотрудник не сохранён на сервере — проверьте связь и повторите.','warn');
+  if(!await teamIssue(id,login)) toast(`${name} добавлен(а) без входа — задайте логин кнопкой «Выдать пароль».`,'warn');
+};
+A['team-pass']=el=>openModal('teamLogin',el.dataset.id);
+MODALS.teamLogin=pid=>{
+  const p=person(pid),x=srv.users&&srv.users.get(pid);
+  if(!p) return `<div>${mHead('Сотрудник')}<div class="modal-b"><p class="m0">Сотрудника нет.</p></div></div>`;
+  return `<form data-form="team-login" data-id="${esc(pid)}" novalidate>${mHead('Выдать пароль: '+esc(p.name))}<div class="modal-b">
+    <div class="field"><label for="tl-login">Логин для входа</label><input id="tl-login" class="inp" maxlength="64" autocomplete="off" autocapitalize="none" spellcheck="false" value="${esc(x&&x.login||'')}"></div>
+    <p class="hint">CRM придумает новый пароль и покажет его один раз. Прежний пароль перестанет работать, открытые сеансы сотрудника закроются; при входе он задаст свой пароль.</p>
+    <p class="err" id="tl-err" hidden></p></div>${mFoot('Выдать пароль')}</form>`;
+};
+FORMS['team-login']=async f=>{
+  const pid=f.dataset.id,login=byId('tl-login').value.trim();
+  const bad=teamLoginBad(login)||(teamLoginTaken(pid,login)?'Такой логин уже занят.':'');
+  if(bad) return showErr('tl-err',bad);
+  await teamIssue(pid,login);
+};
+// Пароль виден один раз: окно его показывает и забывает
+MODALS.teamShown=()=>{
+  const s=srv.shown;srv.shown=null;
+  if(!s) return `<div>${mHead('Пароль')}<div class="modal-b"><p class="m0">Пароль уже был показан. Нужен новый — «Выдать пароль» ещё раз.</p></div></div>`;
+  return `<div>${mHead('Пароль выдан: '+esc(s.name))}<div class="modal-b stack-s">
+    <p class="m0">Логин: <b class="mono">${esc(s.login)}</b></p>
+    <p class="m0">Пароль: <b class="mono srv-pw">${esc(s.password)}</b></p>
+    <p class="warn-t m0">Пароль показан один раз — запишите и передайте сотруднику. Закроете окно — увидеть его снова нельзя, только выдать новый.</p>
+  </div><div class="modal-f"><button type="button" class="btn pri" data-act="close-modal">Записал(а), закрыть</button></div></div>`;
+};
+// Отключить (сеансы закрываются, вход отклоняется, имя остаётся в истории) и включить обратно
+async function teamDisable(pid,off){
+  const p=person(pid),r=await srvUserAct(pid,'disable',{disabled:off});
+  if(r.status!==200) return toast(r.body.error||'Не получилось.','warn');
+  toast(off?`${p?.name||pid}: вход отключён, открытые сеансы закрыты.`:`${p?.name||pid}: вход снова включён.`);
+  srvUsersLoad();
+}
+A['team-off']=el=>teamDisable(el.dataset.id,true);
+A['team-on']=el=>teamDisable(el.dataset.id,false);
+A['team-logout']=async el=>{
+  const p=person(el.dataset.id),r=await srvUserAct(el.dataset.id,'logout');
+  if(r.status!==200) return toast(r.body.error||'Не получилось.','warn');
+  const n=r.body.closed||0;
+  toast(n?`${p?.name||''}: завершено сеансов — ${n}. Войти снова можно по паролю.`:`${p?.name||''}: открытых сеансов не было.`);
+  srvUsersLoad();
 };
 
 // Раздел «Настройки»: вкладки из реестра SETTINGS_TABS, по order слева направо.
@@ -9445,7 +9588,7 @@ function leadBody(){
   const u=leadSel(),all=Leads.visible(S,S.me),funnel=u.view==='funnel';
   const list=leadFilter(all,u,!funnel);
   const head=`<p class="count"><span>Лидов: <b>${list.length}</b>${list.length!==all.length?` из ${all.length}`:''}</span><span>без менеджера: <b>${leadFreeCount(all)}</b></span></p>`;
-  if(!all.length) return `${head}<section class="card">${emptyState(`Лидов пока нет. Они приходят с сайта и из Битрикса24 — откуда именно, выбирают в «Настройки → Лиды и сделки». Лид можно завести и руками.${can('settings')?' Проверить приход можно кнопками «Имитация» выше или в «Пульте проверки».':''}`,'Новый лид','lead-new')}</section>`;
+  if(!all.length) return `${head}<section class="card">${emptyState(SERVER?'Лидов пока нет. Заведите лид кнопкой «Новый лид»: подключения сайта и Битрикса24 пока нет.':`Лидов пока нет. Они приходят с сайта и из Битрикса24 — откуда именно, выбирают в «Настройки → Лиды и сделки». Лид можно завести и руками.${can('settings')?' Проверить приход можно кнопками «Имитация» выше или в «Пульте проверки».':''}`,'Новый лид','lead-new')}</section>`;
   if(!list.length) return `${head}<section class="card">${emptyState('По этим условиям лидов нет.','Сбросить поиск и фильтры','lead-reset')}</section>`;
   return head+(funnel?`<p class="hint">Перетащите карточку на другой этап или откройте лид и нажмите кнопку. «Сделка создана» заводит сделку, «Отказ» спрашивает причину. Двигать лид может менеджер, который его ведёт, и тот, кто раздаёт лиды (директор, РОП).</p>${leadFunnel(list)}`:leadTable(list));
 }
@@ -9461,8 +9604,9 @@ function vLeads(){
     +sel('manager','Менеджер',opt('','Все менеджеры',u.manager)+opt('none','Нераспределённые',u.manager)+Leads.managers(S).map(m=>opt(m.id,m.name,u.manager)).join(''));
   const dirty=u.q.trim()||u.stage||u.type||u.source||u.manager||u.acts;
   const noActN=leadFilter(all,{...u,acts:'none'},!funnel).length,lateN=leadFilter(all,{...u,acts:'overdue'},!funnel).length;
-  const sims=can('settings')?`<span class="grow"></span><button type="button" class="btn sm" data-act="lead-sim" data-source="site">${ic('plus')}Имитация: пришёл лид с сайта</button><button type="button" class="btn sm" data-act="lead-sim" data-source="bitrix">${ic('plus')}Имитация: пришёл лид из Битрикса24</button>`:'';
-  return `<p class="hint">Лиды — заявки, которые ещё не стали сделками. Новый лид сам уходит менеджеру своего типа: компания или ИНН — B2B, иначе телефон или почта — B2C; кому менеджера не нашлось, тот лежит в «Нераспределённых» — их раздаёт РОП или директор. Заявки здесь пока примерные: настоящего подключения сайта и Битрикса24 нет.</p>
+  // имитации прихода лида — только в демо; в рабочей версии подключений к сайту и Битриксу нет (следующий этап)
+  const sims=!SERVER&&can('settings')?`<span class="grow"></span><button type="button" class="btn sm" data-act="lead-sim" data-source="site">${ic('plus')}Имитация: пришёл лид с сайта</button><button type="button" class="btn sm" data-act="lead-sim" data-source="bitrix">${ic('plus')}Имитация: пришёл лид из Битрикса24</button>`:'';
+  return `<p class="hint">Лиды — заявки, которые ещё не стали сделками. Новый лид сам уходит менеджеру своего типа: компания или ИНН — B2B, иначе телефон или почта — B2C; кому менеджера не нашлось, тот лежит в «Нераспределённых» — их раздаёт РОП или директор.${SERVER?' Лиды заводят кнопкой «Новый лид»: подключения сайта и Битрикса24 пока нет.':' Заявки здесь пока примерные: настоящего подключения сайта и Битрикса24 нет.'}</p>
   <div class="bar lbar"><div class="seg" role="group" aria-label="Вид">${[['list','Список'],['funnel','Воронка']].map(([k,l])=>`<button type="button" class="${u.view===k?'on':''}" aria-pressed="${u.view===k}" data-act="lead-view" data-v="${k}">${l}</button>`).join('')}</div>
     <div class="search-in">${ic('search')}<input id="lead-q" class="inp" type="search" placeholder="Поиск: имя, компания, ИНН, телефон, почта, текст" value="${esc(u.q)}" data-on="lead-q" autocomplete="off" aria-label="Поиск по лидам"></div><button type="button" class="btn pri" data-act="lead-new">${ic('plus')}Новый лид</button>${sims}</div>
   <div class="bar lfilt">${filters}<button type="button" class="fchip${u.manager==='none'?' on':''}" aria-pressed="${u.manager==='none'}" data-act="lead-free">Нераспределённые · ${free}</button><button type="button" class="fchip${u.acts==='none'?' on':''}" aria-pressed="${u.acts==='none'}" data-act="lead-acts" data-k="none">Без дел · ${noActN}</button><button type="button" class="fchip${u.acts==='overdue'?' on':''}" aria-pressed="${u.acts==='overdue'}" data-act="lead-acts" data-k="overdue">Просрочены дела · ${lateN}</button>${dirty?'<button type="button" class="btn ghost sm" data-act="lead-reset">Сбросить</button>':''}</div>
@@ -10147,6 +10291,15 @@ function vNotifySettings(){
     <div class="nset-row">${sw('snd-on',pref.on,'data-on="sound-on"','Звук нового уведомления')}<div class="nset-t"><b>Играть звук, когда приходит новое уведомление</b><span>Звук синтезируется в браузере, ничего не скачивается. Играет, пока CRM открыта.</span></div></div>
     <div class="field"><span class="lbl">Какой звук</span>${sounds}</div>
     <div class="nset-test"><button type="button" class="btn" data-act="sound-test">${ic('bell')}Проверить</button><span class="hint">Сыграет выбранный звук. Если тихо — проверьте громкость устройства: браузер молчит, пока на странице не было ни одного нажатия.</span></div>
+  </div></section>${SERVER?notifyPopupCard():''}`;
+}
+// Серверный режим: всплывающие системные уведомления, когда вкладка CRM свёрнута (разрешение даёт браузер)
+function notifyPopupCard(){
+  const st=srvNotifyState();
+  const text={granted:'Разрешены в этом браузере: новое уведомление всплывёт, когда вкладка CRM свёрнута. Щелчок по нему открывает запись.',denied:'Браузер запретил всплывающие уведомления для CRM. Разрешить можно в настройках сайта в браузере (значок слева от адреса). Пока — звук и колокол.',default:'Пока не разрешены: приходят звук и колокол. Разрешите — и новое уведомление всплывёт, даже когда вкладка CRM свёрнута.',none:'Этот браузер не умеет всплывающие уведомления: приходят звук и колокол.'}[st];
+  return `<section class="card"><div class="card-h"><h3>Всплывающие уведомления</h3></div><div class="card-b stack-s">
+    <p class="m0">${esc(text)}</p>
+    ${st==='default'?`<div><button type="button" class="btn pri" data-act="srv-notify-perm">${ic('bell')}Разрешить всплывающие уведомления</button></div>`:''}
   </div></section>`;
 }
 
@@ -10496,12 +10649,16 @@ function vLeadSettings(){
   return `<section class="card"><div class="card-h"><h3>Откуда приходят лиды</h3></div><div class="card-b stack-s">
     <div class="lset-opts" role="radiogroup" aria-label="Источник лидов">${radios}</div>
     <p class="hint">Сейчас выбрано: <b>${esc(Leads.SOURCES[cur])}</b>. В CRM лидов: ${n.all} (с сайта — ${n.site}, из Битрикса24 — ${n.bitrix}); у каждого лида в карточке стоит метка, откуда он пришёл. Выбор запоминается.</p>
-    <div class="bar"><button type="button" class="btn sm" data-act="lead-sim" data-source="site">${ic('plus')}Имитация: пришёл лид с сайта</button><button type="button" class="btn sm" data-act="lead-sim" data-source="bitrix">${ic('plus')}Имитация: пришёл лид из Битрикса24</button></div>
-    <p class="hint">Если источник выключен, его кнопка лид не создаёт и сообщает, что источник сейчас не используется.</p>
+    ${SERVER?'':`<div class="bar"><button type="button" class="btn sm" data-act="lead-sim" data-source="site">${ic('plus')}Имитация: пришёл лид с сайта</button><button type="button" class="btn sm" data-act="lead-sim" data-source="bitrix">${ic('plus')}Имитация: пришёл лид из Битрикса24</button></div>
+    <p class="hint">Если источник выключен, его кнопка лид не создаёт и сообщает, что источник сейчас не используется.</p>`}
   </div></section>
   ${leadWaitCard()}
   ${lostReasonsCard()}
-  <section class="card"><div class="card-h"><h3>Что ещё живёт в Битриксе24</h3></div><div class="card-b stack-s">
+  ${SERVER?'':leadBitrixCard(rows)}`;
+}
+// «Что ещё живёт в Битриксе24» — только в демо: в рабочей версии Битрикса не видно (следующий этап)
+function leadBitrixCard(rows){
+  return `<section class="card"><div class="card-h"><h3>Что ещё живёт в Битриксе24</h3></div><div class="card-b stack-s">
     <p class="m0">Сейчас в Битриксе24: «почта, задачи», лиды с сайта, лиды и сделки, телефония или чаты.</p>
     <ul class="lset-list">${rows}</ul>
     <p class="m0"><b>Чтобы отказаться от Битрикса24, CRM должна взять на себя всё это.</b> Почта, задачи, лиды и сделки в прототипе уже есть как экраны; телефонии и чатов нет.</p>
@@ -11342,7 +11499,9 @@ regRef('client','клиент',id=>!!Clients.byId(S,id),'open-client');
 // чтение) берут и отправки (69-dispatch.js), здесь же — поле «Файлы» в формах новой задачи и поставки и блок «Файлы»
 // в карточках задачи и поставки. Черновик формы лежит в S.ui.attDraft ({kind, files}) и не сохраняется.
 
-const ATT_MAX_HINT='Фото и документы любого типа, каждый до 2 МБ. Большие файлы могут не поместиться в браузер: тогда у них будет пометка.';
+// Серверный режим: предел файла — как у сервера (CRM_FILE_MAX_MB по умолчанию); больше — отказ до загрузки (serverUpload)
+const ATT_SERVER_MAX_MB=20;
+const ATT_MAX_HINT=SERVER?`Фото и документы любого типа, каждый до ${ATT_SERVER_MAX_MB} МБ. Файлы хранятся на сервере CRM.`:'Фото и документы любого типа, каждый до 2 МБ. Большие файлы могут не поместиться в браузер: тогда у них будет пометка.';
 
 // Чьи файлы и кто что может: kind → запись, видна ли она человеку и может ли он убирать чужие файлы.
 // Видна — так же, как открывается её карточка (taskVisible, право на остатки или перевозки).
@@ -11352,32 +11511,40 @@ const ATT={
 };
 
 function attSize(n){return n<1024?n+' Б':n<1048576?Math.round(n/1024)+' КБ':(n/1048576).toFixed(1).replace('.',',')+' МБ'}
-function attIsImage(f){return /^image\//.test(f.type||'')&&typeof f.data==='string'&&f.data.startsWith('data:image/')}
+// Откуда брать файл: на сервере — url (серверный режим), в браузере — data-URL
+const attSrc=f=>(typeof f.url==='string'&&f.url)||(typeof f.data==='string'&&f.data)||'';
+function attIsImage(f){return /^image\//.test(f.type||'')&&(typeof f.data==='string'&&f.data.startsWith('data:image/')||!f.data&&typeof f.url==='string'&&!!f.url)}
 
 // Файл в карточке: картинка — миниатюра, она открывается крупно (act, key); остальное — название, размер, «скачать».
 // Не поместился в браузер (unsaved) — пометка вместо файла. who — подпись «кто приложил», если известна.
 function attFileHtml(f,act,key,who){
   const size=attSize(f.size||0);
-  if(f.unsaved||!f.data) return `<div class="dsp-fl bad">${ic('file')}<span>${esc(f.name)}<small>${size}</small><small class="warn-t">${f.unsaved?'не сохранено — мало места в браузере':'нет данных: файл'}</small></span></div>`;
-  if(attIsImage(f)) return `<button type="button" class="dsp-th" data-act="${act}" data-key="${esc(key)}" aria-label="Открыть: ${esc(f.name)}"><img src="${esc(f.data)}" alt="${esc(f.name)}"><small>${esc(f.name)}</small></button>`;
-  return `<a class="dsp-fl" href="${esc(f.data)}" download="${esc(f.name)}">${ic('file')}<span>${esc(f.name)}<small>${size} · скачать${who?' · '+esc(who):''}</small></span></a>`;
+  if(f.unsaved||!attSrc(f)) return `<div class="dsp-fl bad">${ic('file')}<span>${esc(f.name)}<small>${size}</small><small class="warn-t">${f.unsaved?'не сохранено — мало места в браузере':'нет данных: файл'}</small></span></div>`;
+  if(attIsImage(f)) return `<button type="button" class="dsp-th" data-act="${act}" data-key="${esc(key)}" aria-label="Открыть: ${esc(f.name)}"><img src="${esc(attSrc(f))}" alt="${esc(f.name)}"><small>${esc(f.name)}</small></button>`;
+  return `<a class="dsp-fl" href="${esc(attSrc(f))}" download="${esc(f.name)}">${ic('file')}<span>${esc(f.name)}<small>${size} · скачать${who?' · '+esc(who):''}</small></span></a>`;
 }
 // Список файлов в форме: у каждого крестик (act убирает файл по номеру data-i).
 function attEditHtml(files,delAct){
   if(!files.length) return '<p class="muted m0">Файлов нет.</p>';
   return files.map((f,i)=>{
     const rm=`<button type="button" class="btn ghost icon dsp-rm" data-act="${delAct}" data-i="${i}" aria-label="Убрать файл: ${esc(f.name)}">${ic('x')}</button>`;
-    return attIsImage(f)?`<figure class="dsp-th"><img src="${esc(f.data)}" alt="${esc(f.name)}"><small>${esc(f.name)}</small>${rm}</figure>`
+    return attIsImage(f)?`<figure class="dsp-th"><img src="${esc(attSrc(f))}" alt="${esc(f.name)}"><small>${esc(f.name)}</small>${rm}</figure>`
       :`<div class="dsp-fl">${ic('file')}<span>${esc(f.name)}<small>${attSize(f.size||0)}${f.unsaved?' · не сохранено — мало места в браузере':''}</small></span>${rm}</div>`;
   }).join('');
 }
 // Крупно: картинка и кнопка «Скачать» — тело окна файла.
 function attBigHtml(f){
-  return `${attIsImage(f)?`<img class="dsp-big" src="${esc(f.data)}" alt="${esc(f.name)}">`:''}<a class="btn" href="${esc(f.data)}" download="${esc(f.name)}">${ic('file')}Скачать · ${esc(attSize(f.size||0))}</a>`;
+  return `${attIsImage(f)?`<img class="dsp-big" src="${esc(attSrc(f))}" alt="${esc(f.name)}">`:''}<a class="btn" href="${esc(attSrc(f))}" download="${esc(f.name)}">${ic('file')}Скачать · ${esc(attSize(f.size||0))}</a>`;
 }
 // Выбранные на диске файлы читаются в data-URL; каждый готовый уходит в onAdd({name, type, size, data}).
 // Файл больше Store.FILE_MAX (2 МБ) не читается: сразу отказ, те же слова, что у ядра.
+// Серверный режим: файл не читается, а загружается на сервер (serverUpload, больше 20 МБ — отказ до загрузки);
+// в onAdd уходит {id, name, type, size, url, data: null}.
 function attReadFiles(files,onAdd){
+  if(SERVER){
+    [...files].forEach(f=>serverUpload(f).then(u=>{if(u) onAdd({id:u.id,name:u.name,type:u.type||'',size:u.size,url:u.url,data:null})}));
+    return;
+  }
   if(typeof FileReader==='undefined') return;
   [...files].forEach(f=>{
     const big=Store.fileTooBig(f);if(big){toast(big,'warn');return}
@@ -11446,9 +11613,487 @@ MODALS.attFile=key=>{
   return `<div>${mHead(esc(f.name))}<div class="modal-b">${attBigHtml(f)}</div></div>`;
 };
 
-// Запуск: состояние из браузера (localStorage[Store.KEY]); нет или битое — демо seed(). Затем первая отрисовка.
+// Серверный режим в браузере (SERVER — страница, отданная сервером): вход и смена пароля, «Выйти», работа на общей базе.
+// В демо (страница без метки) отсюда работает только то, что под if(SERVER), то есть ничего.
+//
+// Синхронизация документами. srv.confirmed — документы (Docs.split), которые сервер подтвердил этой вкладке; всё, чем S
+// отличается от них, — неотправленные правки. save() → serverSave(): личное — в localStorage этого браузера, общее —
+// Docs.diff(confirmed, Docs.split(S)) → POST /api/changes. Пришли документы с сервера (ответ на пачку или /api/sync по
+// событию seq): своей правки в документе нет — берётся серверный; есть — трёхстороннее слияние (Docs.merge); не сошлось —
+// своя правка остаётся и уходит на сервер, а сервер отвечает 409 с именем того, кто правил (тост и свежая версия).
+// Запросы идут строго по одному (srvKick), обрыв связи — плашка и повтор сам.
 
-S=startState();
-render();
+const SRV_RETRY=[2,4,8,16,30];                  // повтор при обрыве связи, секунды
+const SRV_NIGHT_HOUR=4;                         // вкладка, открытая с прошлых суток, перезагружается после 04:00
+const SRV_NUMBERED=['Д-','Л-','К-','П-','ОТ-'];  // номера, которые выдаёт сервер (запас из /api/state и /api/ids)
+const SRV_POOL_LOW=3,SRV_POOL_ADD=5;            // запас номеров пополняется в фоне, когда в нём меньше трёх
+const SRV_LOCAL='ws-crm-srv:';                  // личное в localStorage: раздел, тема, вид поставок, черновик приёмки
+const SRV_PASS_MIN=8;                           // пароль — не короче (как у сервера)
+const SRV_OFF_TEXT='Нет связи с сервером — изменения сохранятся, когда связь вернётся';
+const SRV_GONE_TEXT='Запись уже удалена или недоступна';
+// Что в рабочей версии не показывается: почта, сообщения клиентам, пульт имитаций; вкладки «Почта» и «Данные» прототипа
+const SRV_HIDE={nav:['mail','messages','sims'],tabs:['mail','data']};
+
+const srv={
+  confirmed:{},view:'',seq:0,pools:{},refill:{},tag:'',tab:'',n:0,person:null,
+  busy:false,wantPush:false,wantPull:false,gate:false,offline:false,retry:0,retryT:0,
+  es:null,waiters:[],refused:'',forced:new Set(),openedAt:null,timer:0,users:null,usersBusy:false,usersErr:'',shown:null
+};
+
+if(SERVER){
+  for(const id of SRV_HIDE.nav){const i=NAV.findIndex(n=>n.id===id);if(i>=0) NAV.splice(i,1)}
+  for(const id of SRV_HIDE.tabs){const i=SETTINGS_TABS.findIndex(t=>t.id===id);if(i>=0) SETTINGS_TABS.splice(i,1)}
+  try{document.documentElement.dataset.mode='server'}catch(_){}
+}
+
+// ——— запросы ———
+// → {status, body}; нет связи — исключение (его ловит вызывающий)
+async function srvApi(method,url,body){
+  const opt={method,headers:{},credentials:'same-origin'};
+  if(method==='POST'){
+    opt.headers['X-CRM']='1';
+    if(body!==undefined){opt.headers['Content-Type']='application/json';opt.body=JSON.stringify(body)}
+  }
+  const r=await fetch(url,opt);
+  let data=null;
+  try{data=await r.json()}catch(_){data=null}
+  return {status:r.status,body:data||{}};
+}
+// Ответ не про данные: 401 — окно входа, 403 с mustChange — смена пароля, 5xx — как нет связи. → true, если разобран
+function srvStatus(r){
+  if(r.status===401){srvGate(true);return true}
+  if(r.status===403&&r.body&&r.body.mustChange){srvPassGate(true);return true}
+  if(r.status>=500) throw new Error('сервер не отвечает');
+  return false;
+}
+
+// ——— запуск ———
+// Зовётся из 90-boot.js вместо S=startState(); render(). Без сеанса — окно входа; mustChange — сначала смена пароля.
+async function serverBoot(){
+  srv.tab=Math.random().toString(36).slice(2,6);
+  Ids.use(srvId);
+  try{byId('view').innerHTML='<p class="empty">Войдите, чтобы открыть CRM.</p>'}catch(_){}
+  if(typeof window!=='undefined'&&window.addEventListener){
+    window.addEventListener('beforeunload',e=>{if(srvPending()){e.preventDefault();e.returnValue='';return ''}});
+  }
+  return srvStart();
+}
+async function srvStart(){
+  let r;
+  try{r=await srvApi('GET','/api/me')}catch(_){srvOffline(srvStart);return 'offline'}
+  if(r.status===401){srvGate(false);return 'gate'}
+  if(r.status!==200){srvOffline(srvStart);return 'offline'}
+  srv.person=r.body.person;srv.tag=r.body.tag||'k';
+  if(r.body.mustChange){srvPassGate(true);return 'password'}
+  return srvLoad();
+}
+// Состояние фирмы глазами этого человека (/api/state) → S; личное — из localStorage этого браузера
+async function srvLoad(){
+  let r;
+  try{r=await srvApi('GET','/api/state')}catch(_){srvOffline(srvStart);return 'offline'}
+  if(r.status!==200){if(!srvStatus(r)) srvOffline(srvStart);return 'gate'}
+  srvOnline();
+  const pid=srv.person.id,b=r.body,loc=srvReadLocal(pid);
+  srv.view=b.view||'';srv.seq=b.seq||0;srv.pools={};
+  for(const p of SRV_NUMBERED) srv.pools[p]=((b.ids||{})[p]||[]).slice();
+  srv.confirmed=Docs.split(JSON.parse(JSON.stringify(b.state||{}),Store.revive));
+  const prefs={};
+  if(loc.theme) prefs.theme=loc.theme;
+  if(loc.ship) prefs.ship=loc.ship;
+  S=Docs.join(srv.confirmed,{me:pid,view:loc.view||'home',ui:defaultUi(),rcv:loc.rcv||null,v:3,prefs});
+  const h=hashView();if(h) S.view=h;
+  srv.openedAt=new Date();srv.gate=false;srvClose();
+  render();
+  srvEvents();
+  if(!srv.timer&&typeof setInterval==='function') srv.timer=setInterval(srvMinute,60000);
+  return 'ready';
+}
+
+// ——— личное в этом браузере ———
+function srvReadLocal(pid){
+  try{const raw=localStorage.getItem(SRV_LOCAL+pid);return raw?JSON.parse(raw,Store.revive)||{}:{}}catch(_){return {}}
+}
+function srvSaveLocal(){
+  if(!S||!S.me) return;
+  try{localStorage.setItem(SRV_LOCAL+S.me,JSON.stringify(Store.plain({view:S.view,theme:S.prefs&&S.prefs.theme,ship:S.prefs&&S.prefs.ship,rcv:S.rcv})))}catch(_){}
+}
+// save() в серверном режиме: личное — в браузер, общее — на сервер (только изменённые документы)
+function serverSave(){
+  srvSaveLocal();
+  srv.wantPush=true;srvKick();
+  return {ok:true,droppedPhotos:0,fits:true};
+}
+
+// ——— номера и id ———
+// Поставщик для Ids.use: Д-, Л-, К-, П-, ОТ- — из запаса, выданного сервером; прочее — уникальное с меткой сеанса и вкладки
+function srvId(prefix){
+  if(SRV_NUMBERED.includes(prefix)){
+    const pool=srv.pools[prefix]||(srv.pools[prefix]=[]),id=pool.shift();
+    if(pool.length<SRV_POOL_LOW) srvRefill(prefix);
+    if(id) return id;
+  }
+  srv.n++;
+  return prefix+srv.tag+srv.tab+srv.n;
+}
+async function srvRefill(prefix){
+  if(srv.refill[prefix]||typeof fetch==='undefined') return;
+  srv.refill[prefix]=true;
+  try{
+    const r=await srvApi('POST','/api/ids',{prefix,n:SRV_POOL_ADD});
+    if(r.status===200&&Array.isArray(r.body.ids)) (srv.pools[prefix]||(srv.pools[prefix]=[])).push(...r.body.ids);
+  }catch(_){}finally{srv.refill[prefix]=false}
+}
+
+// ——— очередь запросов ———
+// Есть ли неотправленное: правки вне подтверждённой копии или запрос в пути
+function srvPending(){
+  if(!S) return false;
+  return srv.busy||Docs.diff(srv.confirmed,Docs.split(S)).length>0;
+}
+// Когда всё отправлено и получено (или связь пропала, или нужен вход) — для «Выйти», заведения сотрудника и тестов
+function serverIdle(){
+  // ждать нечего: запрос не в пути и отправлять нечего или некуда (нужен вход, нет связи)
+  if(!srv.busy&&(srv.gate||srv.offline||!S||(!srv.wantPush&&!srv.wantPull))) return Promise.resolve();
+  return new Promise(ok=>srv.waiters.push(ok));
+}
+function srvSettle(){const w=srv.waiters;srv.waiters=[];w.forEach(f=>f())}
+function srvKick(){
+  if(srv.busy) return;
+  if(srv.gate||srv.offline||!S||(!srv.wantPush&&!srv.wantPull)){srvSettle();return}
+  srv.busy=true;
+  (async()=>{
+    let lost=false;
+    try{
+      while(!srv.gate&&(srv.wantPush||srv.wantPull)){
+        if(srv.wantPush){srv.wantPush=false;try{await srvPush()}catch(e){srv.wantPush=true;throw e}}
+        else{srv.wantPull=false;try{await srvPull()}catch(e){srv.wantPull=true;throw e}}
+      }
+    }catch(_){lost=true}
+    srv.busy=false;
+    if(lost) srvOffline(srvKick);
+    else{srvOnline();if(srv.wantPush||srv.wantPull) return srvKick()}
+    srvSettle();
+  })();
+}
+
+// Отправить изменённые документы
+async function srvPush(){
+  const changes=Docs.diff(srv.confirmed,Docs.split(S));
+  if(!changes.length) return;
+  const sig=JSON.stringify(changes);
+  // эту же пачку сервер уже отверг — второй раз её не шлём (иначе отрисовка повторяла бы отказ по кругу)
+  if(sig===srv.refused) return;
+  const r=await srvApi('POST','/api/changes',{changes,view:srv.view});
+  if(r.status===200){
+    srv.refused='';
+    for(const c of changes){const d=Docs.docId(c.key,c.id);if(c.deleted) delete srv.confirmed[d];else srv.confirmed[d]=c.data}
+    srvTake(r.body);
+    return;
+  }
+  if(r.status===409){
+    const d=Docs.docId(r.body.key,r.body.id),label=srvLabel(r.body.key,r.body.id);
+    const got=srvTake(r.body,new Set([d]));
+    // свежей версии в ответе нет (её уже отдали этой вкладке раньше) — берём всё заново
+    if(!got.has(d)){srv.forced.add(d);srv.view='';srv.wantPull=true}
+    toast(`Пока ты правил, «${label}» изменил(а) ${r.body.by||'нет данных: кто'} — показана свежая версия, повтори`,'warn');
+    // остальные правки пачки уйдут следующей: свежая версия перерисована, render() → save()
+    return;
+  }
+  if(srvStatus(r)){srv.wantPush=true;return}
+  // 403 (нет прав, запись удалена) и прочие отказы: откат к подтверждённой копии, тост с текстом сервера
+  srv.refused=sig;
+  const err=String(r.body.error||'Сервер не принял изменения');
+  srvRollback();
+  toast(/^Нет прав: править эту запись/.test(err)?SRV_GONE_TEXT:err,'warn');
+  srv.wantPull=true;
+}
+async function srvPull(){
+  const r=await srvApi('GET','/api/sync?view='+encodeURIComponent(srv.view));
+  if(r.status===200){srvTake(r.body);return}
+  srvStatus(r);
+}
+// Откат: S — подтверждённая копия (личное остаётся)
+function srvRollback(){
+  S=Docs.join(srv.confirmed,S);
+  render();
+}
+
+// Документы с сервера → S. body — {seq, view, docs, gone, full}; force — документы, где берётся серверная версия, даже
+// если тут есть своя правка (409). → Set документов, пришедших в ответе
+function srvTake(body,force){
+  const inc=new Map();
+  if(!body) return new Set();
+  if(typeof body.seq==='number'&&body.seq>srv.seq) srv.seq=body.seq;
+  if(body.view) srv.view=body.view;
+  for(const x of body.docs||[]) inc.set(Docs.docId(x.key,x.id),x.data);
+  for(const x of body.gone||[]) inc.set(Docs.docId(x.key,x.id),undefined);
+  if(body.full) for(const d of Object.keys(srv.confirmed)) if(!inc.has(d)) inc.set(d,undefined);
+  if(!inc.size) return new Set();
+  const before=new Set(Notify.unreadIds(S,S.me)),cur=Docs.split(S);
+  let clash=false;
+  for(const [d,theirs] of inc){
+    const base=srv.confirmed[d],mine=cur[d];
+    let v=theirs;
+    const taken=(force&&force.has(d))||srv.forced.delete(d);
+    if(!taken&&!Docs.same(base,mine)&&!Docs.same(mine,theirs)){
+      // своя неотправленная правка: слияние; не сошлось — своя остаётся, сервер ответит на неё 409 с именем
+      const m=Docs.merge(base,mine,theirs);
+      if(!m.ok){clash=true;continue}
+      v=m.value;
+    }
+    if(v===undefined) delete cur[d];else cur[d]=v;
+    if(theirs===undefined) delete srv.confirmed[d];else srv.confirmed[d]=theirs;
+  }
+  S=Docs.join(cur,S);
+  if(!S.people.some(p=>p.id===S.me)&&srv.person) S.people.push({...srv.person});
+  if(clash) srv.wantPush=true;
+  render();
+  srvPopups(before);
+  return new Set(inc.keys());
+}
+// Как назвать запись в тосте: название, клиент или номер
+function srvLabel(key,id){
+  const list=Array.isArray(S&&S[key])?S[key]:[],r=list.find(x=>x&&String(x.id)===String(id));
+  const t=r&&(r.title||r.name||(r.client?`${r.id} · ${r.client}`:'')||r.number);
+  return t?String(t):String(id||key);
+}
+
+// ——— живые обновления ———
+function srvEvents(){
+  if(typeof EventSource==='undefined') return;
+  if(srv.es){try{srv.es.close()}catch(_){}}
+  const es=new EventSource('/api/events');
+  srv.es=es;
+  es.addEventListener('seq',e=>{
+    let n=0;try{n=Number(JSON.parse(e.data))}catch(_){}
+    if(n>srv.seq||srv.offline){srv.wantPull=true;if(srv.offline) srvRetryNow();else srvKick()}
+  });
+  es.addEventListener('reload',()=>srvReloadSoon());
+  es.addEventListener('bye',()=>{try{es.close()}catch(_){}if(srv.es===es) srv.es=null;srvGate(true)});
+  es.onerror=()=>{
+    // поток закрыт насовсем (401, сеанс кончился) — проверить вход; обрыв сети поток переподключает сам
+    if(es.readyState===2&&srv.es===es){srv.es=null;srvCheck()}
+  };
+}
+async function srvCheck(){
+  let r;
+  try{r=await srvApi('GET','/api/me')}catch(_){srvOffline(srvCheck);return}
+  if(r.status===401) return srvGate(true);
+  if(r.status===200&&!srv.es&&!srv.gate) srvEvents();
+}
+
+// ——— нет связи ———
+function srvOffline(again){
+  srv.offline=true;
+  const bar=srvEl('srv-off');
+  if(bar){bar.innerHTML=`${ic('alert')}<span>${esc(SRV_OFF_TEXT)}</span>`;bar.hidden=false}
+  clearTimeout(srv.retryT);
+  const sec=SRV_RETRY[Math.min(srv.retry,SRV_RETRY.length-1)];
+  srv.retry++;
+  srv.retryAgain=again||srvKick;
+  srv.retryT=setTimeout(srvRetryNow,sec*1000);
+  srvSettle();
+}
+function srvRetryNow(){
+  clearTimeout(srv.retryT);
+  const f=srv.retryAgain||srvKick;
+  srv.offline=false;srv.retryAgain=null;
+  f();
+}
+function srvOnline(){
+  if(!srv.offline&&!srv.retry) return;
+  srv.offline=false;srv.retry=0;clearTimeout(srv.retryT);
+  const bar=srvEl('srv-off');if(bar){bar.hidden=true;bar.innerHTML=''}
+  if(S&&!srv.es) srvEvents();
+}
+
+// ——— окна: вход, смена пароля ———
+// Свой корень поверх всего (окно входа и плашка): в странице его нет — заводится
+function srvEl(id){
+  if(typeof document==='undefined') return null;
+  let el=document.getElementById(id);
+  if(!el&&document.body){el=document.createElement('div');el.id=id;document.body.appendChild(el)}
+  if(el&&id==='srv-off'&&!el.className){el.className='srv-off';el.setAttribute&&el.setAttribute('role','status')}
+  return el;
+}
+function srvClose(){const r=srvEl('srv-root');if(r) r.innerHTML=''}
+const srvBrand='<div class="srv-brand"><b>wind-solar</b><small>CRM</small></div>';
+// Окно входа. mid — сеанс кончился посреди работы: CRM остаётся под окном, неотправленное ждёт входа
+function srvGate(mid){
+  srv.gate=true;
+  const r=srvEl('srv-root');if(!r) return;
+  r.innerHTML=`<div class="srv-gate${mid&&S?' over':''}"><form class="srv-box" data-form="srv-login" novalidate aria-labelledby="srv-g-t">${srvBrand}
+    <h2 id="srv-g-t">Вход в CRM</h2>
+    ${mid&&S?'<p class="hint m0">Сеанс закончился — войдите снова. Несохранённые изменения отправятся сразу после входа.</p>':''}
+    <div class="field"><label for="srv-login">Логин</label><input id="srv-login" class="inp" autocomplete="username" autocapitalize="none" spellcheck="false"></div>
+    <div class="field"><label for="srv-pass">Пароль</label><input id="srv-pass" class="inp" type="password" autocomplete="current-password"></div>
+    <label class="check"><input type="checkbox" id="srv-foreign"> Чужой компьютер<small class="muted"> — вход до закрытия браузера, не дольше 12 часов</small></label>
+    <p class="err" id="srv-err" hidden></p>
+    <button type="submit" class="btn pri big">Войти</button>
+  </form></div>`;
+  setTimeout(()=>{try{byId('srv-login').focus()}catch(_){}},30);
+  srvSettle();
+}
+// Смена пароля. force — без неё дальше нельзя (первый вход, пароль выдан директором)
+function srvPassGate(force){
+  srv.gate=!!force||srv.gate;
+  const r=srvEl('srv-root');if(!r) return;
+  r.innerHTML=`<div class="srv-gate${force&&!S?'':' over'}"><form class="srv-box" data-form="srv-pass" data-force="${force?1:''}" novalidate aria-labelledby="srv-p-t">${srvBrand}
+    <h2 id="srv-p-t">${force?'Придумайте свой пароль':'Сменить пароль'}</h2>
+    ${force?'<p class="hint m0">Пароль, который выдал директор, — временный. Задайте свой: дальше вход будет только с ним.</p>':''}
+    <div class="field"><label for="srv-old">${force?'Временный пароль':'Нынешний пароль'}</label><input id="srv-old" class="inp" type="password" autocomplete="current-password"></div>
+    <div class="field"><label for="srv-new">Новый пароль</label><input id="srv-new" class="inp" type="password" autocomplete="new-password"><small class="hint">Не короче ${SRV_PASS_MIN} символов.</small></div>
+    <div class="field"><label for="srv-rep">Новый пароль ещё раз</label><input id="srv-rep" class="inp" type="password" autocomplete="new-password"></div>
+    <p class="err" id="srv-err" hidden></p>
+    <div class="bar">${force?'':'<button type="button" class="btn" data-act="srv-pass-cancel">Отмена</button>'}<button type="submit" class="btn pri">Сохранить пароль</button></div>
+  </form></div>`;
+  setTimeout(()=>{try{byId('srv-old').focus()}catch(_){}},30);
+  srvSettle();
+}
+function srvGateErr(t){showErr('srv-err',t);return 'error'}
+
+// Вход. Посреди работы (S уже есть): тот же человек — неотправленное уходит; другой — страница перезагружается.
+async function serverLogin(login,password,foreign){
+  let r;
+  try{r=await srvApi('POST','/api/login',{login:String(login||'').trim(),password:String(password||''),foreign:!!foreign})}
+  catch(_){return srvGateErr('Нет связи с сервером — попробуйте ещё раз.')}
+  if(r.status!==200) return srvGateErr(r.body.error||'Не удалось войти.');
+  if(!S) return srvStart();
+  let me;
+  try{me=await srvApi('GET','/api/me')}catch(_){return srvGateErr('Нет связи с сервером — попробуйте ещё раз.')}
+  if(me.status!==200) return srvGateErr(me.body.error||'Не удалось войти.');
+  if(!srv.person||me.body.person.id!==srv.person.id){srvReload();return 'reload'}
+  srv.tag=me.body.tag||srv.tag;
+  if(me.body.mustChange){srvPassGate(true);return 'password'}
+  srv.gate=false;srvClose();
+  srvEvents();
+  srv.wantPush=true;srv.wantPull=true;srvKick();
+  return 'resumed';
+}
+// Смена пароля: старый и новый (не короче 8). После вынужденной смены — CRM открывается
+async function serverPassword(old,pass,rep,force){
+  if([...String(pass||'')].length<SRV_PASS_MIN) return srvGateErr(`Новый пароль — не короче ${SRV_PASS_MIN} символов.`);
+  if(rep!==undefined&&rep!==pass) return srvGateErr('Пароли не совпадают — введите новый пароль ещё раз.');
+  let r;
+  try{r=await srvApi('POST','/api/password',{old:String(old||''),password:String(pass)})}
+  catch(_){return srvGateErr('Нет связи с сервером — попробуйте ещё раз.')}
+  if(r.status===401){srvGate(!!S);return 'gate'}
+  if(r.status!==200) return srvGateErr(r.body.error||'Пароль не изменён.');
+  if(force&&!S){srv.gate=false;return srvLoad()}
+  srv.gate=false;srvClose();
+  toast('Пароль изменён.');
+  if(force){srv.wantPush=true;srv.wantPull=true;srvKick()}
+  return 'changed';
+}
+async function serverLogout(){
+  await serverIdle();
+  if(srvPending()) return toast('Есть неотправленные изменения, а связи с сервером нет. Выйти можно, когда связь вернётся.','warn');
+  try{await srvApi('POST','/api/logout',{})}catch(_){}
+  srvReload();
+}
+function srvReload(){try{location.reload()}catch(_){}}
+function srvReloadSoon(){serverIdle().then(()=>{if(!srvPending()) srvReload()})}
+
+// ——— раз в минуту: ночная перезагрузка, запас номеров ———
+// Вкладка открыта в прошлые сутки, а сейчас уже 04:00 или позже — «сегодня» у неё устарело
+function serverNightDue(openedAt,now){
+  return !!openedAt&&sod(now)>sod(openedAt)&&new Date(now).getHours()>=SRV_NIGHT_HOUR;
+}
+function srvMinute(now=new Date()){
+  if(!S) return;
+  if(serverNightDue(srv.openedAt,now)&&!srvPending()&&!S.ui.modal) return srvReload();
+  for(const p of SRV_NUMBERED) if((srv.pools[p]||[]).length<SRV_POOL_LOW) srvRefill(p);
+}
+
+// ——— системные уведомления ———
+// Новое непрочитанное, а вкладка свёрнута — системное окно; щелчок открывает запись. Без разрешения — только звук и колокол.
+function srvPopups(before){
+  if(typeof Notification==='undefined'||Notification.permission!=='granted'||typeof document==='undefined'||!document.hidden) return 0;
+  const fresh=Notify.unreadIds(S,S.me).filter(id=>!before.has(id));
+  for(const id of fresh.slice(0,3)){
+    const n=S.notes.find(x=>x.id===id);if(!n) continue;
+    try{
+      const p=new Notification('CRM wind-solar',{body:n.text,tag:n.id});
+      p.onclick=()=>{
+        try{window.focus()}catch(_){}
+        Notify.markRead(S,S.me,n.id);
+        if(n.ref) openRef(n.ref);
+        render();
+        try{p.close()}catch(_){}
+      };
+    }catch(_){}
+  }
+  return fresh.length;
+}
+// Состояние разрешения: 'granted' | 'denied' | 'default' | 'none' (браузер не умеет)
+const srvNotifyState=()=>typeof Notification==='undefined'?'none':Notification.permission;
+
+// ——— файлы на сервере ———
+// Загрузить файл (File или Blob) в /api/files. → {id, name, type, size, url} или null (отказ уже показан)
+async function serverUpload(file,name){
+  const nm=String(name||file.name||'файл');
+  if((Number(file.size)||0)>ATT_SERVER_MAX_MB*1048576){toast(`Файл больше ${ATT_SERVER_MAX_MB} МБ — не загружен: «${nm}».`,'warn');return null}
+  let r;
+  try{
+    const res=await fetch('/api/files',{method:'POST',headers:{'X-CRM':'1','X-File-Name':encodeURIComponent(nm),'Content-Type':file.type||'application/octet-stream'},body:file,credentials:'same-origin'});
+    let b={};try{b=await res.json()}catch(_){}
+    r={status:res.status,body:b||{}};
+  }catch(_){toast(`Файл «${nm}» не загружен — нет связи с сервером. Повторите, когда связь вернётся.`,'warn');return null}
+  if(r.status===200) return r.body;
+  if(r.status===401){srvGate(true);return null}
+  toast(r.body.error||`Файл «${nm}» не загружен.`,'warn');
+  return null;
+}
+// data-URL (фото после сжатия) → Blob для загрузки
+function srvBlob(dataUrl){
+  const [head,b64]=String(dataUrl).split(','),type=(/data:([^;]+)/.exec(head)||[])[1]||'application/octet-stream';
+  const bin=atob(b64||''),bytes=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+  return new Blob([bytes],{type});
+}
+
+// ——— сотрудники: логины, пароли, сеансы (только директор) ———
+async function srvUsersLoad(){
+  if(srv.usersBusy||!can('admin')) return;
+  srv.usersBusy=true;
+  try{
+    const r=await srvApi('GET','/api/users');
+    if(r.status===200){srv.users=new Map((r.body.users||[]).map(u=>[u.personId,u]));srv.usersErr=''}
+    else if(!srvStatus(r)) srv.usersErr=r.body.error||'нет данных: логины';
+  }catch(_){srv.usersErr='нет данных: логины (нет связи с сервером)'}
+  srv.usersBusy=false;
+  if(S&&S.view==='team') render();
+}
+// Действие с входом сотрудника: what — login | password | disable | logout. → {status, body}
+async function srvUserAct(pid,what,body){
+  try{return await srvApi('POST',`/api/users/${encodeURIComponent(pid)}/${what}`,body||{})}
+  catch(_){return {status:0,body:{error:'Нет связи с сервером — попробуйте ещё раз.'}}}
+}
+
+// ——— действия ———
+A['srv-logout']=()=>serverLogout();
+A['srv-password']=()=>srvPassGate(false);
+A['srv-pass-cancel']=()=>{srvClose();if(!S) srvGate(false)};
+A['srv-notify-perm']=()=>{
+  if(typeof Notification==='undefined') return toast('Этот браузер не умеет всплывающие уведомления.','warn');
+  Promise.resolve(Notification.requestPermission()).then(p=>{
+    render();
+    toast(p==='granted'?'Всплывающие уведомления разрешены: они появятся, когда вкладка CRM свёрнута.':'Браузер не разрешил всплывающие уведомления — остаются звук и колокол.',p==='granted'?'':'warn');
+  });
+};
+FORMS['srv-login']=()=>serverLogin(byId('srv-login').value,byId('srv-pass').value,byId('srv-foreign').checked);
+FORMS['srv-pass']=f=>serverPassword(byId('srv-old').value,byId('srv-new').value,byId('srv-rep').value,!!f.dataset.force);
+
+// Кнопки «Сменить пароль» и «Выйти» под именем в панели разделов
+const serverMeHtml=()=>`<div class="srv-me"><button type="button" class="btn sm ghost" data-act="srv-password">${ic('lock')}Сменить пароль</button><button type="button" class="btn sm ghost" data-act="srv-logout">${ic('arrow')}Выйти</button></div>`;
+
+// Запуск. Демо: состояние из браузера (localStorage[Store.KEY]); нет или битое — демо seed(), затем первая отрисовка.
+// Серверный режим: вход и состояние с сервера — serverBoot() (72-server.js).
+
+if(SERVER) serverBoot();
+else{
+  S=startState();
+  render();
+}
 })();
 </script>

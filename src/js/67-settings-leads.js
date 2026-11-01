@@ -98,12 +98,16 @@ function vLeadSettings(){
   return `<section class="card"><div class="card-h"><h3>Откуда приходят лиды</h3></div><div class="card-b stack-s">
     <div class="lset-opts" role="radiogroup" aria-label="Источник лидов">${radios}</div>
     <p class="hint">Сейчас выбрано: <b>${esc(Leads.SOURCES[cur])}</b>. В CRM лидов: ${n.all} (с сайта — ${n.site}, из Битрикса24 — ${n.bitrix}); у каждого лида в карточке стоит метка, откуда он пришёл. Выбор запоминается.</p>
-    <div class="bar"><button type="button" class="btn sm" data-act="lead-sim" data-source="site">${ic('plus')}Имитация: пришёл лид с сайта</button><button type="button" class="btn sm" data-act="lead-sim" data-source="bitrix">${ic('plus')}Имитация: пришёл лид из Битрикса24</button></div>
-    <p class="hint">Если источник выключен, его кнопка лид не создаёт и сообщает, что источник сейчас не используется.</p>
+    ${SERVER?'':`<div class="bar"><button type="button" class="btn sm" data-act="lead-sim" data-source="site">${ic('plus')}Имитация: пришёл лид с сайта</button><button type="button" class="btn sm" data-act="lead-sim" data-source="bitrix">${ic('plus')}Имитация: пришёл лид из Битрикса24</button></div>
+    <p class="hint">Если источник выключен, его кнопка лид не создаёт и сообщает, что источник сейчас не используется.</p>`}
   </div></section>
   ${leadWaitCard()}
   ${lostReasonsCard()}
-  <section class="card"><div class="card-h"><h3>Что ещё живёт в Битриксе24</h3></div><div class="card-b stack-s">
+  ${SERVER?'':leadBitrixCard(rows)}`;
+}
+// «Что ещё живёт в Битриксе24» — только в демо: в рабочей версии Битрикса не видно (следующий этап)
+function leadBitrixCard(rows){
+  return `<section class="card"><div class="card-h"><h3>Что ещё живёт в Битриксе24</h3></div><div class="card-b stack-s">
     <p class="m0">Сейчас в Битриксе24: «почта, задачи», лиды с сайта, лиды и сделки, телефония или чаты.</p>
     <ul class="lset-list">${rows}</ul>
     <p class="m0"><b>Чтобы отказаться от Битрикса24, CRM должна взять на себя всё это.</b> Почта, задачи, лиды и сделки в прототипе уже есть как экраны; телефонии и чатов нет.</p>

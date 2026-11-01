@@ -1,4 +1,8 @@
-// Запуск: состояние из браузера (localStorage[Store.KEY]); нет или битое — демо seed(). Затем первая отрисовка.
+// Запуск. Демо: состояние из браузера (localStorage[Store.KEY]); нет или битое — демо seed(), затем первая отрисовка.
+// Серверный режим: вход и состояние с сервера — serverBoot() (72-server.js).
 
-S=startState();
-render();
+if(SERVER) serverBoot();
+else{
+  S=startState();
+  render();
+}

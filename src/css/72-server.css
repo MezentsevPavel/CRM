@@ -1,0 +1,22 @@
+/* Серверный режим (72-server.js): окно входа и смены пароля, плашка «Нет связи», «Сменить пароль» и «Выйти» под именем.
+   На <html> стоит data-mode="server": прячутся «Кто я», полоса «Прототип» и подпись «прототип» у логотипа. */
+html[data-mode="server"] .as,html[data-mode="server"] .demo,html[data-mode="server"] .brand small{display:none}
+
+.srv-gate{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;padding:16px;background:var(--bg);overflow-y:auto}
+.srv-gate.over{background:var(--overlay)}
+.srv-box{display:flex;flex-direction:column;gap:14px;width:min(400px,100%);padding:28px 26px 26px;border-radius:26px;background:var(--surface);box-shadow:var(--shadow);border:1px solid var(--line)}
+.srv-box h2{margin:0;font-family:var(--f-display);font-size:21px;font-weight:700}
+.srv-box .field{margin:0}
+.srv-box .check small{font-size:12px}
+.srv-box .bar{justify-content:flex-end}
+.srv-brand{display:flex;align-items:baseline;gap:8px;color:var(--primary-deep)}
+.srv-brand b{font-family:var(--f-display);font-size:15px;font-weight:800;letter-spacing:.01em}
+.srv-brand small{font-size:12px;color:var(--ink-3)}
+
+.srv-off{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);z-index:90;display:flex;align-items:center;gap:8px;max-width:calc(100% - 32px);padding:9px 14px;border-radius:14px;background:var(--warn-soft);color:var(--warn);border:1px solid var(--line-2);box-shadow:var(--shadow-1);font-size:13px;font-weight:600}
+.srv-off[hidden]{display:none}
+.srv-off .ic{width:16px;height:16px;flex:none}
+
+.srv-me{display:flex;flex-wrap:wrap;gap:4px;padding:6px 2px 0}
+.srv-me .btn{flex:1 1 auto;justify-content:flex-start}
+.srv-pw{font-size:17px;letter-spacing:.04em;user-select:all}

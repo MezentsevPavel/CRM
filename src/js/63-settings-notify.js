@@ -92,6 +92,15 @@ function vNotifySettings(){
     <div class="nset-row">${sw('snd-on',pref.on,'data-on="sound-on"','Звук нового уведомления')}<div class="nset-t"><b>Играть звук, когда приходит новое уведомление</b><span>Звук синтезируется в браузере, ничего не скачивается. Играет, пока CRM открыта.</span></div></div>
     <div class="field"><span class="lbl">Какой звук</span>${sounds}</div>
     <div class="nset-test"><button type="button" class="btn" data-act="sound-test">${ic('bell')}Проверить</button><span class="hint">Сыграет выбранный звук. Если тихо — проверьте громкость устройства: браузер молчит, пока на странице не было ни одного нажатия.</span></div>
+  </div></section>${SERVER?notifyPopupCard():''}`;
+}
+// Серверный режим: всплывающие системные уведомления, когда вкладка CRM свёрнута (разрешение даёт браузер)
+function notifyPopupCard(){
+  const st=srvNotifyState();
+  const text={granted:'Разрешены в этом браузере: новое уведомление всплывёт, когда вкладка CRM свёрнута. Щелчок по нему открывает запись.',denied:'Браузер запретил всплывающие уведомления для CRM. Разрешить можно в настройках сайта в браузере (значок слева от адреса). Пока — звук и колокол.',default:'Пока не разрешены: приходят звук и колокол. Разрешите — и новое уведомление всплывёт, даже когда вкладка CRM свёрнута.',none:'Этот браузер не умеет всплывающие уведомления: приходят звук и колокол.'}[st];
+  return `<section class="card"><div class="card-h"><h3>Всплывающие уведомления</h3></div><div class="card-b stack-s">
+    <p class="m0">${esc(text)}</p>
+    ${st==='default'?`<div><button type="button" class="btn pri" data-act="srv-notify-perm">${ic('bell')}Разрешить всплывающие уведомления</button></div>`:''}
   </div></section>`;
 }
 

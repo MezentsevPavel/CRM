@@ -337,8 +337,8 @@ function shipMark(shipId,stageId){
   const wasOut=s.dir==='out'&&leftStart(s);
   const r=Ships.setStage(S,s.id,stageId,m.id,now,Ships.SRC.manual);
   if(!r.ok) return fail(r.reason);
-  // отгрузка клиенту ушла со склада — автосообщение клиенту, как в v2
-  if(s.dir==='out'&&!wasOut&&leftStart(s)&&rule('shipped')?.on&&s.deal){
+  // отгрузка клиенту ушла со склада — автосообщение клиенту, как в v2 (в рабочей версии сообщений клиентам нет)
+  if(!SERVER&&s.dir==='out'&&!wasOut&&leftStart(s)&&rule('shipped')?.on&&s.deal){
     const d=deal(s.deal);
     if(d&&d.channel!=='phone') S.msgs.push({id:Store.freeId(S.msgs,'m'),at:now,deal:d.id,channel:d.channel,auto:true,text:`${d.contact}, здравствуйте! Ваш заказ отгружен: ${s.track}. Привезём ${fD(s.eta)}. Ваш менеджер — ${person(d.managerId)?.name||''}.`});
   }
