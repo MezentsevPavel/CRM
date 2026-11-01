@@ -13,7 +13,7 @@ const priceTxt=p=>p.price==null?noData('цена'):rub(p.price);
 // В таблице менеджеров товара нет, резервов и поставок под него нет — остаток неизвестен, а не нулевой
 const stockUnknown=k=>!k.known&&!(k.reservedStock+k.reservedIncoming)&&!k.incoming;
 // Юрлицо и город в одну подпись; неизвестный id показывается как есть
-const cellText=(e,c)=>`${Stock.entityName(S,e||Stock.ANY)??e} · ${Stock.cityName(S,c||Stock.ANY)??c}`;
+const cellText=(e,c)=>Stock.cellText(S,e,c);
 const optionsHtml=(list,cur)=>list.map(([v,t])=>`<option value="${esc(v)}"${v===cur?' selected':''}>${esc(t)}</option>`).join('');
 const selField=(id,on,label,list,cur)=>`<div class="field"><label for="${id}">${label}</label><select id="${id}" class="inp" data-on="${on}">${optionsHtml(list,cur)}</select></div>`;
 
@@ -106,12 +106,8 @@ function movesTable(){
   }).join('')}</tbody></table></div>`;
 }
 
-// Документ движения: номер сделки показываем, только если сделка видна человеку (Leads.dealsVisible); чужая — без номера
-function moveDoc(m){
-  const doc=m.doc||'';
-  if(!doc||!S.deals.some(d=>d.id===doc)) return doc;
-  return Leads.dealsVisible(S,S.me).some(d=>d.id===doc)?doc:'сделка, которую вы не видите';
-}
+// Документ движения: номер сделки показываем, только если сделка видна человеку; чужая — «сделка скрыта» (Stock.docView)
+const moveDoc=m=>Stock.docView(S,m.doc,S.me);
 // ——— карточка товара ———
 function srcPill(r){
   if(r.src==='stock') return '<span class="pill ok sm">на складе</span>';
@@ -157,7 +153,7 @@ function iRow(x,p){
   return `<li><b class="mono">${esc(x.shipId)}</b><span>${qtyOf(x.qty,p)}</span><span class="pill sm ${late?'bad':'info'}">${late?'задерживается':esc(stageName(s).toLowerCase())}</span><small>ожидается ${fD(x.eta)}</small></li>`;
 }
 function dProduct(p){
-  const k=stockOf(p.id);let rs=resOf(p.id);const inc=Stock.incomingOf(S,p.id),all=S.moves.filter(m=>m.productId===p.id),mv=all.slice(0,10),unk=stockUnknown(k);
+  const k=stockOf(p.id),rs=resOf(p.id).map(r=>Stock.reserveView(S,r,S.me)).filter(Boolean);const inc=Stock.incomingOf(S,p.id),all=S.moves.filter(m=>m.productId===p.id),mv=all.slice(0,10),unk=stockUnknown(k);
   const st=(l,v,c='',note='')=>`<div class="st"><span>${l}</span><b class="${c}">${v}</b>${note?`<small>${note}</small>`:''}</div>`;
   const kv=(l,v)=>`<dt>${l}</dt><dd>${v}</dd>`;
   const aside=x=>x===null?'нет данных':qtyOf(x,p);
@@ -168,12 +164,12 @@ function dProduct(p){
     can('prices')?kv('Цена',p.price==null?noData('цена'):`<b>${rub(p.price)}</b><small>${p.src==='user'?'введена вручную':priceNote()}</small>`):'',
     kv('Наличие',p.avail?esc(p.avail):noData('наличие')),url?kv('Ссылка',url):''
   ].join('');
-  const where=r=>cellText(r.entityId,r.cityId);
-  // резерв называет сделку и клиента: строки — только по видимым сделкам; чужие — одной строкой без номера и клиента
-  const vis=new Set(Leads.dealsVisible(S,S.me).map(d=>d.id)),hidden=rs.filter(r=>!vis.has(r.dealId)),others=hidden.reduce((n,r)=>n+r.qty,0);
-  const othersNote=hidden.length?`<p class="muted sm m0">Ещё в резерве по сделкам, которых вы не видите: ${qtyOf(others,p)}.</p>`:'';
-  rs=rs.filter(r=>vis.has(r.dealId));
-  const rTbl=rs.length?`<div class="xs"><table class="tbl"><thead><tr><th>Сделка</th><th class="num">Кол-во</th><th>Где товар</th><th>До</th>${can('reserve')||can('sell')?'<th></th>':''}</tr></thead><tbody>${rs.map(r=>{const d=deal(r.dealId),n=dd(r.until);return `<tr><td>${can('clients')?`<button class="link" data-act="open-deal" data-id="${r.dealId}">${r.dealId}</button>`:r.dealId}<small class="muted">${esc(d?.client||'')}</small></td><td class="num">${num(r.qty)}</td><td>${srcPill(r)}${r.src==='stock'?`<small class="muted">${esc(where(r))}</small>`:''}</td><td class="nowrap ${n<=2?'warn-t':''}">${fD(r.until)}</td>${can('reserve')||can('sell')?`<td class="num"><div class="rbtns">${r.src==='stock'&&can('sell')?`<button type="button" class="btn sm" data-act="stock-sell" data-pid="${esc(r.productId)}" data-rid="${esc(r.id)}">Списать</button>`:''}${can('reserve')?`<button class="btn sm ghost" data-act="unreserve" data-id="${r.id}">Снять</button>`:''}</div></td>`:''}</tr>`}).join('')}</tbody></table></div>${othersNote}`:othersNote||'<p class="muted m0">Резервов нет.</p>';
+  // резерв видит каждый, у кого есть право на остатки: сколько, где и до какого числа. Сделку и клиента называет
+  // Stock.reserveView только тому, кому сделка видна; остальным — «сделка скрыта», без ссылки и без кнопок «Снять» и «Списать»
+  const acts=can('reserve')||can('sell');
+  const dealCell=v=>v.deal?`${can('clients')?`<button class="link" data-act="open-deal" data-id="${esc(v.deal.id)}">${esc(v.deal.id)}</button>`:esc(v.deal.id)}<small class="muted">${esc(v.deal.client||'')}</small>`:v.hasDeal?`<span class="muted">${Stock.HIDDEN_DEAL}</span>`:noData('сделка');
+  const rBtns=v=>!v.deal?'':`<div class="rbtns">${!v.inTransit&&can('sell')?`<button type="button" class="btn sm" data-act="stock-sell" data-pid="${esc(v.productId)}" data-rid="${esc(v.id)}">Списать</button>`:''}${can('reserve')?`<button class="btn sm ghost" data-act="unreserve" data-id="${esc(v.id)}">Снять</button>`:''}</div>`;
+  const rTbl=rs.length?`<div class="xs"><table class="tbl"><thead><tr><th>Сделка</th><th class="num">Кол-во</th><th>Где товар</th><th>До</th>${acts?'<th></th>':''}</tr></thead><tbody>${rs.map(v=>{const n=dd(v.until);return `<tr><td>${dealCell(v)}</td><td class="num">${num(v.qty)}</td><td>${srcPill(v)}${v.inTransit?'':`<small class="muted">${esc(v.where)}</small>`}</td><td class="nowrap ${n<=2?'warn-t':''}">${fD(v.until)}</td>${acts?`<td class="num">${rBtns(v)}</td>`:''}</tr>`}).join('')}</tbody></table></div>`:'<p class="muted m0">Резервов нет.</p>';
   const iList=inc.length?`<ul class="mv">${inc.map(x=>iRow(x,p)).join('')}</ul>`:'<p class="muted m0">Поставок с этим товаром нет.</p>';
   const mList=mv.length?`<ul class="mv">${mv.map(m=>`<li>${movePill(m)}<b>${moveSign(m)}${qtyOf(m.qty,p)}</b><span>${esc(moveWhere(m))}</span><span class="mono muted">${esc(moveDoc(m))}</span><small>${fWhen(m.at)} · ${esc(whoName(m.by)||'нет данных: кто')}</small></li>`).join('')}</ul><p class="m0"><button type="button" class="btn sm" data-act="stock-journal" data-pid="${esc(p.id)}">Весь журнал по товару${all.length>mv.length?` (${all.length})`:''}</button></p>`:'<p class="muted m0">Движений пока нет.</p>';
   return {kind:p.cat,title:esc(p.name),sub:`${p.inCatalog?`<span class="mono">${esc(p.id)}</span>`:'нет в каталоге'}${p.brand?' · '+esc(p.brand):''}`,body:`

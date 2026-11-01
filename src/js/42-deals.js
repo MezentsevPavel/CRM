@@ -324,6 +324,9 @@ const Deals = (() => {
   // Уведомление о резерве: постоянные адресаты вида reserve (Notify.RECIPIENTS — склад и директор) и менеджер этой сделки.
   // Менеджеры другого типа его не получают: чужую сделку они не видят.
   const managerOf = d => (d && d.managerId ? [d.managerId] : []);
+  // Уведомление о резерве сделки d: адресаты те же (Notify.RECIPIENTS и менеджер сделки), но номер сделки и клиента читают
+  // только те, кому сделка видна (Stock.dealRef); остальным (склад) уходит текст без них. textOf(withDeal) → текст.
+  const notifyReserve = (st, d, by, now, textOf) => Notify.pushFor(st, 'reserve', by, id => textOf(!!Stock.dealRef(st, d.id, id)), now, managerOf(d));
   // Сколько товара сделки ещё можно зарезервировать: «в строках − уже в резерве». Единственный расчёт: ядро и экран зовут его.
   const left = (st, d, productId) => round2(lined(d, productId) - reserved(st, d, productId));
 
@@ -357,7 +360,7 @@ const Deals = (() => {
     res.reserve.at = now;
     res.reserve.by = by;
     log(st, d, 'reserve', Feed.reserveText(st, res.reserve), by, now, { reserveId: res.reserve.id, productId: pid, qty });
-    Notify.push(st, 'reserve', by, Feed.reserveText(st, res.reserve, true), now, managerOf(d));
+    notifyReserve(st, d, by, now, withDeal => Feed.reserveText(st, res.reserve, withDeal));
     return { ok: true, reserve: res.reserve, reason: '', max: res.max };
   }
 
@@ -390,7 +393,7 @@ const Deals = (() => {
     keepTrail(st, r);
     const name = low((productOf(st, r.productId) || {}).name || 'нет данных: товар'), tail = why ? ' ' + why : '';
     log(st, d, 'reserve', `Снят резерв: ${name} — ${num(q)}${why ? '.' + tail : ''}`, by, now, { reserveId: r.id, productId: r.productId, qty: q, removed: true });
-    Notify.push(st, 'reserve', by, `Снят резерв: ${name} — ${num(q)} (${d.id}, ${d.client}).${tail}`, now, managerOf(d));
+    notifyReserve(st, d, by, now, withDeal => `Снят резерв: ${name} — ${num(q)}${withDeal ? ` (${d.id}, ${d.client})` : ''}.${tail}`);
   }
 
   // Снять резерв сделки: товар возвращается в свободный остаток. Нужно право править сделку и право reserve. → {ok, reason}

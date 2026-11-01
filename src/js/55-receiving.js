@@ -90,7 +90,10 @@ function rcvPreview(r=S.rcv){
   const add=s.items.map((it,i)=>{const p=product(it.productId);return `<li><span>${esc(p.name)}</span><b class="num">+${qtyOf(P.adds[i].qty,p)}</b></li>`}).join('');
   const rules=P.rules.map(x=>`<li class="sm">Правило «если ${esc(Ships.eventLabel(x.when))}» — этап «${esc(Pipes.stage(S,s.pipeId,x.then).name)}»</li>`).join('');
   const warnNames=P.warnTo.map(id=>person(id)?.name).filter(Boolean).map(esc).join(', ');
-  const waits=P.waits.map(({d,items,how})=>{
+  // кто ждёт: количество видно всем, у кого есть право на остатки; клиента, номер сделки, менеджера и текст сообщения клиенту
+  // называет только тот, кому сделка видна (Stock.reserveView) — остальным вместо них «сделка скрыта»
+  const waits=P.waits.map(({d,list,items,how})=>{
+    if(!Stock.reserveView(S,list[0],m.id)?.deal) return `<div class="wait"><div class="wait-h"><span class="muted">${Stock.HIDDEN_DEAL}</span></div><p class="sm m0">Ждёт: ${esc(items)}</p></div>`;
     const mg=person(d.managerId);
     const msg=how==='call'?'<p class="muted sm m0">Клиент на связи по телефону — менеджеру придёт задача позвонить.</p>':how==='auto'?`<div class="chat"><div class="bub out">${fillTpl(d,items,true)}<small>${CH[d.channel]} · уйдёт автоматически сразу после приёмки</small></div></div>`:`<p class="muted sm m0">Авто-сообщения выключены — ${esc(mg?.name||'менеджер')} получит напоминание написать клиенту.</p>`;
     return `<div class="wait"><div class="wait-h"><b>${esc(d.client)}</b><span class="mono muted">${d.id}</span>${chPill(d.channel)}<span class="muted sm">менеджер ${esc(mg?.name||'нет данных')}</span></div><p class="sm m0">Ждёт: ${esc(items)}</p>${msg}</div>`;
@@ -99,7 +102,7 @@ function rcvPreview(r=S.rcv){
     <div><h4 class="sh">Добавится на склад: ${esc(P.cell.entityName)}, ${esc(P.cell.cityName)}</h4><ul class="plain">${add}</ul></div>
     <div><h4 class="sh">Поставка ${esc(s.id)}</h4><p class="sm m0">${P.final?`Перейдёт на этап «${esc(P.final.name)}» (автоматически: приёмка).`:'нет данных: этап «на складе» в воронке'}</p>${rules?`<ul class="plain">${rules}</ul>`:''}${P.block?`<p class="warn-t sm" style="margin:6px 0 0">${esc(P.block)}</p>`:''}</div>
     <div><h4 class="sh">Уведомление получат</h4><div class="who-list">${ppl.map(p=>`<span class="chip">${av(p,'xs')}${esc(p.name)} · ${esc(roleName(p).toLowerCase())}</span>`).join('')}</div>${P.issues.length||P.dmg.length?`<p class="warn-t sm" style="margin:8px 0 0">Есть расхождение или повреждение — отдельное предупреждение получат: ${warnNames}.</p>`:''}</div>
-    <div><h4 class="sh">Клиенты, которые ждут этот товар</h4><div class="stack-s">${waits||'<p class="muted sm m0">Резервов под эту поставку нет — весь товар станет свободным для продажи.</p>'}</div>${P.cuts.length?`<ul class="plain">${P.cuts.map(c=>`<li class="sm warn-t">Резерв ${esc(c.r.dealId||'')}${c.d?' ('+esc(c.d.client)+')':''}: ${esc(low(product(c.r.productId)?.name||'нет данных: товар'))} — ${c.keep?`останется ${num(c.keep)}, снимется ${num(c.drop)}`:`снимется весь (${num(c.drop)})`}.</li>`).join('')}</ul>`:''}</div>
+    <div><h4 class="sh">Клиенты, которые ждут этот товар</h4><div class="stack-s">${waits||'<p class="muted sm m0">Резервов под эту поставку нет — весь товар станет свободным для продажи.</p>'}</div>${P.cuts.length?`<ul class="plain">${P.cuts.map(c=>{const v=Stock.reserveView(S,c.r,m.id);return `<li class="sm warn-t">Резерв ${v&&v.deal?esc(v.deal.id)+(v.deal.client?' ('+esc(v.deal.client)+')':''):'('+Stock.HIDDEN_DEAL+')'}: ${esc(low(product(c.r.productId)?.name||'нет данных: товар'))} — ${c.keep?`останется ${num(c.keep)}, снимется ${num(c.drop)}`:`снимется весь (${num(c.drop)})`}.</li>`}).join('')}</ul>`:''}</div>
   </div></section>`;
 }
 function updRcvPrev(){const b=byId('rcv-prev');if(b) b.innerHTML=rcvPreview()}

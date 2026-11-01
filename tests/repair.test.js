@@ -239,15 +239,19 @@ test('F1·4 уведомление о резерве: складу, директ
   assert.ok(idx >= 0, 'в демо-сделке нет строки, которую можно зарезервировать');
   const r = app.Deals.reserveItem(S, 'Д-346', idx, { qty: 1 }, 'p2', NOW);
   assert.equal(r.ok, true, r.reason);
-  const note = S.notes.slice(0, S.notes.length - before).find(n => n.kind === 'reserve');
-  assert.ok(note, 'уведомления о резерве нет');
-  for (const p of ['p3', 'p9']) assert.ok(!note.to.includes(p), `менеджер B2B ${p} получил резерв сделки B2C`);
-  assert.ok(note.to.includes('p5') && note.to.includes('p1'), 'склад и директор не получили');
+  // текст у тех, кому сделка видна, и у склада разный (см. reserve-view.test.js), поэтому уведомлений может быть два:
+  // кто получил — смотрим по всем новым уведомлениям о резерве
+  const notes = S.notes.slice(0, S.notes.length - before).filter(n => n.kind === 'reserve');
+  assert.ok(notes.length, 'уведомления о резерве нет');
+  const got = new Set(notes.flatMap(n => n.to));
+  for (const p of ['p3', 'p9']) assert.ok(!got.has(p), `менеджер B2B ${p} получил резерв сделки B2C`);
+  assert.ok(got.has('p5') && got.has('p1'), 'склад и директор не получили');
   // снятие — так же
   const n2 = S.notes.length;
   assert.equal(app.Deals.unreserve(S, 'Д-346', r.reserve.id, 'p2', later(1)).ok, true);
-  const off = S.notes.slice(0, S.notes.length - n2).find(n => n.kind === 'reserve');
-  assert.ok(off && !off.to.includes('p3') && !off.to.includes('p9'));
+  const off = S.notes.slice(0, S.notes.length - n2).filter(n => n.kind === 'reserve');
+  const offTo = new Set(off.flatMap(n => n.to));
+  assert.ok(off.length && !offTo.has('p3') && !offTo.has('p9'));
 });
 
 // ——— 8. Резерв и снятие из карточки товара — тот же путь, что в сделке ———

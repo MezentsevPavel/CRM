@@ -70,13 +70,28 @@ const Notify = (() => {
     return [...new Set(ids)].filter(id => known.has(id) && wants(st, id, kind));
   }
 
-  // Новое уведомление — в начало списка. Автор, если он среди адресатов, своё уже прочитал.
-  function push(st, kind, by, text, now, extraPersons) {
-    const to = recipients(st, kind, extraPersons);
+  // Новое уведомление адресатам to — в начало списка. Автор, если он среди адресатов, своё уже прочитал.
+  function add(st, kind, by, text, now, to) {
     st.notes = st.notes || [];
     const note = { id: Store.freeId(st.notes, 'n'), kind, by: by || null, at: now, text, to, read: by && to.includes(by) ? [by] : [] };
     st.notes.unshift(note);
     return note;
+  }
+  function push(st, kind, by, text, now, extraPersons) {
+    return add(st, kind, by, text, now, recipients(st, kind, extraPersons));
+  }
+
+  // Уведомление, текст которого зависит от читателя: textFor(personId) → текст. Адресаты — те же, что у push; кому выходит
+  // одинаковый текст, получают одно уведомление, так что разных текстов — столько уведомлений. Первым в списке — то, что
+  // получает первый адресат. Возвращает уведомления в том же порядке.
+  function pushFor(st, kind, by, textFor, now, extraPersons) {
+    const groups = new Map();
+    for (const id of recipients(st, kind, extraPersons)) {
+      const text = textFor(id);
+      if (!groups.has(text)) groups.set(text, []);
+      groups.get(text).push(id);
+    }
+    return [...groups].reverse().map(([text, to]) => add(st, kind, by, text, now, to)).reverse();
   }
 
   // Непрочитанные этим человеком.
@@ -106,5 +121,5 @@ const Notify = (() => {
     return (after || []).some(id => !had.has(id)) ? pref.kind : null;
   }
 
-  return { RECIPIENTS, SOUNDS, wants, setWanted, soundPref, setSound, soundFor, recipients, push, unread, unreadIds, markRead };
+  return { RECIPIENTS, SOUNDS, wants, setWanted, soundPref, setSound, soundFor, recipients, push, pushFor, unread, unreadIds, markRead };
 })();

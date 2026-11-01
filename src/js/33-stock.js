@@ -285,5 +285,42 @@ const Stock = (() => {
     return { ok: true, move: m.move, reserve: r };
   }
 
-  return { ANY, KINDS, NO_ENTITY, NO_CITY, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, canReserve, bestCell, move, reserve, unreserve, release, expired, sellMax, sell };
+  // ——— что человек видит в резерве: единственное место правила ———
+  // Резерв видят все, у кого есть право stock: сколько, где (юрлицо · город или «в пути» с номером поставки) и до какого числа.
+  // Номер сделки и клиента — только тому, кому сделка видна (Leads.dealsVisible, ADR 0005); остальным вместо них —
+  // HIDDEN_DEAL, без ссылки и без кнопок «Снять» и «Списать». Карточка товара, журнал, карточка поставки, превью приёмки
+  // и текст уведомления зовут эти функции, своих проверок не заводят.
+  const HIDDEN_DEAL = 'сделка скрыта';
+
+  // «Юрлицо · город» клетки склада; неизвестный id показывается как есть.
+  const cellText = (st, e, c) => `${entityName(st, e || ANY) ?? e} · ${cityName(st, c || ANY) ?? c}`;
+
+  // Сделка глазами человека: {id, client}, если она есть среди Leads.dealsVisible(st, personId); иначе null.
+  function dealRef(st, dealId, personId) {
+    const d = dealId ? Leads.dealsVisible(st, personId).find(x => x.id === dealId) : null;
+    return d ? { id: d.id, client: d.client } : null;
+  }
+
+  // Резерв глазами человека: {id, productId, qty, src, inTransit, where, until, deal, hasDeal}.
+  // where — «ИП · Иркутск» или «в пути: П-1043»; deal — {id, client} или null (скрыта); hasDeal — резерв вообще привязан к
+  // сделке из состояния (нет — на экране «нет данных: сделка», а не «скрыта»). Нет права stock → null: резерва человек не видит.
+  function reserveView(st, r, personId) {
+    if (!r || !Perms.can(st, personId, 'stock')) return null;
+    const src = r.src || 'stock', inTransit = src !== 'stock';
+    return {
+      id: r.id, productId: r.productId, qty: r.qty, src, inTransit,
+      where: inTransit ? `в пути: ${src}` : cellText(st, r.entityId, r.cityId),
+      until: r.until || null,
+      deal: dealRef(st, r.dealId, personId),
+      hasDeal: (st.deals || []).some(d => d.id === r.dealId),
+    };
+  }
+
+  // Документ движения глазами человека: номер своей сделки как есть, чужой — HIDDEN_DEAL; поставка, накладная — как есть.
+  function docView(st, doc, personId) {
+    if (!doc || !(st.deals || []).some(d => d.id === doc)) return doc || '';
+    return dealRef(st, doc, personId) ? doc : HIDDEN_DEAL;
+  }
+
+  return { ANY, KINDS, NO_ENTITY, NO_CITY, HIDDEN_DEAL, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, canReserve, bestCell, move, reserve, unreserve, release, expired, sellMax, sell, cellText, dealRef, reserveView, docView };
 })();

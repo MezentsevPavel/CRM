@@ -2771,7 +2771,44 @@ const Stock = (() => {
     return { ok: true, move: m.move, reserve: r };
   }
 
-  return { ANY, KINDS, NO_ENTITY, NO_CITY, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, canReserve, bestCell, move, reserve, unreserve, release, expired, sellMax, sell };
+  // ——— что человек видит в резерве: единственное место правила ———
+  // Резерв видят все, у кого есть право stock: сколько, где (юрлицо · город или «в пути» с номером поставки) и до какого числа.
+  // Номер сделки и клиента — только тому, кому сделка видна (Leads.dealsVisible, ADR 0005); остальным вместо них —
+  // HIDDEN_DEAL, без ссылки и без кнопок «Снять» и «Списать». Карточка товара, журнал, карточка поставки, превью приёмки
+  // и текст уведомления зовут эти функции, своих проверок не заводят.
+  const HIDDEN_DEAL = 'сделка скрыта';
+
+  // «Юрлицо · город» клетки склада; неизвестный id показывается как есть.
+  const cellText = (st, e, c) => `${entityName(st, e || ANY) ?? e} · ${cityName(st, c || ANY) ?? c}`;
+
+  // Сделка глазами человека: {id, client}, если она есть среди Leads.dealsVisible(st, personId); иначе null.
+  function dealRef(st, dealId, personId) {
+    const d = dealId ? Leads.dealsVisible(st, personId).find(x => x.id === dealId) : null;
+    return d ? { id: d.id, client: d.client } : null;
+  }
+
+  // Резерв глазами человека: {id, productId, qty, src, inTransit, where, until, deal, hasDeal}.
+  // where — «ИП · Иркутск» или «в пути: П-1043»; deal — {id, client} или null (скрыта); hasDeal — резерв вообще привязан к
+  // сделке из состояния (нет — на экране «нет данных: сделка», а не «скрыта»). Нет права stock → null: резерва человек не видит.
+  function reserveView(st, r, personId) {
+    if (!r || !Perms.can(st, personId, 'stock')) return null;
+    const src = r.src || 'stock', inTransit = src !== 'stock';
+    return {
+      id: r.id, productId: r.productId, qty: r.qty, src, inTransit,
+      where: inTransit ? `в пути: ${src}` : cellText(st, r.entityId, r.cityId),
+      until: r.until || null,
+      deal: dealRef(st, r.dealId, personId),
+      hasDeal: (st.deals || []).some(d => d.id === r.dealId),
+    };
+  }
+
+  // Документ движения глазами человека: номер своей сделки как есть, чужой — HIDDEN_DEAL; поставка, накладная — как есть.
+  function docView(st, doc, personId) {
+    if (!doc || !(st.deals || []).some(d => d.id === doc)) return doc || '';
+    return dealRef(st, doc, personId) ? doc : HIDDEN_DEAL;
+  }
+
+  return { ANY, KINDS, NO_ENTITY, NO_CITY, HIDDEN_DEAL, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, canReserve, bestCell, move, reserve, unreserve, release, expired, sellMax, sell, cellText, dealRef, reserveView, docView };
 })();
 
 // Ядро: поставки и маршрут. Чистые функции, без DOM; текущее время приходит аргументом now.
@@ -3970,13 +4007,28 @@ const Notify = (() => {
     return [...new Set(ids)].filter(id => known.has(id) && wants(st, id, kind));
   }
 
-  // Новое уведомление — в начало списка. Автор, если он среди адресатов, своё уже прочитал.
-  function push(st, kind, by, text, now, extraPersons) {
-    const to = recipients(st, kind, extraPersons);
+  // Новое уведомление адресатам to — в начало списка. Автор, если он среди адресатов, своё уже прочитал.
+  function add(st, kind, by, text, now, to) {
     st.notes = st.notes || [];
     const note = { id: Store.freeId(st.notes, 'n'), kind, by: by || null, at: now, text, to, read: by && to.includes(by) ? [by] : [] };
     st.notes.unshift(note);
     return note;
+  }
+  function push(st, kind, by, text, now, extraPersons) {
+    return add(st, kind, by, text, now, recipients(st, kind, extraPersons));
+  }
+
+  // Уведомление, текст которого зависит от читателя: textFor(personId) → текст. Адресаты — те же, что у push; кому выходит
+  // одинаковый текст, получают одно уведомление, так что разных текстов — столько уведомлений. Первым в списке — то, что
+  // получает первый адресат. Возвращает уведомления в том же порядке.
+  function pushFor(st, kind, by, textFor, now, extraPersons) {
+    const groups = new Map();
+    for (const id of recipients(st, kind, extraPersons)) {
+      const text = textFor(id);
+      if (!groups.has(text)) groups.set(text, []);
+      groups.get(text).push(id);
+    }
+    return [...groups].reverse().map(([text, to]) => add(st, kind, by, text, now, to)).reverse();
   }
 
   // Непрочитанные этим человеком.
@@ -4006,7 +4058,7 @@ const Notify = (() => {
     return (after || []).some(id => !had.has(id)) ? pref.kind : null;
   }
 
-  return { RECIPIENTS, SOUNDS, wants, setWanted, soundPref, setSound, soundFor, recipients, push, unread, unreadIds, markRead };
+  return { RECIPIENTS, SOUNDS, wants, setWanted, soundPref, setSound, soundFor, recipients, push, pushFor, unread, unreadIds, markRead };
 })();
 
 // Ядро: каталог товаров и склейка снимка остатков с каталогом. Чистая логика, без DOM.
@@ -5530,6 +5582,9 @@ const Deals = (() => {
   // Уведомление о резерве: постоянные адресаты вида reserve (Notify.RECIPIENTS — склад и директор) и менеджер этой сделки.
   // Менеджеры другого типа его не получают: чужую сделку они не видят.
   const managerOf = d => (d && d.managerId ? [d.managerId] : []);
+  // Уведомление о резерве сделки d: адресаты те же (Notify.RECIPIENTS и менеджер сделки), но номер сделки и клиента читают
+  // только те, кому сделка видна (Stock.dealRef); остальным (склад) уходит текст без них. textOf(withDeal) → текст.
+  const notifyReserve = (st, d, by, now, textOf) => Notify.pushFor(st, 'reserve', by, id => textOf(!!Stock.dealRef(st, d.id, id)), now, managerOf(d));
   // Сколько товара сделки ещё можно зарезервировать: «в строках − уже в резерве». Единственный расчёт: ядро и экран зовут его.
   const left = (st, d, productId) => round2(lined(d, productId) - reserved(st, d, productId));
 
@@ -5563,7 +5618,7 @@ const Deals = (() => {
     res.reserve.at = now;
     res.reserve.by = by;
     log(st, d, 'reserve', Feed.reserveText(st, res.reserve), by, now, { reserveId: res.reserve.id, productId: pid, qty });
-    Notify.push(st, 'reserve', by, Feed.reserveText(st, res.reserve, true), now, managerOf(d));
+    notifyReserve(st, d, by, now, withDeal => Feed.reserveText(st, res.reserve, withDeal));
     return { ok: true, reserve: res.reserve, reason: '', max: res.max };
   }
 
@@ -5596,7 +5651,7 @@ const Deals = (() => {
     keepTrail(st, r);
     const name = low((productOf(st, r.productId) || {}).name || 'нет данных: товар'), tail = why ? ' ' + why : '';
     log(st, d, 'reserve', `Снят резерв: ${name} — ${num(q)}${why ? '.' + tail : ''}`, by, now, { reserveId: r.id, productId: r.productId, qty: q, removed: true });
-    Notify.push(st, 'reserve', by, `Снят резерв: ${name} — ${num(q)} (${d.id}, ${d.client}).${tail}`, now, managerOf(d));
+    notifyReserve(st, d, by, now, withDeal => `Снят резерв: ${name} — ${num(q)}${withDeal ? ` (${d.id}, ${d.client})` : ''}.${tail}`);
   }
 
   // Снять резерв сделки: товар возвращается в свободный остаток. Нужно право править сделку и право reserve. → {ok, reason}
@@ -6786,7 +6841,7 @@ const priceTxt=p=>p.price==null?noData('цена'):rub(p.price);
 // В таблице менеджеров товара нет, резервов и поставок под него нет — остаток неизвестен, а не нулевой
 const stockUnknown=k=>!k.known&&!(k.reservedStock+k.reservedIncoming)&&!k.incoming;
 // Юрлицо и город в одну подпись; неизвестный id показывается как есть
-const cellText=(e,c)=>`${Stock.entityName(S,e||Stock.ANY)??e} · ${Stock.cityName(S,c||Stock.ANY)??c}`;
+const cellText=(e,c)=>Stock.cellText(S,e,c);
 const optionsHtml=(list,cur)=>list.map(([v,t])=>`<option value="${esc(v)}"${v===cur?' selected':''}>${esc(t)}</option>`).join('');
 const selField=(id,on,label,list,cur)=>`<div class="field"><label for="${id}">${label}</label><select id="${id}" class="inp" data-on="${on}">${optionsHtml(list,cur)}</select></div>`;
 
@@ -6879,12 +6934,8 @@ function movesTable(){
   }).join('')}</tbody></table></div>`;
 }
 
-// Документ движения: номер сделки показываем, только если сделка видна человеку (Leads.dealsVisible); чужая — без номера
-function moveDoc(m){
-  const doc=m.doc||'';
-  if(!doc||!S.deals.some(d=>d.id===doc)) return doc;
-  return Leads.dealsVisible(S,S.me).some(d=>d.id===doc)?doc:'сделка, которую вы не видите';
-}
+// Документ движения: номер сделки показываем, только если сделка видна человеку; чужая — «сделка скрыта» (Stock.docView)
+const moveDoc=m=>Stock.docView(S,m.doc,S.me);
 // ——— карточка товара ———
 function srcPill(r){
   if(r.src==='stock') return '<span class="pill ok sm">на складе</span>';
@@ -6930,7 +6981,7 @@ function iRow(x,p){
   return `<li><b class="mono">${esc(x.shipId)}</b><span>${qtyOf(x.qty,p)}</span><span class="pill sm ${late?'bad':'info'}">${late?'задерживается':esc(stageName(s).toLowerCase())}</span><small>ожидается ${fD(x.eta)}</small></li>`;
 }
 function dProduct(p){
-  const k=stockOf(p.id);let rs=resOf(p.id);const inc=Stock.incomingOf(S,p.id),all=S.moves.filter(m=>m.productId===p.id),mv=all.slice(0,10),unk=stockUnknown(k);
+  const k=stockOf(p.id),rs=resOf(p.id).map(r=>Stock.reserveView(S,r,S.me)).filter(Boolean);const inc=Stock.incomingOf(S,p.id),all=S.moves.filter(m=>m.productId===p.id),mv=all.slice(0,10),unk=stockUnknown(k);
   const st=(l,v,c='',note='')=>`<div class="st"><span>${l}</span><b class="${c}">${v}</b>${note?`<small>${note}</small>`:''}</div>`;
   const kv=(l,v)=>`<dt>${l}</dt><dd>${v}</dd>`;
   const aside=x=>x===null?'нет данных':qtyOf(x,p);
@@ -6941,12 +6992,12 @@ function dProduct(p){
     can('prices')?kv('Цена',p.price==null?noData('цена'):`<b>${rub(p.price)}</b><small>${p.src==='user'?'введена вручную':priceNote()}</small>`):'',
     kv('Наличие',p.avail?esc(p.avail):noData('наличие')),url?kv('Ссылка',url):''
   ].join('');
-  const where=r=>cellText(r.entityId,r.cityId);
-  // резерв называет сделку и клиента: строки — только по видимым сделкам; чужие — одной строкой без номера и клиента
-  const vis=new Set(Leads.dealsVisible(S,S.me).map(d=>d.id)),hidden=rs.filter(r=>!vis.has(r.dealId)),others=hidden.reduce((n,r)=>n+r.qty,0);
-  const othersNote=hidden.length?`<p class="muted sm m0">Ещё в резерве по сделкам, которых вы не видите: ${qtyOf(others,p)}.</p>`:'';
-  rs=rs.filter(r=>vis.has(r.dealId));
-  const rTbl=rs.length?`<div class="xs"><table class="tbl"><thead><tr><th>Сделка</th><th class="num">Кол-во</th><th>Где товар</th><th>До</th>${can('reserve')||can('sell')?'<th></th>':''}</tr></thead><tbody>${rs.map(r=>{const d=deal(r.dealId),n=dd(r.until);return `<tr><td>${can('clients')?`<button class="link" data-act="open-deal" data-id="${r.dealId}">${r.dealId}</button>`:r.dealId}<small class="muted">${esc(d?.client||'')}</small></td><td class="num">${num(r.qty)}</td><td>${srcPill(r)}${r.src==='stock'?`<small class="muted">${esc(where(r))}</small>`:''}</td><td class="nowrap ${n<=2?'warn-t':''}">${fD(r.until)}</td>${can('reserve')||can('sell')?`<td class="num"><div class="rbtns">${r.src==='stock'&&can('sell')?`<button type="button" class="btn sm" data-act="stock-sell" data-pid="${esc(r.productId)}" data-rid="${esc(r.id)}">Списать</button>`:''}${can('reserve')?`<button class="btn sm ghost" data-act="unreserve" data-id="${r.id}">Снять</button>`:''}</div></td>`:''}</tr>`}).join('')}</tbody></table></div>${othersNote}`:othersNote||'<p class="muted m0">Резервов нет.</p>';
+  // резерв видит каждый, у кого есть право на остатки: сколько, где и до какого числа. Сделку и клиента называет
+  // Stock.reserveView только тому, кому сделка видна; остальным — «сделка скрыта», без ссылки и без кнопок «Снять» и «Списать»
+  const acts=can('reserve')||can('sell');
+  const dealCell=v=>v.deal?`${can('clients')?`<button class="link" data-act="open-deal" data-id="${esc(v.deal.id)}">${esc(v.deal.id)}</button>`:esc(v.deal.id)}<small class="muted">${esc(v.deal.client||'')}</small>`:v.hasDeal?`<span class="muted">${Stock.HIDDEN_DEAL}</span>`:noData('сделка');
+  const rBtns=v=>!v.deal?'':`<div class="rbtns">${!v.inTransit&&can('sell')?`<button type="button" class="btn sm" data-act="stock-sell" data-pid="${esc(v.productId)}" data-rid="${esc(v.id)}">Списать</button>`:''}${can('reserve')?`<button class="btn sm ghost" data-act="unreserve" data-id="${esc(v.id)}">Снять</button>`:''}</div>`;
+  const rTbl=rs.length?`<div class="xs"><table class="tbl"><thead><tr><th>Сделка</th><th class="num">Кол-во</th><th>Где товар</th><th>До</th>${acts?'<th></th>':''}</tr></thead><tbody>${rs.map(v=>{const n=dd(v.until);return `<tr><td>${dealCell(v)}</td><td class="num">${num(v.qty)}</td><td>${srcPill(v)}${v.inTransit?'':`<small class="muted">${esc(v.where)}</small>`}</td><td class="nowrap ${n<=2?'warn-t':''}">${fD(v.until)}</td>${acts?`<td class="num">${rBtns(v)}</td>`:''}</tr>`}).join('')}</tbody></table></div>`:'<p class="muted m0">Резервов нет.</p>';
   const iList=inc.length?`<ul class="mv">${inc.map(x=>iRow(x,p)).join('')}</ul>`:'<p class="muted m0">Поставок с этим товаром нет.</p>';
   const mList=mv.length?`<ul class="mv">${mv.map(m=>`<li>${movePill(m)}<b>${moveSign(m)}${qtyOf(m.qty,p)}</b><span>${esc(moveWhere(m))}</span><span class="mono muted">${esc(moveDoc(m))}</span><small>${fWhen(m.at)} · ${esc(whoName(m.by)||'нет данных: кто')}</small></li>`).join('')}</ul><p class="m0"><button type="button" class="btn sm" data-act="stock-journal" data-pid="${esc(p.id)}">Весь журнал по товару${all.length>mv.length?` (${all.length})`:''}</button></p>`:'<p class="muted m0">Движений пока нет.</p>';
   return {kind:p.cat,title:esc(p.name),sub:`${p.inCatalog?`<span class="mono">${esc(p.id)}</span>`:'нет в каталоге'}${p.brand?' · '+esc(p.brand):''}`,body:`
@@ -7481,7 +7532,12 @@ SIMS.push({id:'arrival',label:'Имитация: груз прибыл в гор
 // ——— карточка поставки ———
 function dShip(s){
   const now=shipNow(),late=shipLate(s,now),done=isDone(s),place=shipPlace(s);
-  const waits=s.dir==='in'?[...byDeal(S.reserves.filter(r=>r.src===s.id)).keys()]:(s.deal?[s.deal]:[]);
+  // кто ждёт товар: резервы под поставку глазами человека (Stock.reserveView) — количество видно всем, у кого есть право на
+  // остатки, а сделку и клиента называют только тому, кому сделка видна; остальным — «сделка скрыта» (отгрузка: Stock.dealRef)
+  const dealLink=ref=>`<button type="button" class="link" data-act="open-deal" data-id="${esc(ref.id)}">${esc(ref.id)} · ${esc(ref.client||'')}</button>`;
+  const waits=s.dir==='in'?S.reserves.filter(r=>r.src===s.id).map(r=>Stock.reserveView(S,r,S.me)).filter(Boolean)
+    .map(v=>{const p=product(v.productId);return (v.deal?dealLink(v.deal):v.hasDeal?`<span class="muted">${Stock.HIDDEN_DEAL}</span>`:noData('сделка'))+` <small class="muted">${esc(low(p?.name||'нет данных: товар'))} — ${qtyOf(v.qty,p)}</small>`})
+    :(s.deal?[Stock.dealRef(S,s.deal,S.me)?dealLink(Stock.dealRef(S,s.deal,S.me)):`<span class="muted">${Stock.HIDDEN_DEAL}</span>`]:[]);
   const hist=(s.history||[]).slice().reverse().map(h=>{
     const src=h.source||(h.auto?'автоматически':'вручную'),who=h.by?person(h.by)?.name:null;
     return `<li><div class="sh-t">${esc(h.text)}</div><small>${fWhen(h.at)}${who?' · '+esc(who):''} · <span class="pill sm${h.auto?' info':''}">${esc(src)}</span></small></li>`;
@@ -7501,7 +7557,7 @@ function dShip(s){
       ${s.dir==='in'?`<dt>Юрлицо</dt><dd>${esc(place.entity)}</dd><dt>Город</dt><dd>${esc(place.city)}</dd>`:`<dt>Куда</dt><dd>${esc(s.to||'нет данных')}</dd>`}
       ${Array.isArray(s.route)&&s.route.length>1?`<dt>Маршрут</dt><dd>${esc(Ships.routeText(s.route))}</dd>`:''}</dl>
     <div><h4 class="sh">Позиции · штук ${num(Ships.units(s))}</h4>${shipItems(s)}</div>
-    ${waits.length?`<div class="waits">${ic('users')}<span>${s.dir==='in'?'Ждут этот товар':'Для сделки'}: ${can('clients')?waits.map(id=>`<button type="button" class="link" data-act="open-deal" data-id="${esc(id)}">${esc(id)} · ${esc(deal(id)?.client||'')}</button>`).join(', '):waits.length+' '+pl(waits.length,'сделка','сделки','сделок')}</span></div>`:''}
+    ${waits.length?`<div class="waits">${ic('users')}<span>${s.dir==='in'?'Ждут этот товар':'Для сделки'}: ${waits.join(', ')}</span></div>`:''}
     ${photos}${acts.length?`<div class="ship-f">${acts.join('')}</div>`:''}
     <div><h4 class="sh">История отметок</h4><ul class="shist">${hist||'<li class="muted">Отметок пока нет.</li>'}</ul></div>`};
 }
@@ -7646,7 +7702,10 @@ function rcvPreview(r=S.rcv){
   const add=s.items.map((it,i)=>{const p=product(it.productId);return `<li><span>${esc(p.name)}</span><b class="num">+${qtyOf(P.adds[i].qty,p)}</b></li>`}).join('');
   const rules=P.rules.map(x=>`<li class="sm">Правило «если ${esc(Ships.eventLabel(x.when))}» — этап «${esc(Pipes.stage(S,s.pipeId,x.then).name)}»</li>`).join('');
   const warnNames=P.warnTo.map(id=>person(id)?.name).filter(Boolean).map(esc).join(', ');
-  const waits=P.waits.map(({d,items,how})=>{
+  // кто ждёт: количество видно всем, у кого есть право на остатки; клиента, номер сделки, менеджера и текст сообщения клиенту
+  // называет только тот, кому сделка видна (Stock.reserveView) — остальным вместо них «сделка скрыта»
+  const waits=P.waits.map(({d,list,items,how})=>{
+    if(!Stock.reserveView(S,list[0],m.id)?.deal) return `<div class="wait"><div class="wait-h"><span class="muted">${Stock.HIDDEN_DEAL}</span></div><p class="sm m0">Ждёт: ${esc(items)}</p></div>`;
     const mg=person(d.managerId);
     const msg=how==='call'?'<p class="muted sm m0">Клиент на связи по телефону — менеджеру придёт задача позвонить.</p>':how==='auto'?`<div class="chat"><div class="bub out">${fillTpl(d,items,true)}<small>${CH[d.channel]} · уйдёт автоматически сразу после приёмки</small></div></div>`:`<p class="muted sm m0">Авто-сообщения выключены — ${esc(mg?.name||'менеджер')} получит напоминание написать клиенту.</p>`;
     return `<div class="wait"><div class="wait-h"><b>${esc(d.client)}</b><span class="mono muted">${d.id}</span>${chPill(d.channel)}<span class="muted sm">менеджер ${esc(mg?.name||'нет данных')}</span></div><p class="sm m0">Ждёт: ${esc(items)}</p>${msg}</div>`;
@@ -7655,7 +7714,7 @@ function rcvPreview(r=S.rcv){
     <div><h4 class="sh">Добавится на склад: ${esc(P.cell.entityName)}, ${esc(P.cell.cityName)}</h4><ul class="plain">${add}</ul></div>
     <div><h4 class="sh">Поставка ${esc(s.id)}</h4><p class="sm m0">${P.final?`Перейдёт на этап «${esc(P.final.name)}» (автоматически: приёмка).`:'нет данных: этап «на складе» в воронке'}</p>${rules?`<ul class="plain">${rules}</ul>`:''}${P.block?`<p class="warn-t sm" style="margin:6px 0 0">${esc(P.block)}</p>`:''}</div>
     <div><h4 class="sh">Уведомление получат</h4><div class="who-list">${ppl.map(p=>`<span class="chip">${av(p,'xs')}${esc(p.name)} · ${esc(roleName(p).toLowerCase())}</span>`).join('')}</div>${P.issues.length||P.dmg.length?`<p class="warn-t sm" style="margin:8px 0 0">Есть расхождение или повреждение — отдельное предупреждение получат: ${warnNames}.</p>`:''}</div>
-    <div><h4 class="sh">Клиенты, которые ждут этот товар</h4><div class="stack-s">${waits||'<p class="muted sm m0">Резервов под эту поставку нет — весь товар станет свободным для продажи.</p>'}</div>${P.cuts.length?`<ul class="plain">${P.cuts.map(c=>`<li class="sm warn-t">Резерв ${esc(c.r.dealId||'')}${c.d?' ('+esc(c.d.client)+')':''}: ${esc(low(product(c.r.productId)?.name||'нет данных: товар'))} — ${c.keep?`останется ${num(c.keep)}, снимется ${num(c.drop)}`:`снимется весь (${num(c.drop)})`}.</li>`).join('')}</ul>`:''}</div>
+    <div><h4 class="sh">Клиенты, которые ждут этот товар</h4><div class="stack-s">${waits||'<p class="muted sm m0">Резервов под эту поставку нет — весь товар станет свободным для продажи.</p>'}</div>${P.cuts.length?`<ul class="plain">${P.cuts.map(c=>{const v=Stock.reserveView(S,c.r,m.id);return `<li class="sm warn-t">Резерв ${v&&v.deal?esc(v.deal.id)+(v.deal.client?' ('+esc(v.deal.client)+')':''):'('+Stock.HIDDEN_DEAL+')'}: ${esc(low(product(c.r.productId)?.name||'нет данных: товар'))} — ${c.keep?`останется ${num(c.keep)}, снимется ${num(c.drop)}`:`снимется весь (${num(c.drop)})`}.</li>`}).join('')}</ul>`:''}</div>
   </div></section>`;
 }
 function updRcvPrev(){const b=byId('rcv-prev');if(b) b.innerHTML=rcvPreview()}

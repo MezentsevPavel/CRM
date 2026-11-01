@@ -433,7 +433,12 @@ SIMS.push({id:'arrival',label:'Имитация: груз прибыл в гор
 // ——— карточка поставки ———
 function dShip(s){
   const now=shipNow(),late=shipLate(s,now),done=isDone(s),place=shipPlace(s);
-  const waits=s.dir==='in'?[...byDeal(S.reserves.filter(r=>r.src===s.id)).keys()]:(s.deal?[s.deal]:[]);
+  // кто ждёт товар: резервы под поставку глазами человека (Stock.reserveView) — количество видно всем, у кого есть право на
+  // остатки, а сделку и клиента называют только тому, кому сделка видна; остальным — «сделка скрыта» (отгрузка: Stock.dealRef)
+  const dealLink=ref=>`<button type="button" class="link" data-act="open-deal" data-id="${esc(ref.id)}">${esc(ref.id)} · ${esc(ref.client||'')}</button>`;
+  const waits=s.dir==='in'?S.reserves.filter(r=>r.src===s.id).map(r=>Stock.reserveView(S,r,S.me)).filter(Boolean)
+    .map(v=>{const p=product(v.productId);return (v.deal?dealLink(v.deal):v.hasDeal?`<span class="muted">${Stock.HIDDEN_DEAL}</span>`:noData('сделка'))+` <small class="muted">${esc(low(p?.name||'нет данных: товар'))} — ${qtyOf(v.qty,p)}</small>`})
+    :(s.deal?[Stock.dealRef(S,s.deal,S.me)?dealLink(Stock.dealRef(S,s.deal,S.me)):`<span class="muted">${Stock.HIDDEN_DEAL}</span>`]:[]);
   const hist=(s.history||[]).slice().reverse().map(h=>{
     const src=h.source||(h.auto?'автоматически':'вручную'),who=h.by?person(h.by)?.name:null;
     return `<li><div class="sh-t">${esc(h.text)}</div><small>${fWhen(h.at)}${who?' · '+esc(who):''} · <span class="pill sm${h.auto?' info':''}">${esc(src)}</span></small></li>`;
@@ -453,7 +458,7 @@ function dShip(s){
       ${s.dir==='in'?`<dt>Юрлицо</dt><dd>${esc(place.entity)}</dd><dt>Город</dt><dd>${esc(place.city)}</dd>`:`<dt>Куда</dt><dd>${esc(s.to||'нет данных')}</dd>`}
       ${Array.isArray(s.route)&&s.route.length>1?`<dt>Маршрут</dt><dd>${esc(Ships.routeText(s.route))}</dd>`:''}</dl>
     <div><h4 class="sh">Позиции · штук ${num(Ships.units(s))}</h4>${shipItems(s)}</div>
-    ${waits.length?`<div class="waits">${ic('users')}<span>${s.dir==='in'?'Ждут этот товар':'Для сделки'}: ${can('clients')?waits.map(id=>`<button type="button" class="link" data-act="open-deal" data-id="${esc(id)}">${esc(id)} · ${esc(deal(id)?.client||'')}</button>`).join(', '):waits.length+' '+pl(waits.length,'сделка','сделки','сделок')}</span></div>`:''}
+    ${waits.length?`<div class="waits">${ic('users')}<span>${s.dir==='in'?'Ждут этот товар':'Для сделки'}: ${waits.join(', ')}</span></div>`:''}
     ${photos}${acts.length?`<div class="ship-f">${acts.join('')}</div>`:''}
     <div><h4 class="sh">История отметок</h4><ul class="shist">${hist||'<li class="muted">Отметок пока нет.</li>'}</ul></div>`};
 }
