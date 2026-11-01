@@ -59,6 +59,9 @@ const Clients = (() => {
     if (str(data.email)) c.email = str(data.email);
     if (str(data.address)) c.address = str(data.address);
     if (data.managerId && personOf(st, data.managerId)) c.managerId = data.managerId;
+    // org — «Компания, должность» из выгрузки Битрикса; bitrixId — ID там же (для будущей связи). Оба из переноса, оба необязательные
+    if (str(data.org)) c.org = str(data.org);
+    if (str(data.bitrixId)) c.bitrixId = str(data.bitrixId);
     st.clients.push(c);
     Feed.add(st, { t: 'client', id: c.id }, { kind: 'create', text: `Клиент заведён: ${c.name}`, by, at: now });
     return { ok: true, id: c.id, client: c, missing: [], reason: '' };
@@ -77,7 +80,7 @@ const Clients = (() => {
   }
 
   // Поля клиента, которые правятся, и их подписи в ленте.
-  const LABEL = { name: 'Название', kind: 'Вид', inn: 'ИНН', phones: 'Телефоны', email: 'Почта', address: 'Адрес', managerId: 'Менеджер' };
+  const LABEL = { name: 'Название', kind: 'Вид', inn: 'ИНН', phones: 'Телефоны', email: 'Почта', address: 'Адрес', managerId: 'Менеджер', org: 'Компания', bitrixId: 'ID в Битриксе' };
   const show = (st, f, v) => {
     if (f === 'kind') return KIND[v] || 'нет данных';
     if (f === 'phones') return (v || []).join(', ') || 'нет данных';
@@ -124,14 +127,21 @@ const Clients = (() => {
       const r = make(st, d, by, now);
       return { client: r.client, created: r.ok };
     }
+    fill(st, found, d, by, now);
+    return { client: found, created: false };
+  }
+
+  // Дописать найденному клиенту то, чего у него не было (занятое не затирается): телефоны, почта, ИНН, адрес, а из переноса —
+  // компания и ID Битрикса. source — откуда данные, для записи в ленте («заявки», «переноса»). → список дописанного (пусто — ничего).
+  function fill(st, found, d, by, now, source = 'заявки') {
     const add = [];
     const have = new Set((found.phones || []).map(phoneKey));
     for (const ph of phonesOf(d)) if (!have.has(phoneKey(ph))) { (found.phones = found.phones || []).push(ph); have.add(phoneKey(ph)); add.push(`телефон ${ph}`); }
-    for (const [f, label] of [['email', 'почта'], ['inn', 'ИНН'], ['address', 'адрес']]) {
+    for (const [f, label] of [['email', 'почта'], ['inn', 'ИНН'], ['address', 'адрес'], ['org', 'компания'], ['bitrixId', 'ID в Битриксе']]) {
       if (!str(found[f]) && str(d[f]) && (f !== 'inn' || innKey(d.inn))) { found[f] = str(d[f]); add.push(`${label} ${found[f]}`); }
     }
-    if (add.length) Feed.add(st, { t: 'client', id: found.id }, { kind: 'field', text: `Из заявки добавлено: ${add.join(', ')}`, by, at: now });
-    return { client: found, created: false };
+    if (add.length) Feed.add(st, { t: 'client', id: found.id }, { kind: 'field', text: `Из ${source} добавлено: ${add.join(', ')}`, by, at: now });
+    return add;
   }
 
   // Принадлежит ли лид клиенту: привязан явно (clientId) или, пока не привязан, совпал телефоном, почтой или ИНН.
@@ -165,7 +175,7 @@ const Clients = (() => {
       || (ik.length >= 3 && innKey(c.inn).includes(ik)));
   }
 
-  return { KIND, phoneKey, byId, find, canEdit, create, update, findOrCreate, related, search };
+  return { KIND, phoneKey, byId, find, canEdit, create, make, update, findOrCreate, fill, related, search };
 })();
 
 // Шаг SEEDS: демо-клиенты. Каждая сделка получает клиента (clientId) из своего названия, контакта и телефона: сделки из лидов

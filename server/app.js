@@ -12,6 +12,7 @@ const { createAuth, generatePassword, PASSWORD_MIN } = require('./auth.js');
 const { createFiles } = require('./files.js');
 const { createSync, isEmpty } = require('./sync.js');
 const { createJobs } = require('./jobs.js');
+const { createBackups } = require('./backup.js');
 const { migrate } = require('./migrate.js');
 const { build, ROOT, OUT_NAME } = require('../tools/build.js');
 
@@ -32,7 +33,7 @@ function serverPage() {
 }
 
 // База, ядро, вход, файлы и состояние — без HTTP. Ревизия базы меньше Store.REV — миграции или отказ с текстом.
-function openCore({ dataDir, now = Date.now, fileMaxMb = 20, secureCookie = false, onSeq } = {}) {
+function openCore({ dataDir, now = Date.now, fileMaxMb = 20, secureCookie = false, onSeq, backupHour, backupKeep } = {}) {
   if (!dataDir) throw new Error('Не задана папка данных (CRM_DATA)');
   const clock = () => { const v = now(); return v instanceof Date ? v.getTime() : Number(v); };
   const store = openDb(dataDir);
@@ -51,7 +52,8 @@ function openCore({ dataDir, now = Date.now, fileMaxMb = 20, secureCookie = fals
       if (refusal) throw new Error(refusal);
     }
     sync.load();
-    return { store, core, files, auth, sync, clock };
+    const backups = createBackups({ store, dataDir, sync, revision: core.Store.REV, now: clock, hour: backupHour, keep: backupKeep });
+    return { store, core, files, auth, sync, backups, clock };
   } catch (e) {
     store.close();
     throw e;
@@ -59,7 +61,7 @@ function openCore({ dataDir, now = Date.now, fileMaxMb = 20, secureCookie = fals
 }
 
 // Действия директора без браузера: завести директора, выдать новый пароль
-function adminOf({ sync, auth }) {
+function adminOf({ sync, auth, backups }) {
   async function createDirector(login, password, name) {
     if (typeof password !== 'string' || [...password].length < PASSWORD_MIN) throw new Error(`Пароль — не короче ${PASSWORD_MIN} символов`);
     const l = auth.normLogin(login);
@@ -84,7 +86,9 @@ function adminOf({ sync, auth }) {
     if (r.status !== 200) throw new Error(r.body.error);
     return r.body.password;
   }
-  return { createDirector, resetPassword };
+  // Восстановить базу из копии (имя из data/backups или путь к файлу) — то же, что кнопка «Восстановить»
+  async function restore(file) { return backups.restore(file); }
+  return { createDirector, resetPassword, restore };
 }
 
 function send(res, status, body, headers = {}) {
@@ -112,7 +116,7 @@ function readJson(req) {
   });
 }
 
-async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCookie = false, now = Date.now, fileMaxMb = 20 } = {}) {
+async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCookie = false, now = Date.now, fileMaxMb = 20, backupHour, backupKeep } = {}) {
   const page = serverPage();
   // Поток событий: сеанс → открытые потоки
   const streams = new Map();
@@ -125,8 +129,10 @@ async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCooki
     }
   }
 
-  const ctx = openCore({ dataDir, now, fileMaxMb, secureCookie, onSeq: s => broadcast('seq', s) });
-  const { store, core, files, sync, auth, clock } = ctx;
+  const ctx = openCore({ dataDir, now, fileMaxMb, secureCookie, backupHour, backupKeep, onSeq: s => broadcast('seq', s) });
+  const { store, core, files, sync, auth, backups, clock } = ctx;
+  // После восстановления базы все вкладки перезагружаются, а потоки закрытых сеансов закрываются
+  backups.onRestored = ({ closed }) => { broadcast('reload', {}); bye(closed); };
   const closed = list => { sync.sweepViews(list); bye(list); };
   const jobs = createJobs({ sync, core, auth, files, now: clock, onClosed: bye });
   const can = (pid, right) => core.Perms.can(sync.state, pid, right);
@@ -229,6 +235,45 @@ async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCooki
       if (r.closed) { closed(r.closed); if (m[2] === 'logout') r.body.closed = r.closed.length; }
       return send(res, r.status, r.body, extra);
     }
+
+    // ——— перенос и копии: только директор (право admin) ———
+    const importRoute = /^\/api\/import\/(stock|clients)$/.exec(route);
+    if (importRoute || route === '/api/backups' || route.startsWith('/api/backups/')) {
+      if (!can(ses.personId, 'admin')) return send(res, 403, { error: importRoute ? 'Нет прав: переносить данные' : 'Нет прав: работать с копиями базы' }, extra);
+    }
+    if (importRoute && method === 'POST') {
+      const b = await readJson(req);
+      if (b.error) return send(res, b.error[0], { error: b.error[1] });
+      // Исполняет та же функция ядра, что считала предпросмотр на экране (Import.apply*); CSV сюда не приходит — только разобранные строки
+      try {
+        const Import = core.api.Import, rows = (b.value || {}).rows, at = new Date(clock());
+        const out = sync.system(work => (importRoute[1] === 'stock' ? Import.applyStock(work, rows, ses.personId, at) : Import.applyClients(work, rows, ses.personId, at)), ses.personId);
+        return send(res, 200, out, extra);
+      } catch (e) { return send(res, 400, { error: e.message }, extra); }
+    }
+    if (route === '/api/backups' && method === 'GET') return send(res, 200, { backups: backups.list(), keep: backups.keep, hour: backups.hour }, extra);
+    if (route === '/api/backups' && method === 'POST') {
+      try { return send(res, 200, { backup: backups.make('manual') }, extra); } catch (e) { return send(res, e.status || 500, { error: e.message }, extra); }
+    }
+    const backupRoute = /^\/api\/backups\/([^/]+)(\/restore)?$/.exec(route);
+    if (backupRoute) {
+      let name;
+      try { name = decodeURIComponent(backupRoute[1]); } catch { return send(res, 400, { error: 'Неверное имя копии' }, extra); }
+      if (!backups.NAME_RE.test(name)) return send(res, 400, { error: 'Неверное имя копии' }, extra);
+      if (!backupRoute[2] && method === 'GET') {
+        const file = backups.resolve(name);
+        if (!file) return send(res, 404, { error: 'Такой копии нет' }, extra);
+        res.writeHead(200, {
+          'Content-Type': 'application/octet-stream', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
+          'Content-Length': fs.statSync(file).size, 'Content-Disposition': `attachment; filename="${name}"`, ...extra,
+        });
+        fs.createReadStream(file).on('error', () => res.destroy()).pipe(res);
+        return null;
+      }
+      if (backupRoute[2] && method === 'POST') {
+        try { return send(res, 200, { ok: true, ...backups.restore(name) }, extra); } catch (e) { return send(res, e.status || 500, { error: e.message }, extra); }
+      }
+    }
     return send(res, 404, { error: 'Нет такого адреса' }, extra);
   }
 
@@ -257,6 +302,7 @@ async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCooki
   }, HEARTBEAT_MS);
   heartbeat.unref?.();
   jobs.start();
+  backups.start();
 
   await new Promise((ok, fail) => { server.once('error', fail); server.listen(port, host, ok); });
   const addr = server.address();
@@ -264,6 +310,7 @@ async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCooki
 
   async function close() {
     jobs.stop();
+    backups.stop();
     clearInterval(heartbeat);
     for (const set of streams.values()) for (const res of set) { try { res.end(); } catch { /* закрыт */ } }
     streams.clear();
@@ -272,7 +319,7 @@ async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCooki
   }
 
   return {
-    url, close, admin: adminOf({ sync, auth }),
+    url, close, admin: adminOf({ sync, auth, backups }), backups,
     // для тестов и задач: прогнать минутные задачи сейчас; разослать всем вкладкам «перезагрузись»
     tick: () => jobs.tick(),
     reloadAll: () => broadcast('reload', {}),

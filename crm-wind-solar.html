@@ -1190,6 +1190,19 @@ html[data-mode="server"] .as,html[data-mode="server"] .demo,html[data-mode="serv
 .srv-me{display:flex;flex-wrap:wrap;gap:4px;padding:6px 2px 0}
 .srv-me .btn{flex:1 1 auto;justify-content:flex-start}
 .srv-pw{font-size:17px;letter-spacing:.04em;user-select:all}
+
+/* «Настройки → Перенос» (73-transfer.js): числа предпросмотра, список неразобранного, кнопка «Загрузить» */
+.tr-n{display:grid;gap:4px;margin:0;padding:0;list-style:none}
+.tr-n li{display:flex;align-items:baseline;gap:8px}
+.tr-n b{min-width:3ch;text-align:right;font-variant-numeric:tabular-nums}
+.tr-un{border:1px solid var(--line);border-radius:12px;background:var(--surface-2)}
+.tr-un>summary{padding:8px 12px;cursor:pointer;font-weight:600}
+.tr-un ul{display:grid;gap:4px;max-height:260px;margin:0;padding:4px 12px 10px 28px;overflow-y:auto;font-size:13px}
+.tr-un li{overflow-wrap:anywhere}
+.tr-go{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+
+/* «Настройки → Копии» (74-backups.js): имя файла под датой копии */
+.bk-name{display:block;font-family:var(--f-mono);font-size:11.5px}
 </style>
 
 <div class="app" id="app">
@@ -2864,7 +2877,8 @@ const Stock = (() => {
     return d ? { id: d.id, client: d.client } : null;
   }
 
-  // Резерв глазами человека: {id, productId, qty, src, inTransit, where, until, deal, hasDeal}.
+  // Резерв глазами человека: {id, productId, qty, src, inTransit, where, until, note, deal, hasDeal}. note — примечание резерва
+  // (перенос остатков кладёт в него текст ячейки «Резерв» с именем клиента; у резерва из сделки его нет).
   // where — «ИП · Иркутск» или «в пути: П-1043»; deal — {id, client} или null (скрыта); hasDeal — резерв вообще привязан к
   // сделке из состояния (нет — на экране «нет данных: сделка», а не «скрыта»). Нет права stock → null: резерва человек не видит.
   function reserveView(st, r, personId) {
@@ -2874,6 +2888,7 @@ const Stock = (() => {
       id: r.id, productId: r.productId, qty: r.qty, src, inTransit,
       where: inTransit ? `в пути: ${src}` : cellText(st, r.entityId, r.cityId),
       until: r.until || null,
+      note: r.note || null,
       deal: dealRef(st, r.dealId, personId),
       hasDeal: r.dealId === HIDDEN_ID || (st.deals || []).some(d => d.id === r.dealId),
     };
@@ -4216,8 +4231,10 @@ const Catalog = (() => {
   //   и ровно у одной строки остатков. Похожее, но не совпавшее, и неоднозначное не склеивается.
   // stock[productId][entityId]['_'] — остаток по юрлицу; города в таблице нет → ключ '_'. Пусто остаётся пусто, не 0.
   // aside[productId] = {damaged, custody, transitNoShip} — «Бой», ответхранение, «В пути»; есть, если заполнено хоть что-то.
-  // unmatched: [{productId, name}] — строки остатков без пары в каталоге.
-  function build(catalog, snapshot) {
+  // unmatched: [{productId, name}] — строки остатков без пары в каталоге; ids[i] — товар i-й строки остатков.
+  // opts.named (перенос из CSV, Import.applyStock): id товара без пары — 'sheet:' + нормализованное название (у второй строки
+  //   с тем же названием — «#2»), а не по номеру строки: повторный перенос попадает в те же товары.
+  function build(catalog, snapshot, opts = {}) {
     const products = catalog.rows.map(r => ({
       id: String(r.key), name: r.model, brand: r.brand ?? null, cat: KIND_CAT[r.cat] || r.cat,
       price: isNum(r.price) ? r.price : null, avail: r.avail ?? null, url: r.url ?? null,
@@ -4228,21 +4245,31 @@ const Catalog = (() => {
     const rowsPerName = new Map();
     for (const r of snapshot.rows) { const k = norm(r.name); rowsPerName.set(k, (rowsPerName.get(k) || 0) + 1); }
 
-    const stock = {}, aside = {}, unmatched = [];
+    const stock = {}, aside = {}, unmatched = [], ids = [], used = new Set(products.map(p => p.id));
     snapshot.rows.forEach((r, i) => {
       const k = norm(r.name), same = byName.get(k);
       let id;
       if (same && same.length === 1 && rowsPerName.get(k) === 1) id = same[0];
       else {
-        id = 'sheet-' + String(i + 1).padStart(3, '0');
+        id = opts.named ? namedId(k, used) : 'sheet-' + String(i + 1).padStart(3, '0');
         products.push({ id, name: r.name, brand: null, cat: sectionCat(r.cat), price: null, avail: null, url: null, src: 'sheet', inCatalog: false });
         unmatched.push({ productId: id, name: r.name });
       }
+      ids.push(id);
       for (const e of ['ip', 'npp', 'vs']) if (isNum(r[e])) (stock[id] || (stock[id] = {}))[e] = { _: r[e] };
       const a = { damaged: isNum(r.damaged) ? r.damaged : null, custody: isNum(r.custody) ? r.custody : null, transitNoShip: isNum(r.transit) ? r.transit : null };
       if (Object.values(a).some(v => v !== null)) aside[id] = a;
     });
-    return { products, stock, aside, unmatched };
+    return { products, stock, aside, unmatched, ids };
+  }
+  // id товара листа по нормализованному названию; одинаковые названия различаются номером
+  const NAMED_MAX = 120;
+  function namedId(normName, used) {
+    const key = 'sheet:' + normName.replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, NAMED_MAX).trim();
+    let id = key, n = 1;
+    while (used.has(id)) id = key + '#' + (++n);
+    used.add(id);
+    return id;
   }
 
   // Категории, которые есть у товаров: сначала привычный порядок CATS, потом остальные по алфавиту.
@@ -4271,7 +4298,8 @@ const Catalog = (() => {
   let baseCache = null;
   const base = () => {
     if (!baseCache) {
-      const built = build(CATALOG, STOCK_SNAPSHOT);
+      // Рабочая база (SERVER): снимка остатков 31.10 в ней нет — остатки появляются только переносом (Import.applyStock)
+      const built = build(CATALOG, SERVER ? { rows: [] } : STOCK_SNAPSHOT);
       baseCache = { ...built, byId: new Map(built.products.map(p => [p.id, p])) };
     }
     return baseCache;
@@ -4298,11 +4326,15 @@ const Catalog = (() => {
   }
 
   // Прочитанное состояние: товары снимка возвращаются на место (сначала снимок, затем добавленные руками). Меняет st.
+  // В SERVER товары листа «Остатки» берутся из st.stockSheet (что загрузил перенос), а не из STOCK_SNAPSHOT; переноса не было —
+  // в списке только позиции каталога, и остатка у них «нет данных».
   function unpack(st) {
     if (!st || !st.catalogSnapshot) return st;
     const edits = st.productEdits || {}, removed = new Set(st.productsRemoved || []);
-    const snap = base().products.filter(p => !removed.has(p.id)).map(p => ({ ...p, ...(edits[p.id] || {}) }));
-    st.products = [...snap, ...(Array.isArray(st.products) ? st.products : [])];
+    const sheet = SERVER ? build(CATALOG, { rows: (st.stockSheet && st.stockSheet.rows) || [] }, { named: true }).products.filter(p => !p.inCatalog) : [];
+    const snap = [...base().products, ...sheet].filter(p => !removed.has(p.id)).map(p => ({ ...p, ...(edits[p.id] || {}) }));
+    const have = new Set(snap.map(p => p.id));
+    st.products = [...snap, ...(Array.isArray(st.products) ? st.products : []).filter(p => !have.has(p.id))];
     delete st.catalogSnapshot; delete st.productEdits; delete st.productsRemoved;
     return st;
   }
@@ -4971,6 +5003,9 @@ const Clients = (() => {
     if (str(data.email)) c.email = str(data.email);
     if (str(data.address)) c.address = str(data.address);
     if (data.managerId && personOf(st, data.managerId)) c.managerId = data.managerId;
+    // org — «Компания, должность» из выгрузки Битрикса; bitrixId — ID там же (для будущей связи). Оба из переноса, оба необязательные
+    if (str(data.org)) c.org = str(data.org);
+    if (str(data.bitrixId)) c.bitrixId = str(data.bitrixId);
     st.clients.push(c);
     Feed.add(st, { t: 'client', id: c.id }, { kind: 'create', text: `Клиент заведён: ${c.name}`, by, at: now });
     return { ok: true, id: c.id, client: c, missing: [], reason: '' };
@@ -4989,7 +5024,7 @@ const Clients = (() => {
   }
 
   // Поля клиента, которые правятся, и их подписи в ленте.
-  const LABEL = { name: 'Название', kind: 'Вид', inn: 'ИНН', phones: 'Телефоны', email: 'Почта', address: 'Адрес', managerId: 'Менеджер' };
+  const LABEL = { name: 'Название', kind: 'Вид', inn: 'ИНН', phones: 'Телефоны', email: 'Почта', address: 'Адрес', managerId: 'Менеджер', org: 'Компания', bitrixId: 'ID в Битриксе' };
   const show = (st, f, v) => {
     if (f === 'kind') return KIND[v] || 'нет данных';
     if (f === 'phones') return (v || []).join(', ') || 'нет данных';
@@ -5036,14 +5071,21 @@ const Clients = (() => {
       const r = make(st, d, by, now);
       return { client: r.client, created: r.ok };
     }
+    fill(st, found, d, by, now);
+    return { client: found, created: false };
+  }
+
+  // Дописать найденному клиенту то, чего у него не было (занятое не затирается): телефоны, почта, ИНН, адрес, а из переноса —
+  // компания и ID Битрикса. source — откуда данные, для записи в ленте («заявки», «переноса»). → список дописанного (пусто — ничего).
+  function fill(st, found, d, by, now, source = 'заявки') {
     const add = [];
     const have = new Set((found.phones || []).map(phoneKey));
     for (const ph of phonesOf(d)) if (!have.has(phoneKey(ph))) { (found.phones = found.phones || []).push(ph); have.add(phoneKey(ph)); add.push(`телефон ${ph}`); }
-    for (const [f, label] of [['email', 'почта'], ['inn', 'ИНН'], ['address', 'адрес']]) {
+    for (const [f, label] of [['email', 'почта'], ['inn', 'ИНН'], ['address', 'адрес'], ['org', 'компания'], ['bitrixId', 'ID в Битриксе']]) {
       if (!str(found[f]) && str(d[f]) && (f !== 'inn' || innKey(d.inn))) { found[f] = str(d[f]); add.push(`${label} ${found[f]}`); }
     }
-    if (add.length) Feed.add(st, { t: 'client', id: found.id }, { kind: 'field', text: `Из заявки добавлено: ${add.join(', ')}`, by, at: now });
-    return { client: found, created: false };
+    if (add.length) Feed.add(st, { t: 'client', id: found.id }, { kind: 'field', text: `Из ${source} добавлено: ${add.join(', ')}`, by, at: now });
+    return add;
   }
 
   // Принадлежит ли лид клиенту: привязан явно (clientId) или, пока не привязан, совпал телефоном, почтой или ИНН.
@@ -5077,7 +5119,7 @@ const Clients = (() => {
       || (ik.length >= 3 && innKey(c.inn).includes(ik)));
   }
 
-  return { KIND, phoneKey, byId, find, canEdit, create, update, findOrCreate, related, search };
+  return { KIND, phoneKey, byId, find, canEdit, create, make, update, findOrCreate, fill, related, search };
 })();
 
 // Шаг SEEDS: демо-клиенты. Каждая сделка получает клиента (clientId) из своего названия, контакта и телефона: сделки из лидов
@@ -6960,6 +7002,405 @@ const Guard = (() => {
   return { RULES, check };
 })();
 
+// Ядро: перенос остатков и клиентов из CSV (Import). Без DOM и сети; st первым аргументом, время now аргументом.
+// Разбор файла (кодировка, разделитель, кавычки) и превращение строк в товары, остатки, резервы и клиентов — здесь и только
+// здесь: экран директора считает предпросмотр теми же функциями (preview), а сервер исполняет загрузку ими же (applyStock,
+// applyClients) — второй копии разбора нет. Сам CSV никуда не сохраняется: дальше экрана идут только разобранные строки.
+
+const Import = (() => {
+  // Движение «Ввод остатков»: то же слово, что в Guard (47-guard.js), — по нему сервер пускает запись остатка (право admin).
+  const INPUT = 'Ввод остатков';
+  const NO_SECTION = 'Без раздела';
+  const ROWS_MAX = 50000;
+  const str = v => String(v == null ? '' : v).trim();
+  const isNum = v => typeof v === 'number' && isFinite(v);
+  const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+  // ——— кодировка ———
+  // Windows-1251: байты 0x80–0xBF — по таблице, 0xC0–0xFF — подряд «А…я». 0x98 у стандарта не занят — как у браузеров, U+0098.
+  const CP1251_HIGH = 'ЂЃ‚ѓ„…†‡€‰Љ‹ЊЌЋЏ' + 'ђ‘’“”•–—\u0098™љ›њќћџ' + ' ЎўЈ¤Ґ¦§Ё©Є«¬­®Ї' + '°±Ііґµ¶·ё№є»јЅѕї';
+
+  function fromCodes(codes) {
+    const out = [];
+    for (let i = 0; i < codes.length; i += 8192) out.push(String.fromCharCode.apply(null, codes.slice(i, i + 8192)));
+    return out.join('');
+  }
+  // Строгий UTF-8: любая ошибка последовательности → null (тогда файл читается как Windows-1251)
+  function utf8(b, from) {
+    const codes = [];
+    for (let i = from; i < b.length;) {
+      const c = b[i];
+      let n, cp;
+      if (c < 0x80) { n = 1; cp = c; }
+      else if (c >= 0xC2 && c <= 0xDF) { n = 2; cp = c & 0x1F; }
+      else if (c >= 0xE0 && c <= 0xEF) { n = 3; cp = c & 0x0F; }
+      else if (c >= 0xF0 && c <= 0xF4) { n = 4; cp = c & 0x07; }
+      else return null;
+      if (i + n > b.length) return null;
+      for (let k = 1; k < n; k++) {
+        const x = b[i + k];
+        if ((x & 0xC0) !== 0x80) return null;
+        cp = (cp << 6) | (x & 0x3F);
+      }
+      if ((n === 3 && cp < 0x800) || (n === 4 && (cp < 0x10000 || cp > 0x10FFFF)) || (cp >= 0xD800 && cp <= 0xDFFF)) return null;
+      if (cp >= 0x10000) { cp -= 0x10000; codes.push(0xD800 + (cp >> 10), 0xDC00 + (cp & 0x3FF)); } else codes.push(cp);
+      i += n;
+    }
+    return fromCodes(codes);
+  }
+  function cp1251(b, from) {
+    const codes = [];
+    for (let i = from; i < b.length; i++) {
+      const c = b[i];
+      codes.push(c < 0x80 ? c : c < 0xC0 ? CP1251_HIGH.charCodeAt(c - 0x80) : 0x410 + c - 0xC0);
+    }
+    return fromCodes(codes);
+  }
+
+  // Байты файла → текст: UTF-8 (с BOM и без), иначе Windows-1251. Чистый ASCII читается одинаково в обеих.
+  function decode(bytes) {
+    const b = bytes && typeof bytes.length === 'number' ? bytes : new Uint8Array(bytes || 0);
+    const from = b.length >= 3 && b[0] === 0xEF && b[1] === 0xBB && b[2] === 0xBF ? 3 : 0;
+    const text = utf8(b, from);
+    return text !== null ? text : cp1251(b, from);
+  }
+
+  // ——— CSV ———
+  // Разделитель — тот из «;», табуляции, «,», которого больше вне кавычек в первых тридцати строках (при равенстве — в этом порядке).
+  function delimiter(t) {
+    const count = { ';': 0, '\t': 0, ',': 0 };
+    let q = false, lines = 0;
+    for (let i = 0; i < t.length && lines < 30; i++) {
+      const c = t[i];
+      if (c === '"') q = !q;
+      else if (!q) { if (c === ';' || c === '\t' || c === ',') count[c]++; else if (c === '\n') lines++; }
+    }
+    let best = ',', top = 0;
+    for (const d of [';', '\t', ',']) if (count[d] > top) { best = d; top = count[d]; }
+    return best;
+  }
+
+  // Текст CSV → строки таблицы (массивы строк). Кавычки, «""» внутри, перевод строки внутри кавычек; пустые строки пропущены.
+  function parseCsv(text) {
+    const t = String(text == null ? '' : text).replace(/^﻿/, '');
+    const d = delimiter(t), rows = [];
+    let row = [], cell = '', q = false, blank = true;
+    for (let i = 0; i < t.length; i++) {
+      const c = t[i];
+      if (q) {
+        if (c === '"') { if (t[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += c;
+      } else if (c === '"' && cell === '') { q = true; blank = false; }
+      else if (c === d) { row.push(cell); cell = ''; blank = false; }
+      else if (c === '\n' || c === '\r') {
+        if (c === '\r' && t[i + 1] === '\n') i++;
+        if (!blank) { row.push(cell); rows.push(row); }
+        row = []; cell = ''; blank = true;
+      } else { cell += c; blank = false; }
+    }
+    if (!blank) { row.push(cell); rows.push(row); }
+    return rows;
+  }
+
+  // Название колонки для сравнения: без регистра, ё = е, только буквы и цифры («Склад ИП» → «складип», «E-mail» → «email»)
+  const compact = s => str(s).toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]/g, '');
+  const rowEmpty = r => !r.some(c => str(c));
+  const BINARY = /\u0000/;
+
+  // ——— лист «Остатки» ———
+  const MARKS = { ip: 'складип', npp: 'нпп', vs: 'вс', custody: 'ответхранение', transit: 'впути', damaged: 'бой', reserve: 'резерв' };
+  const NUM_KEYS = ['ip', 'npp', 'vs', 'custody', 'transit', 'damaged'];
+  const NAME_HEADS = ['наименование', 'номенклатура', 'товар', 'название', 'модель'];
+  const HEADER_ROWS = 10;
+
+  // Клетка → {n: число} | {text} | null (пусто). Пробелы-разделители тысяч и запятая-десятичная понимаются.
+  function cellNum(s) {
+    const raw = str(s);
+    if (!raw) return null;
+    const x = raw.replace(/[\s ]/g, '').replace(/[−–]/, '-').replace(',', '.');
+    return /^-?\d+(\.\d+)?$/.test(x) ? { n: Number(x) } : { text: raw };
+  }
+
+  // Таблица CSV листа «Остатки» → { rows, problems, skipped }. rows — формы STOCK_SNAPSHOT.rows плюс reserve (текст ячейки);
+  // текст в числовой клетке даёт null и запись в row.junk. problems — почему файл нельзя загрузить (тогда rows пусто).
+  function stockRows(table) {
+    const t = Array.isArray(table) ? table : [];
+    const fail = text => ({ rows: [], problems: [text], skipped: 0 });
+    if (!t.some(r => !rowEmpty(r))) return fail('Файл пустой: в нём нет ни одной заполненной клетки.');
+    if (t.some(r => r.some(c => BINARY.test(String(c))))) return fail('Это не CSV: в файле двоичные данные. Сохраните лист «Остатки» как «CSV (разделители — запятые)» и загрузите его.');
+    let h = -1, cols = {};
+    for (let i = 0; i < Math.min(HEADER_ROWS, t.length) && h < 0; i++) {
+      const found = {};
+      t[i].forEach((c, j) => { for (const k of Object.keys(MARKS)) if (MARKS[k] === compact(c) && found[k] === undefined) found[k] = j; });
+      if (Object.keys(found).length >= 2) { h = i; cols = found; }
+    }
+    if (h < 0) return fail('Не найдена строка заголовков среди первых 10 строк: нужны хотя бы две колонки из «Склад ИП», «НПП», «ВС», «ответхранение», «В пути», «Бой», «Резерв». Похоже, это не лист «Остатки».');
+    const head = t[h], data = t.slice(h + 1), marked = new Set(Object.values(cols));
+    let nameCol = head.findIndex((c, j) => !marked.has(j) && NAME_HEADS.includes(compact(c)));
+    if (nameCol < 0) {
+      const width = Math.max(head.length, ...data.map(r => r.length));
+      for (let j = 0; j < width && nameCol < 0; j++) {
+        if (!marked.has(j) && data.some(r => { const v = cellNum(r[j]); return v !== null && v.text !== undefined; })) nameCol = j;
+      }
+    }
+    if (nameCol < 0) return fail('Нет колонки с названием товара: заголовок «Наименование», «Номенклатура», «Товар», «Название» или «Модель», либо любая колонка с текстом.');
+
+    const rows = [];
+    let root = '', sub = '', skipped = 0;
+    for (const r of data) {
+      if (rowEmpty(r)) continue;
+      const name = str(r[nameCol]);
+      const filled = Object.values(cols).some(j => str(r[j]));
+      if (!name) { if (filled) skipped++; continue; }
+      if (!filled) {
+        // раздел: название без единой клетки справа. Известный корень (Catalog.CATS) начинает новый раздел, прочее — подраздел
+        if (!root || Catalog.CATS.includes(Catalog.sectionCat(name))) { root = name; sub = ''; } else sub = name;
+        continue;
+      }
+      const row = { name, cat: sub ? root + ' › ' + sub : root };
+      const junk = [];
+      for (const k of NUM_KEYS) {
+        const v = cols[k] === undefined ? null : cellNum(r[cols[k]]);
+        row[k] = v && v.n !== undefined ? v.n : null;
+        if (v && v.text !== undefined) junk.push({ column: str(head[cols[k]]), text: v.text });
+      }
+      row.reserve = cols.reserve === undefined || !str(r[cols.reserve]) ? null : str(r[cols.reserve]);
+      if (junk.length) row.junk = junk;
+      rows.push(row);
+    }
+    if (!rows.length) return fail(`В файле нет ни одного товара под строкой заголовков (строка ${h + 1}).`);
+    return { rows, problems: [], skipped };
+  }
+
+  // ——— резервы из ячейки «Резерв» ———
+  // «36шт автоношкин, 64 Алексей Н.» → [{36, «автоношкин»}, {64, «Алексей Н.»}]. Части — через запятую, «;» или перевод строки.
+  // Часть без числа (или с нулём) в items не идёт — склеена в rest (null, если такой нет).
+  const UNIT = '(?:(?:шт\\.?|штук[аи]?|ед\\.?)(?![а-яё]))?';
+  const RE_LEAD = new RegExp('^(\\d+)\\s*' + UNIT + '\\s*[-–—:]?\\s*(.*)$', 'i');
+  const RE_TAIL = new RegExp('^(.*?)[\\s\\-–—:]*(\\d+)\\s*' + UNIT + '$', 'i');
+  function parseReserve(text) {
+    const items = [], rest = [];
+    for (const piece of String(text == null ? '' : text).split(/[,;\n]+/)) {
+      const s = piece.trim();
+      if (!s) continue;
+      let m = RE_LEAD.exec(s), qty = 0, note = '';
+      if (m) { qty = Number(m[1]); note = m[2].trim(); }
+      else if ((m = RE_TAIL.exec(s)) && m[1].trim()) { qty = Number(m[2]); note = m[1].trim(); }
+      if (qty >= 1) items.push({ qty, note }); else rest.push(s);
+    }
+    return { items, rest: rest.length ? rest.join(', ') : null };
+  }
+
+  // ——— запись остатков ———
+  const NAME_MAX = 300;
+  const ru = d => `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
+
+  // Строки от клиента → чистые строки (число или null; reserve — строка или null). Нет списка или ни одной строки с названием —
+  // исключение, и состояние остаётся нетронутым.
+  function cleanStockRows(rows) {
+    if (!Array.isArray(rows)) throw new Error('Перенос: нужен список строк таблицы остатков.');
+    if (rows.length > ROWS_MAX) throw new Error(`Перенос: в таблице больше ${ROWS_MAX} строк.`);
+    const out = [];
+    for (const r of rows) {
+      if (!isObj(r)) continue;
+      const name = str(r.name).replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, NAME_MAX).trim();
+      if (!name) continue;
+      const row = { name, cat: str(r.cat).slice(0, NAME_MAX) };
+      for (const k of NUM_KEYS) row[k] = isNum(r[k]) ? r[k] : null;
+      row.reserve = typeof r.reserve === 'string' && r.reserve.trim() ? r.reserve.trim().slice(0, 1000) : null;
+      row.junk = (Array.isArray(r.junk) ? r.junk : []).filter(isObj).map(j => ({ column: str(j.column).slice(0, 100), text: str(j.text).slice(0, 200) })).filter(j => j.text);
+      out.push(row);
+    }
+    if (!out.length) throw new Error('Перенос: в таблице нет ни одной строки с названием товара.');
+    return out;
+  }
+
+  // Клетка склада с наибольшим остатком: туда встаёт резерв из ячейки «Резерв». Остатка нет — («_», «_»).
+  function biggestCell(st, productId) {
+    const g = Stock.grid(st, productId);
+    let best = { entityId: Stock.ANY, cityId: Stock.ANY }, top = 0;
+    for (const r of g.rows) for (const c of g.cols) { const n = g.cell(r.id, c.id); if (n > top) { top = n; best = { entityId: r.id, cityId: c.id }; } }
+    return best;
+  }
+  // Запись журнала склада — новые сверху (как Stock.log)
+  function logMove(st, rec) {
+    if (!st.moves) st.moves = [];
+    rec.id = Store.freeId(st.moves, 'mv');
+    st.moves.unshift(rec);
+  }
+
+  // Заменить остатки фирмы строками листа. rows — из stockRows (или присланные клиентом: чистятся). Что происходит:
+  // товар строки — позиция каталога (точное совпадение названия) или товар «нет в каталоге» с id по нормализованному названию
+  // (повторный перенос попадает в те же товары); stock и aside заменяются целиком; на каждую клетку склада с остатком больше
+  // нуля — движение «Ввод остатков»; резервы прошлого переноса (imported) снимаются, из ячейки «Резерв» ставятся новые: количество —
+  // резервом, остальной текст — примечанием, без сделки. Резервы из CRM (со сделкой) остаются. st.stockSheet — разобранные строки
+  // без текста резервов (в нём имена клиентов, а stockSheet видят все).
+  // → { products, matched, created, cells, withStock, reserves, moves, unparsed: [{name, column, text}] }
+  function applyStock(st, rows, by, now) {
+    const list = cleanStockRows(rows);
+    const at = new Date(now), who = by || null;
+    const built = Catalog.build(CATALOG, { rows: list.map(r => ({ ...r, cat: r.cat || NO_SECTION })) }, { named: true });
+    if (!st.products) st.products = [];
+    if (!st.reserves) st.reserves = [];
+    const have = new Set(st.products.map(p => p.id)), sheetIds = new Set(built.unmatched.map(u => u.productId));
+    let created = 0;
+    for (const p of built.products) {
+      if (have.has(p.id)) continue;
+      // товар листа — новый; позиция каталога — только если снята из списка, а остаток у неё есть
+      if (sheetIds.has(p.id)) { st.products.push(p); created++; } else if (built.stock[p.id] || built.aside[p.id]) st.products.push(p);
+    }
+    st.stock = built.stock;
+    st.aside = built.aside;
+
+    // резервы прошлого переноса снимаются
+    for (let i = st.reserves.length - 1; i >= 0; i--) {
+      const r = st.reserves[i];
+      if (!r.imported) continue;
+      st.reserves.splice(i, 1);
+      logMove(st, { at, productId: r.productId, kind: Stock.KINDS.unreserve, qty: r.qty, entityId: r.entityId || Stock.ANY, cityId: r.cityId || Stock.ANY, doc: 'перенос заменён', by: who });
+    }
+
+    const doc = `перенос, ${ru(at)}`, unparsed = [];
+    let cells = 0, withStock = 0, moves = 0, reserves = 0;
+    list.forEach((row, i) => {
+      const pid = built.ids[i];
+      let any = false;
+      for (const e of ['ip', 'npp', 'vs']) {
+        const n = isNum(row[e]) ? row[e] : null;
+        if (n === null) continue;
+        cells++;
+        if (n > 0) {
+          any = true; moves++;
+          logMove(st, { at, productId: pid, kind: INPUT, qty: n, entityId: e, cityId: Stock.ANY, doc, by: who });
+        }
+      }
+      if (any) withStock++;
+      for (const j of row.junk) unparsed.push({ name: row.name, column: j.column, text: j.text });
+      if (!row.reserve) return;
+      const pr = parseReserve(row.reserve);
+      for (const it of pr.items) {
+        const cell = biggestCell(st, pid);
+        const r = { id: Store.freeId(st.reserves, 'r'), productId: pid, qty: it.qty, entityId: cell.entityId, cityId: cell.cityId, src: 'stock', note: it.note, imported: true, at, by: who };
+        st.reserves.push(r);
+        reserves++;
+        logMove(st, { at, productId: pid, kind: Stock.KINDS.reserve, qty: r.qty, entityId: r.entityId, cityId: r.cityId, doc: it.note ? `перенос: ${it.note}` : 'перенос', by: who });
+      }
+      if (pr.rest) unparsed.push({ name: row.name, column: 'Резерв', text: pr.rest });
+    });
+    st.stockSheet = { at, by: who, rows: list.map(({ name, cat, ip, npp, vs, custody, transit, damaged }) => ({ name, cat, ip, npp, vs, custody, transit, damaged })) };
+    return { products: list.length, matched: list.length - built.unmatched.length, created, cells, withStock, reserves, moves, unparsed };
+  }
+
+  // ——— клиенты из Битрикса ———
+  const CLIENT_KNOWN = new Set(['id', 'имя', 'фамилия', 'отчество', 'адрес', 'фактическийадрес', 'юридическийадрес', 'компания', 'должность',
+    'ответственный', 'названиекомпании', 'инн']);
+  const isPhoneHead = h => h.includes('телефон');
+  const isMailHead = h => h.includes('email') || h.includes('почта');
+
+  // Таблица CSV контактов или компаний Битрикса → { rows, unknown, skipped, kind, problems }. Тип файла — по колонке
+  // «Название компании». rows: { kind, name, phones, email, inn, address, org, managerName, bitrixId }; unknown — названия колонок,
+  // которых перенос не знает; skipped — строки без имени. Колонки — spec.md, «Колонки переноса».
+  function clientRows(table) {
+    const t = Array.isArray(table) ? table : [];
+    const fail = text => ({ rows: [], unknown: [], skipped: 0, kind: null, problems: [text] });
+    const hi = t.findIndex(r => !rowEmpty(r));
+    if (hi < 0) return fail('Файл пустой: в нём нет ни одной заполненной клетки.');
+    if (t.some(r => r.some(c => BINARY.test(String(c))))) return fail('Это не CSV: в файле двоичные данные.');
+    const head = t[hi], heads = head.map(compact);
+    const at = (...names) => names.map(n => heads.indexOf(n)).filter(j => j >= 0);
+    const company = heads.includes('названиекомпании');
+    if (!company && !at('имя', 'фамилия', 'отчество').length) {
+      return fail('Не найдены колонки «Имя», «Фамилия» или «Название компании»: это не выгрузка контактов или компаний Битрикса.');
+    }
+    const phoneCols = heads.map((h, j) => (isPhoneHead(h) ? j : -1)).filter(j => j >= 0);
+    const mailCols = heads.map((h, j) => (isMailHead(h) ? j : -1)).filter(j => j >= 0);
+    const unknown = [];
+    head.forEach((c, j) => { const name = str(c); if (name && !CLIENT_KNOWN.has(heads[j]) && !isPhoneHead(heads[j]) && !isMailHead(heads[j]) && !unknown.includes(name)) unknown.push(name); });
+    const cell = (r, names) => { const j = at(...names)[0]; return j === undefined ? '' : str(r[j]); };
+    const first = (r, names) => { for (const j of at(...names)) if (str(r[j])) return str(r[j]); return ''; };
+    const rows = [];
+    let skipped = 0;
+    for (const r of t.slice(hi + 1)) {
+      if (rowEmpty(r)) continue;
+      const name = company ? cell(r, ['названиекомпании']) : [cell(r, ['фамилия']), cell(r, ['имя']), cell(r, ['отчество'])].filter(Boolean).join(' ');
+      if (!name) { skipped++; continue; }
+      const phones = [], seen = new Set();
+      for (const j of phoneCols) {
+        for (const p of str(r[j]).split(/[,;\n]+/)) {
+          const s = p.trim(), k = Clients.phoneKey(s);
+          if (k && !seen.has(k)) { seen.add(k); phones.push(s); }
+        }
+      }
+      const mail = mailCols.map(j => str(r[j])).find(Boolean) || '';
+      rows.push({
+        kind: company ? 'company' : 'person', name, phones, email: mail.split(/[,;\s]+/)[0] || '', inn: cell(r, ['инн']),
+        address: first(r, ['адрес', 'фактическийадрес', 'юридическийадрес']),
+        org: company ? '' : [cell(r, ['компания']), cell(r, ['должность'])].filter(Boolean).join(', '),
+        managerName: cell(r, ['ответственный']), bitrixId: cell(r, ['id']),
+      });
+    }
+    return { rows, unknown, skipped, kind: company ? 'company' : 'person', problems: [] };
+  }
+
+  // Присланная строка клиента → чистые поля; без имени — null
+  function cleanClient(r) {
+    if (!isObj(r)) return null;
+    const name = str(r.name).slice(0, NAME_MAX);
+    if (!name) return null;
+    const list = v => (Array.isArray(v) ? v : []).map(x => str(x).slice(0, 60)).filter(Boolean);
+    return {
+      name, kind: r.kind === 'company' ? 'company' : 'person', phones: list(r.phones), email: str(r.email).slice(0, 200), inn: str(r.inn).slice(0, 30),
+      address: str(r.address).slice(0, 500), org: str(r.org).slice(0, 500), bitrixId: str(r.bitrixId).slice(0, 60), managerName: str(r.managerName).slice(0, NAME_MAX),
+    };
+  }
+
+  // Завести клиентов из строк (clientRows). Тот же ИНН, телефон или почта (Clients.find: ИНН > телефон > почта), а без них —
+  // тот же ID Битрикса того же вида: клиент не создаётся заново, недостающее дописывается. «Ответственный» → менеджер клиента,
+  // если имя совпало с именем сотрудника точно и такой один. → { created, merged, skipped }
+  function applyClients(st, rows, by, now) {
+    if (!Array.isArray(rows)) throw new Error('Перенос: нужен список клиентов.');
+    if (rows.length > ROWS_MAX) throw new Error(`Перенос: в файле больше ${ROWS_MAX} клиентов.`);
+    const out = { created: 0, merged: 0, skipped: 0 };
+    if (!st.clients) st.clients = [];
+    const people = st.people || [];
+    for (const raw of rows) {
+      const r = cleanClient(raw);
+      if (!r) { out.skipped++; continue; }
+      const same = r.managerName ? people.filter(p => str(p.name) === r.managerName) : [];
+      const managerId = same.length === 1 ? same[0].id : '';
+      let found = Clients.find(st, r)[0];
+      if (!found && r.bitrixId) found = st.clients.find(c => c.bitrixId === r.bitrixId && c.kind === r.kind);
+      if (!found) {
+        Clients.make(st, { ...r, managerId: managerId || undefined }, by || null, now);
+        out.created++;
+        continue;
+      }
+      Clients.fill(st, found, r, by || null, now, 'переноса');
+      if (!found.managerId && managerId) {
+        found.managerId = managerId;
+        Feed.add(st, { t: 'client', id: found.id }, { kind: 'field', text: `Из переноса добавлено: менеджер ${people.find(p => p.id === managerId).name}`, by: by || null, at: now });
+      }
+      out.merged++;
+    }
+    return out;
+  }
+
+  // ——— предпросмотр ———
+  // Что дала бы загрузка — тем же applyStock / applyClients, но на копии нужных частей состояния: st не меняется.
+  // kind — 'stock' | 'clients'.
+  function preview(kind, st, rows, by, now) {
+    const take = keys => {
+      const o = {};
+      for (const k of keys) if (st[k] !== undefined) o[k] = JSON.parse(JSON.stringify(Store.plain(st[k])), Store.revive);
+      return o;
+    };
+    if (kind === 'stock') return applyStock({ ...take(['products', 'stock', 'aside', 'reserves', 'entities', 'cities']), moves: [] }, rows, by, now);
+    if (kind === 'clients') return applyClients({ ...take(['clients', 'people']), feed: [] }, rows, by, now);
+    throw new Error('Перенос: неизвестный вид переноса.');
+  }
+
+  return { INPUT, decode, parseCsv, stockRows, parseReserve, applyStock, clientRows, applyClients, preview };
+})();
+
 // Оболочка: состояние S и его сохранение, тема, разделы NAV, боковая панель, «Кто я», уведомления, окна,
 // карточка справа, поиск, переходы, render(), действия A, формы FORMS, обработчики событий.
 // Права — Perms.can(S, S.me, …), этапы — по id и флагам Pipes, уведомления — только Notify.push.
@@ -7804,7 +8245,8 @@ const MV_LIMIT=200;   // строк журнала на экране
 const snapRu=s=>String(s).split('-').reverse().join('.');   // '2026-10-31' → '31.10.2026'
 const noData=what=>`<span class="muted">нет данных: ${what}</span>`;
 const priceNote=()=>`цена сайта, снимок ${snapRu(CATALOG.snapshot)}`;
-const stockNote=()=>`таблица менеджеров, снимок ${snapRu(STOCK_SNAPSHOT.snapshot)}`;
+// Рабочая база не берёт снимок 31.10: источник — перенос листа «Остатки» (Настройки → Перенос), а до него остатка нет
+const stockNote=()=>SERVER?(S.stockSheet&&S.stockSheet.at?`таблица менеджеров, перенос ${snapRu(iso(S.stockSheet.at))}`:'нет данных: остатки ещё не перенесены'):`таблица менеджеров, снимок ${snapRu(STOCK_SNAPSHOT.snapshot)}`;
 const priceTxt=p=>p.price==null?noData('цена'):rub(p.price);
 // В таблице менеджеров товара нет, резервов и поставок под него нет — остаток неизвестен, а не нулевой
 const stockUnknown=k=>!k.known&&!(k.reservedStock+k.reservedIncoming)&&!k.incoming;
@@ -7963,9 +8405,10 @@ function dProduct(p){
   // резерв видит каждый, у кого есть право на остатки: сколько, где и до какого числа. Сделку и клиента называет
   // Stock.reserveView только тому, кому сделка видна; остальным — «сделка скрыта», без ссылки и без кнопок «Снять» и «Списать»
   const acts=can('reserve')||can('sell');
-  const dealCell=v=>v.deal?`${can('clients')?`<button class="link" data-act="open-deal" data-id="${esc(v.deal.id)}">${esc(v.deal.id)}</button>`:esc(v.deal.id)}<small class="muted">${esc(v.deal.client||'')}</small>`:v.hasDeal?`<span class="muted">${Stock.HIDDEN_DEAL}</span>`:noData('сделка');
-  const rBtns=v=>!v.deal?'':`<div class="rbtns">${!v.inTransit&&can('sell')?`<button type="button" class="btn sm" data-act="stock-sell" data-pid="${esc(v.productId)}" data-rid="${esc(v.id)}">Списать</button>`:''}${can('reserve')?`<button class="btn sm ghost" data-act="unreserve" data-id="${esc(v.id)}">Снять</button>`:''}</div>`;
-  const rTbl=rs.length?`<div class="xs"><table class="tbl"><thead><tr><th>Сделка</th><th class="num">Кол-во</th><th>Где товар</th><th>До</th>${acts?'<th></th>':''}</tr></thead><tbody>${rs.map(v=>{const n=dd(v.until);return `<tr><td>${dealCell(v)}</td><td class="num">${num(v.qty)}</td><td>${srcPill(v)}${v.inTransit?'':`<small class="muted">${esc(v.where)}</small>`}</td><td class="nowrap ${n<=2?'warn-t':''}">${fD(v.until)}</td>${acts?`<td class="num">${rBtns(v)}</td>`:''}</tr>`}).join('')}</tbody></table></div>`:'<p class="muted m0">Резервов нет.</p>';
+  const dealCell=v=>v.deal?`${can('clients')?`<button class="link" data-act="open-deal" data-id="${esc(v.deal.id)}">${esc(v.deal.id)}</button>`:esc(v.deal.id)}<small class="muted">${esc(v.deal.client||'')}</small>`:v.hasDeal?`<span class="muted">${Stock.HIDDEN_DEAL}</span>`:noData('сделка')+(v.note?`<small class="muted">${esc(v.note)}</small>`:'');
+  // кнопки — не у резерва скрытой сделки; резерв без сделки (из переноса остатков) можно снять и списать
+  const rBtns=v=>v.hasDeal&&!v.deal?'':`<div class="rbtns">${!v.inTransit&&can('sell')?`<button type="button" class="btn sm" data-act="stock-sell" data-pid="${esc(v.productId)}" data-rid="${esc(v.id)}">Списать</button>`:''}${can('reserve')?`<button class="btn sm ghost" data-act="unreserve" data-id="${esc(v.id)}">Снять</button>`:''}</div>`;
+  const rTbl=rs.length?`<div class="xs"><table class="tbl"><thead><tr><th>Сделка</th><th class="num">Кол-во</th><th>Где товар</th><th>До</th>${acts?'<th></th>':''}</tr></thead><tbody>${rs.map(v=>{const n=v.until?dd(v.until):null;return `<tr><td>${dealCell(v)}</td><td class="num">${num(v.qty)}</td><td>${srcPill(v)}${v.inTransit?'':`<small class="muted">${esc(v.where)}</small>`}</td><td class="nowrap ${n!==null&&n<=2?'warn-t':''}">${v.until?fD(v.until):noData('срок')}</td>${acts?`<td class="num">${rBtns(v)}</td>`:''}</tr>`}).join('')}</tbody></table></div>`:'<p class="muted m0">Резервов нет.</p>';
   const iList=inc.length?`<ul class="mv">${inc.map(x=>iRow(x,p)).join('')}</ul>`:'<p class="muted m0">Поставок с этим товаром нет.</p>';
   const mList=mv.length?`<ul class="mv">${mv.map(m=>`<li>${movePill(m)}<b>${moveSign(m)}${qtyOf(m.qty,p)}</b><span>${esc(moveWhere(m))}</span><span class="mono muted">${esc(moveDoc(m))}</span><small>${fWhen(m.at)} · ${esc(whoName(m.by)||'нет данных: кто')}</small></li>`).join('')}</ul><p class="m0"><button type="button" class="btn sm" data-act="stock-journal" data-pid="${esc(p.id)}">Весь журнал по товару${all.length>mv.length?` (${all.length})`:''}</button></p>`:'<p class="muted m0">Движений пока нет.</p>';
   return {kind:p.cat,title:esc(p.name),sub:`${p.inCatalog?`<span class="mono">${esc(p.id)}</span>`:'нет в каталоге'}${p.brand?' · '+esc(p.brand):''}`,body:`
@@ -11382,7 +11825,7 @@ MODALS.clientNew=()=>{
 };
 
 // ——— карточка клиента ———
-const CLIENT_FIELD={name:'Название',kind:'Вид',inn:'ИНН',phones:'Телефоны',email:'Почта',address:'Адрес',managerId:'Менеджер'};
+const CLIENT_FIELD={name:'Название',kind:'Вид',inn:'ИНН',phones:'Телефоны',email:'Почта',address:'Адрес',managerId:'Менеджер',org:'Компания'};
 
 function clientFields(c,edit){
   const id=esc(c.id);
@@ -11393,7 +11836,8 @@ function clientFields(c,edit){
   return `<div class="cform">${field('name','Имя или название компании',text('name',c.name,'text','название'),'span2')}
     ${field('kind','Вид',sel('kind',kinds,c.kind))}${field('inn','ИНН',text('inn',c.inn,'text','ИНН'))}
     ${field('phones','Телефоны',text('phones',(c.phones||[]).join(', '),'tel','телефон')+(edit?'<small class="muted">Несколько — через запятую</small>':''))}${field('email','Почта',text('email',c.email,'email','почта'))}
-    ${field('managerId','Менеджер',sel('managerId',clientManagers(c.managerId||''),c.managerId))}${field('address','Адрес',text('address',c.address,'text','адрес'))}</div>`;
+    ${field('managerId','Менеджер',sel('managerId',clientManagers(c.managerId||''),c.managerId))}${field('address','Адрес',text('address',c.address,'text','адрес'))}
+    ${c.org?field('org','Компания',text('org',c.org,'text','компания'),'span2'):''}</div>`;
 }
 // Строка связанной записи: кнопка, по которой открывается её карточка
 const clientRow=(act,id,title,sub,side)=>`<li><button type="button" class="crow" data-act="${act}" data-id="${esc(id)}"><span class="crow-t">${title}<small>${sub}</small></span>${side?`<span class="crow-s">${side}</span>`:''}</button></li>`;
@@ -12086,6 +12530,193 @@ FORMS['srv-pass']=f=>serverPassword(byId('srv-old').value,byId('srv-new').value,
 
 // Кнопки «Сменить пароль» и «Выйти» под именем в панели разделов
 const serverMeHtml=()=>`<div class="srv-me"><button type="button" class="btn sm ghost" data-act="srv-password">${ic('lock')}Сменить пароль</button><button type="button" class="btn sm ghost" data-act="srv-logout">${ic('arrow')}Выйти</button></div>`;
+
+// «Настройки → Перенос» (только директор и только на сервере): остатки из CSV листа «Остатки» и клиенты из CSV Битрикса.
+// Файл выбирается, разбирается и считается здесь же — теми же функциями ядра (Import, 48-import.js), что потом исполняет сервер;
+// на сервер уходят только разобранные строки (POST /api/import/stock и /api/import/clients), сам CSV нигде не сохраняется:
+// ни на сервере, ни в localStorage (выбранное лежит в S.ui, а ui не сохраняется).
+
+const TR_CHUNK=1000;   // клиентов за один запрос (запрос ограничен по размеру); повтор безопасен — клиенты не дублируются
+const trUi=()=>S.ui.transfer||(S.ui.transfer={stock:null,clients:null});
+const trRefresh=()=>{if(S&&S.view==='settings') render()};
+const trNum=(n,text)=>`<li><b>${num(n)}</b> ${text}</li>`;
+const trWhy=e=>(e&&e.message)||'Файл не разобран.';
+
+// ——— остатки ———
+// Байты файла → разбор и предпросмотр в S.ui.transfer.stock; ошибка файла — problems, ничего не меняется
+function trStockRead(bytes){
+  const t=trUi();
+  try{
+    const r=Import.stockRows(Import.parseCsv(Import.decode(bytes)));
+    if(r.problems.length){t.stock={problems:r.problems};return}
+    t.stock={rows:r.rows,skipped:r.skipped,pv:Import.preview('stock',S,r.rows,S.me,new Date()),busy:false,err:'',done:null};
+  }catch(e){t.stock={problems:[trWhy(e)]}}
+}
+async function trStockSend(){
+  const s=trUi().stock;
+  if(!s||!s.rows||s.busy) return;
+  s.busy=true;s.err='';trRefresh();
+  try{
+    const r=await srvApi('POST','/api/import/stock',{rows:s.rows});
+    if(!srvStatus(r)){
+      if(r.status===200){s.done=r.body;s.rows=null;s.pv=null}
+      else s.err=(r.body&&r.body.error)||'Остатки не загружены.';
+    }
+  }catch(_){s.err='Нет связи с сервером — остатки не загружены, повторите.'}
+  s.busy=false;trRefresh();
+}
+// Неразобранное: текст, который перенос не понял, с названием товара и колонкой
+const trUnparsed=list=>!list||!list.length?'':`<details class="tr-un"><summary>Что не разобралось (${num(list.length)})</summary><ul>${list.map(u=>`<li><b>${esc(u.name)}</b> · ${esc(u.column)}: «${esc(u.text)}»</li>`).join('')}</ul></details>`;
+const trStockNums=p=>`<ul class="tr-n">${trNum(p.products,'товаров в файле')}${trNum(p.matched,'склеено с каталогом')}${trNum(p.created,'новых товаров «нет в каталоге»')}${trNum(p.withStock,`товаров с остатком (клеток склада: ${num(p.cells)})`)}${trNum(p.reserves,'резервов из колонки «Резерв»')}${trNum(p.unparsed.length,'неразобранных клеток и резервов')}</ul>`;
+
+function trStockHtml(){
+  const s=trUi().stock;
+  let body='';
+  if(s&&s.problems) body=s.problems.map(p=>`<p class="err">${esc(p)}</p>`).join('');
+  else if(s&&s.done) body=`<p class="ok-t m0"><b>Загружено.</b> Остатки склада заменены, в журнале склада — «Ввод остатков».</p>${trStockNums(s.done)}${trUnparsed(s.done.unparsed)}`;
+  else if(s&&s.rows) body=`<p class="m0">В файле найдено:</p>${trStockNums(s.pv)}${s.skipped?`<p class="hint">Строк с цифрами, но без названия: ${num(s.skipped)} — они пропущены.</p>`:''}${trUnparsed(s.pv.unparsed)}
+    <form class="tr-go" data-form="tr-stock" novalidate><button type="submit" class="btn pri"${s.busy?' disabled':''}>${s.busy?'Загружаю…':'Загрузить'}</button><span class="hint">Остатки склада будут заменены этими.</span></form>${s.err?`<p class="err">${esc(s.err)}</p>`:''}`;
+  return `<section class="card"><div class="card-h"><h3>Остатки склада</h3></div><div class="card-b stack-s">
+    <p class="m0">Лист «Остатки» таблицы менеджеров, сохранённый как CSV (UTF-8 или Windows-1251, разделитель — запятая или точка с запятой).
+      Загрузка <b>заменяет</b> остатки склада и пишет в журнал склада «Ввод остатков» по каждому товару. Повторная загрузка того же файла остатки не удваивает.</p>
+    <p class="hint">Колонка «Резерв»: количество становится резервом, имя клиента — примечанием к нему, без привязки к сделке. До первой загрузки у товаров остаток — «нет данных».</p>
+    <div><label class="btn" for="tr-stock-file">${ic('plus')}Выбрать файл CSV</label><input id="tr-stock-file" class="sr" type="file" accept=".csv,.txt,text/csv,text/plain" data-on="tr-stock-file"></div>
+    ${body}
+  </div></section>`;
+}
+
+// ——— клиенты ———
+function trClientsRead(bytes){
+  const t=trUi();
+  try{
+    const r=Import.clientRows(Import.parseCsv(Import.decode(bytes)));
+    if(r.problems.length){t.clients={problems:r.problems};return}
+    t.clients={rows:r.rows,kind:r.kind,unknown:r.unknown,skipped:r.skipped,pv:Import.preview('clients',S,r.rows,S.me,new Date()),busy:false,err:'',done:null};
+  }catch(e){t.clients={problems:[trWhy(e)]}}
+}
+async function trClientsSend(){
+  const s=trUi().clients;
+  if(!s||!s.rows||s.busy) return;
+  s.busy=true;s.err='';trRefresh();
+  const sum={created:0,merged:0,skipped:s.skipped||0};
+  try{
+    for(let i=0;i<s.rows.length;i+=TR_CHUNK){
+      const r=await srvApi('POST','/api/import/clients',{rows:s.rows.slice(i,i+TR_CHUNK)});
+      if(srvStatus(r)) throw new Error('нужен вход');
+      if(r.status!==200) throw new Error((r.body&&r.body.error)||'Клиенты не загружены.');
+      sum.created+=r.body.created;sum.merged+=r.body.merged;sum.skipped+=r.body.skipped;
+    }
+    s.done=sum;s.rows=null;s.pv=null;
+  }catch(e){
+    // часть порций могла дойти: повторная загрузка того же файла дописывает недостающее и дублей не плодит
+    s.err=(e instanceof TypeError?'Нет связи с сервером':e.message)+(sum.created+sum.merged?` Уже обработано клиентов: ${num(sum.created+sum.merged)}; повторите загрузку — дублей не будет.`:' Повторите загрузку.');
+  }
+  s.busy=false;trRefresh();
+}
+const trClientNums=(p,file)=>`<ul class="tr-n">${trNum(p.created,'новых клиентов')}${trNum(p.merged,'объединено с уже заведёнными (недостающее дописано)')}${trNum(p.skipped+(file||0),'пропущено без имени')}</ul>`;
+
+function trClientsHtml(){
+  const s=trUi().clients;
+  let body='';
+  if(s&&s.problems) body=s.problems.map(p=>`<p class="err">${esc(p)}</p>`).join('');
+  else if(s&&s.done) body=`<p class="ok-t m0"><b>Загружено.</b></p><ul class="tr-n">${trNum(s.done.created,'новых клиентов')}${trNum(s.done.merged,'объединено с уже заведёнными')}${trNum(s.done.skipped,'пропущено без имени')}</ul>`;
+  else if(s&&s.rows) body=`<p class="m0">Это файл ${s.kind==='company'?'компаний':'контактов'} Битрикса, строк с именем: <b>${num(s.rows.length)}</b>. Загрузка даст:</p>${trClientNums(s.pv,s.skipped)}
+    <p class="${s.unknown.length?'warn-t':'hint'} m0">${s.unknown.length?`Нераспознанные колонки (не переносятся): ${s.unknown.map(esc).join(', ')}.`:'Все колонки файла распознаны.'}</p>
+    <form class="tr-go" data-form="tr-clients" novalidate><button type="submit" class="btn pri"${s.busy?' disabled':''}>${s.busy?'Загружаю…':'Загрузить'}</button><span class="hint">Клиенты добавятся к уже заведённым.</span></form>${s.err?`<p class="err">${esc(s.err)}</p>`:''}`;
+  return `<section class="card"><div class="card-h"><h3>Клиенты из Битрикса</h3></div><div class="card-b stack-s">
+    <p class="m0">Выгрузка контактов или компаний Битрикса в CSV, как она есть (UTF-8 или Windows-1251, разделитель — точка с запятой или запятая). Два файла — по очереди, тем же экраном: тип файла узнаётся по колонке «Название компании».</p>
+    <p class="hint">Клиент с тем же ИНН, телефоном или почтой дополняется, а не дублируется. «Ответственный» становится менеджером клиента, если имя совпало с именем сотрудника. Сам файл на сервер не отправляется и нигде не хранится.</p>
+    <div><label class="btn" for="tr-clients-file">${ic('plus')}Выбрать файл CSV</label><input id="tr-clients-file" class="sr" type="file" accept=".csv,.txt,text/csv,text/plain" data-on="tr-clients-file"></div>
+    ${body}
+  </div></section>`;
+}
+
+// Выбран файл: прочитать байты, разобрать, перерисовать. Поле очищается — тот же файл можно выбрать ещё раз.
+async function trPick(el,read){
+  const f=el.files&&el.files[0];
+  try{el.value=''}catch(_){}
+  if(!f) return;
+  try{read(new Uint8Array(await f.arrayBuffer()))}
+  catch(e){const t=trUi();const key=read===trStockRead?'stock':'clients';t[key]={problems:[`Файл «${f.name}» не прочитался.`]}}
+  trRefresh();
+}
+ON.change['tr-stock-file']=el=>trPick(el,trStockRead);
+ON.change['tr-clients-file']=el=>trPick(el,trClientsRead);
+FORMS['tr-stock']=()=>trStockSend();
+FORMS['tr-clients']=()=>trClientsSend();
+
+if(SERVER) SETTINGS_TABS.push({id:'transfer',label:'Перенос',order:85,ok:()=>SERVER&&can('admin'),render:()=>trStockHtml()+trClientsHtml()});
+
+// «Настройки → Копии» (только директор и только на сервере): список копий базы (дата, размер), «Скачать», «Сделать копию сейчас»
+// и «Восстановить» с подтверждением. Копии делает и хранит сервер (server/backup.js): каждую ночь, 30 последних; здесь только
+// показ и три действия через /api/backups. Восстановление сперва снимает копию текущей базы («перед восстановлением»), потом
+// заменяет базу; всем открытым вкладкам сервер шлёт «перезагрузись».
+
+const BK_KIND={nightly:'ночная','manual':'вручную','before-restore':'перед восстановлением'};
+// Список копий — состояние этой вкладки, не общей базы: S его не касается
+const bk={list:null,keep:30,hour:3,err:'',loading:false,busy:false};
+
+async function bkLoad(){
+  if(bk.loading||!SERVER||!can('admin')) return;
+  bk.loading=true;
+  try{
+    const r=await srvApi('GET','/api/backups');
+    if(r.status===200){bk.list=r.body.backups||[];bk.keep=r.body.keep||bk.keep;bk.hour=r.body.hour;bk.err=''}
+    else if(!srvStatus(r)) bk.err=r.body.error||'нет данных: список копий';
+  }catch(_){bk.err='нет данных: список копий (нет связи с сервером)'}
+  bk.loading=false;
+  if(S&&S.view==='settings') render();
+}
+const bkSize=n=>n<1048576?Math.max(1,Math.round(n/1024))+' КБ':(n/1048576).toFixed(1).replace('.',',')+' МБ';
+// Что показать человеку в строке: у ночной копии дата, у остальных дата и время
+const bkWhen=b=>b.kind==='nightly'?`${fRel(b.at)}, ночная копия`:fWhen(b.at);
+
+function vBackups(){
+  if(!bk.list&&!bk.err) bkLoad();
+  const rows=!bk.list?`<tr><td colspan="4" class="muted">${esc(bk.err||'загрузка…')}</td></tr>`
+    :!bk.list.length?'<tr><td colspan="4" class="muted">Копий пока нет.</td></tr>'
+    :bk.list.map(b=>`<tr><td class="nowrap"><b>${esc(bkWhen(b))}</b><small class="muted bk-name">${esc(b.name)}</small></td><td><span class="pill sm${b.kind==='nightly'?' ok':b.kind==='manual'?' info':''}">${esc(BK_KIND[b.kind]||b.kind)}</span></td><td class="num nowrap">${bkSize(b.size)}</td>
+      <td class="num nowrap"><a class="btn sm" href="/api/backups/${encodeURIComponent(b.name)}" download="${esc(b.name)}">Скачать</a> <button type="button" class="btn sm ghost" data-act="bk-restore" data-name="${esc(b.name)}">Восстановить</button></td></tr>`).join('');
+  return `<section class="card"><div class="card-h"><h3>Копии базы</h3></div><div class="card-b stack-s">
+    <p class="m0">Сервер сам делает копию всей базы каждую ночь в ${String(bk.hour).padStart(2,'0')}:00 по своему времени и хранит ${num(bk.keep)} последних; старые удаляются. Копии лежат на том же сервере, что и сама база: для надёжности включите ещё и резервное копирование у хостера.</p>
+    <div><button type="button" class="btn pri" data-act="bk-make"${bk.busy?' disabled':''}>${ic('plus')}${bk.busy?'Делаю копию…':'Сделать копию сейчас'}</button></div>
+    <div class="xs"><table class="tbl"><thead><tr><th>Копия</th><th>Вид</th><th class="num">Размер</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="hint">«Восстановить» заменяет базу выбранной копией для всех сотрудников; перед этим сервер сохраняет копию текущей базы («перед восстановлением»). Файлы (фото, документы) в копию базы не входят: они хранятся на сервере отдельно.</p>
+  </div></section>`;
+}
+
+MODALS.bkRestore=name=>{
+  const b=(bk.list||[]).find(x=>x.name===name);
+  return `<form data-form="bk-restore" data-name="${esc(name)}" novalidate>${mHead('Восстановить базу из копии')}<div class="modal-b">
+    <p class="m0">Восстановить базу из копии «${esc(name)}»${b?` (${esc(bkWhen(b))})`:''}?</p>
+    <p class="m0"><b>Всё, что записано в CRM после этой копии, пропадёт — у всех сотрудников.</b> Перед заменой сервер сохранит копию текущей базы («перед восстановлением»), её можно будет восстановить так же. Все открытые вкладки перезагрузятся.</p>
+    <p class="err" id="bk-err" hidden></p></div>${mFoot('Восстановить')}</form>`;
+};
+
+A['bk-restore']=el=>{if(can('admin')) openModal('bkRestore',el.dataset.name)};
+A['bk-make']=async()=>{
+  if(bk.busy||!can('admin')) return;
+  bk.busy=true;render();
+  try{
+    const r=await srvApi('POST','/api/backups');
+    if(r.status===200){toast(`Копия сделана: ${r.body.backup.name}.`);bk.list=null;bk.err=''}
+    else if(!srvStatus(r)) toast(r.body.error||'Копия не сделана.','warn');
+  }catch(_){toast('Нет связи с сервером — копия не сделана.','warn')}
+  bk.busy=false;render();
+};
+FORMS['bk-restore']=async f=>{
+  const name=f.dataset.name;
+  try{
+    const r=await srvApi('POST',`/api/backups/${encodeURIComponent(name)}/restore`);
+    if(srvStatus(r)) return;
+    if(r.status!==200) return showErr('bk-err',r.body.error||'База не восстановлена.');
+    closeModal();bk.list=null;bk.err='';
+    toast(`База восстановлена из «${name}». Копия прежней базы: ${r.body.before}. Страница перезагрузится.`);
+    srvReloadSoon();
+  }catch(_){showErr('bk-err','Нет связи с сервером — база не тронута, повторите.')}
+};
+
+if(SERVER) SETTINGS_TABS.push({id:'backups',label:'Копии',order:88,ok:()=>SERVER&&can('admin'),render:vBackups});
 
 // Запуск. Демо: состояние из браузера (localStorage[Store.KEY]); нет или битое — демо seed(), затем первая отрисовка.
 // Серверный режим: вход и состояние с сервера — serverBoot() (72-server.js).

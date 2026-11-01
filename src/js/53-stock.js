@@ -8,7 +8,8 @@ const MV_LIMIT=200;   // строк журнала на экране
 const snapRu=s=>String(s).split('-').reverse().join('.');   // '2026-10-31' → '31.10.2026'
 const noData=what=>`<span class="muted">нет данных: ${what}</span>`;
 const priceNote=()=>`цена сайта, снимок ${snapRu(CATALOG.snapshot)}`;
-const stockNote=()=>`таблица менеджеров, снимок ${snapRu(STOCK_SNAPSHOT.snapshot)}`;
+// Рабочая база не берёт снимок 31.10: источник — перенос листа «Остатки» (Настройки → Перенос), а до него остатка нет
+const stockNote=()=>SERVER?(S.stockSheet&&S.stockSheet.at?`таблица менеджеров, перенос ${snapRu(iso(S.stockSheet.at))}`:'нет данных: остатки ещё не перенесены'):`таблица менеджеров, снимок ${snapRu(STOCK_SNAPSHOT.snapshot)}`;
 const priceTxt=p=>p.price==null?noData('цена'):rub(p.price);
 // В таблице менеджеров товара нет, резервов и поставок под него нет — остаток неизвестен, а не нулевой
 const stockUnknown=k=>!k.known&&!(k.reservedStock+k.reservedIncoming)&&!k.incoming;
@@ -167,9 +168,10 @@ function dProduct(p){
   // резерв видит каждый, у кого есть право на остатки: сколько, где и до какого числа. Сделку и клиента называет
   // Stock.reserveView только тому, кому сделка видна; остальным — «сделка скрыта», без ссылки и без кнопок «Снять» и «Списать»
   const acts=can('reserve')||can('sell');
-  const dealCell=v=>v.deal?`${can('clients')?`<button class="link" data-act="open-deal" data-id="${esc(v.deal.id)}">${esc(v.deal.id)}</button>`:esc(v.deal.id)}<small class="muted">${esc(v.deal.client||'')}</small>`:v.hasDeal?`<span class="muted">${Stock.HIDDEN_DEAL}</span>`:noData('сделка');
-  const rBtns=v=>!v.deal?'':`<div class="rbtns">${!v.inTransit&&can('sell')?`<button type="button" class="btn sm" data-act="stock-sell" data-pid="${esc(v.productId)}" data-rid="${esc(v.id)}">Списать</button>`:''}${can('reserve')?`<button class="btn sm ghost" data-act="unreserve" data-id="${esc(v.id)}">Снять</button>`:''}</div>`;
-  const rTbl=rs.length?`<div class="xs"><table class="tbl"><thead><tr><th>Сделка</th><th class="num">Кол-во</th><th>Где товар</th><th>До</th>${acts?'<th></th>':''}</tr></thead><tbody>${rs.map(v=>{const n=dd(v.until);return `<tr><td>${dealCell(v)}</td><td class="num">${num(v.qty)}</td><td>${srcPill(v)}${v.inTransit?'':`<small class="muted">${esc(v.where)}</small>`}</td><td class="nowrap ${n<=2?'warn-t':''}">${fD(v.until)}</td>${acts?`<td class="num">${rBtns(v)}</td>`:''}</tr>`}).join('')}</tbody></table></div>`:'<p class="muted m0">Резервов нет.</p>';
+  const dealCell=v=>v.deal?`${can('clients')?`<button class="link" data-act="open-deal" data-id="${esc(v.deal.id)}">${esc(v.deal.id)}</button>`:esc(v.deal.id)}<small class="muted">${esc(v.deal.client||'')}</small>`:v.hasDeal?`<span class="muted">${Stock.HIDDEN_DEAL}</span>`:noData('сделка')+(v.note?`<small class="muted">${esc(v.note)}</small>`:'');
+  // кнопки — не у резерва скрытой сделки; резерв без сделки (из переноса остатков) можно снять и списать
+  const rBtns=v=>v.hasDeal&&!v.deal?'':`<div class="rbtns">${!v.inTransit&&can('sell')?`<button type="button" class="btn sm" data-act="stock-sell" data-pid="${esc(v.productId)}" data-rid="${esc(v.id)}">Списать</button>`:''}${can('reserve')?`<button class="btn sm ghost" data-act="unreserve" data-id="${esc(v.id)}">Снять</button>`:''}</div>`;
+  const rTbl=rs.length?`<div class="xs"><table class="tbl"><thead><tr><th>Сделка</th><th class="num">Кол-во</th><th>Где товар</th><th>До</th>${acts?'<th></th>':''}</tr></thead><tbody>${rs.map(v=>{const n=v.until?dd(v.until):null;return `<tr><td>${dealCell(v)}</td><td class="num">${num(v.qty)}</td><td>${srcPill(v)}${v.inTransit?'':`<small class="muted">${esc(v.where)}</small>`}</td><td class="nowrap ${n!==null&&n<=2?'warn-t':''}">${v.until?fD(v.until):noData('срок')}</td>${acts?`<td class="num">${rBtns(v)}</td>`:''}</tr>`}).join('')}</tbody></table></div>`:'<p class="muted m0">Резервов нет.</p>';
   const iList=inc.length?`<ul class="mv">${inc.map(x=>iRow(x,p)).join('')}</ul>`:'<p class="muted m0">Поставок с этим товаром нет.</p>';
   const mList=mv.length?`<ul class="mv">${mv.map(m=>`<li>${movePill(m)}<b>${moveSign(m)}${qtyOf(m.qty,p)}</b><span>${esc(moveWhere(m))}</span><span class="mono muted">${esc(moveDoc(m))}</span><small>${fWhen(m.at)} · ${esc(whoName(m.by)||'нет данных: кто')}</small></li>`).join('')}</ul><p class="m0"><button type="button" class="btn sm" data-act="stock-journal" data-pid="${esc(p.id)}">Весь журнал по товару${all.length>mv.length?` (${all.length})`:''}</button></p>`:'<p class="muted m0">Движений пока нет.</p>';
   return {kind:p.cat,title:esc(p.name),sub:`${p.inCatalog?`<span class="mono">${esc(p.id)}</span>`:'нет в каталоге'}${p.brand?' · '+esc(p.brand):''}`,body:`

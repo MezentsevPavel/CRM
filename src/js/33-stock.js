@@ -305,7 +305,8 @@ const Stock = (() => {
     return d ? { id: d.id, client: d.client } : null;
   }
 
-  // Резерв глазами человека: {id, productId, qty, src, inTransit, where, until, deal, hasDeal}.
+  // Резерв глазами человека: {id, productId, qty, src, inTransit, where, until, note, deal, hasDeal}. note — примечание резерва
+  // (перенос остатков кладёт в него текст ячейки «Резерв» с именем клиента; у резерва из сделки его нет).
   // where — «ИП · Иркутск» или «в пути: П-1043»; deal — {id, client} или null (скрыта); hasDeal — резерв вообще привязан к
   // сделке из состояния (нет — на экране «нет данных: сделка», а не «скрыта»). Нет права stock → null: резерва человек не видит.
   function reserveView(st, r, personId) {
@@ -315,6 +316,7 @@ const Stock = (() => {
       id: r.id, productId: r.productId, qty: r.qty, src, inTransit,
       where: inTransit ? `в пути: ${src}` : cellText(st, r.entityId, r.cityId),
       until: r.until || null,
+      note: r.note || null,
       deal: dealRef(st, r.dealId, personId),
       hasDeal: r.dealId === HIDDEN_ID || (st.deals || []).some(d => d.id === r.dealId),
     };

@@ -2,12 +2,16 @@
 // Команды директора на сервере (без браузера):
 //   node server/admin.js create-director          — завести директора: имя, логин, пароль (пароль вводится без эха)
 //   node server/admin.js reset-password <логин>   — выдать новый пароль; показывается один раз, при входе его надо сменить
+//   node server/admin.js backups                  — список копий базы (data/backups)
+//   node server/admin.js restore <файл> [--yes]   — восстановить базу из копии (имя из списка или путь к файлу); перед этим
+//                                                   снимается копия текущей базы; без --yes спрашивает подтверждение
 // Папка данных — CRM_DATA (по умолчанию ./data). Работает и при запущенном сервере: он перечитает базу сам.
 
+const fs = require('node:fs');
 const path = require('node:path');
 const { openCore, adminOf } = require('./app.js');
 
-const HELP = 'Команды:\n  node server/admin.js create-director\n  node server/admin.js reset-password <логин>';
+const HELP = 'Команды:\n  node server/admin.js create-director\n  node server/admin.js reset-password <логин>\n  node server/admin.js backups\n  node server/admin.js restore <файл> [--yes]';
 
 // Прочитанное из входа, но ещё не разобранное на строки (ввод через конвейер приходит одним куском)
 let rest = '';
@@ -51,12 +55,36 @@ function ask(question, hidden = false) {
   });
 }
 
-async function main([cmd, arg]) {
-  if (cmd !== 'create-director' && cmd !== 'reset-password') { console.log(HELP); return cmd ? 1 : 0; }
+const KB = n => (n < 1048576 ? Math.max(1, Math.round(n / 1024)) + ' КБ' : (n / 1048576).toFixed(1).replace('.', ',') + ' МБ');
+const KIND = { nightly: 'ночная', manual: 'сделана вручную', 'before-restore': 'перед восстановлением' };
+
+async function main(argv) {
+  const yes = argv.includes('--yes');
+  const [cmd, arg] = argv.filter(a => a !== '--yes');
+  if (!['create-director', 'reset-password', 'backups', 'restore'].includes(cmd)) { console.log(HELP); return cmd ? 1 : 0; }
   const dataDir = path.resolve(process.env.CRM_DATA || path.join(__dirname, '..', 'data'));
   const ctx = openCore({ dataDir });
   const admin = adminOf(ctx);
   try {
+    if (cmd === 'backups') {
+      const list = ctx.backups.list();
+      if (!list.length) { console.log(`Копий пока нет (папка ${ctx.backups.dir}). Сервер делает их сам каждую ночь; в «Настройки → Копии» копию можно сделать сразу.`); return 0; }
+      for (const b of list) console.log(`${b.name}  ${new Date(b.at).toLocaleString('ru-RU')}  ${KB(b.size)}  ${KIND[b.kind] || b.kind}`);
+      console.log(`Хранится последних: ${ctx.backups.keep}. Восстановить: node server/admin.js restore <имя копии>`);
+      return 0;
+    }
+    if (cmd === 'restore') {
+      if (!arg) { console.error('Укажи копию: node server/admin.js restore <имя из списка backups или путь к файлу>'); return 1; }
+      if (!ctx.backups.resolve(arg) && !fs.existsSync(arg)) { console.error(`Нет такой копии: ${arg}. Список: node server/admin.js backups`); return 1; }
+      if (!yes) {
+        const ok = (await ask(`База будет заменена копией «${arg}». Всё, что записано после неё, пропадёт; сначала снимется копия текущей базы. Введи «да», чтобы продолжить: `)).trim().toLowerCase();
+        if (ok !== 'да') { console.error('Не подтверждено — база не тронута'); return 1; }
+      }
+      const r = await admin.restore(arg);
+      console.log(`Готово. База восстановлена из «${r.from}». Копия прежней базы: ${r.before}.`);
+      console.log('Если сервер запущен, перезапусти его (на сервере: systemctl restart crm), иначе открытые вкладки продолжат со старыми данными.');
+      return 0;
+    }
     if (cmd === 'create-director') {
       const name = (await ask('Имя директора (как показывать в CRM): ')).trim();
       const login = (await ask('Логин: ')).trim();

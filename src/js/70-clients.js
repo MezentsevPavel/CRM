@@ -90,7 +90,7 @@ MODALS.clientNew=()=>{
 };
 
 // ——— карточка клиента ———
-const CLIENT_FIELD={name:'Название',kind:'Вид',inn:'ИНН',phones:'Телефоны',email:'Почта',address:'Адрес',managerId:'Менеджер'};
+const CLIENT_FIELD={name:'Название',kind:'Вид',inn:'ИНН',phones:'Телефоны',email:'Почта',address:'Адрес',managerId:'Менеджер',org:'Компания'};
 
 function clientFields(c,edit){
   const id=esc(c.id);
@@ -101,7 +101,8 @@ function clientFields(c,edit){
   return `<div class="cform">${field('name','Имя или название компании',text('name',c.name,'text','название'),'span2')}
     ${field('kind','Вид',sel('kind',kinds,c.kind))}${field('inn','ИНН',text('inn',c.inn,'text','ИНН'))}
     ${field('phones','Телефоны',text('phones',(c.phones||[]).join(', '),'tel','телефон')+(edit?'<small class="muted">Несколько — через запятую</small>':''))}${field('email','Почта',text('email',c.email,'email','почта'))}
-    ${field('managerId','Менеджер',sel('managerId',clientManagers(c.managerId||''),c.managerId))}${field('address','Адрес',text('address',c.address,'text','адрес'))}</div>`;
+    ${field('managerId','Менеджер',sel('managerId',clientManagers(c.managerId||''),c.managerId))}${field('address','Адрес',text('address',c.address,'text','адрес'))}
+    ${c.org?field('org','Компания',text('org',c.org,'text','компания'),'span2'):''}</div>`;
 }
 // Строка связанной записи: кнопка, по которой открывается её карточка
 const clientRow=(act,id,title,sub,side)=>`<li><button type="button" class="crow" data-act="${act}" data-id="${esc(id)}"><span class="crow-t">${title}<small>${sub}</small></span>${side?`<span class="crow-s">${side}</span>`:''}</button></li>`;

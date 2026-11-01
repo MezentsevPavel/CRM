@@ -36,8 +36,10 @@ const Catalog = (() => {
   //   и ровно у одной строки остатков. Похожее, но не совпавшее, и неоднозначное не склеивается.
   // stock[productId][entityId]['_'] — остаток по юрлицу; города в таблице нет → ключ '_'. Пусто остаётся пусто, не 0.
   // aside[productId] = {damaged, custody, transitNoShip} — «Бой», ответхранение, «В пути»; есть, если заполнено хоть что-то.
-  // unmatched: [{productId, name}] — строки остатков без пары в каталоге.
-  function build(catalog, snapshot) {
+  // unmatched: [{productId, name}] — строки остатков без пары в каталоге; ids[i] — товар i-й строки остатков.
+  // opts.named (перенос из CSV, Import.applyStock): id товара без пары — 'sheet:' + нормализованное название (у второй строки
+  //   с тем же названием — «#2»), а не по номеру строки: повторный перенос попадает в те же товары.
+  function build(catalog, snapshot, opts = {}) {
     const products = catalog.rows.map(r => ({
       id: String(r.key), name: r.model, brand: r.brand ?? null, cat: KIND_CAT[r.cat] || r.cat,
       price: isNum(r.price) ? r.price : null, avail: r.avail ?? null, url: r.url ?? null,
@@ -48,21 +50,31 @@ const Catalog = (() => {
     const rowsPerName = new Map();
     for (const r of snapshot.rows) { const k = norm(r.name); rowsPerName.set(k, (rowsPerName.get(k) || 0) + 1); }
 
-    const stock = {}, aside = {}, unmatched = [];
+    const stock = {}, aside = {}, unmatched = [], ids = [], used = new Set(products.map(p => p.id));
     snapshot.rows.forEach((r, i) => {
       const k = norm(r.name), same = byName.get(k);
       let id;
       if (same && same.length === 1 && rowsPerName.get(k) === 1) id = same[0];
       else {
-        id = 'sheet-' + String(i + 1).padStart(3, '0');
+        id = opts.named ? namedId(k, used) : 'sheet-' + String(i + 1).padStart(3, '0');
         products.push({ id, name: r.name, brand: null, cat: sectionCat(r.cat), price: null, avail: null, url: null, src: 'sheet', inCatalog: false });
         unmatched.push({ productId: id, name: r.name });
       }
+      ids.push(id);
       for (const e of ['ip', 'npp', 'vs']) if (isNum(r[e])) (stock[id] || (stock[id] = {}))[e] = { _: r[e] };
       const a = { damaged: isNum(r.damaged) ? r.damaged : null, custody: isNum(r.custody) ? r.custody : null, transitNoShip: isNum(r.transit) ? r.transit : null };
       if (Object.values(a).some(v => v !== null)) aside[id] = a;
     });
-    return { products, stock, aside, unmatched };
+    return { products, stock, aside, unmatched, ids };
+  }
+  // id товара листа по нормализованному названию; одинаковые названия различаются номером
+  const NAMED_MAX = 120;
+  function namedId(normName, used) {
+    const key = 'sheet:' + normName.replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, NAMED_MAX).trim();
+    let id = key, n = 1;
+    while (used.has(id)) id = key + '#' + (++n);
+    used.add(id);
+    return id;
   }
 
   // Категории, которые есть у товаров: сначала привычный порядок CATS, потом остальные по алфавиту.
@@ -91,7 +103,8 @@ const Catalog = (() => {
   let baseCache = null;
   const base = () => {
     if (!baseCache) {
-      const built = build(CATALOG, STOCK_SNAPSHOT);
+      // Рабочая база (SERVER): снимка остатков 31.10 в ней нет — остатки появляются только переносом (Import.applyStock)
+      const built = build(CATALOG, SERVER ? { rows: [] } : STOCK_SNAPSHOT);
       baseCache = { ...built, byId: new Map(built.products.map(p => [p.id, p])) };
     }
     return baseCache;
@@ -118,11 +131,15 @@ const Catalog = (() => {
   }
 
   // Прочитанное состояние: товары снимка возвращаются на место (сначала снимок, затем добавленные руками). Меняет st.
+  // В SERVER товары листа «Остатки» берутся из st.stockSheet (что загрузил перенос), а не из STOCK_SNAPSHOT; переноса не было —
+  // в списке только позиции каталога, и остатка у них «нет данных».
   function unpack(st) {
     if (!st || !st.catalogSnapshot) return st;
     const edits = st.productEdits || {}, removed = new Set(st.productsRemoved || []);
-    const snap = base().products.filter(p => !removed.has(p.id)).map(p => ({ ...p, ...(edits[p.id] || {}) }));
-    st.products = [...snap, ...(Array.isArray(st.products) ? st.products : [])];
+    const sheet = SERVER ? build(CATALOG, { rows: (st.stockSheet && st.stockSheet.rows) || [] }, { named: true }).products.filter(p => !p.inCatalog) : [];
+    const snap = [...base().products, ...sheet].filter(p => !removed.has(p.id)).map(p => ({ ...p, ...(edits[p.id] || {}) }));
+    const have = new Set(snap.map(p => p.id));
+    st.products = [...snap, ...(Array.isArray(st.products) ? st.products : []).filter(p => !have.has(p.id))];
     delete st.catalogSnapshot; delete st.productEdits; delete st.productsRemoved;
     return st;
   }
