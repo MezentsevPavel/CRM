@@ -513,8 +513,9 @@ test('Guard журнал: «Приход» по номеру перемещен�
   const way = batch(a, st => { const r = a.Dispatch.setStage(st, id, 'onWay', driver, NOW, { silent: true }); assert.equal(r.ok, true, r.reason); });
   allowed(check(a, way, driver), 'отгрузка перемещения водителем');
   const done = batch(a, st => { const r = a.Dispatch.setStage(st, id, 'delivered', driver, NOW, { silent: true }); assert.equal(r.ok, true, r.reason); });
-  assert.ok(done.changes.some(x => x.key === 'moves'), 'в пачке доставки нет прихода');
-  allowed(check(a, done, driver), 'приход перемещения водителем при доставке');
+  assert.ok(!done.changes.some(x => x.key === 'moves' || x.key === 'stock'), 'при доставке склад не двигается: груз записан «Перемещением» при выходе (G04)');
+  assert.ok(way.changes.some(x => x.key === 'moves' && x.data.kind === 'Перемещение'), 'выход со склада — одна запись «Перемещение»');
+  allowed(check(a, done, driver), 'доставка перемещения водителем');
   // пара «отгрузка + приход» одной пачкой, на другую клетку и на то же количество — настоящее перемещение
   const pair = batch(a, st => {
     mv(st, 'Отгрузка', 2, [e, c]); mv(st, 'Приход', 2, ['ip', 'msk']);

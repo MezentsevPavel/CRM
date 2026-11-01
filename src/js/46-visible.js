@@ -102,8 +102,15 @@ const Visible = (() => {
             return c;
           });
           break;
+        // движения видят все (журнал нужен и продаже, и перевозке), но у «Резерв» / «Снят резерв» в doc при переносе остатков
+        // лежит заметка с именем клиента («перенос: …») — без права «остатки» её не отдаём; номер сделки — как у резервов
         case 'moves':
-          out.moves = (v || []).map(m => { const c = copy(m); if (c.doc) c.doc = hideDeal(c.doc); return c; });
+          out.moves = (v || []).map(m => {
+            const c = copy(m);
+            if (c.doc) c.doc = hideDeal(c.doc);
+            if (!stockRight && (c.kind === Stock.KINDS.reserve || c.kind === Stock.KINDS.unreserve) && c.doc && c.doc !== Stock.HIDDEN_ID && !exists.has(c.doc)) delete c.doc;
+            return c;
+          });
           break;
         // заявки на отправку видят все, но номер невидимой сделки в заявке скрыт
         case 'dispatches':

@@ -25,7 +25,7 @@ const V2_SECTIONS = [
 test('сборка: страница склеена из src/ по порядку имён, без пустых мест, с логотипом', () => {
   const html = build();
   assert.match(html.split('\n')[0], /собрано из src\/, руками не править/);
-  for (const key of ['CSS', 'JS', 'LOGO']) assert.ok(!html.includes(`{{${key}}}`), `осталось место {{${key}}}`);
+  for (const key of ['FONTS', 'CSS', 'JS', 'LOGO']) assert.ok(!html.includes(`{{${key}}}`), `осталось место {{${key}}}`);
   assert.ok(html.includes('data:image/png;base64,'), 'нет логотипа data URI');
   assert.match(html, /<script>\n\(\(\)=>\{\n'use strict';/);
   // каждый файл src/ попал в страницу, и порядок — по имени файла (список строим здесь, не берём из сборки)
@@ -800,4 +800,27 @@ test('мало места: после перезагрузки черновик 
   const again = reloadTight(app);
   assert.equal(again.S.rcv.shipId, s.id, 'черновик приёмки не пережил перезагрузку');
   assert.ok(again.VIEWS.receiving().includes(`2 фото: ${NO_SPACE}`), 'черновик не говорит, что фото не сохранены');
+});
+
+test('шрифты: страница не грузит ничего снаружи, Manrope и JetBrains Mono встроены data:-адресами', () => {
+  const html = build();
+  // ссылки href на товары сайта в данных — текст, не загрузка; считаются только загрузки
+  for (const bad of [/<link[^>]+href=["']?https?:/i, /<script[^>]+src=["']?https?:/i, /url\(\s*["']?https?:/i, /@import/i, /fonts\.(googleapis|gstatic)\.com/i]) {
+    assert.ok(!bad.test(html), `в собранной странице есть внешняя загрузка: ${bad}`);
+  }
+  const page = fs.readFileSync(path.join(ROOT, 'src', 'page.html'), 'utf8');
+  assert.ok(!/fonts\.(googleapis|gstatic)\.com/.test(page), 'в src/page.html остались адреса Google Fonts');
+  // наборы кириллица и латиница для обоих шрифтов; веса Manrope 400–800, JetBrains Mono 400–500
+  const faces = [...html.matchAll(/@font-face\{([^}]*)\}/g)].map(m => m[1]);
+  for (const [family, weight] of [['Manrope', '400 800'], ['JetBrains Mono', '400 500']]) {
+    const mine = faces.filter(f => f.includes(`font-family:'${family}'`));
+    assert.equal(mine.length, 4, `${family}: нужно 4 набора (cyrillic-ext, cyrillic, latin-ext, latin)`);
+    for (const f of mine) {
+      assert.ok(f.includes(`font-weight:${weight}`), `${family}: вес должен быть ${weight}`);
+      assert.match(f, /src:url\(data:font\/woff2;base64,[A-Za-z0-9+/=]{500,}\) format\('woff2'\)/, `${family}: нет встроенного woff2`);
+    }
+    assert.ok(mine.some(f => f.includes('U+0400-045F')), `${family}: нет кириллицы`);
+    assert.ok(mine.some(f => f.includes('U+0000-00FF')), `${family}: нет латиницы`);
+  }
+  assert.ok(fs.existsSync(path.join(ROOT, 'assets', 'fonts', 'OFL.txt')), 'нет файла лицензии OFL.txt');
 });

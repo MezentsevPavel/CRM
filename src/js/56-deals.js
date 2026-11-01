@@ -279,7 +279,7 @@ MODALS.dealReserve=key=>{
   return `<form data-form="deal-reserve" data-id="${esc(did)}" data-i="${+i}" novalidate>${mHead('Зарезервировать: '+esc(p.name))}<div class="modal-b">
     <p class="m0">Сделка ${esc(did)} · ${esc(d.client)}. ${all!==it.qty?`В сделке по этому товару ${qtyOf(all,p)} (в этой строке ${num(it.qty)})`:`В строке ${qtyOf(it.qty,p)}`}, уже в резерве ${num(held)}, осталось ${qtyOf(left,p)}. Свободно на складе: ${k.known?qtyOf(Math.max(0,k.free),p):'нет данных'} (${esc(stockNote())}).</p>
     <div class="grid2"><div class="field"><label for="dr-ent">Юрлицо</label><select id="dr-ent" class="inp" data-on="deal-rs" data-pid="${esc(p.id)}">${opt(S.entities,Stock.NO_ENTITY,cell.entityId)}</select></div><div class="field"><label for="dr-city">Город</label><select id="dr-city" class="inp" data-on="deal-rs" data-pid="${esc(p.id)}">${opt(S.cities,Stock.NO_CITY,cell.cityId)}</select></div>
-      <div class="field"><label for="dr-qty">Сколько</label><input id="dr-qty" class="inp" type="number" min="1" step="any" value="${esc(left)}" inputmode="decimal"></div><div class="field"><label for="dr-until">Резерв до</label><input id="dr-until" class="inp" type="date" value="${iso(day(14))}"></div></div>
+      <div class="field"><label for="dr-qty">Сколько</label><input id="dr-qty" class="inp" type="number" min="1" step="any" value="${esc(left)}" inputmode="decimal"></div><div class="field"><label for="dr-until">Резерв до</label><input id="dr-until" class="inp" type="date" value="${iso(day(Stock.RESERVE_DAYS))}"></div></div>
     <p class="hint" id="dr-max">${esc(maxText(p.id,'stock',cell.entityId,cell.cityId))}</p>
     <p class="err" id="dr-err" hidden></p></div>${mFoot('Зарезервировать')}</form>`;
 };

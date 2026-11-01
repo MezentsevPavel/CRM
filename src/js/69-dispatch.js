@@ -129,7 +129,7 @@ function dDispatch(d){
   const route=d.purpose==='transfer'&&d.from&&d.toCell?`<div class="dsp-route"><p class="m0"><b>${esc(dspCell(d.from))}</b> ${ic('arrow')} <b>${esc(dspCell(d.toCell))}</b></p><p class="hint">${Dispatch.inTransit(d)?`Товар ушёл со склада «${esc(dspCell(d.from))}» и числится в пути на склад «${esc(dspCell(d.toCell))}».`:d.landed?`Товар пришёл на склад «${esc(dspCell(d.toCell))}».`:`Товар пока лежит на складе «${esc(dspCell(d.from))}»: со склада он уйдёт на этапе «В пути».`}</p></div>`:'';
   const p=Dispatch.picked(d),canPick=work&&dspIsOpen(S,d);
   // «Списать при продаже»: право sell, цель «Продажа», товар из каталога, ещё не списан; списанной строке — «списано: кто, когда, откуда»
-  const canSell=Dispatch.canSell(S,S.me)&&d.purpose==='sale';
+  const canSell=Dispatch.canSell(S,S.me)&&d.purpose==='sale'&&dspIsOpen(S,d);
   const lines=d.items.map((it,i)=>{
     const pr=it.productId?product(it.productId):null,sold=Dispatch.soldText(S,it);
     const sellBtn=canSell&&it.productId&&!it.sold?`<button type="button" class="btn sm dsp-sell" data-act="dsp-sell" data-id="${esc(d.id)}" data-i="${i}">Списать при продаже</button>`:'';

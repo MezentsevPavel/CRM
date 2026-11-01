@@ -256,10 +256,10 @@ test('перемещение: «В пути» — клетка «откуда» 
   assert.equal(Stock.summary(st, 'pv', NOW).incoming, 0, 'в пути снова столько же, сколько было: ничего');
   assert.equal(Stock.incomingOf(st, 'pv').length, 0);
   assert.equal(total(), 10);
-  // журнал: уход и приход с номером заявки
+  // журнал: одна запись «Перемещение» откуда → куда с номером заявки (G04); «Доставлена» ничего не движет
   const mv = st.moves.filter(m => m.doc === 'ОТ-001');
-  assert.equal(mv.length, 2);
-  assert.deepEqual(plain(mv.map(m => [m.kind, m.qty, m.cityId]).sort()), [['Отгрузка', 4, 'irk'], ['Приход', 4, 'msk']].sort());
+  assert.equal(mv.length, 1);
+  assert.deepEqual(plain(mv.map(m => [m.kind, m.qty, m.cityId, m.toCityId])), [['Перемещение', 4, 'irk', 'msk']]);
   assert.equal(Dispatch.byId(st, id).moved, true);
 });
 
@@ -296,7 +296,7 @@ test('перемещение: отмена в пути и возврат на э
   // отмена в пути — тоже возврат
   assert.equal(go(app, st, id, 'cancelled', 'log', 5).ok, true);
   assert.equal(cell(app, st, 'pv', IRK), 10, 'отмена в пути не вернула товар');
-  assert.equal(cell(app, st, 'pv', MSK), null);
+  assert.ok(!cell(app, st, 'pv', MSK), 'в клетке «куда» после возврата ничего нет');
   assert.equal(Stock.summary(st, 'pv', NOW).incoming, 0);
   assert.equal(total(), 10);
   // журнал: два ухода и два возврата, ничего лишнего

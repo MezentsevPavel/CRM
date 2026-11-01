@@ -90,7 +90,10 @@ const Dispatch = (() => {
     return (c && str(c.address)) || NO_ADDRESS;
   }
 
-  // Движение товара перемещения. Все три — через Stock.move; журнал пишет doc = номер заявки.
+  // Движение товара перемещения. Все — через Stock.move; журнал пишет doc = номер заявки и вид «Перемещение» (откуда → куда).
+  // Выход со склада — одна запись: товар сразу записан в клетку «куда», но числится в пути (d.moved без d.landed), и
+  // Stock.grid не показывает его там, пока заявка не «Доставлена». Приход в пути записи не требует: ничего не движется.
+  // Возврат из пути — обратная запись «Перемещение» (клетка «куда» → «откуда»).
   // Уйти из «откуда»: сначала проверка по всем товарам, потом списание — отказ ничего не меняет.
   // Зарезервированное под клиента перемещение не забирает: берёт не больше Stock.sellMax — «остаток клетки − резервы на неё».
   function withdraw(st, d, by, now) {
@@ -109,17 +112,23 @@ const Dispatch = (() => {
     }
     for (const it of d.items) {
       if (!it.productId) continue;
-      Stock.move(st, { kind: Stock.KINDS.ship, productId: it.productId, qty: it.qty, entityId: d.from.entityId, cityId: d.from.cityId, doc: d.number, by, at: now });
+      Stock.move(st, { kind: Stock.KINDS.transfer, productId: it.productId, qty: it.qty, entityId: d.from.entityId, cityId: d.from.cityId,
+        toEntityId: d.toCell.entityId, toCityId: d.toCell.cityId, doc: d.number, by, at: now });
     }
     d.moved = true;
     return { ok: true };
   }
-  // Положить груз в клетку: «куда» (пришёл) или «откуда» (вернули).
-  function putBack(st, d, cell, by, now) {
+  // Груз из пути вернулся в клетку «откуда»: пока он числился в пути, Stock.grid прятал его в клетке «куда» — снимаем
+  // отметку до движения, чтобы Stock.move увидел его там. → {ok} | {ok:false, reason}
+  function sendBack(st, d, by, now) {
+    d.moved = false;
     for (const it of d.items) {
       if (!it.productId) continue;
-      Stock.move(st, { kind: Stock.KINDS.receive, productId: it.productId, qty: it.qty, entityId: cell.entityId, cityId: cell.cityId, doc: d.number, by, at: now });
+      const r = Stock.move(st, { kind: Stock.KINDS.transfer, productId: it.productId, qty: it.qty, entityId: d.toCell.entityId, cityId: d.toCell.cityId,
+        toEntityId: d.from.entityId, toCityId: d.from.cityId, doc: d.number, by, at: now });
+      if (!r.ok) { d.moved = true; return fail(r.reason); }
     }
+    return { ok: true };
   }
 
   // Что должно стать с грузом перемещения при переходе на этап: 'cell' (в «откуда»), 'way' (в пути), 'dest' (в «куда»).
@@ -143,8 +152,12 @@ const Dispatch = (() => {
       const w = withdraw(st, d, by, now);
       if (!w.ok) return w;
     }
-    if (to === 'dest') { putBack(st, d, d.toCell, by, now); d.landed = true; return { ok: true, note: `Товар пришёл на склад ${cellText(st, d.toCell)}.` }; }
-    if (to === 'cell') { putBack(st, d, d.from, by, now); d.moved = false; return { ok: true, note: `Товар вернулся на склад ${cellText(st, d.from)}.` }; }
+    if (to === 'dest') { d.landed = true; return { ok: true, note: `Товар пришёл на склад ${cellText(st, d.toCell)}.` }; }
+    if (to === 'cell') {
+      const b = sendBack(st, d, by, now);
+      if (!b.ok) return b;
+      return { ok: true, note: `Товар вернулся на склад ${cellText(st, d.from)}.` };
+    }
     return { ok: true, note: `Товар ушёл со склада ${cellText(st, d.from)} и числится в пути на склад ${cellText(st, d.toCell)}.` };
   }
 
@@ -392,6 +405,7 @@ const Dispatch = (() => {
     if (!it) return fail('Такой строки нет.');
     if (!it.productId) return fail('Строка своим текстом склад не трогает: списывать нечего.');
     if (it.sold) return fail('Эта строка уже списана.');
+    if (isFinal(st, d)) return fail('Заявка закрыта: списывать товар из неё нельзя.');
     const o = opt || {};
     // по резерву: лента сделки помнит резерв, даже когда списание снимет его целиком
     if (o.reserveId) Deals.keepTrail(st, (st.reserves || []).find(x => x.id === o.reserveId));

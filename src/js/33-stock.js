@@ -12,6 +12,9 @@ const Stock = (() => {
   // «Нет данных»: юрлицо или город в источнике не указаны.
   const ANY = '_';
   // Виды движений — подписи как на экране и в журнале.
+  // Срок резерва по умолчанию, дней: единственная величина — её берут Deals.reserve, карточка товара и окно резерва строки сделки.
+  // Допущение спецификации: 14 дней (так стояло в двух местах из трёх); меняется здесь одной цифрой.
+  const RESERVE_DAYS = 14;
   const KINDS = { receive: 'Приход', ship: 'Отгрузка', reserve: 'Резерв', unreserve: 'Снят резерв', transfer: 'Перемещение', damage: 'Списание в бой' };
   const NO_ENTITY = 'нет данных: юрлицо';
   const NO_CITY = 'нет данных: город';
@@ -46,7 +49,14 @@ const Stock = (() => {
     };
     const rows = order(st.entities || [], entKeys).map(id => ({ id, name: entityName(st, id) ?? id }));
     const cols = order(st.cities || [], cityKeys).map(id => ({ id, name: cityName(st, id) ?? id }));
-    const cell = (e, c) => (data[e] && isNum(data[e][c]) ? data[e][c] : null);
+    // Груз перемещения в пути уже записан в клетку «куда» (одно движение «Перемещение» откуда → куда пишется при выходе
+    // со склада), но на складе его ещё нет: пока заявка не «Доставлена», клетка «куда» показывает остаток без него.
+    const way = {};
+    for (const t of Dispatch.transit(st, productId)) { const k = t.entityId + '\u0001' + t.cityId; way[k] = (way[k] || 0) + t.qty; }
+    const cell = (e, c) => {
+      const n = data[e] && isNum(data[e][c]) ? data[e][c] : null, w = way[e + '\u0001' + c];
+      return w ? (n || 0) - w : n;
+    };
     const totals = {
       rows: Object.fromEntries(rows.map(r => [r.id, total(cols.map(c => cell(r.id, c.id)))])),
       cols: Object.fromEntries(cols.map(c => [c.id, total(rows.map(r => cell(r.id, c.id)))])),
@@ -81,7 +91,7 @@ const Stock = (() => {
   // лежат отдельно (damaged, custody, transitNoShip; null — в таблице пусто) и в свободный остаток не входят.
   // free = onHand − резервы со склада.
   // freeAfter = free + incoming (поставки в пути) − reservedIncoming (резервы под эти поставки).
-  // known — в таблице остатков по товару есть хоть одно число (иначе остаток «нет данных»).
+  // known — в таблице остатков по товару есть хоть одно число (иначе остаток «нет данных», а free и freeAfter — null).
   // now принимается по договору интерфейса: резервы с истёкшим сроком пока остаются в силе, пока их не сняли.
   function summary(st, productId, now) {
     void now;
@@ -89,20 +99,21 @@ const Stock = (() => {
     const a = (st.aside && st.aside[productId]) || {};
     const inc = incomingOf(st, productId);
     const rs = (st.reserves || []).filter(r => r.productId === productId);
-    const onHand = g.totals.all ?? 0;
+    const known = g.totals.all !== null, onHand = g.totals.all ?? 0;
     const reservedStock = sum(rs.filter(r => r.src === 'stock'), r => r.qty);
     const reservedIncoming = sum(rs.filter(r => r.src !== 'stock'), r => r.qty);
     const incoming = sum(inc, x => x.qty);
-    const free = onHand - reservedStock;
+    // Нет числа в таблице — свободное неизвестно (null), а не «лежит 0, значит свободно 0 или минус резервы»
+    const free = known ? onHand - reservedStock : null;
     return {
-      known: g.totals.all !== null,
+      known,
       onHand,
       damaged: isNum(a.damaged) ? a.damaged : null,
       custody: isNum(a.custody) ? a.custody : null,
       transitNoShip: isNum(a.transitNoShip) ? a.transitNoShip : null,
       incoming, reservedStock, reservedIncoming,
       free,
-      freeAfter: free + incoming - reservedIncoming,
+      freeAfter: known ? free + incoming - reservedIncoming : null,
       nextEta: inc.length ? inc[0].eta : null,
     };
   }
@@ -329,5 +340,5 @@ const Stock = (() => {
     return dealRef(st, doc, personId) ? doc : HIDDEN_DEAL;
   }
 
-  return { ANY, KINDS, NO_ENTITY, NO_CITY, HIDDEN_DEAL, HIDDEN_ID, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, canReserve, bestCell, move, reserve, unreserve, release, expired, sellMax, sell, cellText, dealRef, reserveView, docView };
+  return { ANY, RESERVE_DAYS, KINDS, NO_ENTITY, NO_CITY, HIDDEN_DEAL, HIDDEN_ID, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, canReserve, bestCell, move, reserve, unreserve, release, expired, sellMax, sell, cellText, dealRef, reserveView, docView };
 })();

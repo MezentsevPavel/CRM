@@ -345,7 +345,7 @@ const Deals = (() => {
   // o: {productId, qty?, src? ('stock' | id поставки), entityId?, cityId?, until?}. Нужно право править сделку (canEdit) и право
   // reserve; товар должен быть в строках сделки; не больше «в строках − уже в резерве» (left) и не больше свободного
   // (Stock.canReserve, его причина — наша). Количество по умолчанию — вся нерезервированная часть. Юрлицо и город не названы —
-  // клетка, где свободного больше всего. Срок по умолчанию — 14 дней от now. Запись в ленту сделки, уведомление — складу,
+  // клетка, где свободного больше всего. Срок по умолчанию — Stock.RESERVE_DAYS дней от now. Запись в ленту сделки, уведомление — складу,
   // директору и менеджеру сделки. → {ok, reserve, reason, max}
   function reserve(st, id, opt, by, now) {
     const { d, err } = open(st, id, by);
@@ -362,7 +362,7 @@ const Deals = (() => {
     if (qty > rest) return fail(`${rows > 1 ? `В ${rows} строках этого товара ${num(all)}` : `В строке ${num(all)}`}, уже зарезервировано ${num(held)}: можно ещё ${num(rest)}.`, { max: rest });
     const src = o.src || 'stock';
     const cell = src !== 'stock' || (o.entityId === undefined && o.cityId === undefined) ? Stock.bestCell(st, pid) : { entityId: o.entityId, cityId: o.cityId };
-    const until = o.until || new Date(new Date(now).getTime() + 14 * 864e5);
+    const until = o.until || new Date(new Date(now).getTime() + Stock.RESERVE_DAYS * 864e5);
     const ask = { productId: pid, qty, entityId: cell.entityId, cityId: cell.cityId, src };
     const chk = Stock.canReserve(st, ask);
     if (!chk.ok) return fail(chk.reason, { max: chk.max });

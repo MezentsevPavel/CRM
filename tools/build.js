@@ -3,6 +3,7 @@
 //   src/page.html   — каркас с местами {{CSS}}, {{JS}}, {{LOGO}}
 //   src/css/*.css   — склеиваются по имени файла, по возрастанию
 //   src/js/*.js     — склеиваются по имени файла, по возрастанию, в одну IIFE с 'use strict'
+//   assets/fonts/fonts.css + *.woff2 — @font-face на место {{FONTS}}: url(файл) заменяется data:-адресом файла
 //   assets/windsolar-logo.png — data URI на место {{LOGO}}; такое место ровно одно (страница, стили или код),
 //                                чтобы картинка в файле была один раз
 // Запуск: node tools/build.js
@@ -14,6 +15,7 @@ const ROOT = path.resolve(__dirname, '..');
 const OUT_NAME = 'crm-wind-solar.html';
 const HEAD = '<!-- собрано из src/, руками не править: node tools/build.js -->';
 const LOGO_FILE = path.join('assets', 'windsolar-logo.png');
+const FONTS_DIR = path.join('assets', 'fonts');
 
 const read = f => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
 
@@ -27,15 +29,26 @@ const jsFiles = (root = ROOT) => sorted(path.join(root, 'src', 'js'), '.js');
 // Подстановка через split/join: в коде много знаков $, а String.replace понимает их как шаблон.
 const fill = (text, key, value) => text.split(`{{${key}}}`).join(value);
 
+// Шрифты: правила @font-face из assets/fonts/fonts.css, файлы woff2 встроены data:-адресами —
+// страница не обращается ни к Google, ни к серверу за шрифтами.
+function fontsCss(root) {
+  const dir = path.join(root, FONTS_DIR);
+  return read(path.join(dir, 'fonts.css'))
+    .replace(/^\/\*[\s\S]*?\*\/\n/, '') // шапка-комментарий файла в страницу не нужна
+    .replace(/url\(([\w.-]+\.woff2)\)/g,
+      (_, file) => 'url(data:font/woff2;base64,' + fs.readFileSync(path.join(dir, file)).toString('base64') + ')');
+}
+
 function build(root = ROOT) {
   const page = read(path.join(root, 'src', 'page.html'));
-  for (const key of ['CSS', 'JS']) {
+  for (const key of ['FONTS', 'CSS', 'JS']) {
     if (!page.includes(`{{${key}}}`)) throw new Error(`В src/page.html нет места {{${key}}}`);
   }
   const css = cssFiles(root).map(read).join('\n');
   const js = "(()=>{\n'use strict';\n\n" + jsFiles(root).map(read).join('\n') + '})();\n';
   const logo = 'data:image/png;base64,' + fs.readFileSync(path.join(root, LOGO_FILE)).toString('base64');
-  let html = fill(page, 'CSS', css);
+  let html = fill(page, 'FONTS', fontsCss(root));
+  html = fill(html, 'CSS', css);
   html = fill(html, 'JS', js);
   const spots = html.split('{{LOGO}}').length - 1;
   if (spots !== 1) throw new Error(`Место {{LOGO}} должно быть ровно одно, а их ${spots}`);
