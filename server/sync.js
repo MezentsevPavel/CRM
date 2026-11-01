@@ -2,7 +2,8 @@
 // Общее состояние фирмы на сервере. Оно целиком в памяти (тот же объект, что S прототипа, без личного), грузится из
 // таблицы docs при старте и пишется документами в одной транзакции на пачку. Правки идут по одной — гонок нет.
 // Каждой вкладке (view) сервер помнит, что уже отдал, и на /api/sync шлёт разницу: новое, изменённое, исчезнувшее.
-// Пачка изменений: трёхстороннее слияние каждой правки (Docs.merge) с тем, что лежит у сервера, проверка прав (Guard)
+// Пачка изменений: видимость записи, трёхстороннее слияние каждой правки (Docs.merge) в копии человека (Visible.of) и
+// наложение итога на настоящую запись (скрытое от него остаётся настоящим), проверка прав (Guard)
 // и ссылок на файлы, каскад названия клиента, запись всего или ничего, строка журнала на каждую запись.
 
 const crypto = require('node:crypto');
@@ -135,6 +136,56 @@ function createSync({ store, core, now, files, onSeq }) {
   }
   const bad = (status, error, extra) => ({ status, body: { error, ...extra } });
 
+  // Документ в копии человека (Visible.of): то, что ему отдано, — урезанное («hidden», без цен) или null, если не видно
+  function viewOf(vis, key, id) {
+    if (key === 'products') {
+      const p = (vis.products || []).find(x => x && String(x.id) === id);
+      return p ? plainOf(core.Store.plain(p)) : null;
+    }
+    return plainOf(Docs.get(vis, key, id));
+  }
+
+  // Наложить правку человека на настоящую запись. v — его урезанная версия, r — его итог слияния (тоже урезанный),
+  // f — настоящая запись. Где у человека ничего не вырезано (v = f) — берётся r; где он не трогал (v = r) — f.
+  // Вырезанное место, которое человек поменял (вписал сумму, заменил «hidden»), остаётся настоящим: r со скрытым
+  // значением не сравнивается никогда, поэтому ответ не зависит от того, угадал ли человек.
+  function overlay(v, r, f) {
+    if (Docs.same(v, f)) return r;
+    if (Docs.same(v, r)) return f;
+    if (r === undefined || r === null) return r;
+    const isObj = x => x !== null && typeof x === 'object' && !Array.isArray(x);
+    if (isObj(v) && isObj(r) && isObj(f)) {
+      const out = {};
+      for (const k of new Set([...Object.keys(r), ...Object.keys(f), ...Object.keys(v)])) {
+        const x = overlay(v[k], r[k], f[k]);
+        if (x !== undefined) out[k] = x;
+      }
+      return out;
+    }
+    if (Array.isArray(v) && Array.isArray(r) && Array.isArray(f)) return overlayList(v, r, f);
+    return f;
+  }
+  // Списки внутри записи. Записи с id — по id (чего человеку не показали, остаётся). Без id (строки сделки) Visible.of
+  // длину не меняет: строка человека, равная его прежней, берёт настоящую с того же места; изменённая — с того же
+  // индекса; остальные — новые, как есть.
+  function overlayList(v, r, f) {
+    const hasId = x => x !== null && typeof x === 'object' && x.id !== undefined && x.id !== null && x.id !== '';
+    if ([v, r, f].every(list => list.every(hasId))) {
+      const get = (list, id) => list.find(x => String(x.id) === id);
+      const out = r.map(x => overlay(get(v, String(x.id)), x, get(f, String(x.id))));
+      for (const x of f) if (!get(v, String(x.id)) && !get(r, String(x.id))) out.push(x);
+      return out;
+    }
+    if (v.length !== f.length) return f;
+    const used = new Array(v.length).fill(false), pair = r.map(() => -1);
+    let from = 0;
+    r.forEach((x, i) => {
+      for (let k = from; k < v.length; k++) if (!used[k] && Docs.same(x, v[k])) { pair[i] = k; used[k] = true; from = k + 1; return; }
+    });
+    r.forEach((x, i) => { if (pair[i] < 0 && i < v.length && !used[i]) { pair[i] = i; used[i] = true; } });
+    return r.map((x, i) => (pair[i] < 0 ? x : overlay(v[pair[i]], x, f[pair[i]])));
+  }
+
   // Каскад: новое название клиента — во все его сделки, и в те, что правящему не видны (Clients.update делает это в
   // копии браузера только для видимых)
   function cascade(list) {
@@ -184,15 +235,27 @@ function createSync({ store, core, now, files, onSeq }) {
     if (changes.length > BATCH_MAX) return bad(413, 'Слишком большая пачка изменений');
     fresh();
     const list = [];
+    let vis = null;
     for (const c of changes) {
       if (!c || typeof c !== 'object' || typeof c.key !== 'string' || !KEY_RE.test(c.key) || BAD_KEYS.has(c.key)) return bad(400, 'Неверная запись в пачке');
       const id = c.id === undefined || c.id === null ? '' : String(c.id);
       if (id.length > 200) return bad(400, 'Неверная запись в пачке');
       const mine = c.deleted ? null : c.data;
       if (mine === undefined) return bad(400, 'Неверная запись в пачке');
+      const base = c.base === undefined ? null : c.base;
       const theirs = current(c.key, id);
-      const r = Docs.merge(c.base === undefined ? null : c.base, mine, theirs);
-      if (!r.ok && theirs !== null && !core.Visible.canSee(st, ses.personId, c.key, id)) return bad(403, 'Нет прав: править эту запись', { key: c.key, id });
+      // Видимость — до любого сравнения с настоящей записью. Существующая запись правится, только если она есть в копии
+      // человека (Visible.of); несуществующую (и удалённую) можно только завести: правка или удаление её — тот же отказ,
+      // что у невидимой, без имени удалившего.
+      if (theirs === null && (base !== null || mine === null)) return bad(403, 'Нет прав: править эту запись', { key: c.key, id });
+      let view = null;
+      if (theirs !== null) {
+        if (!vis) vis = core.Visible.of(st, ses.personId);
+        view = viewOf(vis, c.key, id);
+        if (view === null) return bad(403, 'Нет прав: править эту запись', { key: c.key, id });
+      }
+      // Слияние — в копии человека: его основа, его правка и его урезанная версия текущей записи
+      const r = Docs.merge(base, mine, view);
       if (!r.ok) {
         const who = store.log.lastBy(c.key, id);
         const by = who ? nameOf(who) : 'нет данных: кто';
@@ -205,7 +268,10 @@ function createSync({ store, core, now, files, onSeq }) {
           },
         };
       }
-      const value = r.value === undefined ? null : r.value;
+      const merged = r.value === undefined ? null : r.value;
+      if (Docs.same(merged, view)) continue;
+      // Итог человека — на настоящую запись: вырезанное для него остаётся настоящим
+      const value = merged === null || theirs === null ? merged : overlay(view, merged, theirs);
       if (Docs.same(value, theirs)) continue;
       list.push(value === null ? { key: c.key, id, base: theirs, deleted: true } : { key: c.key, id, base: theirs, data: value });
     }

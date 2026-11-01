@@ -278,3 +278,103 @@ test('ревизия: meta.rev меньше Store.REV и нет миграции
   const ok = await start({ dataDir: dir });
   await ok.stop();
 });
+
+// ——— ремонт 02: сервер не выдаёт скрытое ни ответом, ни записью ———
+// Ожидаемое — из ремонта: невидимое — 403 «Нет прав: …» при любых присланных полях; без права «цены» ответ не зависит
+// от настоящей суммы; вырезанное для человека (суммы, цены строк, номер невидимой сделки) правка человека не стирает.
+
+test('POST /api/changes: правка невидимой, удалённой или несуществующей записи — 403 «Нет прав» при любых полях, без имени правившего', async () => {
+  const srv = await start();
+  try {
+    const { boss, anna } = await firm(srv);
+    const d302 = deal('Д-302', { managerId: 'p3', type: 'b2b', amount: 990000 });
+    const d303 = deal('Д-303', { managerId: 'p2', type: 'b2c' });
+    const r = await changes(srv, boss.cookie, [
+      { key: 'deals', id: 'Д-302', base: null, data: d302 },
+      { key: 'deals', id: 'Д-303', base: null, data: d303 },
+    ]);
+    assert.equal(r.status, 200, r.text);
+    // Д-303 Анна видела, потом её удалил директор
+    assert.equal((await changes(srv, boss.cookie, [{ key: 'deals', id: 'Д-303', base: d303, deleted: true }])).status, 200);
+    const seq0 = (await state(srv, boss.cookie)).seq;
+    const tries = [
+      ['сумма совпала с настоящей', { key: 'deals', id: 'Д-302', base: {}, data: { amount: 990000 } }],
+      ['сумма не совпала', { key: 'deals', id: 'Д-302', base: {}, data: { amount: 1 } }],
+      ['пустая запись поверх существующей', { key: 'deals', id: 'Д-302', base: null, data: {} }],
+      ['вся запись как есть', { key: 'deals', id: 'Д-302', base: d302, data: d302 }],
+      ['удалить невидимую', { key: 'deals', id: 'Д-302', base: d302, deleted: true }],
+      ['правка удалённой', { key: 'deals', id: 'Д-303', base: d303, data: { ...d303, object: 'СЭС 5 кВт' } }],
+      ['удалить удалённую', { key: 'deals', id: 'Д-303', base: d303, deleted: true }],
+      ['правка несуществующей', { key: 'deals', id: 'Д-999', base: deal('Д-999', { managerId: 'p2' }), data: deal('Д-999', { managerId: 'p2', amount: 1 }) }],
+      ['удалить несуществующую', { key: 'deals', id: 'Д-999', base: null, deleted: true }],
+    ];
+    for (const [what, c] of tries) {
+      const got = await changes(srv, anna.cookie, [c]);
+      assert.equal(got.status, 403, `${what}: ${got.text}`);
+      assert.match(got.body.error, /^Нет прав: /, what);
+      assert.ok(!('by' in got.body) && !got.text.includes('Директор'), `${what}: имени правившего в ответе нет`);
+    }
+    const after = await state(srv, boss.cookie);
+    assert.equal(after.seq, seq0, 'ничего не записано');
+    assert.equal(docOf(after, 'deals', 'Д-302').amount, 990000);
+  } finally { await srv.stop(); }
+});
+
+// Фирма, где у менеджера B2C снято право «цены»: Д-301 Анны с суммой и строками с ценой, Д-302 Максима (Анне не видна),
+// заявка на отправку по Д-302 от директора; логист p5 (право «отправки», сделок не видит)
+async function noPrices(srv) {
+  const f = await firm(srv);
+  const role = (await state(srv, f.boss.cookie)).roles.find(x => x.id === 'managerB2c');
+  const d301 = { ...deal('Д-301', { managerId: 'p2', amount: 150000 }), items: [{ productId: 'pr-a', qty: 2, price: 40000 }, { productId: 'pr-b', qty: 1, price: 70000 }] };
+  const r = await changes(srv, f.boss.cookie, [
+    { key: 'roles', id: 'managerB2c', base: role, data: { ...role, perms: { ...role.perms, prices: false } } },
+    { key: 'deals', id: 'Д-301', base: null, data: d301 },
+    { key: 'deals', id: 'Д-302', base: null, data: deal('Д-302', { managerId: 'p3', type: 'b2b', amount: 990000 }) },
+    { key: 'dispatches', id: 'dsp1', base: null, data: { id: 'dsp1', number: 'ОТ-001', purpose: 'sale', by: 'p1', dealId: 'Д-302', items: [], pipeId: 'dispatch', stageId: 'new', at: dateDoc(T0) } },
+  ]);
+  assert.equal(r.status, 200, r.text);
+  const logist = await employee(srv, f.boss, { id: 'p5', name: 'Логист (тест)', role: 'logist', dept: 'log' });
+  return { ...f, logist };
+}
+
+test('POST /api/changes: без права «цены» сумма, равная настоящей, и неверная получают один ответ; настоящая не меняется', async () => {
+  const srv = await start();
+  try {
+    const { boss, anna } = await noPrices(srv);
+    const mine = docOf(await state(srv, anna.cookie), 'deals', 'Д-301');
+    assert.ok(!('amount' in mine), 'Анна суммы не видит');
+    const right = await changes(srv, anna.cookie, [{ key: 'deals', id: 'Д-301', base: mine, data: { ...mine, amount: 150000 } }]);
+    const wrong = await changes(srv, anna.cookie, [{ key: 'deals', id: 'Д-301', base: mine, data: { ...mine, amount: 1 } }]);
+    assert.equal(wrong.status, right.status, `ответы различаются: ${right.text} / ${wrong.text}`);
+    assert.deepEqual(wrong.body, right.body);
+    assert.equal(docOf(await state(srv, boss.cookie), 'deals', 'Д-301').amount, 150000);
+  } finally { await srv.stop(); }
+});
+
+test('POST /api/changes: правка человека без права «цены» не стирает сумму и цены строк; правка заявки с dealId «hidden» не стирает номер сделки', async () => {
+  const srv = await start();
+  try {
+    const { boss, anna, logist } = await noPrices(srv);
+    const mine = docOf(await state(srv, anna.cookie), 'deals', 'Д-301');
+    assert.deepEqual(mine.items, [{ productId: 'pr-a', qty: 2 }, { productId: 'pr-b', qty: 1 }]);
+    // Анна меняет объект и убирает первую строку — у оставшейся строки цена своя, сумма прежняя
+    const r = await changes(srv, anna.cookie, [{ key: 'deals', id: 'Д-301', base: mine, data: { ...mine, object: 'СЭС 15 кВт', items: [mine.items[1]] } }]);
+    assert.equal(r.status, 200, r.text);
+    const now = docOf(await state(srv, boss.cookie), 'deals', 'Д-301');
+    assert.equal(now.object, 'СЭС 15 кВт');
+    assert.equal(now.amount, 150000);
+    assert.deepEqual(now.items, [{ productId: 'pr-b', qty: 1, price: 70000 }]);
+    // и меняет количество в строке — цена строки та же
+    const mine2 = docOf(await state(srv, anna.cookie), 'deals', 'Д-301');
+    const r2 = await changes(srv, anna.cookie, [{ key: 'deals', id: 'Д-301', base: mine2, data: { ...mine2, items: [{ ...mine2.items[0], qty: 3 }] } }]);
+    assert.equal(r2.status, 200, r2.text);
+    assert.deepEqual(docOf(await state(srv, boss.cookie), 'deals', 'Д-301').items, [{ productId: 'pr-b', qty: 3, price: 70000 }]);
+    // логист не видит Д-302: в заявке у него «hidden»; его правка заявки номер сделки не стирает
+    const dsp = docOf(await state(srv, logist.cookie), 'dispatches', 'dsp1');
+    assert.equal(dsp.dealId, 'hidden');
+    const r3 = await changes(srv, logist.cookie, [{ key: 'dispatches', id: 'dsp1', base: dsp, data: { ...dsp, note: 'Забрать до обеда (тест)' } }]);
+    assert.equal(r3.status, 200, r3.text);
+    const full = docOf(await state(srv, boss.cookie), 'dispatches', 'dsp1');
+    assert.deepEqual([full.dealId, full.note], ['Д-302', 'Забрать до обеда (тест)']);
+  } finally { await srv.stop(); }
+});
