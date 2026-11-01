@@ -10,7 +10,8 @@ const Notify = (() => {
   const RECIPIENTS = {
     ship: 'all',                                               // поставки: этап, точка, срок — все сотрудники (R10)
     arrive: ['director', 'managerB2b', 'managerB2c'],          // приёмка «товар на складе» — менеджеры и директор (R15)
-    reserve: ['director', 'managerB2b', 'managerB2c', 'warehouse'], // резервы — как в v2
+    reserve: ['director', 'warehouse'],                        // резервы — склад и директор, плюс менеджер сделки (extraPersons):
+                                                               // менеджер другого типа чужую сделку не видит и о ней не узнаёт
     warn: ['director', 'logist', 'managerB2b', 'managerB2c'],  // приёмка с замечаниями — как в v2
     task: [],                                                  // задачи — исполнитель, отдел и автор (extraPersons)
     msg: ['director'],                                         // сообщения клиентам — плюс менеджер сделки (extraPersons)

@@ -466,6 +466,8 @@ test('форма резерва: больше свободного — ошиб�
     el('rs-ent').value = 'ip'; el('rs-city').value = '_'; el('rs-until').value = app.iso(app.day(5));
     el('rs-err').hidden = true; el('rs-err').textContent = '';
   };
+  // резерв ставится под сделку, в строках которой есть товар (F1: тот же Deals.reserve, что из сделки) — строка с запасом
+  app.Deals.addItem(app.S, app.S.deals[0].id, { productId: p.id, qty: row.ip + 7 }, app.S.me, new Date());
   const movesBefore = app.S.moves.length;
   fill(row.ip + 1);
   app.FORMS.reserve({ dataset: { pid: p.id } });
@@ -724,6 +726,7 @@ test('форма резерва: по умолчанию клетка bestCell, 
   assert.equal(el('rs-max').textContent, `Можно поставить: ${Stock.canReserve(app.S, { productId: p.id, qty: 1, entityId: 'npp', cityId: 'msk', src: 'stock' }).max}`);
   assert.match(el('rs-max').textContent, /: 0$/);
   // больше свободного — отказ словами canReserve, число в тексте
+  app.Deals.addItem(app.S, app.S.deals[0].id, { productId: p.id, qty: row.ip + 7 }, app.S.me, new Date()); // строка сделки с этим товаром (F1)
   el('rs-deal').value = app.S.deals[0].id; el('rs-src').value = 'stock'; el('rs-ent').value = 'ip'; el('rs-city').value = '_';
   el('rs-qty').value = String(row.ip + 7); el('rs-until').value = app.iso(app.day(3));
   const before = app.S.reserves.length;

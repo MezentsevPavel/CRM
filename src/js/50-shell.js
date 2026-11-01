@@ -33,9 +33,13 @@ function save(){
   if(!S) return null;
   let r=Store.dump(S),ok=true;
   try{localStorage.setItem(Store.KEY,r.text)}catch(_){
-    // браузер дал меньше места, чем рассчитывает Store, — сохраняем без фото
-    r=Store.dump(S,0);
-    try{localStorage.setItem(Store.KEY,r.text)}catch(_){ok=false}
+    // браузер дал меньше места, чем рассчитывает Store: предел ужимается по шагу, и выкидывается только то,
+    // что не влезло (сначала новые и крупные фото и файлы); не влезло и без них — не сохранено
+    const full=r.text.length;ok=false;
+    for(const k of [.95,.9,.8,.65,.5,.3,0]){
+      r=Store.dump(S,Math.floor(full*k));
+      try{localStorage.setItem(Store.KEY,r.text);ok=true;break}catch(_){}
+    }
   }
   if(!ok) toast('Изменения не сохранены — мало места в браузере','warn');
   else if((r.droppedPhotos||r.droppedFiles)&&(r.droppedPhotos+r.droppedFiles)!==_photoWarn) toast((r.droppedPhotos?'Фото':'Файлы заявок')+(r.droppedPhotos&&r.droppedFiles?' и файлы заявок':'')+' не сохранены — мало места в браузере','warn');
@@ -423,10 +427,12 @@ const A={
   'note-k':el=>{S.ui.noteK=el.dataset.k;render()},
   'note-scope':el=>{S.ui.noteScope=el.dataset.k;render()},
   'view-as':el=>setMe(el.dataset.id),
+  // «Снять» в карточке товара — тот же Deals.unreserve, что в карточке сделки: право, запись в ленте сделки, уведомление
+  // складу, директору и менеджеру сделки. Резерв без сделки (её удалили) снимает Stock.unreserve по праву reserve.
   unreserve:el=>{
-    const m=me(),now=new Date(),res=Stock.unreserve(S,el.dataset.id,m.id,now);if(!res.ok) return;
-    const r=res.reserve,p=product(r.productId),d=deal(r.dealId);
-    Notify.push(S,'reserve',m.id,`Снят резерв: ${p.name} — ${qtyOf(r.qty,p)} (${r.dealId}, ${d?.client||''}).`,now);
+    const r=S.reserves.find(x=>x.id===el.dataset.id),now=new Date();if(!r) return;
+    const res=deal(r.dealId)?Deals.unreserve(S,r.dealId,r.id,S.me,now):!can('reserve')?{ok:false,reason:'У вашей роли нет права снимать резервы.'}:Stock.unreserve(S,r.id,S.me,now);
+    if(!res.ok) return toast(res.reason,'warn');
     render();toast('Резерв снят, товар снова свободен.');
   },
   'rcv-start':el=>{initRcv(el.dataset.id);go('receiving')},
@@ -448,15 +454,16 @@ const A={
 // ——— формы ———
 const FORMS={
   reset:()=>resetData(),
+  // Резерв из карточки товара — тот же Deals.reserve, что из строки сделки: право reserve и право править сделку, только
+  // видимая сделка, не больше «в строках сделки − уже в резерве», запись в ленте сделки, уведомление складу, директору и менеджеру.
   reserve:f=>{
     const p=product(f.dataset.pid),did=byId('rs-deal').value,qty=parseInt(byId('rs-qty').value,10),src=byId('rs-src').value,until=byId('rs-until').value;
-    if(!did) return showErr('rs-err','Нет открытых сделок, под которые можно поставить резерв.');
+    if(!did) return showErr('rs-err','Нет ваших открытых сделок с этим товаром в строках: добавьте товар в сделку — тогда здесь можно поставить резерв.');
     if(!until||dd(fromIso(until))<0) return showErr('rs-err','Дата окончания резерва не может быть в прошлом.');
-    const d=deal(did),m=me(),u=fromIso(until),now=new Date();
-    const res=Stock.reserve(S,{productId:p.id,qty,entityId:byId('rs-ent').value,cityId:byId('rs-city').value,src,dealId:did,until:u,by:m.id,at:now});
+    const u=fromIso(until),now=new Date();
+    const res=Deals.reserve(S,did,{productId:p.id,qty,src,entityId:byId('rs-ent').value,cityId:byId('rs-city').value,until:u},S.me,now);
     if(!res.ok) return showErr('rs-err',res.reason);
-    Notify.push(S,'reserve',m.id,`Резерв: ${low(p.name)} — ${qtyOf(qty,p)} ${src==='stock'?'со склада':'из поставки '+src} для ${did} (${d.client}) до ${fD(u)}.`,now);
-    render();toast(`Резерв поставлен: ${qtyOf(qty,p)} для ${did}. Склад и директор получили уведомление.`);
+    render();toast(`Резерв поставлен: ${qtyOf(res.reserve.qty,p)} для ${did}. Склад, директор и менеджер сделки получили уведомление.`);
   },
   stage:f=>shipStageForm(f),
   task:()=>{

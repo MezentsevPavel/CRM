@@ -16,7 +16,8 @@ const Store = (() => {
   // 9 — лиды заводятся руками, время реакции (таск 10).
   // 10 — отправки (таск 07): st.dispatches, права dispatch и sell, роль «Водитель», вид воронки dispatch.
   // 12 — звук уведомлений у каждого свой (таск 06): prefs.sound = {personId: {on, kind}} вместо одного {on, kind}.
-  const REV = 12;
+  // 13 — ремонт F1: право dealsEdit, резервы только по строкам сделки, демо-перемещения не увозят товар, правило поставок sr3.
+  const REV = 13;
   // Браузер даёт сайту около 5 млн символов на всё; берём с запасом.
   const LIMIT = 4500000;
   const NO_SPACE = 'не сохранено — мало места в браузере';
@@ -44,50 +45,61 @@ const Store = (() => {
     return v;
   }
 
-  // Выкидывает фото из копии; запись, где они были, помечается. Возвращает, сколько фото выкинуто.
-  function dropPhotos(node) {
-    let total = 0;
-    const walk = (v, owner) => {
-      if (Array.isArray(v)) { v.forEach(x => walk(x, owner)); return; }
+  // Предел одного файла заявки — 2 МБ: больше — отказ ещё при прикреплении. Браузер даёт на всё около 5 млн символов,
+  // а файл в сохранении занимает примерно на треть больше своего размера: два-три таких файла — и места нет.
+  const FILE_MAX = 2 * 1024 * 1024;
+  const mb = n => String(Math.round(n / 1048576 * 10) / 10).replace('.', ',');
+  // Файл больше предела → причина отказа (её показывают и форма, и ядро заявки), иначе null.
+  function fileTooBig(f) {
+    const size = Number(f && f.size) || 0;
+    return size > FILE_MAX ? `Файл «${f.name}» — ${mb(size)} МБ, больше предела ${mb(FILE_MAX)} МБ. Сожмите его или разбейте на части до ${mb(FILE_MAX)} МБ.` : null;
+  }
+
+  // Время записи для порядка выкидывания: ближайшее поле at по пути к фото или файлу. Времени нет (черновик приёмки) —
+  // запись считается самой новой: она ещё не сохранена как принятая.
+  const NEWEST = Number.MAX_SAFE_INTEGER;
+  const atOf = v => (v && v.at && v.at.$date && Date.parse(v.at.$date)) || 0;
+  const GONE = Symbol('выкинуто');
+
+  // Что можно выкинуть из копии: фото приёмки (строки data:image/… вне заявок) и данные файлов заявок на отправку.
+  // Картинка, приложенная к заявке, — файл заявки, а не фото приёмки.
+  function heavy(copy) {
+    const out = [];
+    const walk = (v, at) => {
+      if (Array.isArray(v)) { v.forEach(x => walk(x, at)); return; }
       if (!v || typeof v !== 'object') return;
-      let here = 0;
+      const here = atOf(v) || at;
       for (const k of Object.keys(v)) {
+        if (v === copy && k === 'dispatches') continue;
         const x = v[k];
-        if (isPhoto(x)) { v[k] = null; here++; continue; }
-        if (Array.isArray(x)) {
-          const keep = x.filter(y => !isPhoto(y));
-          here += x.length - keep.length;
-          v[k] = keep;
-          keep.forEach(y => walk(y, v));
-          continue;
-        }
-        walk(x, v);
-      }
-      if (here) {
-        const prev = v.unsaved && v.unsaved.photos || 0;
-        v.unsaved = { photos: prev + here, text: NO_SPACE };
-        total += here;
+        if (isPhoto(x)) out.push({ photo: true, holder: v, key: k, size: x.length, at: here });
+        else if (Array.isArray(x)) x.forEach((y, i) => isPhoto(y) ? out.push({ photo: true, holder: v, key: k, index: i, size: y.length, at: here }) : walk(y, here));
+        else walk(x, here);
       }
     };
-    walk(node, null);
-    return total;
-  }
-
-  // Файлы заявок на отправку (таск 07): dispatches[].files[].data — строка data:… любого вида, не только картинка.
-  // Выкидывает данные файла (data → null) и помечает сам файл unsaved:true. Возвращает, сколько файлов выкинуто.
-  function dropFiles(node) {
-    let total = 0;
-    for (const d of (node && node.dispatches) || []) {
+    walk(copy, NEWEST);
+    for (const d of copy.dispatches || []) {
       for (const f of (d && d.files) || []) {
-        if (f && typeof f.data === 'string' && f.data) { f.data = null; f.unsaved = true; total++; }
+        if (f && typeof f.data === 'string' && f.data) out.push({ file: f, size: f.data.length, at: atOf(f) || atOf(d) || NEWEST });
       }
     }
-    return total;
+    return out;
   }
 
-  // Состояние → {text, droppedPhotos, droppedFiles, fits}. Не влезает в limit — выкидываются фото приёмки
-  // (droppedPhotos — сколько) и вместе с ними файлы заявок на отправку (droppedFiles — сколько); их записи помечаются
-  // «не сохранено — мало места в браузере»: у фото unsaved:{photos, text}, у файла unsaved:true. Остальное сохраняется.
+  // Выкинуть одно: у файла data → null и unsaved:true; у фото запись, где оно было, получает unsaved:{photos, text}.
+  function drop(c) {
+    if (c.file) { c.file.data = null; c.file.unsaved = true; return; }
+    if (c.index === undefined) c.holder[c.key] = null; else c.holder[c.key][c.index] = GONE;
+    const prev = c.holder.unsaved && c.holder.unsaved.photos || 0;
+    c.holder.unsaved = { photos: prev + 1, text: NO_SPACE };
+  }
+  // Выкинутые из списка фото в текст не идут
+  const text = copy => JSON.stringify(copy, (k, v) => Array.isArray(v) && v.includes(GONE) ? v.filter(y => y !== GONE) : v);
+
+  // Состояние → {text, droppedPhotos, droppedFiles, fits}. Не влезает в limit — выкидывается только то, что не помещается:
+  // по одному фото приёмки или файлу заявки, сначала самые новые, при равном времени — самые крупные, пока текст не влезет.
+  // Прежние фото и файлы сохраняются. Выкинутое помечается «не сохранено — мало места в браузере»: у фото —
+  // запись unsaved:{photos, text}, у файла unsaved:true; droppedPhotos и droppedFiles — сколько выкинуто.
   // Само состояние не меняется.
   function dump(state, limit = LIMIT) {
     const copy = plain(state, true);
@@ -95,18 +107,22 @@ const Store = (() => {
     const packed = Catalog.pack(copy.products);
     if (packed) Object.assign(copy, packed);
     copy.rev = REV;
-    let text = JSON.stringify(copy);
+    let out = JSON.stringify(copy);
     let droppedPhotos = 0, droppedFiles = 0;
-    if (text.length > limit) {
-      // картинка, приложенная к заявке, — файл заявки, а не фото приёмки: заявки на время отбора фото убираем из копии
-      const dispatches = copy.dispatches;
-      delete copy.dispatches;
-      droppedPhotos = dropPhotos(copy);
-      if (dispatches) copy.dispatches = dispatches;
-      droppedFiles = dropFiles(copy);
-      if (droppedPhotos || droppedFiles) text = JSON.stringify(copy);
+    if (out.length > limit) {
+      const list = heavy(copy).sort((a, b) => b.at - a.at || b.size - a.size);
+      // длину после выкидывания сначала прикидываем, точную считаем, когда прикидка влезла
+      let est = out.length;
+      for (const c of list) {
+        if (est <= limit) break;
+        drop(c);
+        if (c.photo) droppedPhotos++; else droppedFiles++;
+        est -= c.size;
+        if (est <= limit) { out = text(copy); est = out.length; }
+      }
+      if (droppedPhotos || droppedFiles) out = text(copy);
     }
-    return { text, droppedPhotos, droppedFiles, fits: text.length <= limit };
+    return { text: out, droppedPhotos, droppedFiles, fits: out.length <= limit };
   }
 
   // Строка из localStorage → состояние с живыми датами; пусто, мусор или чужая версия схемы → null
@@ -136,5 +152,5 @@ const Store = (() => {
     return prefix + n;
   }
 
-  return { KEY, VERSION, REV, LIMIT, NO_SPACE, load, dump, freeId };
+  return { KEY, VERSION, REV, LIMIT, NO_SPACE, FILE_MAX, fileTooBig, load, dump, freeId };
 })();

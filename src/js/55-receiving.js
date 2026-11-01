@@ -40,13 +40,23 @@ function rcvPlan(r=S.rcv){
   const adds=s.items.map(it=>({productId:it.productId,qty:qv(it.productId,r)}));
   // правила «принято на складе»: поставка к тому времени уже на этапе «на складе», срабатывают те, что ставят другой этап
   const rules=(S.shipRules||[]).filter(x=>x.on===true&&x.when==='received'&&fin&&x.then!==fin.id&&Pipes.stage(S,s.pipeId,x.then));
-  const res=S.reserves.filter(x=>x.src===s.id);
+  // резервы «из поставки» становятся резервами со склада, но не больше принятого: принятое делится между резервами по порядку
+  // постановки (раньше поставлен — раньше получает); кому не хватило — резерв уменьшается или снимается (cuts)
+  const all=S.reserves.filter(x=>x.src===s.id),cuts=[],res=[],rest={};
+  all.forEach(x=>{
+    if(!(x.productId in rest)) rest[x.productId]=qv(x.productId,r);
+    const keep=Math.min(x.qty,rest[x.productId]);rest[x.productId]-=keep;
+    if(keep>0) res.push(x);
+    if(keep<x.qty) cuts.push({r:x,keep,drop:x.qty-keep,d:deal(x.dealId)});
+  });
   // как сообщить клиенту: телефон → задача менеджеру; иначе авто-сообщение, если правило включено; иначе напоминание
-  const waits=[...byDeal(res)].map(([did,list])=>{const d=deal(did);return {d,list,items:itemsText(list),how:d.channel==='phone'?'call':auto?'auto':'remind'}});
-  const ids=new Set([...Notify.recipients(S,'arrive'),...waits.flatMap(w=>Notify.recipients(S,'msg',[w.d.managerId])),...(issues.length||dmg.length?Notify.recipients(S,'warn'):[]),...(rules.length?Notify.recipients(S,'ship'):[])]);
+  const waits=[...byDeal(res)].map(([did,list])=>{const d=deal(did);return {d,list,items:itemsText(list.map(x=>{const c=cuts.find(k=>k.r===x);return c?{...x,qty:c.keep}:x})),how:d.channel==='phone'?'call':auto?'auto':'remind'}});
+  const ids=new Set([...Notify.recipients(S,'arrive'),...waits.flatMap(w=>Notify.recipients(S,'msg',[w.d.managerId])),...(issues.length||dmg.length?Notify.recipients(S,'warn'):[]),...(rules.length?Notify.recipients(S,'ship'):[]),...cuts.flatMap(c=>Notify.recipients(S,'reserve',c.d&&c.d.managerId?[c.d.managerId]:[]))]);
   const block=!fin?'В воронке поставок нет этапа «на складе» (с флагом «закрыто»): приёмке некуда перевести поставку.':!cell.ok?'Выберите юрлицо и город, куда класть товар.':'';
-  return {s,issues,dmg,res,waits,warnTo:Notify.recipients(S,'warn'),to:[...ids],adds,cell,final:fin,rules,block};
+  return {s,issues,dmg,res,cuts,waits,warnTo:Notify.recipients(S,'warn'),to:[...ids],adds,cell,final:fin,rules,block};
 }
+// Почему снят резерв при приёмке — одна фраза для ленты сделки, уведомления и предпросмотра
+const rcvCutWhy=(s,c)=>`При приёмке ${s.id} принято меньше, чем ждали: на склад перешло ${num(c.keep)} из ${num(c.r.qty)}.`;
 function vReceiving(){
   const r=curRcv();
   if(r&&r.done) return rcvLayout(rcvDoneHtml(r),rcvAfterHtml(r));
@@ -89,7 +99,7 @@ function rcvPreview(r=S.rcv){
     <div><h4 class="sh">Добавится на склад: ${esc(P.cell.entityName)}, ${esc(P.cell.cityName)}</h4><ul class="plain">${add}</ul></div>
     <div><h4 class="sh">Поставка ${esc(s.id)}</h4><p class="sm m0">${P.final?`Перейдёт на этап «${esc(P.final.name)}» (автоматически: приёмка).`:'нет данных: этап «на складе» в воронке'}</p>${rules?`<ul class="plain">${rules}</ul>`:''}${P.block?`<p class="warn-t sm" style="margin:6px 0 0">${esc(P.block)}</p>`:''}</div>
     <div><h4 class="sh">Уведомление получат</h4><div class="who-list">${ppl.map(p=>`<span class="chip">${av(p,'xs')}${esc(p.name)} · ${esc(roleName(p).toLowerCase())}</span>`).join('')}</div>${P.issues.length||P.dmg.length?`<p class="warn-t sm" style="margin:8px 0 0">Есть расхождение или повреждение — отдельное предупреждение получат: ${warnNames}.</p>`:''}</div>
-    <div><h4 class="sh">Клиенты, которые ждут этот товар</h4><div class="stack-s">${waits||'<p class="muted sm m0">Резервов под эту поставку нет — весь товар станет свободным для продажи.</p>'}</div></div>
+    <div><h4 class="sh">Клиенты, которые ждут этот товар</h4><div class="stack-s">${waits||'<p class="muted sm m0">Резервов под эту поставку нет — весь товар станет свободным для продажи.</p>'}</div>${P.cuts.length?`<ul class="plain">${P.cuts.map(c=>`<li class="sm warn-t">Резерв ${esc(c.r.dealId||'')}${c.d?' ('+esc(c.d.client)+')':''}: ${esc(low(product(c.r.productId)?.name||'нет данных: товар'))} — ${c.keep?`останется ${num(c.keep)}, снимется ${num(c.drop)}`:`снимется весь (${num(c.drop)})`}.</li>`).join('')}</ul>`:''}</div>
   </div></section>`;
 }
 function updRcvPrev(){const b=byId('rcv-prev');if(b) b.innerHTML=rcvPreview()}
@@ -109,7 +119,10 @@ function receiveShip(by,now){
     if(q&&Stock.move(S,{kind:Stock.KINDS.receive,productId:it.productId,qty:q,entityId:P.cell.entityId,cityId:P.cell.cityId,doc:s.id,by,at:now}).ok) stock.push({productId:it.productId,qty:q});
   });
   s.entityId=P.cell.entityId;s.cityId=P.cell.cityId;
-  P.res.forEach(x=>{x.src='stock';x.entityId=P.cell.entityId;x.cityId=P.cell.cityId});
+  // излишек резерва над принятым снимается: «Снят резерв» в журнале, запись в ленте сделки и уведомление её менеджеру
+  P.cuts.forEach(c=>{Deals.noteRelease(S,c.r,c.drop,rcvCutWhy(s,c),by,now)});
+  [...P.res,...P.cuts.map(c=>c.r)].forEach(x=>{x.src='stock';x.entityId=P.cell.entityId;x.cityId=P.cell.cityId});
+  P.cuts.forEach(c=>Stock.release(S,c.r.id,c.drop,by,now));
   // этап и положение груза — только через ядро; правила директора на «принято на складе» — после этапа
   const before=S.notes.length;
   Ships.setStage(S,s.id,P.final.id,by,now,Ships.SRC.receipt);

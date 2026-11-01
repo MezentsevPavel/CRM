@@ -14,6 +14,21 @@ const clientsSel=()=>Object.assign({},CLIENTS_DEF,S.ui.clients||{});
 const clientNoData=t=>`<span class="muted">нет данных: ${t}</span>`;
 const clientWho=id=>person(id)?.name||'нет данных: менеджер';
 const clientKindPill=c=>`<span class="pill sm${c.kind==='company'?' info':''}">${esc(Clients.KIND[c.kind]||'нет данных: вид')}</span>`;
+// Виден ли клиент человеку: клиент называет сделку, поэтому отбор — через видимые сделки и лиды (Clients.related с personId:
+// Leads.dealsVisible и Leads.visible). Виден, если у него есть видимая сделка или лид, если человек — его менеджер, или если
+// у клиента ещё нет ни сделок, ни лидов (только что заведён). Один отбор на список, поиск, карточку и подсказку о дублях.
+function clientVisible(c,pid=S.me){
+  if(!c) return false;
+  if(c.managerId&&c.managerId===pid) return true;
+  const mine=Clients.related(S,c.id,pid);
+  if(mine.deals.length||mine.leads.length) return true;
+  const all=Clients.related(S,c.id);
+  return !all.deals.length&&!all.leads.length;
+}
+const clientsSeen=list=>list.filter(c=>clientVisible(c));
+// Заводить и править клиентов — тем, кто заводит и правит сделки (право dealsEdit); право clients — только смотреть (R30)
+const clientCanEdit=()=>can('clients')&&can('dealsEdit');
+const CLIENT_NO_EDIT='Заводить и править клиентов могут те, у кого есть право «Заводить и править сделки».';
 // Телефоны из одной строки: через запятую, точку с запятой или с новой строки
 const clientPhonesOf=s=>String(s||'').split(/[,;\n]+/).map(x=>x.trim()).filter(Boolean);
 
@@ -21,7 +36,7 @@ const clientPhonesOf=s=>String(s||'').split(/[,;\n]+/).map(x=>x.trim()).filter(B
 // Совпадения с заведёнными клиентами по тому, что ввели в форме: q = {phone | phones, email, inn}. Нет совпадений — пустая строка.
 // Показывает, по чему совпало; кнопка «Выбрать его» — dup-pick, ссылка на имя — dup-open. Дубль всё равно можно сохранить.
 function clientDupHtml(q){
-  const found=Clients.find(S,q||{}).slice(0,3);
+  const found=clientsSeen(Clients.find(S,q||{})).slice(0,3);
   if(!found.length) return '';
   const ids=x=>new Set(Clients.find(S,x).map(c=>c.id));
   const by=[['ИНН',ids({inn:(q||{}).inn})],['телефон',ids({phone:(q||{}).phone,phones:(q||{}).phones})],['почта',ids({email:(q||{}).email})]];
@@ -31,7 +46,7 @@ function clientDupHtml(q){
 
 // ——— список ———
 function clientsList(u){
-  return Clients.search(S,u.q).filter(c=>!u.kind||c.kind===u.kind).sort((a,b)=>a.name.localeCompare(b.name,'ru'));
+  return clientsSeen(Clients.search(S,u.q)).filter(c=>!u.kind||c.kind===u.kind).sort((a,b)=>a.name.localeCompare(b.name,'ru'));
 }
 function clientsTable(list){
   const rows=list.map(c=>{
@@ -42,8 +57,8 @@ function clientsTable(list){
 }
 // Тело раздела: счёт и таблица (его же перерисовывает поиск)
 function clientsBody(){
-  const u=clientsSel(),all=S.clients||[],list=clientsList(u),dirty=u.q.trim()||u.kind;
-  if(!all.length) return `<section class="card">${emptyState('Клиентов пока нет. Они появляются, когда из лида создают сделку. Клиента можно завести и руками.','Новый клиент','client-new')}</section>`;
+  const u=clientsSel(),all=clientsSeen(S.clients||[]),list=clientsList(u),dirty=u.q.trim()||u.kind;
+  if(!all.length) return `<section class="card">${emptyState('Клиентов пока нет. Они появляются, когда из лида создают сделку. Клиента можно завести и руками.',clientCanEdit()?'Новый клиент':'','client-new')}</section>`;
   const comp=list.filter(c=>c.kind==='company').length;
   const head=`<p class="count"><span>Клиентов: <b>${list.length}</b>${list.length!==all.length?` из ${all.length}`:''}</span><span>компаний: <b>${comp}</b> · людей: <b>${list.length-comp}</b></span></p>`;
   if(!list.length) return `${head}<section class="card">${emptyState('По этим условиям клиентов нет.',dirty?'Сбросить поиск и фильтры':'','client-reset')}</section>`;
@@ -55,7 +70,7 @@ function vClients(){
   return `<p class="hint">Клиент — одна карточка на человека или компанию: в ней все его сделки, лиды, сообщения и лента. Ищите по имени, телефону или ИНН. В столбце «Сделок» и в карточке — только те сделки, которые видны вам.</p>
   <div class="bar cbar"><div class="seg" role="group" aria-label="Вид клиента">${kinds.map(([k,l])=>`<button type="button" class="${u.kind===k?'on':''}" aria-pressed="${u.kind===k}" data-act="client-kind" data-k="${k}">${l}</button>`).join('')}</div>
     <div class="search-in">${ic('search')}<input id="client-q" class="inp" type="search" placeholder="Поиск: имя, телефон, ИНН, почта" value="${esc(u.q)}" data-on="client-q" autocomplete="off" aria-label="Поиск по клиентам"></div>
-    ${dirty?'<button type="button" class="btn ghost sm" data-act="client-reset">Сбросить</button>':''}<span class="grow"></span><button type="button" class="btn pri" data-act="client-new">${ic('plus')}Новый клиент</button></div>
+    ${dirty?'<button type="button" class="btn ghost sm" data-act="client-reset">Сбросить</button>':''}<span class="grow"></span>${clientCanEdit()?`<button type="button" class="btn pri" data-act="client-new">${ic('plus')}Новый клиент</button>`:''}</div>
   <div id="client-body" class="stack-s">${clientsBody()}</div>`;
 }
 
@@ -121,9 +136,9 @@ function clientMsgs(list){
   return `<ul class="crel">${sorted.slice(0,CLIENT_MSGS).map(m=>`<li><div class="crow cmsg"><span class="crow-t"><span><b>${esc(CH[m.channel]||'нет данных: канал')}</b> · ${esc(m.deal)}${m.auto?' · автоматическое':''}${m.sim?' · имитация':''}</span><small>${esc(fWhen(m.at))}</small><span class="cmsg-t">${esc(m.text)}</span></span></div></li>`).join('')}</ul>${more>0?`<p class="hint">и ещё ${more} — все они в ленте ниже.</p>`:''}`;
 }
 function dClient(c){
-  const edit=can('clients'),rel=Clients.related(S,c.id,S.me);
+  const edit=clientCanEdit(),rel=Clients.related(S,c.id,S.me);
   const sec=(t,n,html)=>`<div><h4 class="sh">${t}${n===null?'':' · '+n}</h4>${html}</div>`;
-  const locked=edit?'':`<p class="lock">${ic('lock')}Править клиентов могут те, у кого есть право «Видеть клиентов и сделки».</p>`;
+  const locked=edit?'':`<p class="lock">${ic('lock')}${CLIENT_NO_EDIT} Вам карточка открыта на просмотр.</p>`;
   return {kind:'Клиент '+c.id,title:esc(c.name),sub:`${esc(Clients.KIND[c.kind]||'нет данных: вид')}${c.demo?' · пример':''}`,body:`${locked}${clientFields(c,edit)}
     ${sec('Сделки',rel.deals.length,clientDeals(rel.deals))}${sec('Лиды',rel.leads.length,clientLeads(rel.leads))}${sec('Сообщения',rel.msgs.length,clientMsgs(rel.msgs))}
     ${sec('Отправки',rel.dispatches.length,clientDispatches(rel.dispatches))}
@@ -132,7 +147,7 @@ function dClient(c){
 
 // ——— действия ———
 function clientsRefresh(){const box=byId('client-body');if(box&&S.view==='clients') box.innerHTML=clientsBody()}
-A['client-new']=()=>openModal('clientNew');
+A['client-new']=()=>{if(!clientCanEdit()) return toast(CLIENT_NO_EDIT,'warn');openModal('clientNew')};
 A['client-kind']=el=>{clientsU().kind=Clients.KIND[el.dataset.k]?el.dataset.k:'';render()};
 A['client-reset']=()=>{S.ui.clients=Object.assign({},CLIENTS_DEF);render()};
 // «Похоже, это …»: имя — открыть карточку найденного (окно закрывается: оно лежит поверх карточки)
@@ -163,6 +178,7 @@ ON.input['client-dup']=()=>{
 // Поле карточки: одно поле — одна правка Clients.update. Выбор из списка перерисовывает всё,
 // текст — только название в шапке, ленту и список за карточкой, чтобы не сбить ввод в соседнем поле.
 ON.change['client-f']=t=>{
+  if(!clientCanEdit()){toast(CLIENT_NO_EDIT,'warn');render();return}
   const id=t.dataset.id,f=t.dataset.f,r=Clients.update(S,id,{[f]:f==='phones'?clientPhonesOf(t.value):t.value},S.me,new Date());
   if(!r.ok){toast(r.reason,'warn');render();return}
   if(!r.changed.length) return;
@@ -178,6 +194,7 @@ ON.change['client-f']=t=>{
 
 // ——— формы ———
 FORMS['client-new']=()=>{
+  if(!clientCanEdit()) return showErr('cn-err',CLIENT_NO_EDIT);
   const name=byId('cn-name').value.trim(),inn=byId('cn-inn').value.trim();
   if(!name) return showErr('cn-err','Напишите имя клиента или название компании.');
   const r=Clients.create(S,{name,kind:inn?'company':byId('cn-kind').value,inn,phones:clientPhonesOf(byId('cn-phones').value),email:byId('cn-email').value,address:byId('cn-addr').value,managerId:byId('cn-mgr').value||undefined},S.me,new Date());
@@ -189,5 +206,5 @@ FORMS['client-new']=()=>{
 // ——— регистрация в реестрах оболочки ———
 NAV.push({id:'clients',label:'Клиенты',icon:'person',group:'Продажи',order:15,hint:'Картотека клиентов: у каждого свои сделки, лиды, сообщения и лента событий.',ok:()=>can('clients')});
 VIEWS.clients=vClients;
-SEARCH.push({kind:'client',label:'Клиент',order:40,find:q=>!can('clients')?[]:Clients.search(S,q).map(c=>({title:c.name,sub:`${c.id}${c.inn?' · ИНН '+c.inn:''}`,open:`data-act="open-client" data-id="${esc(c.id)}"`}))});
-DRAWERS.client=id=>{const c=can('clients')?Clients.byId(S,id):null;return c?dClient(c):null};
+SEARCH.push({kind:'client',label:'Клиент',order:40,find:q=>!can('clients')?[]:clientsSeen(Clients.search(S,q)).map(c=>({title:c.name,sub:`${c.id}${c.inn?' · ИНН '+c.inn:''}`,open:`data-act="open-client" data-id="${esc(c.id)}"`}))});
+DRAWERS.client=id=>{const c=can('clients')?Clients.byId(S,id):null;return c&&clientVisible(c)?dClient(c):null};

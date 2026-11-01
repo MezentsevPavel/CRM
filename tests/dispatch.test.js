@@ -599,10 +599,11 @@ test('Store.dump: не влезло в браузер — файлы заяво�
   assert.equal(roomy.droppedPhotos, 0);
   assert.equal(Store.load(roomy.text).dispatches[0].files[0].data, big, 'места хватает — файл не тронут');
 
-  const tight = Store.dump(st, 5000);
+  // предел, в который не влезает ни одно вложение: уходят все три (выкидывается только лишнее — тест F1·6 в repair.test.js)
+  const tight = Store.dump(st, 1500);
   assert.equal(tight.droppedFiles, 2);
   assert.equal(tight.droppedPhotos, 1, 'картинка в заявке — файл заявки, а не фото приёмки');
-  assert.ok(tight.text.length <= 5000 && tight.fits, 'без файлов и фото должно влезть');
+  assert.ok(tight.text.length <= 1500 && tight.fits, 'без файлов и фото должно влезть');
   const back = Store.load(tight.text);
   const [f1, f2] = back.dispatches[0].files;
   assert.equal(f1.data, null);
@@ -680,20 +681,28 @@ test('демо: 15+ заявок «пример» на разных этапах
   for (const r of ['logist', 'warehouse', 'driver', 'engineer', 'chiefEngineer']) assert.equal(who(r, 'sell'), false, `sell у ${r}`);
   // водители назначены на заявки в работе
   assert.ok(list.some(d => d.driverId === drivers[0].id) && list.some(d => d.driverId === drivers[1].id));
-  // склад демо-перемещений согласован: что в пути, то в приходе под номером заявки, и ушло из «откуда»
-  const way = list.filter(d => d.purpose === 'transfer' && d.stageId === 'onWay');
-  assert.ok(way.length >= 2, 'нет перемещений в пути');
-  for (const d of way) {
-    assert.equal(d.moved, true);
-    for (const it of d.items) {
-      const inc = Stock.incomingOf(st, it.productId).find(x => x.shipId === d.number);
-      assert.ok(inc && inc.qty >= it.qty, `${d.number}: товара ${it.productId} нет в пути`);
-    }
-  }
+  // демо-перемещения не доходят до «В пути» (F1·7): настоящий снимок остатков демо не трогает
+  const tr = list.filter(d => d.purpose === 'transfer');
+  assert.ok(tr.length >= 3, 'в демо нет перемещений');
+  for (const d of tr) assert.ok(['new', 'picking', 'ready', 'cancelled'].includes(d.stageId) && !d.moved, `${d.number}: демо-перемещение увезло товар`);
+  const back = list.find(d => d.purpose === 'transfer' && d.stageId === 'cancelled');
+  assert.ok(back && !back.moved, 'отменённое перемещение увезло товар');
+  // склад перемещения согласован: «В пути» — товар в приходе под номером заявки и ушёл из «откуда»; отмена возвращает
   const ready = list.find(d => d.purpose === 'transfer' && d.stageId === 'ready');
   assert.ok(ready && !ready.moved, 'до «В пути» склад уже тронут');
-  const back = list.find(d => d.purpose === 'transfer' && d.stageId === 'cancelled');
-  assert.ok(back && back.moved === false, 'отменённое в пути не вернулось');
+  const from = it => Stock.grid(st, it.productId).cell(ready.from.entityId, ready.from.cityId);
+  const was = ready.items.map(from);
+  const r1 = app.Dispatch.setStage(st, ready.id, 'onWay', 'p6', new Date());
+  assert.equal(r1.ok, true, r1.reason);
+  assert.equal(ready.moved, true);
+  ready.items.forEach((it, i) => {
+    const inc = Stock.incomingOf(st, it.productId).find(x => x.shipId === ready.number);
+    assert.ok(inc && inc.qty >= it.qty, `${ready.number}: товара ${it.productId} нет в пути`);
+    assert.equal(from(it), was[i] - it.qty, `${ready.number}: товар ${it.productId} не ушёл из «откуда»`);
+  });
+  assert.equal(app.Dispatch.setStage(st, ready.id, 'cancelled', 'p6', new Date()).ok, true);
+  assert.equal(ready.moved, false, 'отменённое в пути не вернулось');
+  assert.deepEqual(ready.items.map(from), was, 'отмена не вернула товар в «откуда»');
   // каждая заявка на сделку и клиента ссылается на живую сделку
   for (const d of list.filter(x => x.dealId)) assert.ok(st.deals.some(x => x.id === d.dealId));
   // ход демо-заявок записан в ленту
@@ -985,8 +994,11 @@ test('сохранение страницы: файлы заявок не пом
   const S = asPerson(app, personWith(app, 'logist'));
   const toasts = [];
   app.document.getElementById('toasts').appendChild = el => toasts.push(el.innerHTML);
-  const big = 'data:text/plain;base64,' + 'A'.repeat(Store.LIMIT + 1000);
-  const r = Dispatch.create(S, { purpose: 'other', to: { name: 'Клиент-пример 81', phone: '+7 900 000-00-81' }, address: 'г. Иркутск, ул. Примерная, 81 (пример)', when: { date: new Date(2026, 10, 5) }, items: [{ text: 'Документы', qty: 1 }], files: [{ name: 'большой.txt', type: 'text/plain', size: big.length, data: big }] }, S.me, new Date(2026, 10, 1));
+  // файл больше 2 МБ не прикрепить (Store.FILE_MAX): не влезают три файла в пределе, вместе больше Store.LIMIT
+  const n = Math.ceil(Store.LIMIT / 3) + 1000;
+  assert.ok(n < Store.FILE_MAX);
+  const big = 'data:text/plain;base64,' + 'A'.repeat(n);
+  const r = Dispatch.create(S, { purpose: 'other', to: { name: 'Клиент-пример 81', phone: '+7 900 000-00-81' }, address: 'г. Иркутск, ул. Примерная, 81 (пример)', when: { date: new Date(2026, 10, 5) }, items: [{ text: 'Документы', qty: 1 }], files: [1, 2, 3].map(k => ({ name: `большой-${k}.txt`, type: 'text/plain', size: big.length, data: big })) }, S.me, new Date(2026, 10, 1));
   assert.equal(r.ok, true, r.reason);
   assert.equal(app.save().ok, true);
   assert.equal(toasts.filter(t => t.includes('Файлы заявок не сохранены — мало места в браузере')).length, 1, `тост про файлы заявок: ${JSON.stringify(toasts)}`);
@@ -994,17 +1006,22 @@ test('сохранение страницы: файлы заявок не пом
   assert.equal(toasts.filter(t => t.includes('не сохранены')).length, 1, 'тост повторяется при каждом сохранении');
   // в сохранении файла нет, у файла пометка — после перезагрузки карточка говорит «не сохранено»
   const saved = JSON.parse(app.storage[Store.KEY]);
-  const f = saved.dispatches.find(d => d.id === r.id).files[0];
-  assert.equal(f.unsaved, true);
-  assert.equal(f.data, null);
+  const fs = saved.dispatches.find(d => d.id === r.id).files;
+  const lost = fs.filter(f => f.unsaved === true && f.data === null);
+  assert.ok(lost.length >= 1, 'ни один файл не помечен');
+  assert.ok(fs.some(f => f.data === big && !f.unsaved), 'выкинуты все файлы, а не только те, что не влезли');
 });
 
 // ——— третий кусок: карточка товара с грузом в пути, списание из карточки, сделка, дела, клиент ———
 test('карточка товара: груз перемещения в пути показан как «в пути: N, ОТ-NNN» со ссылкой на заявку и не падает; резерв под приход ему не предлагается', () => {
   const app = load(), { Stock } = app;
   const S = app.S;
+  // демо-перемещения до «В пути» не доходят (F1·7): отправляем в путь готовые
+  const go = S.dispatches.filter(d => d.purpose === 'transfer' && d.stageId === 'ready');
+  assert.ok(go.length >= 2, 'в демо нет готовых к отправке перемещений');
+  for (const d of go) { const r = app.Dispatch.setStage(S, d.id, 'onWay', 'p6', new Date()); assert.equal(r.ok, true, r.reason); }
   const ids = S.products.map(p => p.id).filter(id => Stock.incomingOf(S, id).some(x => x.dispatchId));
-  for (const id of ['sheet-082', 'sheet-101', 'sheet-107', 'sheet-205']) assert.ok(ids.includes(id), `в демо у ${id} нет груза в пути`);
+  for (const id of new Set(go.flatMap(d => d.items.map(it => it.productId)))) assert.ok(ids.includes(id), `у ${id} нет груза в пути`);
   for (const id of ids) {
     const mine = Stock.incomingOf(S, id).filter(x => x.dispatchId);
     let card;
@@ -1065,7 +1082,9 @@ test('карточка товара: «Списать при продаже» у
   const card = pid => app.DRAWERS.product(pid).body;
   // кнопки: у клетки с остатком и у резерва со склада; у резерва под поставку (на складе товара нет) — нет
   assert.ok(card(p.id).includes(`data-act="stock-sell" data-pid="${p.id}" data-e="${one.e}" data-c="${one.c}"`), 'нет кнопки у клетки');
-  const rs = S.reserves.find(r => r.src === 'stock'), inbound = S.reserves.find(r => r.src !== 'stock');
+  // резервы сделок, которые этот менеджер видит (F1: чужие резервы карточка показывает без кнопок)
+  const seen = new Set(app.Leads.dealsVisible(S, S.me).map(d => d.id));
+  const rs = S.reserves.find(r => r.src === 'stock' && seen.has(r.dealId)), inbound = S.reserves.find(r => r.src !== 'stock' && seen.has(r.dealId));
   assert.ok(card(rs.productId).includes(`data-act="stock-sell" data-pid="${rs.productId}" data-rid="${rs.id}"`), 'нет кнопки у резерва');
   assert.ok(!card(inbound.productId).includes(`data-rid="${inbound.id}"`), 'резерв под поставку можно «списать»');
   // без права sell (логист видит склад) кнопок нет

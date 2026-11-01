@@ -226,7 +226,11 @@ const Stock = (() => {
   }
 
   // Снять с резерва q штук: весь резерв — unreserve(), часть — резерв уменьшается, в журнале «Снят резерв» на q.
+  // r — запись резерва или его id. → {ok, reserve} | {ok:false, reason}
   function release(st, r, q, by, at) {
+    if (typeof r === 'string') r = (st.reserves || []).find(x => x.id === r);
+    if (!r) return { ok: false, reason: 'Такого резерва нет.' };
+    if (!Number.isInteger(Number(q)) || q < 1) return { ok: false, reason: 'Укажите количество — целое число больше нуля.' };
     if (q >= r.qty) return unreserve(st, r.id, by, at);
     r.qty -= q;
     log(st, { at, productId: r.productId, kind: KINDS.unreserve, qty: q, entityId: r.entityId || ANY, cityId: r.cityId || ANY, doc: r.dealId, by });
@@ -281,5 +285,5 @@ const Stock = (() => {
     return { ok: true, move: m.move, reserve: r };
   }
 
-  return { ANY, KINDS, NO_ENTITY, NO_CITY, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, canReserve, bestCell, move, reserve, unreserve, expired, sellMax, sell };
+  return { ANY, KINDS, NO_ENTITY, NO_CITY, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, canReserve, bestCell, move, reserve, unreserve, release, expired, sellMax, sell };
 })();

@@ -102,10 +102,16 @@ function movesTable(){
   if(!part.length) return head+emptyState('Движений по этому фильтру нет.','Показать все движения','stock-journal');
   return `${head}<div class="xs"><table class="tbl"><thead><tr><th>Когда</th><th>Кто</th><th>Вид</th><th>Товар</th><th class="num">Сколько</th><th>Откуда и куда</th><th>Документ</th></tr></thead><tbody>${part.map(m=>{
     const p=product(m.productId),who=whoName(m.by);
-    return `<tr${p?` class="click" data-act="open-product" data-pid="${esc(p.id)}" tabindex="0"`:''}><td class="nowrap">${fWhen(m.at)}</td><td>${who?esc(who):noData('кто')}</td><td>${movePill(m)}</td><td>${p?`<button type="button" class="link" data-act="open-product" data-pid="${esc(p.id)}">${esc(p.name)}</button>`:noData('товар')}</td><td class="num">${moveSign(m)}${qtyOf(m.qty,p)}</td><td>${esc(moveWhere(m))}</td><td class="mono">${esc(m.doc||'')}</td></tr>`;
+    return `<tr${p?` class="click" data-act="open-product" data-pid="${esc(p.id)}" tabindex="0"`:''}><td class="nowrap">${fWhen(m.at)}</td><td>${who?esc(who):noData('кто')}</td><td>${movePill(m)}</td><td>${p?`<button type="button" class="link" data-act="open-product" data-pid="${esc(p.id)}">${esc(p.name)}</button>`:noData('товар')}</td><td class="num">${moveSign(m)}${qtyOf(m.qty,p)}</td><td>${esc(moveWhere(m))}</td><td class="mono">${esc(moveDoc(m))}</td></tr>`;
   }).join('')}</tbody></table></div>`;
 }
 
+// Документ движения: номер сделки показываем, только если сделка видна человеку (Leads.dealsVisible); чужая — без номера
+function moveDoc(m){
+  const doc=m.doc||'';
+  if(!doc||!S.deals.some(d=>d.id===doc)) return doc;
+  return Leads.dealsVisible(S,S.me).some(d=>d.id===doc)?doc:'сделка, которую вы не видите';
+}
 // ——— карточка товара ———
 function srcPill(r){
   if(r.src==='stock') return '<span class="pill ok sm">на складе</span>';
@@ -132,13 +138,16 @@ function sellCells(p){
 }
 // «Можно поставить» — тем же Stock.canReserve, что проверяет сама постановка
 const maxText=(pid,src,ent,city)=>`Можно поставить: ${num(Stock.canReserve(S,{productId:pid,qty:1,entityId:ent,cityId:city,src}).max)}`;
+// Сделки, под которые человек может поставить резерв этого товара: видимые ему (Leads.dealsVisible), открытые, он вправе их
+// править (Deals.canEdit), товар есть в строках и ещё не весь зарезервирован (Deals.left). Резерв ставит тот же Deals.reserve.
+const reserveDeals=pid=>Leads.dealsVisible(S,S.me).filter(d=>Deals.state(S,d)==='open'&&Deals.canEdit(S,d,S.me)&&Deals.left(S,d,pid)>0);
 function reserveForm(p,k,inc){
   if(!can('reserve')) return `<p class="lock">${ic('lock')}Резервы ставит менеджер или директор. Вам придёт уведомление, когда резерв появится.</p>`;
-  const deals=S.deals.filter(d=>!isDone(d));
+  const deals=reserveDeals(p.id);
   const src=[`<option value="stock">Со склада — свободно ${qtyOf(Math.max(0,k.free),p)}</option>`,...inc.filter(x=>!x.dispatchId).map(x=>`<option value="${esc(x.shipId)}">Из поставки ${esc(x.shipId)}, ${fD(x.eta)} — свободно ${qtyOf(Math.max(0,Stock.freeIn(S,x.shipId,p.id)),p)}</option>`)].join('');
   // откуда на складе: юрлицо и город; по умолчанию — клетка, где свободного больше всего
   const cell=Stock.bestCell(S,p.id),opt=(list,none,cur)=>[...list.map(x=>[x.id,x.name]),[Stock.ANY,none]].map(([id,n])=>`<option value="${esc(id)}"${id===cur?' selected':''}>${esc(n)}</option>`).join('');
-  return `<form class="rform" data-form="reserve" data-pid="${esc(p.id)}" novalidate><h4 class="sh">Поставить резерв</h4><div class="grid2"><div class="field"><label for="rs-deal">Сделка</label><select id="rs-deal" class="inp">${deals.map(d=>`<option value="${d.id}">${d.id} · ${esc(d.client)}</option>`).join('')}</select></div><div class="field"><label for="rs-qty">Количество${p.unit?', '+esc(p.unit):''}</label><input id="rs-qty" class="inp" type="number" min="1" value="1" inputmode="numeric"></div><div class="field span2"><label for="rs-src">Откуда</label><select id="rs-src" class="inp" data-on="rsmax">${src}</select></div><div class="field"><label for="rs-ent">Юрлицо (со склада)</label><select id="rs-ent" class="inp" data-on="rsmax">${opt(S.entities,Stock.NO_ENTITY,cell.entityId)}</select></div><div class="field"><label for="rs-city">Город (со склада)</label><select id="rs-city" class="inp" data-on="rsmax">${opt(S.cities,Stock.NO_CITY,cell.cityId)}</select></div><div class="field"><label for="rs-until">Резерв до</label><input id="rs-until" class="inp" type="date" value="${iso(day(7))}"></div><div class="field end"><button class="btn pri" type="submit">${ic('lock')}Зарезервировать</button></div></div><p class="hint" id="rs-max">${maxText(p.id,'stock',cell.entityId,cell.cityId)}</p><p class="err" id="rs-err" hidden></p></form>`;
+  return `<form class="rform" data-form="reserve" data-pid="${esc(p.id)}" novalidate><h4 class="sh">Поставить резерв</h4><div class="grid2"><div class="field"><label for="rs-deal">Сделка</label><select id="rs-deal" class="inp">${deals.map(d=>`<option value="${d.id}">${d.id} · ${esc(d.client)} · можно ещё ${num(Deals.left(S,d,p.id))}</option>`).join('')}</select>${deals.length?'':'<small class="muted">Нет ваших открытых сделок с этим товаром в строках: добавьте товар в сделку — тогда здесь можно поставить резерв.</small>'}</div><div class="field"><label for="rs-qty">Количество${p.unit?', '+esc(p.unit):''}</label><input id="rs-qty" class="inp" type="number" min="1" value="1" inputmode="numeric"></div><div class="field span2"><label for="rs-src">Откуда</label><select id="rs-src" class="inp" data-on="rsmax">${src}</select></div><div class="field"><label for="rs-ent">Юрлицо (со склада)</label><select id="rs-ent" class="inp" data-on="rsmax">${opt(S.entities,Stock.NO_ENTITY,cell.entityId)}</select></div><div class="field"><label for="rs-city">Город (со склада)</label><select id="rs-city" class="inp" data-on="rsmax">${opt(S.cities,Stock.NO_CITY,cell.cityId)}</select></div><div class="field"><label for="rs-until">Резерв до</label><input id="rs-until" class="inp" type="date" value="${iso(day(7))}"></div><div class="field end"><button class="btn pri" type="submit">${ic('lock')}Зарезервировать</button></div></div><p class="hint" id="rs-max">${maxText(p.id,'stock',cell.entityId,cell.cityId)}</p><p class="err" id="rs-err" hidden></p></form>`;
 }
 // Строка «Едет к нам»: поставка (этап и срок из карточки поставки) или груз перемещения между складами — «в пути: N, ОТ-NNN»
 // со ссылкой на заявку; у груза поставки нет, поэтому ни этапа поставки, ни резерва под него
@@ -148,7 +157,7 @@ function iRow(x,p){
   return `<li><b class="mono">${esc(x.shipId)}</b><span>${qtyOf(x.qty,p)}</span><span class="pill sm ${late?'bad':'info'}">${late?'задерживается':esc(stageName(s).toLowerCase())}</span><small>ожидается ${fD(x.eta)}</small></li>`;
 }
 function dProduct(p){
-  const k=stockOf(p.id),rs=resOf(p.id),inc=Stock.incomingOf(S,p.id),all=S.moves.filter(m=>m.productId===p.id),mv=all.slice(0,10),unk=stockUnknown(k);
+  const k=stockOf(p.id);let rs=resOf(p.id);const inc=Stock.incomingOf(S,p.id),all=S.moves.filter(m=>m.productId===p.id),mv=all.slice(0,10),unk=stockUnknown(k);
   const st=(l,v,c='',note='')=>`<div class="st"><span>${l}</span><b class="${c}">${v}</b>${note?`<small>${note}</small>`:''}</div>`;
   const kv=(l,v)=>`<dt>${l}</dt><dd>${v}</dd>`;
   const aside=x=>x===null?'нет данных':qtyOf(x,p);
@@ -160,9 +169,13 @@ function dProduct(p){
     kv('Наличие',p.avail?esc(p.avail):noData('наличие')),url?kv('Ссылка',url):''
   ].join('');
   const where=r=>cellText(r.entityId,r.cityId);
-  const rTbl=rs.length?`<div class="xs"><table class="tbl"><thead><tr><th>Сделка</th><th class="num">Кол-во</th><th>Где товар</th><th>До</th>${can('reserve')||can('sell')?'<th></th>':''}</tr></thead><tbody>${rs.map(r=>{const d=deal(r.dealId),n=dd(r.until);return `<tr><td>${can('clients')?`<button class="link" data-act="open-deal" data-id="${r.dealId}">${r.dealId}</button>`:r.dealId}<small class="muted">${esc(d?.client||'')}</small></td><td class="num">${num(r.qty)}</td><td>${srcPill(r)}${r.src==='stock'?`<small class="muted">${esc(where(r))}</small>`:''}</td><td class="nowrap ${n<=2?'warn-t':''}">${fD(r.until)}</td>${can('reserve')||can('sell')?`<td class="num"><div class="rbtns">${r.src==='stock'&&can('sell')?`<button type="button" class="btn sm" data-act="stock-sell" data-pid="${esc(r.productId)}" data-rid="${esc(r.id)}">Списать</button>`:''}${can('reserve')?`<button class="btn sm ghost" data-act="unreserve" data-id="${r.id}">Снять</button>`:''}</div></td>`:''}</tr>`}).join('')}</tbody></table></div>`:'<p class="muted m0">Резервов нет.</p>';
+  // резерв называет сделку и клиента: строки — только по видимым сделкам; чужие — одной строкой без номера и клиента
+  const vis=new Set(Leads.dealsVisible(S,S.me).map(d=>d.id)),hidden=rs.filter(r=>!vis.has(r.dealId)),others=hidden.reduce((n,r)=>n+r.qty,0);
+  const othersNote=hidden.length?`<p class="muted sm m0">Ещё в резерве по сделкам, которых вы не видите: ${qtyOf(others,p)}.</p>`:'';
+  rs=rs.filter(r=>vis.has(r.dealId));
+  const rTbl=rs.length?`<div class="xs"><table class="tbl"><thead><tr><th>Сделка</th><th class="num">Кол-во</th><th>Где товар</th><th>До</th>${can('reserve')||can('sell')?'<th></th>':''}</tr></thead><tbody>${rs.map(r=>{const d=deal(r.dealId),n=dd(r.until);return `<tr><td>${can('clients')?`<button class="link" data-act="open-deal" data-id="${r.dealId}">${r.dealId}</button>`:r.dealId}<small class="muted">${esc(d?.client||'')}</small></td><td class="num">${num(r.qty)}</td><td>${srcPill(r)}${r.src==='stock'?`<small class="muted">${esc(where(r))}</small>`:''}</td><td class="nowrap ${n<=2?'warn-t':''}">${fD(r.until)}</td>${can('reserve')||can('sell')?`<td class="num"><div class="rbtns">${r.src==='stock'&&can('sell')?`<button type="button" class="btn sm" data-act="stock-sell" data-pid="${esc(r.productId)}" data-rid="${esc(r.id)}">Списать</button>`:''}${can('reserve')?`<button class="btn sm ghost" data-act="unreserve" data-id="${r.id}">Снять</button>`:''}</div></td>`:''}</tr>`}).join('')}</tbody></table></div>${othersNote}`:othersNote||'<p class="muted m0">Резервов нет.</p>';
   const iList=inc.length?`<ul class="mv">${inc.map(x=>iRow(x,p)).join('')}</ul>`:'<p class="muted m0">Поставок с этим товаром нет.</p>';
-  const mList=mv.length?`<ul class="mv">${mv.map(m=>`<li>${movePill(m)}<b>${moveSign(m)}${qtyOf(m.qty,p)}</b><span>${esc(moveWhere(m))}</span><span class="mono muted">${esc(m.doc||'')}</span><small>${fWhen(m.at)} · ${esc(whoName(m.by)||'нет данных: кто')}</small></li>`).join('')}</ul><p class="m0"><button type="button" class="btn sm" data-act="stock-journal" data-pid="${esc(p.id)}">Весь журнал по товару${all.length>mv.length?` (${all.length})`:''}</button></p>`:'<p class="muted m0">Движений пока нет.</p>';
+  const mList=mv.length?`<ul class="mv">${mv.map(m=>`<li>${movePill(m)}<b>${moveSign(m)}${qtyOf(m.qty,p)}</b><span>${esc(moveWhere(m))}</span><span class="mono muted">${esc(moveDoc(m))}</span><small>${fWhen(m.at)} · ${esc(whoName(m.by)||'нет данных: кто')}</small></li>`).join('')}</ul><p class="m0"><button type="button" class="btn sm" data-act="stock-journal" data-pid="${esc(p.id)}">Весь журнал по товару${all.length>mv.length?` (${all.length})`:''}</button></p>`:'<p class="muted m0">Движений пока нет.</p>';
   return {kind:p.cat,title:esc(p.name),sub:`${p.inCatalog?`<span class="mono">${esc(p.id)}</span>`:'нет в каталоге'}${p.brand?' · '+esc(p.brand):''}`,body:`
     <div><h4 class="sh">Карточка каталога</h4><dl class="kv">${info}</dl></div>
     <div class="pst">${st('На складе',k.known?qtyOf(k.onHand,p):'нет данных')}${st('В резерве',num(k.reservedStock+k.reservedIncoming),'',k.reservedIncoming?`со склада ${num(k.reservedStock)}, под поставки ${num(k.reservedIncoming)}`:'')}${st('Свободно сейчас',unk?'нет данных':num(k.free),unk?'':k.free<=0?'bad-t':'ok-t')}${st('Свободно после прихода',unk?'нет данных':num(k.freeAfter),k.freeAfter<0?'bad-t':'',k.incoming?`едет ${num(k.incoming)}`:'')}</div>
@@ -240,12 +253,15 @@ A['stock-sell']=el=>{
 // Выбрали другую клетку или резерв в окне списания — подсказка «можно списать» пересчитывается
 ON.change.sellsrc=t=>{const out=byId('ps-max');if(out) out.textContent=sellMaxText(t.dataset.pid,t.value)};
 FORMS['stock-sell']=f=>{
-  const pid=f.dataset.pid,did=f.dataset.did||'',now=new Date();
-  const r=Stock.sell(S,{...sellArg(pid,byId('ps-src').value),qty:byId('ps-qty').value,doc:byId('ps-doc').value.trim()},S.me,now);
+  const pid=f.dataset.pid,now=new Date(),arg=sellArg(pid,byId('ps-src').value);
+  // по резерву: лента его сделки помнит резерв (Deals.keepTrail) — даже когда списание снимет его целиком
+  const rs=arg.reserveId?S.reserves.find(x=>x.id===arg.reserveId):null,did=f.dataset.did||(rs&&rs.dealId)||'';
+  if(rs) Deals.keepTrail(S,rs);
+  const r=Stock.sell(S,{...arg,qty:byId('ps-qty').value,doc:byId('ps-doc').value.trim()},S.me,now);
   if(!r.ok) return showErr('ps-err',r.reason);
   const p=product(pid),m=r.move,what=`${low(p.name)} — ${qtyOf(m.qty,p)} со склада ${cellText(m.entityId,m.cityId)}`;
-  // из сделки: в её ленте остаётся запись о списании
-  if(did) Feed.add(S,{t:'deal',id:did},{kind:'item',text:`Списано при продаже: ${what}${r.reserve?' (по резерву)':''}.`,by:S.me,at:now});
+  // из сделки или по резерву сделки: в её ленте остаётся запись о списании
+  if(did) Feed.add(S,{t:'deal',id:did},{kind:'item',text:`Списано при продаже: ${what}${r.reserve?' (по резерву)':''}.`,by:S.me,at:now,data:r.reserve?{reserveId:r.reserve.id,sold:true}:undefined});
   closeModal();render();
   toast(`Списано при продаже: ${what}. Запись в журнале есть.`);
 };

@@ -165,7 +165,8 @@ function dspDraftFrom(pre,editId){
     address:p.address&&p.address!==Dispatch.NO_ADDRESS&&p.purpose!=='transfer'?p.address:'',
     date:w.date?iso(w.date):'',from:w.from||'',till:w.till||'',note:p.note||'',dealId:p.dealId||'',
     fromE:f.e,fromC:f.k,toE:t.e,toC:t.k,
-    items:(p.items||[]).map(i=>i.productId?{productId:i.productId,qty:i.qty}:{text:i.text,qty:i.qty}),
+    // списанная при продаже строка в форме не меняется и не удаляется (Dispatch.update тоже откажет)
+    items:(p.items||[]).map(i=>Object.assign(i.productId?{productId:i.productId,qty:i.qty}:{text:i.text,qty:i.qty},i.sold?{locked:true}:{})),
     files:(p.files||[]).map(x=>({...x}))};
 }
 // Открыть форму новой заявки. pre — те же поля, что у Dispatch.create: purpose, to, address, when, items, files, note, dealId.
@@ -196,6 +197,7 @@ function dspItemsHtml(x){
   if(!x.items.length) return '<p class="muted m0">Список пуст: найдите товар в каталоге или добавьте свою строку.</p>';
   return `<ul class="dsp-its">${x.items.map((it,i)=>{
     const name=it.productId?(product(it.productId)||{}).name||'нет данных: товар':it.text;
+    if(it.locked) return `<li class="dsp-it"><div class="dsp-it-n"><b>${esc(name)}</b><small>списано при продаже — строку не изменить и не удалить</small></div><input class="inp dsp-q" type="number" value="${esc(it.qty)}" disabled aria-label="Количество: ${esc(name)} (списано)"></li>`;
     return `<li class="dsp-it"><div class="dsp-it-n"><b>${esc(name)}</b><small>${it.productId?esc(dspFreeText(it.productId)):'своя строка — склад не трогает'}</small></div><input class="inp dsp-q" type="number" min="1" step="1" inputmode="numeric" value="${esc(it.qty)}" data-on="dsp-qty" data-i="${i}" aria-label="Количество: ${esc(name)}"><button type="button" class="btn ghost icon" data-act="dsp-line-del" data-i="${i}" aria-label="Убрать строку: ${esc(name)}">${ic('x')}</button></li>`;
   }).join('')}</ul>`;
 }
@@ -297,7 +299,7 @@ A['dsp-sell']=el=>{
 // форма
 A['dsp-add']=el=>{
   const x=dspDraft();if(!x) return;
-  const row=x.items.find(i=>i.productId===el.dataset.pid);
+  const row=x.items.find(i=>i.productId===el.dataset.pid&&!i.locked);
   if(row) row.qty=(Number(row.qty)||0)+1;else x.items.push({productId:el.dataset.pid,qty:1});
   byId('dsp-items').innerHTML=dspItemsHtml(x);
 };
@@ -306,7 +308,7 @@ A['dsp-own-add']=()=>{
   if(!x||!text){if(inp.focus) inp.focus();return}
   x.items.push({text,qty:1});inp.value='';byId('dsp-items').innerHTML=dspItemsHtml(x);
 };
-A['dsp-line-del']=el=>{const x=dspDraft();if(!x) return;x.items.splice(+el.dataset.i,1);byId('dsp-items').innerHTML=dspItemsHtml(x)};
+A['dsp-line-del']=el=>{const x=dspDraft();if(!x||(x.items[+el.dataset.i]||{}).locked) return;x.items.splice(+el.dataset.i,1);byId('dsp-items').innerHTML=dspItemsHtml(x)};
 A['dsp-file-del']=el=>{const x=dspDraft();if(!x) return;x.files.splice(+el.dataset.i,1);byId('dsp-files').innerHTML=dspFilesEditHtml(x)};
 
 ON.input['dsp-q']=t=>{dspU().q=t.value;const box=byId('dsp-body');if(box) box.innerHTML=dspBody()};
@@ -328,13 +330,16 @@ ON.change['dsp-purpose']=t=>{
   // у перемещения получатель — склад: подставим, если поле пустое
   if(x.purpose==='transfer'&&!x.name.trim()){x.name=`Склад: ${dspCell({entityId:x.toE,cityId:x.toC})}`;const n=byId('dsp-name');if(n) n.value=x.name}
 };
-ON.input['dsp-qty']=t=>{const x=dspDraft();if(x&&x.items[+t.dataset.i]) x.items[+t.dataset.i].qty=t.value};
+ON.input['dsp-qty']=t=>{const x=dspDraft();if(x&&x.items[+t.dataset.i]&&!x.items[+t.dataset.i].locked) x.items[+t.dataset.i].qty=t.value};
 ON.input['dsp-pq']=t=>{const box=byId('dsp-pres');if(box) box.innerHTML=dspPresHtml(t.value)};
 ON.change['dsp-file']=t=>{dspReadFiles(t.files);t.value=''};
-// Выбранные файлы читаются в data-URL и встают в черновик; в сохранение они попадают вместе с заявкой (Store.dump)
+// Выбранные файлы читаются в data-URL и встают в черновик; в сохранение они попадают вместе с заявкой (Store.dump).
+// Файл больше Store.FILE_MAX (2 МБ) не прикрепляется.
 function dspReadFiles(files){
   const x=dspDraft();if(!x||typeof FileReader==='undefined') return;
   [...files].forEach(f=>{
+    // больше предела — отказ сразу, файл не читается (те же слова, что у ядра заявки)
+    const big=Store.fileTooBig(f);if(big){toast(big,'warn');return}
     const fr=new FileReader();
     fr.onload=()=>{
       if(dspDraft()!==x) return;

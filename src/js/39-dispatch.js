@@ -92,14 +92,19 @@ const Dispatch = (() => {
 
   // Движение товара перемещения. Все три — через Stock.move; журнал пишет doc = номер заявки.
   // Уйти из «откуда»: сначала проверка по всем товарам, потом списание — отказ ничего не меняет.
+  // Зарезервированное под клиента перемещение не забирает: берёт не больше Stock.sellMax — «остаток клетки − резервы на неё».
   function withdraw(st, d, by, now) {
     const short = [];
     for (const [productId, need] of needs(d)) {
-      const have = Stock.grid(st, productId).cell(d.from.entityId, d.from.cityId) ?? 0;
-      if (need > have) short.push({ productId, name: (productOf(st, productId) || {}).name || 'нет данных: товар', need, have });
+      const lies = Stock.grid(st, productId).cell(d.from.entityId, d.from.cityId) ?? 0;
+      const have = Stock.sellMax(st, { productId, entityId: d.from.entityId, cityId: d.from.cityId });
+      if (need > have) short.push({ productId, name: (productOf(st, productId) || {}).name || 'нет данных: товар', need, have, held: lies - have });
     }
     if (short.length) {
-      const list = short.map(x => `${x.name} — нужно ${x.need}, есть ${x.have}`).join('; ');
+      const list = short.map(x => (x.held > 0
+        ? `${x.name} — нужно ${x.need}, свободно ${x.have} (лежит ${x.have + x.held}, под резервом ${x.held})`
+        : `${x.name} — нужно ${x.need}, есть ${x.have}`)).join('; ');
+      short.forEach(x => { if (!x.held) delete x.held; });
       return fail(`Не хватает на складе ${cellText(st, d.from)}: ${list}. Этап не изменён.`, { short });
     }
     for (const it of d.items) {
@@ -173,7 +178,7 @@ const Dispatch = (() => {
       if (!Number.isInteger(qty) || qty < 1 || (pid && !productOf(st, pid))) { bad = true; continue; }
       const row = pid ? { productId: pid, qty } : { text, qty };
       if (it.picked === true) row.picked = true;
-      if (it.sold) row.sold = it.sold;
+      // отметку «списано» с данными не принимаем: её ставит только sell, а update переносит со старой строки
       items.push(row);
     }
     return { items, bad };
@@ -219,6 +224,11 @@ const Dispatch = (() => {
     if (!it.items.length || it.bad) { missing.push('items'); if (it.bad) reason = reason || 'В списке есть строка без количества или с неизвестным товаром.'; }
     let dealId = str(d.dealId);
     if (dealId && !(st.deals || []).some(x => x.id === dealId)) return { missing: [], reason: `Сделки ${dealId} нет.` };
+    // новый файл с данными больше предела (Store.FILE_MAX) — отказ; уже сохранённые файлы заявки и файлы без данных
+    // (не поместились в браузер) места не занимают и не проверяются
+    const had = new Set(((current && current.files) || []).map(f => f.id));
+    const big = (Array.isArray(d.files) ? d.files : []).filter(f => f && !had.has(f.id) && typeof f.data === 'string' && f.data).map(Store.fileTooBig).find(Boolean);
+    if (big) return { missing: [], reason: big };
     if (missing.length) {
       return { missing, reason: reason || `Не заполнено: ${missing.map(k => MISSING[k]).join(', ')}.` };
     }
@@ -286,13 +296,20 @@ const Dispatch = (() => {
       || JSON.stringify(n.rec.from) !== JSON.stringify(d.from) || JSON.stringify(n.rec.toCell) !== JSON.stringify(d.toCell))) {
       return fail('Товар перемещения уже списан со склада: цель, склады и список менять нельзя. Верните заявку на этап до «В пути» или отмените её.', { missing: [] });
     }
-    // отметки «собрано» и «списано» остаются у тех строк, что не менялись
+    // списанная при продаже строка остаётся как была: товар, текст и количество не меняются, удалить её нельзя
+    // (иначе в заявке «списано 50», а в журнале склада «Отгрузка 2»); строки выше и ниже править можно
+    const taken = new Set();
+    for (const old of d.items.filter(i => i.sold)) {
+      const k = n.rec.items.findIndex((row, i) => !taken.has(i) && !row.sold && row.productId === old.productId && row.text === old.text && row.qty === old.qty);
+      if (k < 0) return fail(`Строка «${lineName(st, old)}» уже списана при продаже (${num(old.qty)}): изменить или удалить её нельзя. Нужно больше — добавьте новую строку.`, { missing: [] });
+      taken.add(k);
+      n.rec.items[k].sold = old.sold;
+      if (old.picked) n.rec.items[k].picked = true;
+    }
+    // отметка «собрано» остаётся у тех строк, что не менялись
     n.rec.items.forEach((row, i) => {
       const old = d.items[i];
-      if (old && old.productId === row.productId && old.text === row.text) {
-        if (old.picked) row.picked = true;
-        if (old.sold) row.sold = old.sold;
-      }
+      if (!taken.has(i) && old && !old.sold && old.productId === row.productId && old.text === row.text && old.picked) row.picked = true;
     });
     Object.assign(d, n.rec);
     if (d.purpose !== 'transfer') { delete d.from; delete d.toCell; }
@@ -387,6 +404,8 @@ const Dispatch = (() => {
     if (!it.productId) return fail('Строка своим текстом склад не трогает: списывать нечего.');
     if (it.sold) return fail('Эта строка уже списана.');
     const o = opt || {};
+    // по резерву: лента сделки помнит резерв, даже когда списание снимет его целиком
+    if (o.reserveId) Deals.keepTrail(st, (st.reserves || []).find(x => x.id === o.reserveId));
     const r = Stock.sell(st, { productId: it.productId, qty: it.qty, entityId: o.entityId, cityId: o.cityId, reserveId: o.reserveId, doc: d.number }, by, now);
     if (!r.ok) return r;
     it.sold = { at: now, by, entityId: r.move.entityId, cityId: r.move.cityId };
@@ -440,7 +459,8 @@ KIND.dispatchStep = { l: 'Ход отправок', ic: 'truck', c: 'info' };
 // Шаг SEEDS: встроенная роль «Водитель» (право dispatch; цен, сделок и остатков ей не положено), два демо-водителя,
 // воронка отправок и 20 демо-заявок «пример» на разных этапах и с разными целями. Получатели, адреса и телефоны явно
 // выдуманные («Клиент-пример 3», «(пример)», +7 900 000-00-NN). Строки — настоящие товары каталога.
-// У перемещений в пути склад уже согласован: товар ушёл из «откуда» и числится в пути — это делает та же setStage, что и в работе.
+// Демо-перемещения не доходят дальше «Готова к отправке»: «В пути» увозит товар из клетки, а демо не должно менять
+// настоящий снимок остатков — сразу после «Сбросить» остатки равны Catalog.build(снимок).
 // Заявки заводятся теми же функциями, что и в работе, но без уведомлений (silent).
 SEEDS.push(st => {
   const perms = on => Object.fromEntries(Perms.LIST.map(([k]) => [k, on.includes(k)]));
@@ -481,8 +501,8 @@ SEEDS.push(st => {
     ['sale', 'p2', 3, 'onWay', 0, 1, null], ['sale', 'p3', 2, 'ready', 0, 0, ['14:00', '18:00']],
     ['sale', 'p9', 2, 'picking', 0, -1, null], ['sale', 'p10', 1, 'picking', 1, -1, null],
     ['sale', 'p2', 1, 'new', 0, -1, ['11:00', '13:00']], ['sale', 'p3', 0, 'new', 2, -1, null],
-    ['transfer', 'p6', 4, 'delivered', -2, 0, null], ['transfer', 'p6', 3, 'onWay', 0, 0, null],
-    ['transfer', 'p5', 2, 'onWay', 1, 1, null], ['transfer', 'p6', 2, 'ready', 1, -1, null],
+    ['transfer', 'p6', 4, 'ready', 0, 0, null], ['transfer', 'p6', 3, 'ready', 1, 0, null],
+    ['transfer', 'p5', 2, 'picking', 1, 1, null], ['transfer', 'p6', 2, 'ready', 1, -1, null],
     ['transfer', 'p5', 1, 'new', 3, -1, null], ['transfer', 'p6', 1, 'cancelled', -1, 0, null],
     ['other', 'p4', 3, 'delivered', -1, 1, null], ['other', 'p7', 1, 'ready', 0, 0, null],
     ['other', 'p1', 0, 'new', 1, -1, null], ['sale', 'p2', 0, 'picking', 0, -1, null],
@@ -522,8 +542,8 @@ SEEDS.push(st => {
     const driver = drv >= 0 ? driverIds[drv] : null;
     if (driver) Dispatch.assign(st, made.id, driver, 'p6', later(1), { silent: true });
     const d = Dispatch.byId(st, made.id);
-    // отменённая продажа не дошла дальше «Собирается», отменённое перемещение дошло до «В пути» и вернуло товар
-    const steps = stage === 'cancelled' ? (purpose === 'transfer' ? 3 : 1) : path.indexOf(stage);
+    // отменённая заявка не дошла дальше «Собирается»
+    const steps = stage === 'cancelled' ? 1 : path.indexOf(stage);
     for (let j = 1; j <= steps; j++) {
       if (j === 2) d.items.forEach((_, idx) => Dispatch.pick(st, d.id, idx, true, 'p5', later(j)));
       if (!Dispatch.setStage(st, d.id, path[j], j <= 2 ? 'p5' : (driver || 'p6'), later(j + 1), { silent: true }).ok) break;

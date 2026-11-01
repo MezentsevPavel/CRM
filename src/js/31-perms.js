@@ -21,6 +21,7 @@ const Perms = (() => {
     ['leads', 'Видеть и вести лиды'],
     ['leadsAssign', 'Распределять и передавать лиды'],
     ['dealsAll', 'Видеть сделки всех типов'],
+    ['dealsEdit', 'Заводить и править сделки'],
     ['settings', 'Менять настройки фирмы'],
     ['dispatch', 'Вести отправки'],
     ['sell', 'Списывать при продаже'],
@@ -28,12 +29,13 @@ const Perms = (() => {
   const KEYS = LIST.map(p => p[0]);
 
   // Права по умолчанию — «Решения по реализации» спецификации.
-  // Менеджер видит лиды и сделки своего типа (scope), dealsAll у него нет.
+  // Менеджер видит лиды и сделки своего типа (scope), dealsAll у него нет. Заводить и править сделки (dealsEdit) — менеджерам,
+  // РОП (право ему дают в шаге сделок, 42-deals.js) и директору; инженеры смотрят сделки, но не правят (R30).
   const ENGINEER = ['tasksAssign', 'stock', 'clients', 'dealsAll'];
   const DEFAULTS = [
     { id: 'director', name: 'Директор', all: true, on: KEYS },
-    { id: 'managerB2b', name: 'Менеджер B2B', scope: 'b2b', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'write', 'mail', 'sell', 'tasksAssign'] },
-    { id: 'managerB2c', name: 'Менеджер B2C', scope: 'b2c', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'write', 'mail', 'sell', 'tasksAssign'] },
+    { id: 'managerB2b', name: 'Менеджер B2B', scope: 'b2b', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'dealsEdit', 'write', 'mail', 'sell', 'tasksAssign'] },
+    { id: 'managerB2c', name: 'Менеджер B2C', scope: 'b2c', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'dealsEdit', 'write', 'mail', 'sell', 'tasksAssign'] },
     { id: 'logist', name: 'Логист', on: ['stock', 'logistics', 'mail', 'tasksAssign', 'dispatch'] },
     { id: 'warehouse', name: 'Кладовщик', on: ['stock', 'receive', 'dispatch'] },
     // Главный инженер и инженер — одна матрица (R30).

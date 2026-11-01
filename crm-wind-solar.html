@@ -1971,7 +1971,8 @@ const Store = (() => {
   // 9 — лиды заводятся руками, время реакции (таск 10).
   // 10 — отправки (таск 07): st.dispatches, права dispatch и sell, роль «Водитель», вид воронки dispatch.
   // 12 — звук уведомлений у каждого свой (таск 06): prefs.sound = {personId: {on, kind}} вместо одного {on, kind}.
-  const REV = 12;
+  // 13 — ремонт F1: право dealsEdit, резервы только по строкам сделки, демо-перемещения не увозят товар, правило поставок sr3.
+  const REV = 13;
   // Браузер даёт сайту около 5 млн символов на всё; берём с запасом.
   const LIMIT = 4500000;
   const NO_SPACE = 'не сохранено — мало места в браузере';
@@ -1999,50 +2000,61 @@ const Store = (() => {
     return v;
   }
 
-  // Выкидывает фото из копии; запись, где они были, помечается. Возвращает, сколько фото выкинуто.
-  function dropPhotos(node) {
-    let total = 0;
-    const walk = (v, owner) => {
-      if (Array.isArray(v)) { v.forEach(x => walk(x, owner)); return; }
+  // Предел одного файла заявки — 2 МБ: больше — отказ ещё при прикреплении. Браузер даёт на всё около 5 млн символов,
+  // а файл в сохранении занимает примерно на треть больше своего размера: два-три таких файла — и места нет.
+  const FILE_MAX = 2 * 1024 * 1024;
+  const mb = n => String(Math.round(n / 1048576 * 10) / 10).replace('.', ',');
+  // Файл больше предела → причина отказа (её показывают и форма, и ядро заявки), иначе null.
+  function fileTooBig(f) {
+    const size = Number(f && f.size) || 0;
+    return size > FILE_MAX ? `Файл «${f.name}» — ${mb(size)} МБ, больше предела ${mb(FILE_MAX)} МБ. Сожмите его или разбейте на части до ${mb(FILE_MAX)} МБ.` : null;
+  }
+
+  // Время записи для порядка выкидывания: ближайшее поле at по пути к фото или файлу. Времени нет (черновик приёмки) —
+  // запись считается самой новой: она ещё не сохранена как принятая.
+  const NEWEST = Number.MAX_SAFE_INTEGER;
+  const atOf = v => (v && v.at && v.at.$date && Date.parse(v.at.$date)) || 0;
+  const GONE = Symbol('выкинуто');
+
+  // Что можно выкинуть из копии: фото приёмки (строки data:image/… вне заявок) и данные файлов заявок на отправку.
+  // Картинка, приложенная к заявке, — файл заявки, а не фото приёмки.
+  function heavy(copy) {
+    const out = [];
+    const walk = (v, at) => {
+      if (Array.isArray(v)) { v.forEach(x => walk(x, at)); return; }
       if (!v || typeof v !== 'object') return;
-      let here = 0;
+      const here = atOf(v) || at;
       for (const k of Object.keys(v)) {
+        if (v === copy && k === 'dispatches') continue;
         const x = v[k];
-        if (isPhoto(x)) { v[k] = null; here++; continue; }
-        if (Array.isArray(x)) {
-          const keep = x.filter(y => !isPhoto(y));
-          here += x.length - keep.length;
-          v[k] = keep;
-          keep.forEach(y => walk(y, v));
-          continue;
-        }
-        walk(x, v);
-      }
-      if (here) {
-        const prev = v.unsaved && v.unsaved.photos || 0;
-        v.unsaved = { photos: prev + here, text: NO_SPACE };
-        total += here;
+        if (isPhoto(x)) out.push({ photo: true, holder: v, key: k, size: x.length, at: here });
+        else if (Array.isArray(x)) x.forEach((y, i) => isPhoto(y) ? out.push({ photo: true, holder: v, key: k, index: i, size: y.length, at: here }) : walk(y, here));
+        else walk(x, here);
       }
     };
-    walk(node, null);
-    return total;
-  }
-
-  // Файлы заявок на отправку (таск 07): dispatches[].files[].data — строка data:… любого вида, не только картинка.
-  // Выкидывает данные файла (data → null) и помечает сам файл unsaved:true. Возвращает, сколько файлов выкинуто.
-  function dropFiles(node) {
-    let total = 0;
-    for (const d of (node && node.dispatches) || []) {
+    walk(copy, NEWEST);
+    for (const d of copy.dispatches || []) {
       for (const f of (d && d.files) || []) {
-        if (f && typeof f.data === 'string' && f.data) { f.data = null; f.unsaved = true; total++; }
+        if (f && typeof f.data === 'string' && f.data) out.push({ file: f, size: f.data.length, at: atOf(f) || atOf(d) || NEWEST });
       }
     }
-    return total;
+    return out;
   }
 
-  // Состояние → {text, droppedPhotos, droppedFiles, fits}. Не влезает в limit — выкидываются фото приёмки
-  // (droppedPhotos — сколько) и вместе с ними файлы заявок на отправку (droppedFiles — сколько); их записи помечаются
-  // «не сохранено — мало места в браузере»: у фото unsaved:{photos, text}, у файла unsaved:true. Остальное сохраняется.
+  // Выкинуть одно: у файла data → null и unsaved:true; у фото запись, где оно было, получает unsaved:{photos, text}.
+  function drop(c) {
+    if (c.file) { c.file.data = null; c.file.unsaved = true; return; }
+    if (c.index === undefined) c.holder[c.key] = null; else c.holder[c.key][c.index] = GONE;
+    const prev = c.holder.unsaved && c.holder.unsaved.photos || 0;
+    c.holder.unsaved = { photos: prev + 1, text: NO_SPACE };
+  }
+  // Выкинутые из списка фото в текст не идут
+  const text = copy => JSON.stringify(copy, (k, v) => Array.isArray(v) && v.includes(GONE) ? v.filter(y => y !== GONE) : v);
+
+  // Состояние → {text, droppedPhotos, droppedFiles, fits}. Не влезает в limit — выкидывается только то, что не помещается:
+  // по одному фото приёмки или файлу заявки, сначала самые новые, при равном времени — самые крупные, пока текст не влезет.
+  // Прежние фото и файлы сохраняются. Выкинутое помечается «не сохранено — мало места в браузере»: у фото —
+  // запись unsaved:{photos, text}, у файла unsaved:true; droppedPhotos и droppedFiles — сколько выкинуто.
   // Само состояние не меняется.
   function dump(state, limit = LIMIT) {
     const copy = plain(state, true);
@@ -2050,18 +2062,22 @@ const Store = (() => {
     const packed = Catalog.pack(copy.products);
     if (packed) Object.assign(copy, packed);
     copy.rev = REV;
-    let text = JSON.stringify(copy);
+    let out = JSON.stringify(copy);
     let droppedPhotos = 0, droppedFiles = 0;
-    if (text.length > limit) {
-      // картинка, приложенная к заявке, — файл заявки, а не фото приёмки: заявки на время отбора фото убираем из копии
-      const dispatches = copy.dispatches;
-      delete copy.dispatches;
-      droppedPhotos = dropPhotos(copy);
-      if (dispatches) copy.dispatches = dispatches;
-      droppedFiles = dropFiles(copy);
-      if (droppedPhotos || droppedFiles) text = JSON.stringify(copy);
+    if (out.length > limit) {
+      const list = heavy(copy).sort((a, b) => b.at - a.at || b.size - a.size);
+      // длину после выкидывания сначала прикидываем, точную считаем, когда прикидка влезла
+      let est = out.length;
+      for (const c of list) {
+        if (est <= limit) break;
+        drop(c);
+        if (c.photo) droppedPhotos++; else droppedFiles++;
+        est -= c.size;
+        if (est <= limit) { out = text(copy); est = out.length; }
+      }
+      if (droppedPhotos || droppedFiles) out = text(copy);
     }
-    return { text, droppedPhotos, droppedFiles, fits: text.length <= limit };
+    return { text: out, droppedPhotos, droppedFiles, fits: out.length <= limit };
   }
 
   // Строка из localStorage → состояние с живыми датами; пусто, мусор или чужая версия схемы → null
@@ -2091,7 +2107,7 @@ const Store = (() => {
     return prefix + n;
   }
 
-  return { KEY, VERSION, REV, LIMIT, NO_SPACE, load, dump, freeId };
+  return { KEY, VERSION, REV, LIMIT, NO_SPACE, FILE_MAX, fileTooBig, load, dump, freeId };
 })();
 
 // Ядро: роли и права. Роли — данные (st.roles), проверки спрашивают право, а не название роли.
@@ -2117,6 +2133,7 @@ const Perms = (() => {
     ['leads', 'Видеть и вести лиды'],
     ['leadsAssign', 'Распределять и передавать лиды'],
     ['dealsAll', 'Видеть сделки всех типов'],
+    ['dealsEdit', 'Заводить и править сделки'],
     ['settings', 'Менять настройки фирмы'],
     ['dispatch', 'Вести отправки'],
     ['sell', 'Списывать при продаже'],
@@ -2124,12 +2141,13 @@ const Perms = (() => {
   const KEYS = LIST.map(p => p[0]);
 
   // Права по умолчанию — «Решения по реализации» спецификации.
-  // Менеджер видит лиды и сделки своего типа (scope), dealsAll у него нет.
+  // Менеджер видит лиды и сделки своего типа (scope), dealsAll у него нет. Заводить и править сделки (dealsEdit) — менеджерам,
+  // РОП (право ему дают в шаге сделок, 42-deals.js) и директору; инженеры смотрят сделки, но не правят (R30).
   const ENGINEER = ['tasksAssign', 'stock', 'clients', 'dealsAll'];
   const DEFAULTS = [
     { id: 'director', name: 'Директор', all: true, on: KEYS },
-    { id: 'managerB2b', name: 'Менеджер B2B', scope: 'b2b', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'write', 'mail', 'sell', 'tasksAssign'] },
-    { id: 'managerB2c', name: 'Менеджер B2C', scope: 'b2c', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'write', 'mail', 'sell', 'tasksAssign'] },
+    { id: 'managerB2b', name: 'Менеджер B2B', scope: 'b2b', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'dealsEdit', 'write', 'mail', 'sell', 'tasksAssign'] },
+    { id: 'managerB2c', name: 'Менеджер B2C', scope: 'b2c', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'dealsEdit', 'write', 'mail', 'sell', 'tasksAssign'] },
     { id: 'logist', name: 'Логист', on: ['stock', 'logistics', 'mail', 'tasksAssign', 'dispatch'] },
     { id: 'warehouse', name: 'Кладовщик', on: ['stock', 'receive', 'dispatch'] },
     // Главный инженер и инженер — одна матрица (R30).
@@ -2344,6 +2362,33 @@ const Pipes = (() => {
     return { items: items(st, pipeId).filter(x => x.stageId === stageId).length, rules: rulesAt(st, p, stageId).length };
   }
 
+  // ——— завершающие этапы: туда запись попадает только своим путём ———
+  // Этап с флагом final («На складе», «Сдана», «Доставлена»…) или arrived («Прибыло в город»). На него ведут только свои действия:
+  // приёмка, Deals.win, Dispatch.setStage, Leads.move, шаг перевозчика. Перенос записей при удалении этапа или воронки
+  // и правило поставок сюда не ставят — иначе поставка «на складе» без приёмки, сделка «Сдана» без wonAt, отправка
+  // «Доставлена» без движения склада. Исключение — правило «принято на складе» (when 'received'): оно срабатывает после приёмки.
+  const closing = s => !!s && (s.flag === 'final' || s.flag === 'arrived');
+  // Правило поставок может ставить этап s: обычный — любое, завершающий — только «принято на складе».
+  const ruleMayTo = (rule, s) => !!s && (!closing(s) || rule.when === 'received');
+  // Куда можно перенести то, что висит на этапе stageId при его удалении: этапы той же воронки, кроме него самого.
+  // Завершающие — только если на этапе нет записей, а правила все «принято на складе». → [этап…]
+  function moveTargets(st, pipeId, stageId) {
+    const p = pipe(st, pipeId);
+    if (!p) return [];
+    const busy = items(st, pipeId).some(x => x.stageId === stageId), rules = rulesAt(st, p, stageId);
+    return p.stages.filter(x => x.id !== stageId && (!closing(x) || (!busy && rules.every(r => ruleMayTo(r, x)))));
+  }
+  // На этапе есть что переносить, а некуда (остальные — завершающие): причина целой фразой; '' — переносить есть куда или нечего.
+  function stuck(st, pipeId, stageId) {
+    const p = pipe(st, pipeId), s = p && p.stages.find(x => x.id === stageId);
+    if (!s) return '';
+    const n = items(st, pipeId).filter(x => x.stageId === stageId).length, r = rulesAt(st, p, stageId).length;
+    if ((!n && !r) || moveTargets(st, pipeId, stageId).length) return '';
+    const what = [n ? `${n} зап.` : '', r ? `${r} ${pl(r, 'правило', 'правила', 'правил')} поставок` : ''].filter(Boolean).join(' и ');
+    const ends = p.stages.filter(x => x.id !== stageId && closing(x)).map(x => `«${x.name}»`).join(', ');
+    return `На этапе «${s.name}» ${what}, а перенести их некуда: остальные этапы завершающие (${ends}) — туда запись попадает только своим действием. Сначала добавьте обычный этап.`;
+  }
+
   // После какого этапа вставлять новый, чтобы завершающие этапы остались в конце: перед первым этапом с флагом.
   // Без флагов — undefined (в конец).
   function beforeEnd(st, pipeId) {
@@ -2364,11 +2409,16 @@ const Pipes = (() => {
     if (why) return { ok: false, moved: 0, reason: why };
     const here = items(st, pipeId).filter(x => x.stageId === stageId), rules = rulesAt(st, p, stageId);
     const to = p.stages.find(x => x.id === moveToId && x.id !== stageId);
-    if ((here.length || rules.length) && !to) {
+    if (here.length || rules.length) {
       const what = [];
       if (here.length) what.push(`${here.length} зап.`);
       if (rules.length) what.push(`${rules.length} ${pl(rules.length, 'правило', 'правила', 'правил')} поставок`);
-      return { ok: false, moved: 0, reason: `На этапе «${s.name}» ${what.join(' и ')} — выберите, куда их перенести` };
+      const ok = moveTargets(st, pipeId, stageId), none = stuck(st, pipeId, stageId);
+      if (none) return { ok: false, moved: 0, reason: none };
+      if (!to) return { ok: false, moved: 0, reason: `На этапе «${s.name}» ${what.join(' и ')} — выберите, куда их перенести` };
+      if (!ok.includes(to)) {
+        return { ok: false, moved: 0, reason: `На этап «${to.name}» переносить нельзя: он завершающий, туда запись попадает только своим действием (приёмка, «Успешно», «Доставлена»). Выберите обычный этап.` };
+      }
     }
     here.forEach(x => { x.stageId = to.id; });
     rules.forEach(r => { r.then = to.id; });
@@ -2390,13 +2440,16 @@ const Pipes = (() => {
     return p;
   }
 
-  // Этап в другой воронке для переезжающей записи: тот же id → то же название → тот же флаг → первый.
+  // Этап в другой воронке для переезжающей записи: тот же id → то же название → тот же флаг → первый — но с тем же флагом,
+  // что был: с обычного этапа на завершающий (и наоборот) запись не переезжает. Подходящего нет — null.
   function matchStage(from, to, stageId) {
-    const s = from.stages.find(x => x.id === stageId);
-    return to.stages.find(x => x.id === stageId)
-      || (s && to.stages.find(x => x.name === s.name))
-      || (s && s.flag && to.stages.find(x => x.flag === s.flag))
-      || to.stages[0];
+    const s = from.stages.find(x => x.id === stageId), flag = (s && s.flag) || '';
+    const same = to.stages.filter(x => (x.flag || '') === flag);
+    return same.find(x => x.id === stageId) || (s && same.find(x => x.name === s.name)) || same[0] || null;
+  }
+  // Этап для правила поставок в другой воронке: как matchStage, но «принято на складе» может вести и на завершающий.
+  function matchRuleStage(from, to, rule) {
+    return matchStage(from, to, rule.then) || (ruleMayTo(rule, to.stages[0]) ? to.stages[0] : to.stages.find(x => !closing(x)) || null);
   }
 
   // Воронки «того же рода», что эта: вид, тип сделок (scope) и направление поставок (dir) совпадают.
@@ -2416,13 +2469,19 @@ const Pipes = (() => {
       return { ok: false, moved: 0, reason: `В воронке «${p.name}» ${here.length} зап. — выберите воронку того же вида, куда их перенести` };
     }
     const { field } = STORE[p.kind];
-    here.forEach(x => { x.stageId = matchStage(p, to, x.stageId).id; x[field] = to.id; });
-    rules.forEach(r => { r.then = matchStage(p, to, r.then).id; });
+    // сначала — куда встанет каждая запись и правило; если хоть одной некуда (в той воронке нет этапа того же рода), отказ
+    const place = here.map(x => matchStage(p, to, x.stageId)), ruleTo = rules.map(r => matchRuleStage(p, to, r));
+    const lost = here.filter((x, i) => !place[i]);
+    if (lost.length || ruleTo.some(x => !x)) {
+      return { ok: false, moved: 0, reason: `В воронке «${to.name}» нет этапа, куда перенести ${lost.length || 'правила'}${lost.length ? ' зап.' : ''} без смены их состояния: завершающие этапы ставятся только своим действием. Добавьте туда обычный этап.` };
+    }
+    here.forEach((x, i) => { x.stageId = place[i].id; x[field] = to.id; });
+    rules.forEach((r, i) => { r.then = ruleTo[i].id; });
     st.pipelines = pipes(st).filter(x => x !== p);
     return { ok: true, moved: here.length, reason: '' };
   }
 
-  return { KINDS, defaults, of, stage, isFinal, items, usage, why, lock, guard, beforeEnd, siblings, rename, renameStage, addStage, removeStage, addPipe, removePipe };
+  return { KINDS, defaults, of, stage, isFinal, closing, ruleMayTo, moveTargets, stuck, items, usage, why, lock, guard, beforeEnd, siblings, rename, renameStage, addStage, removeStage, addPipe, removePipe };
 })();
 
 // Ядро: остатки, резервы и журнал движений. Чистая логика, без DOM и текущего времени —
@@ -2653,7 +2712,11 @@ const Stock = (() => {
   }
 
   // Снять с резерва q штук: весь резерв — unreserve(), часть — резерв уменьшается, в журнале «Снят резерв» на q.
+  // r — запись резерва или его id. → {ok, reserve} | {ok:false, reason}
   function release(st, r, q, by, at) {
+    if (typeof r === 'string') r = (st.reserves || []).find(x => x.id === r);
+    if (!r) return { ok: false, reason: 'Такого резерва нет.' };
+    if (!Number.isInteger(Number(q)) || q < 1) return { ok: false, reason: 'Укажите количество — целое число больше нуля.' };
     if (q >= r.qty) return unreserve(st, r.id, by, at);
     r.qty -= q;
     log(st, { at, productId: r.productId, kind: KINDS.unreserve, qty: q, entityId: r.entityId || ANY, cityId: r.cityId || ANY, doc: r.dealId, by });
@@ -2708,7 +2771,7 @@ const Stock = (() => {
     return { ok: true, move: m.move, reserve: r };
   }
 
-  return { ANY, KINDS, NO_ENTITY, NO_CITY, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, canReserve, bestCell, move, reserve, unreserve, expired, sellMax, sell };
+  return { ANY, KINDS, NO_ENTITY, NO_CITY, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, canReserve, bestCell, move, reserve, unreserve, release, expired, sellMax, sell };
 })();
 
 // Ядро: поставки и маршрут. Чистые функции, без DOM; текущее время приходит аргументом now.
@@ -3008,7 +3071,8 @@ const Ships = (() => {
     for (const rule of st.shipRules || []) {
       if (rule.on !== true || !ruleHits(rule, event)) continue;
       const stage = Pipes.stage(st, s.pipeId, rule.then);
-      if (!stage || s.stageId === rule.then) continue;
+      // «На складе» и «Прибыло в город» правило ставит, только если оно «принято на складе»: иначе поставка закрылась бы без приёмки
+      if (!stage || s.stageId === rule.then || !Pipes.ruleMayTo(rule, stage)) continue;
       put(st, s, rule.then, by, now, SRC.rule(`если ${eventLabel(rule.when)} — «${stage.name}»`));
       fired.push(rule.id);
     }
@@ -3185,11 +3249,12 @@ SEEDS.push(st => {
   });
 
   st.shipments = shipments;
-  // правила директора по умолчанию (Настройки → Поставки); третье выключено — пример выключенного
+  // правила директора по умолчанию (Настройки → Поставки); третье выключено — пример выключенного. «Прибыло в город»
+  // и «На складе» ставит только «принято на складе» (Pipes.ruleMayTo): прибытие отмечает шаг перевозчика, склад — приёмка
   st.shipRules = [
     { id: 'sr1', on: true, when: 'received', then: 'inStock' },
     { id: 'sr2', on: true, when: 'customs', then: 'transship' },
-    { id: 'sr3', on: false, when: 'carrier:irk', then: 'arrived' },
+    { id: 'sr3', on: false, when: 'customs', then: 'toStock' },
   ];
 });
 
@@ -3845,7 +3910,8 @@ const Notify = (() => {
   const RECIPIENTS = {
     ship: 'all',                                               // поставки: этап, точка, срок — все сотрудники (R10)
     arrive: ['director', 'managerB2b', 'managerB2c'],          // приёмка «товар на складе» — менеджеры и директор (R15)
-    reserve: ['director', 'managerB2b', 'managerB2c', 'warehouse'], // резервы — как в v2
+    reserve: ['director', 'warehouse'],                        // резервы — склад и директор, плюс менеджер сделки (extraPersons):
+                                                               // менеджер другого типа чужую сделку не видит и о ней не узнаёт
     warn: ['director', 'logist', 'managerB2b', 'managerB2c'],  // приёмка с замечаниями — как в v2
     task: [],                                                  // задачи — исполнитель, отдел и автор (extraPersons)
     msg: ['director'],                                         // сообщения клиентам — плюс менеджер сделки (extraPersons)
@@ -4217,14 +4283,19 @@ const Dispatch = (() => {
 
   // Движение товара перемещения. Все три — через Stock.move; журнал пишет doc = номер заявки.
   // Уйти из «откуда»: сначала проверка по всем товарам, потом списание — отказ ничего не меняет.
+  // Зарезервированное под клиента перемещение не забирает: берёт не больше Stock.sellMax — «остаток клетки − резервы на неё».
   function withdraw(st, d, by, now) {
     const short = [];
     for (const [productId, need] of needs(d)) {
-      const have = Stock.grid(st, productId).cell(d.from.entityId, d.from.cityId) ?? 0;
-      if (need > have) short.push({ productId, name: (productOf(st, productId) || {}).name || 'нет данных: товар', need, have });
+      const lies = Stock.grid(st, productId).cell(d.from.entityId, d.from.cityId) ?? 0;
+      const have = Stock.sellMax(st, { productId, entityId: d.from.entityId, cityId: d.from.cityId });
+      if (need > have) short.push({ productId, name: (productOf(st, productId) || {}).name || 'нет данных: товар', need, have, held: lies - have });
     }
     if (short.length) {
-      const list = short.map(x => `${x.name} — нужно ${x.need}, есть ${x.have}`).join('; ');
+      const list = short.map(x => (x.held > 0
+        ? `${x.name} — нужно ${x.need}, свободно ${x.have} (лежит ${x.have + x.held}, под резервом ${x.held})`
+        : `${x.name} — нужно ${x.need}, есть ${x.have}`)).join('; ');
+      short.forEach(x => { if (!x.held) delete x.held; });
       return fail(`Не хватает на складе ${cellText(st, d.from)}: ${list}. Этап не изменён.`, { short });
     }
     for (const it of d.items) {
@@ -4298,7 +4369,7 @@ const Dispatch = (() => {
       if (!Number.isInteger(qty) || qty < 1 || (pid && !productOf(st, pid))) { bad = true; continue; }
       const row = pid ? { productId: pid, qty } : { text, qty };
       if (it.picked === true) row.picked = true;
-      if (it.sold) row.sold = it.sold;
+      // отметку «списано» с данными не принимаем: её ставит только sell, а update переносит со старой строки
       items.push(row);
     }
     return { items, bad };
@@ -4344,6 +4415,11 @@ const Dispatch = (() => {
     if (!it.items.length || it.bad) { missing.push('items'); if (it.bad) reason = reason || 'В списке есть строка без количества или с неизвестным товаром.'; }
     let dealId = str(d.dealId);
     if (dealId && !(st.deals || []).some(x => x.id === dealId)) return { missing: [], reason: `Сделки ${dealId} нет.` };
+    // новый файл с данными больше предела (Store.FILE_MAX) — отказ; уже сохранённые файлы заявки и файлы без данных
+    // (не поместились в браузер) места не занимают и не проверяются
+    const had = new Set(((current && current.files) || []).map(f => f.id));
+    const big = (Array.isArray(d.files) ? d.files : []).filter(f => f && !had.has(f.id) && typeof f.data === 'string' && f.data).map(Store.fileTooBig).find(Boolean);
+    if (big) return { missing: [], reason: big };
     if (missing.length) {
       return { missing, reason: reason || `Не заполнено: ${missing.map(k => MISSING[k]).join(', ')}.` };
     }
@@ -4411,13 +4487,20 @@ const Dispatch = (() => {
       || JSON.stringify(n.rec.from) !== JSON.stringify(d.from) || JSON.stringify(n.rec.toCell) !== JSON.stringify(d.toCell))) {
       return fail('Товар перемещения уже списан со склада: цель, склады и список менять нельзя. Верните заявку на этап до «В пути» или отмените её.', { missing: [] });
     }
-    // отметки «собрано» и «списано» остаются у тех строк, что не менялись
+    // списанная при продаже строка остаётся как была: товар, текст и количество не меняются, удалить её нельзя
+    // (иначе в заявке «списано 50», а в журнале склада «Отгрузка 2»); строки выше и ниже править можно
+    const taken = new Set();
+    for (const old of d.items.filter(i => i.sold)) {
+      const k = n.rec.items.findIndex((row, i) => !taken.has(i) && !row.sold && row.productId === old.productId && row.text === old.text && row.qty === old.qty);
+      if (k < 0) return fail(`Строка «${lineName(st, old)}» уже списана при продаже (${num(old.qty)}): изменить или удалить её нельзя. Нужно больше — добавьте новую строку.`, { missing: [] });
+      taken.add(k);
+      n.rec.items[k].sold = old.sold;
+      if (old.picked) n.rec.items[k].picked = true;
+    }
+    // отметка «собрано» остаётся у тех строк, что не менялись
     n.rec.items.forEach((row, i) => {
       const old = d.items[i];
-      if (old && old.productId === row.productId && old.text === row.text) {
-        if (old.picked) row.picked = true;
-        if (old.sold) row.sold = old.sold;
-      }
+      if (!taken.has(i) && old && !old.sold && old.productId === row.productId && old.text === row.text && old.picked) row.picked = true;
     });
     Object.assign(d, n.rec);
     if (d.purpose !== 'transfer') { delete d.from; delete d.toCell; }
@@ -4512,6 +4595,8 @@ const Dispatch = (() => {
     if (!it.productId) return fail('Строка своим текстом склад не трогает: списывать нечего.');
     if (it.sold) return fail('Эта строка уже списана.');
     const o = opt || {};
+    // по резерву: лента сделки помнит резерв, даже когда списание снимет его целиком
+    if (o.reserveId) Deals.keepTrail(st, (st.reserves || []).find(x => x.id === o.reserveId));
     const r = Stock.sell(st, { productId: it.productId, qty: it.qty, entityId: o.entityId, cityId: o.cityId, reserveId: o.reserveId, doc: d.number }, by, now);
     if (!r.ok) return r;
     it.sold = { at: now, by, entityId: r.move.entityId, cityId: r.move.cityId };
@@ -4565,7 +4650,8 @@ KIND.dispatchStep = { l: 'Ход отправок', ic: 'truck', c: 'info' };
 // Шаг SEEDS: встроенная роль «Водитель» (право dispatch; цен, сделок и остатков ей не положено), два демо-водителя,
 // воронка отправок и 20 демо-заявок «пример» на разных этапах и с разными целями. Получатели, адреса и телефоны явно
 // выдуманные («Клиент-пример 3», «(пример)», +7 900 000-00-NN). Строки — настоящие товары каталога.
-// У перемещений в пути склад уже согласован: товар ушёл из «откуда» и числится в пути — это делает та же setStage, что и в работе.
+// Демо-перемещения не доходят дальше «Готова к отправке»: «В пути» увозит товар из клетки, а демо не должно менять
+// настоящий снимок остатков — сразу после «Сбросить» остатки равны Catalog.build(снимок).
 // Заявки заводятся теми же функциями, что и в работе, но без уведомлений (silent).
 SEEDS.push(st => {
   const perms = on => Object.fromEntries(Perms.LIST.map(([k]) => [k, on.includes(k)]));
@@ -4606,8 +4692,8 @@ SEEDS.push(st => {
     ['sale', 'p2', 3, 'onWay', 0, 1, null], ['sale', 'p3', 2, 'ready', 0, 0, ['14:00', '18:00']],
     ['sale', 'p9', 2, 'picking', 0, -1, null], ['sale', 'p10', 1, 'picking', 1, -1, null],
     ['sale', 'p2', 1, 'new', 0, -1, ['11:00', '13:00']], ['sale', 'p3', 0, 'new', 2, -1, null],
-    ['transfer', 'p6', 4, 'delivered', -2, 0, null], ['transfer', 'p6', 3, 'onWay', 0, 0, null],
-    ['transfer', 'p5', 2, 'onWay', 1, 1, null], ['transfer', 'p6', 2, 'ready', 1, -1, null],
+    ['transfer', 'p6', 4, 'ready', 0, 0, null], ['transfer', 'p6', 3, 'ready', 1, 0, null],
+    ['transfer', 'p5', 2, 'picking', 1, 1, null], ['transfer', 'p6', 2, 'ready', 1, -1, null],
     ['transfer', 'p5', 1, 'new', 3, -1, null], ['transfer', 'p6', 1, 'cancelled', -1, 0, null],
     ['other', 'p4', 3, 'delivered', -1, 1, null], ['other', 'p7', 1, 'ready', 0, 0, null],
     ['other', 'p1', 0, 'new', 1, -1, null], ['sale', 'p2', 0, 'picking', 0, -1, null],
@@ -4647,8 +4733,8 @@ SEEDS.push(st => {
     const driver = drv >= 0 ? driverIds[drv] : null;
     if (driver) Dispatch.assign(st, made.id, driver, 'p6', later(1), { silent: true });
     const d = Dispatch.byId(st, made.id);
-    // отменённая продажа не дошла дальше «Собирается», отменённое перемещение дошло до «В пути» и вернуло товар
-    const steps = stage === 'cancelled' ? (purpose === 'transfer' ? 3 : 1) : path.indexOf(stage);
+    // отменённая заявка не дошла дальше «Собирается»
+    const steps = stage === 'cancelled' ? 1 : path.indexOf(stage);
     for (let j = 1; j <= steps; j++) {
       if (j === 2) d.items.forEach((_, idx) => Dispatch.pick(st, d.id, idx, true, 'p5', later(j)));
       if (!Dispatch.setStage(st, d.id, path[j], j <= 2 ? 'p5' : (driver || 'p6'), later(j + 1), { silent: true }).ok) break;
@@ -5162,7 +5248,9 @@ const Deals = (() => {
   const state = (st, d) => (lostOf(d) ? 'lost' : Pipes.isFinal(st, d.pipeId, d.stageId) ? 'won' : 'open');
 
   // ——— права ———
-  const canMake = (st, by) => !!personOf(st, by) && Perms.can(st, by, 'clients');
+  // Видеть сделки — право clients (и Leads.dealsVisible); заводить, править, двигать по этапам, закрывать, резервировать — dealsEdit.
+  // У инженеров по умолчанию только просмотр (R30).
+  const canMake = (st, by) => !!personOf(st, by) && Perms.can(st, by, 'dealsEdit');
   const canEdit = (st, d, by) => !!d && canMake(st, by) && Leads.dealsVisible(st, by).includes(d);
   // Сделка, с которой человек может работать, или отказ.
   function open(st, id, by) {
@@ -5438,49 +5526,89 @@ const Deals = (() => {
     return { ok: true, reason: '' };
   }
 
-  // ——— резерв строки ———
-  // Зарезервировать строку idx со склада под эту сделку: {entityId, cityId, qty?, until?}. Количество по умолчанию — вся
-  // нерезервированная часть строки; не больше неё и не больше свободного в клетке (Stock.canReserve, его причина — наша).
-  // Юрлицо и город не названы — берётся клетка, где больше всего свободного. Срок по умолчанию — 14 дней от now.
-  // Склад и директор получают уведомление «Резерв», как при резерве из карточки товара. → {ok, reserve, reason, max}
-  function reserveItem(st, id, idx, opt, by, now) {
+  // ——— резервы сделки ———
+  // Уведомление о резерве: постоянные адресаты вида reserve (Notify.RECIPIENTS — склад и директор) и менеджер этой сделки.
+  // Менеджеры другого типа его не получают: чужую сделку они не видят.
+  const managerOf = d => (d && d.managerId ? [d.managerId] : []);
+  // Сколько товара сделки ещё можно зарезервировать: «в строках − уже в резерве». Единственный расчёт: ядро и экран зовут его.
+  const left = (st, d, productId) => round2(lined(d, productId) - reserved(st, d, productId));
+
+  // Один путь резерва под сделку — из строки сделки (reserveItem) и из карточки товара.
+  // o: {productId, qty?, src? ('stock' | id поставки), entityId?, cityId?, until?}. Нужно право править сделку (canEdit) и право
+  // reserve; товар должен быть в строках сделки; не больше «в строках − уже в резерве» (left) и не больше свободного
+  // (Stock.canReserve, его причина — наша). Количество по умолчанию — вся нерезервированная часть. Юрлицо и город не названы —
+  // клетка, где свободного больше всего. Срок по умолчанию — 14 дней от now. Запись в ленту сделки, уведомление — складу,
+  // директору и менеджеру сделки. → {ok, reserve, reason, max}
+  function reserve(st, id, opt, by, now) {
     const { d, err } = open(st, id, by);
     if (err) return err;
     if (!Perms.can(st, by, 'reserve')) return fail('У вашей роли нет права ставить резервы.');
-    const it = (d.items || [])[idx], o = opt || {};
-    if (!it) return fail('Такой строки нет.');
-    if (!it.productId) return fail('Своя строка: такого товара нет в каталоге, резервировать нечего.');
+    const o = opt || {}, pid = o.productId, p = productOf(st, pid);
+    if (!p) return fail('Такого товара нет в каталоге.');
+    const rows = (d.items || []).filter(x => x.productId === pid).length;
+    if (!rows) return fail(`В сделке ${d.id} нет строки с товаром «${p.name}»: сначала добавьте его в сделку, потом ставьте резерв.`, { max: 0 });
     // Предел — по товару, а не по строке: две строки одного товара (10 и 5) дают 15, а не 10.
-    const all = lined(d, it.productId), rows = d.items.filter(x => x.productId === it.productId).length;
-    const held = reserved(st, d, it.productId), left = round2(all - held);
-    if (!(left > 0)) return fail(`Строка «${itemName(st, it)}» уже зарезервирована целиком (${num(held)}).`);
-    const qty = o.qty === undefined || str(o.qty) === '' ? left : toNum(o.qty);
-    if (qty > left) return fail(`${rows > 1 ? `В ${rows} строках этого товара ${num(all)}` : `В строке ${num(all)}`}, уже зарезервировано ${num(held)}: можно ещё ${num(left)}.`, { max: left });
-    const cell = o.entityId === undefined && o.cityId === undefined ? Stock.bestCell(st, it.productId) : { entityId: o.entityId, cityId: o.cityId };
+    const all = lined(d, pid), held = reserved(st, d, pid), rest = left(st, d, pid);
+    if (!(rest > 0)) return fail(`Строка «${p.name}» уже зарезервирована целиком (${num(held)}).`, { max: 0 });
+    const qty = o.qty === undefined || str(o.qty) === '' ? rest : toNum(o.qty);
+    if (qty > rest) return fail(`${rows > 1 ? `В ${rows} строках этого товара ${num(all)}` : `В строке ${num(all)}`}, уже зарезервировано ${num(held)}: можно ещё ${num(rest)}.`, { max: rest });
+    const src = o.src || 'stock';
+    const cell = src !== 'stock' || (o.entityId === undefined && o.cityId === undefined) ? Stock.bestCell(st, pid) : { entityId: o.entityId, cityId: o.cityId };
     const until = o.until || new Date(new Date(now).getTime() + 14 * 864e5);
-    const ask = { productId: it.productId, qty, entityId: cell.entityId, cityId: cell.cityId, src: 'stock' };
+    const ask = { productId: pid, qty, entityId: cell.entityId, cityId: cell.cityId, src };
     const chk = Stock.canReserve(st, ask);
     if (!chk.ok) return fail(chk.reason, { max: chk.max });
     const res = Stock.reserve(st, Object.assign(ask, { dealId: d.id, until, by, at: now }));
     if (!res.ok) return fail(res.reason, { max: res.max });
     res.reserve.at = now;
     res.reserve.by = by;
-    log(st, d, 'reserve', Feed.reserveText(st, res.reserve), by, now, { reserveId: res.reserve.id, productId: it.productId, qty });
-    Notify.push(st, 'reserve', by, Feed.reserveText(st, res.reserve, true), now);
+    log(st, d, 'reserve', Feed.reserveText(st, res.reserve), by, now, { reserveId: res.reserve.id, productId: pid, qty });
+    Notify.push(st, 'reserve', by, Feed.reserveText(st, res.reserve, true), now, managerOf(d));
     return { ok: true, reserve: res.reserve, reason: '', max: res.max };
   }
 
-  // Снять резерв сделки: товар возвращается в свободный остаток. → {ok, reason}
+  // Зарезервировать строку idx со склада под эту сделку: {entityId, cityId, qty?, until?} — тот же reserve по товару строки.
+  function reserveItem(st, id, idx, opt, by, now) {
+    const { d, err } = open(st, id, by);
+    if (err) return err;
+    if (!Perms.can(st, by, 'reserve')) return fail('У вашей роли нет права ставить резервы.');
+    const it = (d.items || [])[idx];
+    if (!it) return fail('Такой строки нет.');
+    if (!it.productId) return fail('Своя строка: такого товара нет в каталоге, резервировать нечего.');
+    return reserve(st, id, Object.assign({}, opt, { productId: it.productId, src: 'stock' }), by, now);
+  }
+
+  // Лента сделки помнит резерв. Пока у резерва нет своей записи в ленте, её подмешивает сам резерв (Feed.of) — и снятый
+  // резерв пропал бы из ленты бесследно. keepTrail пишет эту запись — с прежним временем и автором — до того, как резерв
+  // уменьшат или снимут. Зовут все, кто снимает или списывает резерв: сделка, приёмка, карточка товара, отправка.
+  function keepTrail(st, r) {
+    const d = r && byId(st, r.dealId);
+    if (!d || (st.feed || []).some(e => e.ref.t === 'deal' && e.ref.id === d.id && e.data && e.data.reserveId === r.id)) return;
+    const w = Feed.reserveWhen(st, r);
+    log(st, d, 'reserve', Feed.reserveText(st, r), w.by, w.at, { reserveId: r.id, productId: r.productId, qty: r.qty });
+  }
+  // Из резерва r снято q (целиком или частью): запись «Снят резерв» в ленте сделки с причиной why и уведомление складу,
+  // директору и менеджеру сделки. Зовётся до того, как резерв изменён. Один текст на снятие из сделки, из карточки товара
+  // и при приёмке.
+  function noteRelease(st, r, q, why, by, now) {
+    const d = r && byId(st, r.dealId);
+    if (!d) return;
+    keepTrail(st, r);
+    const name = low((productOf(st, r.productId) || {}).name || 'нет данных: товар'), tail = why ? ' ' + why : '';
+    log(st, d, 'reserve', `Снят резерв: ${name} — ${num(q)}${why ? '.' + tail : ''}`, by, now, { reserveId: r.id, productId: r.productId, qty: q, removed: true });
+    Notify.push(st, 'reserve', by, `Снят резерв: ${name} — ${num(q)} (${d.id}, ${d.client}).${tail}`, now, managerOf(d));
+  }
+
+  // Снять резерв сделки: товар возвращается в свободный остаток. Нужно право править сделку и право reserve. → {ok, reason}
   function unreserve(st, id, reserveId, by, now) {
     const { d, err } = open(st, id, by);
     if (err) return err;
     if (!Perms.can(st, by, 'reserve')) return fail('У вашей роли нет права снимать резервы.');
     const r = (st.reserves || []).find(x => x.id === reserveId && x.dealId === d.id);
     if (!r) return fail('Такого резерва в сделке нет.');
+    noteRelease(st, r, r.qty, '', by, now);
     const res = Stock.unreserve(st, reserveId, by, now);
     if (!res.ok) return fail(res.reason);
-    log(st, d, 'reserve', `Снят резерв: ${low((productOf(st, r.productId) || {}).name || 'нет данных: товар')} — ${num(r.qty)}`, by, now, { reserveId, productId: r.productId, qty: r.qty, removed: true });
-    Notify.push(st, 'reserve', by, `Снят резерв: ${low((productOf(st, r.productId) || {}).name || 'нет данных: товар')} — ${num(r.qty)} (${d.id}, ${d.client}).`, now);
     return { ok: true, reason: '' };
   }
 
@@ -5512,8 +5640,8 @@ const Deals = (() => {
   }
 
   return {
-    defaultReasons, reasons, lineSum, total, sumOf, noPrice, state, canEdit, itemName, reserved, lined, byId,
-    create, update, move, win, lose, reopen, addItem, setItem, removeItem, reserveItem, unreserve, query, columns,
+    defaultReasons, reasons, lineSum, total, sumOf, noPrice, state, canEdit, itemName, reserved, lined, left, byId,
+    create, update, move, win, lose, reopen, addItem, setItem, removeItem, reserve, reserveItem, keepTrail, noteRelease, unreserve, query, columns,
   };
 })();
 
@@ -5524,6 +5652,9 @@ const Deals = (() => {
 // Всё помечено «пример» (demo:true и слово в названиях клиентов), телефоны вида +7 900 000-00-NN.
 SEEDS.push(st => {
   st.lostReasons = Deals.defaultReasons();
+  // РОП (роль заводит шаг лидов, 35-leads.js) заводит и правит сделки, как менеджеры
+  const rop = st.roles.find(r => r.id === 'rop');
+  if (rop) rop.perms.dealsEdit = true;
   const DAY = 864e5, STAGES = ['request', 'calc', 'offer', 'contract', 'payment', 'delivery', 'install', 'done'];
   const pad = (n, w) => String(n).padStart(w, '0');
   const mgrs = type => Leads.managers(st, type).map(p => p.id);
@@ -5885,9 +6016,13 @@ function save(){
   if(!S) return null;
   let r=Store.dump(S),ok=true;
   try{localStorage.setItem(Store.KEY,r.text)}catch(_){
-    // браузер дал меньше места, чем рассчитывает Store, — сохраняем без фото
-    r=Store.dump(S,0);
-    try{localStorage.setItem(Store.KEY,r.text)}catch(_){ok=false}
+    // браузер дал меньше места, чем рассчитывает Store: предел ужимается по шагу, и выкидывается только то,
+    // что не влезло (сначала новые и крупные фото и файлы); не влезло и без них — не сохранено
+    const full=r.text.length;ok=false;
+    for(const k of [.95,.9,.8,.65,.5,.3,0]){
+      r=Store.dump(S,Math.floor(full*k));
+      try{localStorage.setItem(Store.KEY,r.text);ok=true;break}catch(_){}
+    }
   }
   if(!ok) toast('Изменения не сохранены — мало места в браузере','warn');
   else if((r.droppedPhotos||r.droppedFiles)&&(r.droppedPhotos+r.droppedFiles)!==_photoWarn) toast((r.droppedPhotos?'Фото':'Файлы заявок')+(r.droppedPhotos&&r.droppedFiles?' и файлы заявок':'')+' не сохранены — мало места в браузере','warn');
@@ -6275,10 +6410,12 @@ const A={
   'note-k':el=>{S.ui.noteK=el.dataset.k;render()},
   'note-scope':el=>{S.ui.noteScope=el.dataset.k;render()},
   'view-as':el=>setMe(el.dataset.id),
+  // «Снять» в карточке товара — тот же Deals.unreserve, что в карточке сделки: право, запись в ленте сделки, уведомление
+  // складу, директору и менеджеру сделки. Резерв без сделки (её удалили) снимает Stock.unreserve по праву reserve.
   unreserve:el=>{
-    const m=me(),now=new Date(),res=Stock.unreserve(S,el.dataset.id,m.id,now);if(!res.ok) return;
-    const r=res.reserve,p=product(r.productId),d=deal(r.dealId);
-    Notify.push(S,'reserve',m.id,`Снят резерв: ${p.name} — ${qtyOf(r.qty,p)} (${r.dealId}, ${d?.client||''}).`,now);
+    const r=S.reserves.find(x=>x.id===el.dataset.id),now=new Date();if(!r) return;
+    const res=deal(r.dealId)?Deals.unreserve(S,r.dealId,r.id,S.me,now):!can('reserve')?{ok:false,reason:'У вашей роли нет права снимать резервы.'}:Stock.unreserve(S,r.id,S.me,now);
+    if(!res.ok) return toast(res.reason,'warn');
     render();toast('Резерв снят, товар снова свободен.');
   },
   'rcv-start':el=>{initRcv(el.dataset.id);go('receiving')},
@@ -6300,15 +6437,16 @@ const A={
 // ——— формы ———
 const FORMS={
   reset:()=>resetData(),
+  // Резерв из карточки товара — тот же Deals.reserve, что из строки сделки: право reserve и право править сделку, только
+  // видимая сделка, не больше «в строках сделки − уже в резерве», запись в ленте сделки, уведомление складу, директору и менеджеру.
   reserve:f=>{
     const p=product(f.dataset.pid),did=byId('rs-deal').value,qty=parseInt(byId('rs-qty').value,10),src=byId('rs-src').value,until=byId('rs-until').value;
-    if(!did) return showErr('rs-err','Нет открытых сделок, под которые можно поставить резерв.');
+    if(!did) return showErr('rs-err','Нет ваших открытых сделок с этим товаром в строках: добавьте товар в сделку — тогда здесь можно поставить резерв.');
     if(!until||dd(fromIso(until))<0) return showErr('rs-err','Дата окончания резерва не может быть в прошлом.');
-    const d=deal(did),m=me(),u=fromIso(until),now=new Date();
-    const res=Stock.reserve(S,{productId:p.id,qty,entityId:byId('rs-ent').value,cityId:byId('rs-city').value,src,dealId:did,until:u,by:m.id,at:now});
+    const u=fromIso(until),now=new Date();
+    const res=Deals.reserve(S,did,{productId:p.id,qty,src,entityId:byId('rs-ent').value,cityId:byId('rs-city').value,until:u},S.me,now);
     if(!res.ok) return showErr('rs-err',res.reason);
-    Notify.push(S,'reserve',m.id,`Резерв: ${low(p.name)} — ${qtyOf(qty,p)} ${src==='stock'?'со склада':'из поставки '+src} для ${did} (${d.client}) до ${fD(u)}.`,now);
-    render();toast(`Резерв поставлен: ${qtyOf(qty,p)} для ${did}. Склад и директор получили уведомление.`);
+    render();toast(`Резерв поставлен: ${qtyOf(res.reserve.qty,p)} для ${did}. Склад, директор и менеджер сделки получили уведомление.`);
   },
   stage:f=>shipStageForm(f),
   task:()=>{
@@ -6424,8 +6562,12 @@ byId('q').addEventListener('input',e=>{
 // ——— плитки дня ———
 // Реестр плиток: {id, label, show, calc → {value, sub, tone, …}, open}. tone '' · 'bad' (просрочено) · 'warn' (нужно действие).
 const homeOpenDeals=()=>Leads.dealsVisible(S,S.me).filter(d=>Deals.state(S,d)==='open');
-// Резервы с истёкшим сроком (Stock.expired) по сделкам, которые видит человек
-const homeExpired=()=>{const vis=new Set(Leads.dealsVisible(S,S.me).map(d=>d.id));return Stock.expired(S,new Date()).filter(r=>vis.has(r.dealId))};
+// Резервы по сделкам, которые видит человек (Leads.dealsVisible): резерв называет сделку и клиента, чужой — не показываем
+const homeVisible=list=>{const vis=new Set(Leads.dealsVisible(S,S.me).map(d=>d.id));return list.filter(r=>vis.has(r.dealId))};
+// Резервы с истёкшим сроком (Stock.expired) по видимым сделкам — одно число на плитку и на «Требует внимания»
+const homeExpired=()=>homeVisible(Stock.expired(S,new Date()));
+// Резервы видимых сделок, срок которых выходит за два дня
+const homeSoon=()=>homeVisible(S.reserves.filter(r=>{const n=dd(r.until);return n>=0&&n<=2}));
 // Сделки без следующего шага: открытые видимые сделки, у которых Acts.noNext
 const homeNoNext=()=>homeOpenDeals().filter(d=>Acts.noNext(S,{t:'deal',id:d.id}));
 const homeIsDriver=()=>Dispatch.drivers(S).some(p=>p.id===S.me);
@@ -6518,8 +6660,8 @@ function attention(){
       if(k.freeAfter<0) a.push({lvl:'bad',icon:'box',text:`${p.name}: под резервы не хватает ${qtyOf(-k.freeAfter,p)}`,sub:'Даже с учётом всех поставок в пути',act:`data-act="open-product" data-pid="${esc(p.id)}"`});
       else if(k.onHand>0&&k.free<=0&&!k.incoming) a.push({lvl:'warn',icon:'box',text:`${p.name}: свободный остаток закончился`,sub:'Всё, что на складе, в резерве. Поставок нет',act:`data-act="open-product" data-pid="${esc(p.id)}"`});
     });
-    Stock.expired(S,new Date()).forEach(r=>{const p=product(r.productId),d=deal(r.dealId);a.push({lvl:'bad',icon:'clock',text:`Срок резерва вышел: ${p?p.name:'нет данных: товар'} — ${qtyOf(r.qty,p)}`,sub:`${r.dealId} · ${d?.client||''} · был до ${fD(r.until)}`,act:`data-act="open-product" data-pid="${esc(r.productId)}"`})});
-    S.reserves.filter(r=>{const n=dd(r.until);return n>=0&&n<=2}).forEach(r=>{const p=product(r.productId),d=deal(r.dealId);a.push({lvl:'info',icon:'clock',text:`Резерв истекает ${fRel(r.until)}: ${p.name} — ${qtyOf(r.qty,p)}`,sub:`${r.dealId} · ${d?.client||''}`,act:`data-act="open-product" data-pid="${esc(p.id)}"`})});
+    homeExpired().forEach(r=>{const p=product(r.productId),d=deal(r.dealId);a.push({lvl:'bad',icon:'clock',text:`Срок резерва вышел: ${p?p.name:'нет данных: товар'} — ${qtyOf(r.qty,p)}`,sub:`${r.dealId} · ${d?.client||''} · был до ${fD(r.until)}`,act:`data-act="open-product" data-pid="${esc(r.productId)}"`})});
+    homeSoon().forEach(r=>{const p=product(r.productId),d=deal(r.dealId);a.push({lvl:'info',icon:'clock',text:`Резерв истекает ${fRel(r.until)}: ${p.name} — ${qtyOf(r.qty,p)}`,sub:`${r.dealId} · ${d?.client||''}`,act:`data-act="open-product" data-pid="${esc(p.id)}"`})});
   }
   return a;
 }
@@ -6733,10 +6875,16 @@ function movesTable(){
   if(!part.length) return head+emptyState('Движений по этому фильтру нет.','Показать все движения','stock-journal');
   return `${head}<div class="xs"><table class="tbl"><thead><tr><th>Когда</th><th>Кто</th><th>Вид</th><th>Товар</th><th class="num">Сколько</th><th>Откуда и куда</th><th>Документ</th></tr></thead><tbody>${part.map(m=>{
     const p=product(m.productId),who=whoName(m.by);
-    return `<tr${p?` class="click" data-act="open-product" data-pid="${esc(p.id)}" tabindex="0"`:''}><td class="nowrap">${fWhen(m.at)}</td><td>${who?esc(who):noData('кто')}</td><td>${movePill(m)}</td><td>${p?`<button type="button" class="link" data-act="open-product" data-pid="${esc(p.id)}">${esc(p.name)}</button>`:noData('товар')}</td><td class="num">${moveSign(m)}${qtyOf(m.qty,p)}</td><td>${esc(moveWhere(m))}</td><td class="mono">${esc(m.doc||'')}</td></tr>`;
+    return `<tr${p?` class="click" data-act="open-product" data-pid="${esc(p.id)}" tabindex="0"`:''}><td class="nowrap">${fWhen(m.at)}</td><td>${who?esc(who):noData('кто')}</td><td>${movePill(m)}</td><td>${p?`<button type="button" class="link" data-act="open-product" data-pid="${esc(p.id)}">${esc(p.name)}</button>`:noData('товар')}</td><td class="num">${moveSign(m)}${qtyOf(m.qty,p)}</td><td>${esc(moveWhere(m))}</td><td class="mono">${esc(moveDoc(m))}</td></tr>`;
   }).join('')}</tbody></table></div>`;
 }
 
+// Документ движения: номер сделки показываем, только если сделка видна человеку (Leads.dealsVisible); чужая — без номера
+function moveDoc(m){
+  const doc=m.doc||'';
+  if(!doc||!S.deals.some(d=>d.id===doc)) return doc;
+  return Leads.dealsVisible(S,S.me).some(d=>d.id===doc)?doc:'сделка, которую вы не видите';
+}
 // ——— карточка товара ———
 function srcPill(r){
   if(r.src==='stock') return '<span class="pill ok sm">на складе</span>';
@@ -6763,13 +6911,16 @@ function sellCells(p){
 }
 // «Можно поставить» — тем же Stock.canReserve, что проверяет сама постановка
 const maxText=(pid,src,ent,city)=>`Можно поставить: ${num(Stock.canReserve(S,{productId:pid,qty:1,entityId:ent,cityId:city,src}).max)}`;
+// Сделки, под которые человек может поставить резерв этого товара: видимые ему (Leads.dealsVisible), открытые, он вправе их
+// править (Deals.canEdit), товар есть в строках и ещё не весь зарезервирован (Deals.left). Резерв ставит тот же Deals.reserve.
+const reserveDeals=pid=>Leads.dealsVisible(S,S.me).filter(d=>Deals.state(S,d)==='open'&&Deals.canEdit(S,d,S.me)&&Deals.left(S,d,pid)>0);
 function reserveForm(p,k,inc){
   if(!can('reserve')) return `<p class="lock">${ic('lock')}Резервы ставит менеджер или директор. Вам придёт уведомление, когда резерв появится.</p>`;
-  const deals=S.deals.filter(d=>!isDone(d));
+  const deals=reserveDeals(p.id);
   const src=[`<option value="stock">Со склада — свободно ${qtyOf(Math.max(0,k.free),p)}</option>`,...inc.filter(x=>!x.dispatchId).map(x=>`<option value="${esc(x.shipId)}">Из поставки ${esc(x.shipId)}, ${fD(x.eta)} — свободно ${qtyOf(Math.max(0,Stock.freeIn(S,x.shipId,p.id)),p)}</option>`)].join('');
   // откуда на складе: юрлицо и город; по умолчанию — клетка, где свободного больше всего
   const cell=Stock.bestCell(S,p.id),opt=(list,none,cur)=>[...list.map(x=>[x.id,x.name]),[Stock.ANY,none]].map(([id,n])=>`<option value="${esc(id)}"${id===cur?' selected':''}>${esc(n)}</option>`).join('');
-  return `<form class="rform" data-form="reserve" data-pid="${esc(p.id)}" novalidate><h4 class="sh">Поставить резерв</h4><div class="grid2"><div class="field"><label for="rs-deal">Сделка</label><select id="rs-deal" class="inp">${deals.map(d=>`<option value="${d.id}">${d.id} · ${esc(d.client)}</option>`).join('')}</select></div><div class="field"><label for="rs-qty">Количество${p.unit?', '+esc(p.unit):''}</label><input id="rs-qty" class="inp" type="number" min="1" value="1" inputmode="numeric"></div><div class="field span2"><label for="rs-src">Откуда</label><select id="rs-src" class="inp" data-on="rsmax">${src}</select></div><div class="field"><label for="rs-ent">Юрлицо (со склада)</label><select id="rs-ent" class="inp" data-on="rsmax">${opt(S.entities,Stock.NO_ENTITY,cell.entityId)}</select></div><div class="field"><label for="rs-city">Город (со склада)</label><select id="rs-city" class="inp" data-on="rsmax">${opt(S.cities,Stock.NO_CITY,cell.cityId)}</select></div><div class="field"><label for="rs-until">Резерв до</label><input id="rs-until" class="inp" type="date" value="${iso(day(7))}"></div><div class="field end"><button class="btn pri" type="submit">${ic('lock')}Зарезервировать</button></div></div><p class="hint" id="rs-max">${maxText(p.id,'stock',cell.entityId,cell.cityId)}</p><p class="err" id="rs-err" hidden></p></form>`;
+  return `<form class="rform" data-form="reserve" data-pid="${esc(p.id)}" novalidate><h4 class="sh">Поставить резерв</h4><div class="grid2"><div class="field"><label for="rs-deal">Сделка</label><select id="rs-deal" class="inp">${deals.map(d=>`<option value="${d.id}">${d.id} · ${esc(d.client)} · можно ещё ${num(Deals.left(S,d,p.id))}</option>`).join('')}</select>${deals.length?'':'<small class="muted">Нет ваших открытых сделок с этим товаром в строках: добавьте товар в сделку — тогда здесь можно поставить резерв.</small>'}</div><div class="field"><label for="rs-qty">Количество${p.unit?', '+esc(p.unit):''}</label><input id="rs-qty" class="inp" type="number" min="1" value="1" inputmode="numeric"></div><div class="field span2"><label for="rs-src">Откуда</label><select id="rs-src" class="inp" data-on="rsmax">${src}</select></div><div class="field"><label for="rs-ent">Юрлицо (со склада)</label><select id="rs-ent" class="inp" data-on="rsmax">${opt(S.entities,Stock.NO_ENTITY,cell.entityId)}</select></div><div class="field"><label for="rs-city">Город (со склада)</label><select id="rs-city" class="inp" data-on="rsmax">${opt(S.cities,Stock.NO_CITY,cell.cityId)}</select></div><div class="field"><label for="rs-until">Резерв до</label><input id="rs-until" class="inp" type="date" value="${iso(day(7))}"></div><div class="field end"><button class="btn pri" type="submit">${ic('lock')}Зарезервировать</button></div></div><p class="hint" id="rs-max">${maxText(p.id,'stock',cell.entityId,cell.cityId)}</p><p class="err" id="rs-err" hidden></p></form>`;
 }
 // Строка «Едет к нам»: поставка (этап и срок из карточки поставки) или груз перемещения между складами — «в пути: N, ОТ-NNN»
 // со ссылкой на заявку; у груза поставки нет, поэтому ни этапа поставки, ни резерва под него
@@ -6779,7 +6930,7 @@ function iRow(x,p){
   return `<li><b class="mono">${esc(x.shipId)}</b><span>${qtyOf(x.qty,p)}</span><span class="pill sm ${late?'bad':'info'}">${late?'задерживается':esc(stageName(s).toLowerCase())}</span><small>ожидается ${fD(x.eta)}</small></li>`;
 }
 function dProduct(p){
-  const k=stockOf(p.id),rs=resOf(p.id),inc=Stock.incomingOf(S,p.id),all=S.moves.filter(m=>m.productId===p.id),mv=all.slice(0,10),unk=stockUnknown(k);
+  const k=stockOf(p.id);let rs=resOf(p.id);const inc=Stock.incomingOf(S,p.id),all=S.moves.filter(m=>m.productId===p.id),mv=all.slice(0,10),unk=stockUnknown(k);
   const st=(l,v,c='',note='')=>`<div class="st"><span>${l}</span><b class="${c}">${v}</b>${note?`<small>${note}</small>`:''}</div>`;
   const kv=(l,v)=>`<dt>${l}</dt><dd>${v}</dd>`;
   const aside=x=>x===null?'нет данных':qtyOf(x,p);
@@ -6791,9 +6942,13 @@ function dProduct(p){
     kv('Наличие',p.avail?esc(p.avail):noData('наличие')),url?kv('Ссылка',url):''
   ].join('');
   const where=r=>cellText(r.entityId,r.cityId);
-  const rTbl=rs.length?`<div class="xs"><table class="tbl"><thead><tr><th>Сделка</th><th class="num">Кол-во</th><th>Где товар</th><th>До</th>${can('reserve')||can('sell')?'<th></th>':''}</tr></thead><tbody>${rs.map(r=>{const d=deal(r.dealId),n=dd(r.until);return `<tr><td>${can('clients')?`<button class="link" data-act="open-deal" data-id="${r.dealId}">${r.dealId}</button>`:r.dealId}<small class="muted">${esc(d?.client||'')}</small></td><td class="num">${num(r.qty)}</td><td>${srcPill(r)}${r.src==='stock'?`<small class="muted">${esc(where(r))}</small>`:''}</td><td class="nowrap ${n<=2?'warn-t':''}">${fD(r.until)}</td>${can('reserve')||can('sell')?`<td class="num"><div class="rbtns">${r.src==='stock'&&can('sell')?`<button type="button" class="btn sm" data-act="stock-sell" data-pid="${esc(r.productId)}" data-rid="${esc(r.id)}">Списать</button>`:''}${can('reserve')?`<button class="btn sm ghost" data-act="unreserve" data-id="${r.id}">Снять</button>`:''}</div></td>`:''}</tr>`}).join('')}</tbody></table></div>`:'<p class="muted m0">Резервов нет.</p>';
+  // резерв называет сделку и клиента: строки — только по видимым сделкам; чужие — одной строкой без номера и клиента
+  const vis=new Set(Leads.dealsVisible(S,S.me).map(d=>d.id)),hidden=rs.filter(r=>!vis.has(r.dealId)),others=hidden.reduce((n,r)=>n+r.qty,0);
+  const othersNote=hidden.length?`<p class="muted sm m0">Ещё в резерве по сделкам, которых вы не видите: ${qtyOf(others,p)}.</p>`:'';
+  rs=rs.filter(r=>vis.has(r.dealId));
+  const rTbl=rs.length?`<div class="xs"><table class="tbl"><thead><tr><th>Сделка</th><th class="num">Кол-во</th><th>Где товар</th><th>До</th>${can('reserve')||can('sell')?'<th></th>':''}</tr></thead><tbody>${rs.map(r=>{const d=deal(r.dealId),n=dd(r.until);return `<tr><td>${can('clients')?`<button class="link" data-act="open-deal" data-id="${r.dealId}">${r.dealId}</button>`:r.dealId}<small class="muted">${esc(d?.client||'')}</small></td><td class="num">${num(r.qty)}</td><td>${srcPill(r)}${r.src==='stock'?`<small class="muted">${esc(where(r))}</small>`:''}</td><td class="nowrap ${n<=2?'warn-t':''}">${fD(r.until)}</td>${can('reserve')||can('sell')?`<td class="num"><div class="rbtns">${r.src==='stock'&&can('sell')?`<button type="button" class="btn sm" data-act="stock-sell" data-pid="${esc(r.productId)}" data-rid="${esc(r.id)}">Списать</button>`:''}${can('reserve')?`<button class="btn sm ghost" data-act="unreserve" data-id="${r.id}">Снять</button>`:''}</div></td>`:''}</tr>`}).join('')}</tbody></table></div>${othersNote}`:othersNote||'<p class="muted m0">Резервов нет.</p>';
   const iList=inc.length?`<ul class="mv">${inc.map(x=>iRow(x,p)).join('')}</ul>`:'<p class="muted m0">Поставок с этим товаром нет.</p>';
-  const mList=mv.length?`<ul class="mv">${mv.map(m=>`<li>${movePill(m)}<b>${moveSign(m)}${qtyOf(m.qty,p)}</b><span>${esc(moveWhere(m))}</span><span class="mono muted">${esc(m.doc||'')}</span><small>${fWhen(m.at)} · ${esc(whoName(m.by)||'нет данных: кто')}</small></li>`).join('')}</ul><p class="m0"><button type="button" class="btn sm" data-act="stock-journal" data-pid="${esc(p.id)}">Весь журнал по товару${all.length>mv.length?` (${all.length})`:''}</button></p>`:'<p class="muted m0">Движений пока нет.</p>';
+  const mList=mv.length?`<ul class="mv">${mv.map(m=>`<li>${movePill(m)}<b>${moveSign(m)}${qtyOf(m.qty,p)}</b><span>${esc(moveWhere(m))}</span><span class="mono muted">${esc(moveDoc(m))}</span><small>${fWhen(m.at)} · ${esc(whoName(m.by)||'нет данных: кто')}</small></li>`).join('')}</ul><p class="m0"><button type="button" class="btn sm" data-act="stock-journal" data-pid="${esc(p.id)}">Весь журнал по товару${all.length>mv.length?` (${all.length})`:''}</button></p>`:'<p class="muted m0">Движений пока нет.</p>';
   return {kind:p.cat,title:esc(p.name),sub:`${p.inCatalog?`<span class="mono">${esc(p.id)}</span>`:'нет в каталоге'}${p.brand?' · '+esc(p.brand):''}`,body:`
     <div><h4 class="sh">Карточка каталога</h4><dl class="kv">${info}</dl></div>
     <div class="pst">${st('На складе',k.known?qtyOf(k.onHand,p):'нет данных')}${st('В резерве',num(k.reservedStock+k.reservedIncoming),'',k.reservedIncoming?`со склада ${num(k.reservedStock)}, под поставки ${num(k.reservedIncoming)}`:'')}${st('Свободно сейчас',unk?'нет данных':num(k.free),unk?'':k.free<=0?'bad-t':'ok-t')}${st('Свободно после прихода',unk?'нет данных':num(k.freeAfter),k.freeAfter<0?'bad-t':'',k.incoming?`едет ${num(k.incoming)}`:'')}</div>
@@ -6871,12 +7026,15 @@ A['stock-sell']=el=>{
 // Выбрали другую клетку или резерв в окне списания — подсказка «можно списать» пересчитывается
 ON.change.sellsrc=t=>{const out=byId('ps-max');if(out) out.textContent=sellMaxText(t.dataset.pid,t.value)};
 FORMS['stock-sell']=f=>{
-  const pid=f.dataset.pid,did=f.dataset.did||'',now=new Date();
-  const r=Stock.sell(S,{...sellArg(pid,byId('ps-src').value),qty:byId('ps-qty').value,doc:byId('ps-doc').value.trim()},S.me,now);
+  const pid=f.dataset.pid,now=new Date(),arg=sellArg(pid,byId('ps-src').value);
+  // по резерву: лента его сделки помнит резерв (Deals.keepTrail) — даже когда списание снимет его целиком
+  const rs=arg.reserveId?S.reserves.find(x=>x.id===arg.reserveId):null,did=f.dataset.did||(rs&&rs.dealId)||'';
+  if(rs) Deals.keepTrail(S,rs);
+  const r=Stock.sell(S,{...arg,qty:byId('ps-qty').value,doc:byId('ps-doc').value.trim()},S.me,now);
   if(!r.ok) return showErr('ps-err',r.reason);
   const p=product(pid),m=r.move,what=`${low(p.name)} — ${qtyOf(m.qty,p)} со склада ${cellText(m.entityId,m.cityId)}`;
-  // из сделки: в её ленте остаётся запись о списании
-  if(did) Feed.add(S,{t:'deal',id:did},{kind:'item',text:`Списано при продаже: ${what}${r.reserve?' (по резерву)':''}.`,by:S.me,at:now});
+  // из сделки или по резерву сделки: в её ленте остаётся запись о списании
+  if(did) Feed.add(S,{t:'deal',id:did},{kind:'item',text:`Списано при продаже: ${what}${r.reserve?' (по резерву)':''}.`,by:S.me,at:now,data:r.reserve?{reserveId:r.reserve.id,sold:true}:undefined});
   closeModal();render();
   toast(`Списано при продаже: ${what}. Запись в журнале есть.`);
 };
@@ -7438,13 +7596,23 @@ function rcvPlan(r=S.rcv){
   const adds=s.items.map(it=>({productId:it.productId,qty:qv(it.productId,r)}));
   // правила «принято на складе»: поставка к тому времени уже на этапе «на складе», срабатывают те, что ставят другой этап
   const rules=(S.shipRules||[]).filter(x=>x.on===true&&x.when==='received'&&fin&&x.then!==fin.id&&Pipes.stage(S,s.pipeId,x.then));
-  const res=S.reserves.filter(x=>x.src===s.id);
+  // резервы «из поставки» становятся резервами со склада, но не больше принятого: принятое делится между резервами по порядку
+  // постановки (раньше поставлен — раньше получает); кому не хватило — резерв уменьшается или снимается (cuts)
+  const all=S.reserves.filter(x=>x.src===s.id),cuts=[],res=[],rest={};
+  all.forEach(x=>{
+    if(!(x.productId in rest)) rest[x.productId]=qv(x.productId,r);
+    const keep=Math.min(x.qty,rest[x.productId]);rest[x.productId]-=keep;
+    if(keep>0) res.push(x);
+    if(keep<x.qty) cuts.push({r:x,keep,drop:x.qty-keep,d:deal(x.dealId)});
+  });
   // как сообщить клиенту: телефон → задача менеджеру; иначе авто-сообщение, если правило включено; иначе напоминание
-  const waits=[...byDeal(res)].map(([did,list])=>{const d=deal(did);return {d,list,items:itemsText(list),how:d.channel==='phone'?'call':auto?'auto':'remind'}});
-  const ids=new Set([...Notify.recipients(S,'arrive'),...waits.flatMap(w=>Notify.recipients(S,'msg',[w.d.managerId])),...(issues.length||dmg.length?Notify.recipients(S,'warn'):[]),...(rules.length?Notify.recipients(S,'ship'):[])]);
+  const waits=[...byDeal(res)].map(([did,list])=>{const d=deal(did);return {d,list,items:itemsText(list.map(x=>{const c=cuts.find(k=>k.r===x);return c?{...x,qty:c.keep}:x})),how:d.channel==='phone'?'call':auto?'auto':'remind'}});
+  const ids=new Set([...Notify.recipients(S,'arrive'),...waits.flatMap(w=>Notify.recipients(S,'msg',[w.d.managerId])),...(issues.length||dmg.length?Notify.recipients(S,'warn'):[]),...(rules.length?Notify.recipients(S,'ship'):[]),...cuts.flatMap(c=>Notify.recipients(S,'reserve',c.d&&c.d.managerId?[c.d.managerId]:[]))]);
   const block=!fin?'В воронке поставок нет этапа «на складе» (с флагом «закрыто»): приёмке некуда перевести поставку.':!cell.ok?'Выберите юрлицо и город, куда класть товар.':'';
-  return {s,issues,dmg,res,waits,warnTo:Notify.recipients(S,'warn'),to:[...ids],adds,cell,final:fin,rules,block};
+  return {s,issues,dmg,res,cuts,waits,warnTo:Notify.recipients(S,'warn'),to:[...ids],adds,cell,final:fin,rules,block};
 }
+// Почему снят резерв при приёмке — одна фраза для ленты сделки, уведомления и предпросмотра
+const rcvCutWhy=(s,c)=>`При приёмке ${s.id} принято меньше, чем ждали: на склад перешло ${num(c.keep)} из ${num(c.r.qty)}.`;
 function vReceiving(){
   const r=curRcv();
   if(r&&r.done) return rcvLayout(rcvDoneHtml(r),rcvAfterHtml(r));
@@ -7487,7 +7655,7 @@ function rcvPreview(r=S.rcv){
     <div><h4 class="sh">Добавится на склад: ${esc(P.cell.entityName)}, ${esc(P.cell.cityName)}</h4><ul class="plain">${add}</ul></div>
     <div><h4 class="sh">Поставка ${esc(s.id)}</h4><p class="sm m0">${P.final?`Перейдёт на этап «${esc(P.final.name)}» (автоматически: приёмка).`:'нет данных: этап «на складе» в воронке'}</p>${rules?`<ul class="plain">${rules}</ul>`:''}${P.block?`<p class="warn-t sm" style="margin:6px 0 0">${esc(P.block)}</p>`:''}</div>
     <div><h4 class="sh">Уведомление получат</h4><div class="who-list">${ppl.map(p=>`<span class="chip">${av(p,'xs')}${esc(p.name)} · ${esc(roleName(p).toLowerCase())}</span>`).join('')}</div>${P.issues.length||P.dmg.length?`<p class="warn-t sm" style="margin:8px 0 0">Есть расхождение или повреждение — отдельное предупреждение получат: ${warnNames}.</p>`:''}</div>
-    <div><h4 class="sh">Клиенты, которые ждут этот товар</h4><div class="stack-s">${waits||'<p class="muted sm m0">Резервов под эту поставку нет — весь товар станет свободным для продажи.</p>'}</div></div>
+    <div><h4 class="sh">Клиенты, которые ждут этот товар</h4><div class="stack-s">${waits||'<p class="muted sm m0">Резервов под эту поставку нет — весь товар станет свободным для продажи.</p>'}</div>${P.cuts.length?`<ul class="plain">${P.cuts.map(c=>`<li class="sm warn-t">Резерв ${esc(c.r.dealId||'')}${c.d?' ('+esc(c.d.client)+')':''}: ${esc(low(product(c.r.productId)?.name||'нет данных: товар'))} — ${c.keep?`останется ${num(c.keep)}, снимется ${num(c.drop)}`:`снимется весь (${num(c.drop)})`}.</li>`).join('')}</ul>`:''}</div>
   </div></section>`;
 }
 function updRcvPrev(){const b=byId('rcv-prev');if(b) b.innerHTML=rcvPreview()}
@@ -7507,7 +7675,10 @@ function receiveShip(by,now){
     if(q&&Stock.move(S,{kind:Stock.KINDS.receive,productId:it.productId,qty:q,entityId:P.cell.entityId,cityId:P.cell.cityId,doc:s.id,by,at:now}).ok) stock.push({productId:it.productId,qty:q});
   });
   s.entityId=P.cell.entityId;s.cityId=P.cell.cityId;
-  P.res.forEach(x=>{x.src='stock';x.entityId=P.cell.entityId;x.cityId=P.cell.cityId});
+  // излишек резерва над принятым снимается: «Снят резерв» в журнале, запись в ленте сделки и уведомление её менеджеру
+  P.cuts.forEach(c=>{Deals.noteRelease(S,c.r,c.drop,rcvCutWhy(s,c),by,now)});
+  [...P.res,...P.cuts.map(c=>c.r)].forEach(x=>{x.src='stock';x.entityId=P.cell.entityId;x.cityId=P.cell.cityId});
+  P.cuts.forEach(c=>Stock.release(S,c.r.id,c.drop,by,now));
   // этап и положение груза — только через ядро; правила директора на «принято на складе» — после этапа
   const before=S.notes.length;
   Ships.setStage(S,s.id,P.final.id,by,now,Ships.SRC.receipt);
@@ -7616,7 +7787,7 @@ function dealCardHtml(d){
   const lost=!!d.lostReason,pr=can('prices'),np=Deals.noPrice(d).length;
   const mgr=d.managerId?`<span class="who">${av(person(d.managerId),'xs')}${esc(dealWho(d.managerId))}</span>`:'<span class="pill sm warn">нет менеджера</span>';
   const top=[lost?'<span class="pill sm bad">Провалена</span>':'',d.demo?'<span class="pill sm">пример</span>':'',np?`<span class="pill sm warn">без цены: ${np}</span>`:''].join('');
-  return `<article class="tcard dcard${lost?' lost':''}${Deals.state(S,d)==='won'?' won':''}"${lost?'':` draggable="true" data-drag="${esc(d.id)}"`} data-act="open-deal" data-id="${esc(d.id)}" tabindex="0"><div class="tc-top">${top}</div><p class="tc-t">${esc(d.client)}<small class="mono lc-id">${esc(d.id)} · ${esc(d.object)}</small></p>${pr?`<p class="dc-sum">${esc(dealSumText(d))}</p>`:''}${lost?`<p class="dc-lost">Причина: ${esc(d.lostReason)}</p>`:''}${actNextHtml({t:'deal',id:d.id})}<div class="tc-m">${mgr}<span class="due">${d.at?esc(fRel(d.at)):''}</span></div></article>`;
+  return `<article class="tcard dcard${lost?' lost':''}${Deals.state(S,d)==='won'?' won':''}"${lost||!Deals.canEdit(S,d,S.me)?'':` draggable="true" data-drag="${esc(d.id)}"`} data-act="open-deal" data-id="${esc(d.id)}" tabindex="0"><div class="tc-top">${top}</div><p class="tc-t">${esc(d.client)}<small class="mono lc-id">${esc(d.id)} · ${esc(d.object)}</small></p>${pr?`<p class="dc-sum">${esc(dealSumText(d))}</p>`:''}${lost?`<p class="dc-lost">Причина: ${esc(d.lostReason)}</p>`:''}${actNextHtml({t:'deal',id:d.id})}<div class="tc-m">${mgr}<span class="due">${d.at?esc(fRel(d.at)):''}</span></div></article>`;
 }
 
 // ——— канбан: колонки — этапы воронки, в шапке число сделок и сумма (Deals.columns) ———
@@ -7624,7 +7795,7 @@ function dealsBoard(pipe,cur,u){
   const cols=Deals.columns(S,pipe.id,dealsFilter(u,cur),S.me),pr=can('prices');
   return `<div class="xs" data-hscroll><div class="dkan" style="--n:${cols.length}">${cols.map(c=>{
     const unknown=c.deals.filter(d=>!Deals.total(d)).length;
-    const plus=c.stage.flag==='final'?'':`<button type="button" class="btn ghost icon dplus" data-act="deal-new" data-stage="${esc(c.stage.id)}" aria-label="Новая сделка на этапе «${esc(c.stage.name)}»">${ic('plus')}</button>`;
+    const plus=c.stage.flag==='final'||!can('dealsEdit')?'':`<button type="button" class="btn ghost icon dplus" data-act="deal-new" data-stage="${esc(c.stage.id)}" aria-label="Новая сделка на этапе «${esc(c.stage.name)}»">${ic('plus')}</button>`;
     return `<div class="col dcol" data-dcol="${esc(c.stage.id)}"><div class="col-h"><span>${esc(c.stage.name)}</span>${plus}</div><p class="dcol-s"><span class="dcnt">${c.count} ${pl(c.count,'сделка','сделки','сделок')}</span>${pr?` · <b class="dsum" data-sum="${c.sum}">${rub(c.sum)}</b>`:''}${pr&&unknown?`<small>без суммы: ${unknown}</small>`:''}</p>${c.deals.map(dealCardHtml).join('')||'<p class="col-empty">Пусто</p>'}</div>`;
   }).join('')}</div></div>`;
 }
@@ -7642,13 +7813,13 @@ function dealsTable(cur,u){
 // ——— тело раздела: счёт + доска или таблица (его же перерисовывают поиск и правка в карточке) ———
 function dealsBody(){
   const u=dealsSel(),{vis,cur,pipe}=dealsScope(),pr=can('prices');
-  if(!vis.length) return `<section class="card">${emptyState('Сделок пока нет. Заведите первую или создайте её из лида в разделе «Лиды».','Новая сделка','deal-new')}</section>`;
+  if(!vis.length) return `<section class="card">${emptyState('Сделок пока нет. Заведите первую или создайте её из лида в разделе «Лиды».',can('dealsEdit')?'Новая сделка':'','deal-new')}</section>`;
   if(!pipe) return '<section class="card"><p class="empty">Воронки сделок этого типа нет — её заводят в «Настройки → Воронки».</p></section>';
   const list=Deals.query(S,dealsFilter(u,cur),S.me),sum=Deals.sumOf(list);
   const head=`<p class="count"><span>Сделок: <b>${list.length}</b></span>${pr?`<span>на сумму: <b>${rub(sum)}</b></span>`:''}<span>${esc(pipe.name)}</span></p>`;
   if(!list.length){
     const dirty=u.q.trim()||u.mine||u.lost||u.acts;
-    return `${head}<section class="card">${dirty?emptyState('По этим условиям сделок нет.','Сбросить поиск и фильтры','deal-reset'):emptyState(`Сделок типа ${Leads.TYPE[cur]} пока нет. Заведите первую или создайте её из лида.`,'Новая сделка','deal-new')}</section>`;
+    return `${head}<section class="card">${dirty?emptyState('По этим условиям сделок нет.','Сбросить поиск и фильтры','deal-reset'):emptyState(`Сделок типа ${Leads.TYPE[cur]} пока нет. Заведите первую или создайте её из лида.`,can('dealsEdit')?'Новая сделка':'','deal-new')}</section>`;
   }
   return head+(u.view==='table'?dealsTable(cur,u):dealsBoard(pipe,cur,u));
 }
@@ -7662,7 +7833,7 @@ function vDeals(){
   const dirty=u.q.trim()||u.mine||u.lost||u.acts,fq={type:cur,q:u.q,mine:u.mine,now:new Date()};
   const noActN=Deals.query(S,{...fq,acts:'none'},S.me).length,lateN=Deals.query(S,{...fq,acts:'overdue'},S.me).length;
   return `<p class="hint">Перетащите карточку на другой этап или откройте сделку. «Успешно», «Провалена» и коммерческое предложение — в карточке. ${types.length>1?'Переключатель показывает сделки выбранного типа.':`Вам видны сделки типа ${Leads.TYPE[cur]}.`}</p>
-  <div class="bar dbar">${typeSw}${seg('deal-view',[['board','Доска'],['table','Таблица']],u.view,'Вид')}${pipeSel}<div class="search-in">${ic('search')}<input id="deal-q" class="inp" type="search" placeholder="Поиск: клиент, номер, телефон, объект" value="${esc(u.q)}" data-on="deal-q" autocomplete="off" aria-label="Поиск по сделкам"></div><span class="grow"></span><button type="button" class="btn pri" data-act="deal-new">${ic('plus')}Новая сделка</button></div>
+  <div class="bar dbar">${typeSw}${seg('deal-view',[['board','Доска'],['table','Таблица']],u.view,'Вид')}${pipeSel}<div class="search-in">${ic('search')}<input id="deal-q" class="inp" type="search" placeholder="Поиск: клиент, номер, телефон, объект" value="${esc(u.q)}" data-on="deal-q" autocomplete="off" aria-label="Поиск по сделкам"></div><span class="grow"></span>${can('dealsEdit')?`<button type="button" class="btn pri" data-act="deal-new">${ic('plus')}Новая сделка</button>`:''}</div>
   <div class="bar dfilt"><button type="button" class="fchip${u.mine?' on':''}" aria-pressed="${u.mine}" data-act="deal-mine">Мои</button><button type="button" class="fchip${u.lost?' on':''}" aria-pressed="${u.lost}" data-act="deal-lostf">Провалены · ${lostN}</button><button type="button" class="fchip${u.acts==='none'?' on':''}" aria-pressed="${u.acts==='none'}" data-act="deal-acts" data-k="none">Без дел · ${noActN}</button><button type="button" class="fchip${u.acts==='overdue'?' on':''}" aria-pressed="${u.acts==='overdue'}" data-act="deal-acts" data-k="overdue">Просрочены дела · ${lateN}</button>${dirty?'<button type="button" class="btn ghost sm" data-act="deal-reset">Сбросить</button>':''}</div>
   <div id="deal-body" class="stack-s">${dealsBody()}</div>`;
 }
@@ -7670,7 +7841,7 @@ function vDeals(){
 // ——— быстрая форма «Новая сделка» ———
 // Клиент: найти среди существующих (Clients.search) или завести нового тут же; остальное — контакт, телефон, тип, менеджер.
 function dealClientOpts(q,sel){
-  const hits=q.trim()?Clients.search(S,q).slice(0,6):[],pick=sel&&Clients.byId(S,sel);
+  const hits=q.trim()?clientsSeen(Clients.search(S,q)).slice(0,6):[],pick=sel&&clientVisible(Clients.byId(S,sel))&&Clients.byId(S,sel);
   // выбранный клиент («Выбрать его» в подсказке о дубле) остаётся в списке, даже если поиск по имени его не вернул
   if(pick&&!hits.some(c=>c.id===sel)) hits.unshift(pick);
   const cur=sel&&hits.some(c=>c.id===sel)?sel:(hits[0]?hits[0].id:'new');
@@ -7720,7 +7891,7 @@ function dealActions(d,edit){
   if(st!=='lost') h+=b('deal-dispatch',ic('truck')+'Создать отправку');
   const note=st==='lost'?`<p class="lock bad-t">${ic('alert')}Провалена: ${esc(d.lostReason)}${d.lostAt?' · '+esc(fWhen(d.lostAt)):''}. Этап не меняется, пока сделку не вернут в работу.</p>`
     :st==='won'?`<p class="lock ok-t">${ic('check')}Успешно закрыта${d.wonAt?' · '+esc(fWhen(d.wonAt)):''}. Чтобы вернуть в работу, выберите другой этап.</p>`:'';
-  return `${h?`<div class="dact">${h}</div>`:''}${note}${edit?'':`<p class="lock">${ic('lock')}Править сделки могут те, у кого есть право «Видеть клиентов и сделки».</p>`}`;
+  return `${h?`<div class="dact">${h}</div>`:''}${note}${edit?'':`<p class="lock">${ic('lock')}Сделка открыта на просмотр: двигать по этапам и править её могут те, у кого есть право «Заводить и править сделки».</p>`}`;
 }
 // Ссылка на клиента: на карточку клиента (DRAWERS.client — раздел «Клиенты»), пока её нет — просто имя
 function dealClientLink(d){
@@ -7749,7 +7920,7 @@ function dealCard(d){
   const edit=Deals.canEdit(S,d,S.me),tab=DEAL_TABS.some(t=>t[0]===S.ui.dealTab)?S.ui.dealTab:'details';
   const tabs=`<div class="dtabs" role="tablist" aria-label="Разделы карточки">${DEAL_TABS.map(([k,l])=>`<button type="button" role="tab" class="dtab${tab===k?' on':''}" aria-selected="${tab===k}" data-act="deal-tab" data-tab="${k}">${l}${k==='items'&&(d.items||[]).length?`<b>${d.items.length}</b>`:''}</button>`).join('')}</div>`;
   const body=tab==='items'?dealItems(d,edit):tab==='feed'?feedHtml({t:'deal',id:d.id}):dealDetails(d,edit);
-  return {kind:'Сделка '+d.id,title:esc(d.client),sub:`${esc(Leads.TYPE[d.type]||'нет данных: тип')} · ${esc(d.object)}`,body:`${dealSteps(d,edit)}${dealActions(d,edit)}${tabs}<div class="dpane">${body}</div>`};
+  return {kind:'Сделка '+d.id,title:esc(d.client),sub:`${esc(Leads.TYPE[d.type]||'нет данных: тип')} · ${esc(d.object)}`,body:`${edit?dealSteps(d,edit):''}${dealActions(d,edit)}${tabs}<div class="dpane">${body}</div>`};
 }
 
 // ——— вкладка «Товары» ———
@@ -7764,14 +7935,13 @@ const dealTotalText=d=>{
   const np=Deals.noPrice(d).length;
   return np?`В итог не вошли строки без цены: ${np}. Впишите цену — и они посчитаются.`:((d.items||[]).length?'':(Deals.total(d)?'Строк нет: показана сумма, вписанная в «Деталях».':'Строк нет — добавьте товары.'));
 };
-// Сколько товара сделки ещё можно зарезервировать: сумма всех её строк с этим товаром (Deals.lined) минус уже в резерве.
-// Резерв ставится по товару, а не по строке, поэтому две строки одного товара считаются вместе.
-const dealLeft=(d,productId)=>Math.round((Deals.lined(d,productId)-Deals.reserved(S,d,productId))*100)/100;
+// Сколько товара сделки ещё можно зарезервировать — только Deals.left (строки сделки с этим товаром минус уже в резерве);
+// тем же числом ядро ограничивает резерв, своей копии формулы у экрана нет.
 function dealLine(d,it,i,edit,pr){
   const id=esc(d.id),p=it.productId?product(it.productId):null,name=Deals.itemName(S,it);
   let info,res='',btn='';
   if(p){
-    const k=stockOf(p.id),held=Deals.reserved(S,d,p.id),left=dealLeft(d,p.id);
+    const k=stockOf(p.id),held=Deals.reserved(S,d,p.id),left=Deals.left(S,d,p.id);
     info=`<small class="dl-st">${k.known?`свободно ${qtyOf(Math.max(0,k.free),p)}`:'остаток: нет данных'}${held?` · в резерве по сделке: ${qtyOf(held,p)}`:''}</small>`;
     res=S.reserves.filter(r=>r.dealId===d.id&&r.productId===p.id).map(r=>`<span class="chip dl-r">${srcPill(r)}<span>${qtyOf(r.qty,p)}${r.src==='stock'?' · '+esc(cellText(r.entityId,r.cityId)):''}${r.until?' · до '+fD(r.until):''}</span>${edit&&can('reserve')?`<button type="button" class="btn sm ghost" data-act="deal-unres" data-id="${id}" data-rid="${esc(r.id)}">Снять</button>`:''}</span>`).join('');
     if(edit&&can('reserve')&&left>0) btn=`<button type="button" class="btn sm" data-act="deal-res" data-id="${id}" data-i="${i}">${ic('lock')}Зарезервировать</button>`;
@@ -7841,7 +8011,7 @@ MODALS.dealLose=id=>{
 MODALS.dealReserve=key=>{
   const [did,i]=String(key).split(':'),d=Deals.byId(S,did),it=d&&(d.items||[])[+i],p=it&&it.productId?product(it.productId):null;
   if(!d||!it||!p) return `${mHead('Резерв')}<div class="modal-b"><p class="m0">Строка не найдена или это своя строка — резервировать нечего.</p></div>`;
-  const held=Deals.reserved(S,d,p.id),all=Deals.lined(d,p.id),left=dealLeft(d,p.id),cell=Stock.bestCell(S,p.id),k=stockOf(p.id);
+  const held=Deals.reserved(S,d,p.id),all=Deals.lined(d,p.id),left=Deals.left(S,d,p.id),cell=Stock.bestCell(S,p.id),k=stockOf(p.id);
   const opt=(list,none,cur)=>[...list.map(x=>[x.id,x.name]),[Stock.ANY,none]].map(([v,n])=>`<option value="${esc(v)}"${v===cur?' selected':''}>${esc(n)}</option>`).join('');
   return `<form data-form="deal-reserve" data-id="${esc(did)}" data-i="${+i}" novalidate>${mHead('Зарезервировать: '+esc(p.name))}<div class="modal-b">
     <p class="m0">Сделка ${esc(did)} · ${esc(d.client)}. ${all!==it.qty?`В сделке по этому товару ${qtyOf(all,p)} (в этой строке ${num(it.qty)})`:`В строке ${qtyOf(it.qty,p)}`}, уже в резерве ${num(held)}, осталось ${qtyOf(left,p)}. Свободно на складе: ${k.known?qtyOf(Math.max(0,k.free),p):'нет данных'} (${esc(stockNote())}).</p>
@@ -7876,7 +8046,7 @@ A['deal-mine']=()=>{const u=dealsU();u.mine=!u.mine;render()};
 A['deal-lostf']=()=>{const u=dealsU();u.lost=!u.lost;render()};
 A['deal-acts']=el=>{const u=dealsU();u.acts=u.acts===el.dataset.k?'':el.dataset.k;render()};
 A['deal-reset']=()=>{S.ui.deals=Object.assign({},DEALS_DEF,{view:dealsSel().view});render()};
-A['deal-new']=el=>openModal('dealNew',el.dataset.stage||'');
+A['deal-new']=el=>{if(!can('dealsEdit')) return toast('Заводить сделки могут те, у кого есть право «Заводить и править сделки».','warn');openModal('dealNew',el.dataset.stage||'')};
 A['deal-tab']=el=>{S.ui.dealTab=el.dataset.tab;render()};
 A['deal-stage']=el=>dealMoveTo(el.dataset.id,el.dataset.st);
 A['deal-win']=el=>dealRun(Deals.win(S,el.dataset.id,S.me,new Date()),`Сделка ${el.dataset.id} закрыта успешно. Запись в ленте есть.`);
@@ -8056,18 +8226,23 @@ SEARCH.push({kind:'deal',label:'Сделка',order:20,find:q=>!can('clients')?[
 DRAWERS.deal=id=>{const d=Leads.dealsVisible(S,S.me).find(x=>x.id===id);return d?dealCard(d):null};
 
 // Раздел «Сообщения клиентам»
-// Перенесено из прототипа v2 без изменений логики.
+// Перенесено из прототипа v2. Сообщение называет сделку и клиента, поэтому журнал и пример шаблона — только по сделкам,
+// которые видит человек (Leads.dealsVisible): менеджер B2B не видит переписку с клиентами B2C.
 
 // ——— сообщения клиентам ———
-function tplSample(){const d=deal('Д-318');return d?`${fillTpl(d,'контроллер заряда MPPT 60 А — 1 шт',true)}<small>${CH[S.ui.tplCh]} · авто</small>`:''}
+const msgDeals=()=>new Set(Leads.dealsVisible(S,S.me).map(d=>d.id));
+// Сделка для примера шаблона: Д-318, если она видна, иначе первая видимая; видимых нет — примера нет
+const tplDeal=()=>{const vis=msgDeals();return vis.has('Д-318')?deal('Д-318'):S.deals.find(d=>vis.has(d.id))||null};
+function tplSample(){const d=tplDeal();return d?`${fillTpl(d,'контроллер заряда MPPT 60 А — 1 шт',true)}<small>${CH[S.ui.tplCh]} · авто</small>`:'<span class="muted">Пример появится, когда у вас будет сделка.</span>'}
+const tplHead=()=>{const d=tplDeal();return `Так увидит клиент в ${CH[S.ui.tplCh]}${d?' · пример по сделке '+d.id:''}`};
 function vMessages(){
-  const ed=can('auto');
+  const ed=can('auto'),vis=msgDeals();
   const rules=`<section class="card"><div class="card-h"><h3>Правила: когда и что делаем</h3>${ed?'':'<span class="pill sm">менять может директор</span>'}</div><ul class="rules">${S.rules.map(r=>`<li class="rule"><label class="sw"><input type="checkbox" id="rule-${r.id}" data-on="rule" data-id="${r.id}" ${r.on?'checked':''} ${ed?'':'disabled'} aria-label="${esc(r.when)}"><span class="sw-t" aria-hidden="true"></span></label><div><p><b>Когда:</b> ${esc(r.when)}</p><p><b>Делаем:</b> ${esc(r.then)}</p></div></li>`).join('')}</ul></section>`;
-  const tpl=`<section class="card"><div class="card-h"><h3>Шаблон «Товар пришёл на склад»</h3><div class="seg">${['telegram','max'].map(c=>`<button class="${S.ui.tplCh===c?'on':''}" data-act="tpl-ch" data-ch="${c}">${CH[c]}</button>`).join('')}</div></div><div class="card-b tpl-grid"><div class="stack-s"><div class="field"><label for="tpl">Текст сообщения</label><textarea id="tpl" class="inp" rows="6" data-on="tpl" ${ed?'':'disabled'}>${esc(S.tpl)}</textarea></div><div class="vars"><span>Вставить:</span>${VARS.map(v=>`<button class="chip" data-act="ins-var" data-v="${v}" ${ed?'':'disabled'}>${v}</button>`).join('')}</div><div class="field"><label for="addr">Адрес склада для сообщений</label><input id="addr" class="inp" data-on="addr" value="${esc(S.address)}" placeholder="Нет данных — впишите адрес склада" ${ed?'':'disabled'}></div></div><div><p class="prev-h" id="tpl-h">Так увидит клиент в ${CH[S.ui.tplCh]} · пример по сделке Д-318</p><div class="chat"><div class="bub out" id="tpl-prev">${tplSample()}</div></div></div></div></section>`;
-  const log=`<section class="card clip"><div class="card-h"><h3>Журнал сообщений</h3><span class="pill sun sm">прототип: сообщения не отправляются</span></div><div class="xs"><table class="tbl"><thead><tr><th>Когда</th><th>Клиент</th><th>Канал</th><th>Сообщение</th><th>Кто</th></tr></thead><tbody>${S.msgs.slice().sort((a,b)=>b.at-a.at).map(x=>{const d=deal(x.deal);return `<tr><td class="nowrap">${fWhen(x.at)}</td><td><div class="pname"><span>${esc(d?.client||'')}</span><small class="mono">${x.deal}</small></div></td><td>${chPill(x.channel)}</td><td class="msg-cell">${esc(x.text)}</td><td class="nowrap">${x.inbound?'<span class="pill sm">ответ клиента</span>':x.auto?'<span class="pill violet sm">авто</span>':esc(person(x.by)?.name||'')}</td></tr>`}).join('')}</tbody></table></div></section>`;
+  const tpl=`<section class="card"><div class="card-h"><h3>Шаблон «Товар пришёл на склад»</h3><div class="seg">${['telegram','max'].map(c=>`<button class="${S.ui.tplCh===c?'on':''}" data-act="tpl-ch" data-ch="${c}">${CH[c]}</button>`).join('')}</div></div><div class="card-b tpl-grid"><div class="stack-s"><div class="field"><label for="tpl">Текст сообщения</label><textarea id="tpl" class="inp" rows="6" data-on="tpl" ${ed?'':'disabled'}>${esc(S.tpl)}</textarea></div><div class="vars"><span>Вставить:</span>${VARS.map(v=>`<button class="chip" data-act="ins-var" data-v="${v}" ${ed?'':'disabled'}>${v}</button>`).join('')}</div><div class="field"><label for="addr">Адрес склада для сообщений</label><input id="addr" class="inp" data-on="addr" value="${esc(S.address)}" placeholder="Нет данных — впишите адрес склада" ${ed?'':'disabled'}></div></div><div><p class="prev-h" id="tpl-h">${esc(tplHead())}</p><div class="chat"><div class="bub out" id="tpl-prev">${tplSample()}</div></div></div></div></section>`;
+  const log=`<section class="card clip"><div class="card-h"><h3>Журнал сообщений</h3><span class="pill sun sm">прототип: сообщения не отправляются</span></div><div class="xs"><table class="tbl"><thead><tr><th>Когда</th><th>Клиент</th><th>Канал</th><th>Сообщение</th><th>Кто</th></tr></thead><tbody>${S.msgs.filter(x=>vis.has(x.deal)).sort((a,b)=>b.at-a.at).map(x=>{const d=deal(x.deal);return `<tr><td class="nowrap">${fWhen(x.at)}</td><td><div class="pname"><span>${esc(d?.client||'')}</span><small class="mono">${x.deal}</small></div></td><td>${chPill(x.channel)}</td><td class="msg-cell">${esc(x.text)}</td><td class="nowrap">${x.inbound?'<span class="pill sm">ответ клиента</span>':x.auto?'<span class="pill violet sm">авто</span>':esc(person(x.by)?.name||'')}</td></tr>`}).join('')}</tbody></table></div></section>`;
   return rules+tpl+log;
 }
-function updTpl(){const p=byId('tpl-prev');if(p) p.innerHTML=tplSample();const h=byId('tpl-h');if(h) h.textContent=`Так увидит клиент в ${CH[S.ui.tplCh]} · пример по сделке Д-318`}
+function updTpl(){const p=byId('tpl-prev');if(p) p.innerHTML=tplSample();const h=byId('tpl-h');if(h) h.textContent=tplHead()}
 
 // ——— регистрация в реестрах оболочки ———
 ON.input.tpl=t=>{S.tpl=t.value;updTpl()};
@@ -8766,10 +8941,14 @@ const pipeOpt=(x,sel)=>`<option value="${esc(x.id)}" ${sel?'selected':''}>${esc(
 MODALS.pipeStageDel=key=>{
   const [pid,sid]=String(key).split('|'),p=pipeById(pid),s=p&&Pipes.stage(S,pid,sid);
   if(!s) return '';
-  const u=Pipes.usage(S,pid,sid),i=p.stages.indexOf(s),rest=p.stages.filter(x=>x!==s),next=p.stages[i+1]||p.stages[i-1];
+  // куда переносить — решает ядро (Pipes.moveTargets): завершающие этапы («На складе», «Сдана», «Доставлена»…) запись получает
+  // только своим действием, поэтому здесь их нет; по умолчанию — ближайший следующий из разрешённых
+  const u=Pipes.usage(S,pid,sid),i=p.stages.indexOf(s),rest=Pipes.moveTargets(S,pid,sid);
+  const next=p.stages.slice(i+1).find(x=>rest.includes(x))||[...p.stages.slice(0,i)].reverse().find(x=>rest.includes(x));
   const what=[u.items?`${u.items} ${pl(u.items,'запись','записи','записей')}`:'',u.rules?`${u.rules} ${pl(u.rules,'правило','правила','правил')} поставок`:''].filter(Boolean).join(' и ');
+  if(!rest.length) return `${mHead('Удалить этап «'+esc(s.name)+'»?')}<div class="modal-b"><p class="m0">${esc(Pipes.stuck(S,pid,sid))}</p></div>`;
   return `<form data-form="pipe-stage-del" data-pipe="${esc(pid)}" data-stage="${esc(sid)}" novalidate>${mHead('Удалить этап «'+esc(s.name)+'»?')}<div class="modal-b">
-    <p class="m0">На этапе: ${what}. Ничего не пропадёт — всё переедет на этап, который вы выберете.</p>
+    <p class="m0">На этапе: ${what}. Ничего не пропадёт — всё переедет на этап, который вы выберете. Завершающих этапов в списке нет: туда запись попадает только своим действием.</p>
     <div class="field"><label for="pm-to">Куда перенести</label><select id="pm-to" class="inp">${rest.map(x=>pipeOpt(x,x===next)).join('')}</select></div>
     <p class="err" id="pm-err" hidden></p></div>${mFoot('Перенести и удалить')}</form>`;
 };
@@ -9130,10 +9309,15 @@ function shipRuleEventSel(r,attrs){
   if(!evs.includes(r.when)) evs.push(r.when);
   return `<select ${attrs} class="inp sm">${evs.map(ev=>`<option value="${esc(ev)}" ${ev===r.when?'selected':''}>${esc(Ships.eventLabel(ev))}</option>`).join('')}</select>`;
 }
+// Этапы, которые правило может ставить: «Прибыло в город» и «На складе» — только правилу «принято на складе»
+// (Pipes.ruleMayTo — то же условие, по которому ядро Ships.applyRules правило пропускает)
 function shipRuleStageSel(r,attrs){
-  const st=shipRuleStages(),known=st.some(x=>x.id===r.then);
-  return `<select ${attrs} class="inp sm">${known?'':`<option value="" selected>нет данных: этап</option>`}${st.map(x=>`<option value="${esc(x.id)}" ${x.id===r.then?'selected':''}>${esc(x.name)}${x.flag==='final'?' (на складе)':''}</option>`).join('')}</select>`;
+  const all=shipRuleStages(),st=all.filter(x=>Pipes.ruleMayTo(r,x)),cur=all.find(x=>x.id===r.then),known=st.includes(cur);
+  const none=cur&&!known?`этап «${esc(cur.name)}» ставит только приёмка — выберите другой`:'нет данных: этап';
+  return `<select ${attrs} class="inp sm">${known?'':`<option value="" selected>${none}</option>`}${st.map(x=>`<option value="${esc(x.id)}" ${x.id===r.then?'selected':''}>${esc(x.name)}${x.flag==='final'?' (на складе)':''}</option>`).join('')}</select>`;
 }
+// Почему правило не может ставить этап: '' — может
+const shipRuleBlock=(when,stage)=>stage&&!Pipes.ruleMayTo({when},stage)?`Этап «${stage.name}» правило «если ${Ships.eventLabel(when)}» не ставит: туда поставка попадает только своим путём (прибытие — шаг перевозчика, «На складе» — приёмка).`:'';
 function vShipSettings(){
   const rules=shipRules();
   const rows=rules.map(r=>`<li class="rule srule" data-rule="${esc(r.id)}">
@@ -9143,8 +9327,8 @@ function vShipSettings(){
     <button type="button" class="btn sm ghost" data-act="ship-rule-del" data-id="${esc(r.id)}" aria-label="Удалить правило">${ic('x')}Удалить</button>
   </li>`).join('');
   const add=`<form class="srule-add" data-form="ship-rule-add" novalidate>
-    <div class="field"><label for="sr-new-when">Если</label>${shipRuleEventSel({when:'received'},'id="sr-new-when"')}</div>
-    <div class="field"><label for="sr-new-then">Поставить этап</label>${shipRuleStageSel({then:(shipRuleStages().find(x=>x.flag==='final')||{}).id},'id="sr-new-then"')}</div>
+    <div class="field"><label for="sr-new-when">Если</label>${shipRuleEventSel({when:'customs'},'id="sr-new-when"')}</div>
+    <div class="field"><label for="sr-new-then">Поставить этап</label>${shipRuleStageSel({when:'customs',then:Pipes.beforeEnd(S,(shipPipe('in')||{}).id)},'id="sr-new-then"')}</div>
     <button class="btn" type="submit">${ic('plus')}Добавить правило</button></form><p class="err" id="sr-err" hidden></p>`;
   return `<section class="card"><div class="card-h"><h3>Правила смены этапа поставки</h3></div><div class="card-b stack-s">
     <p class="hint">Правило «если событие — поставить этап» срабатывает само: когда склад принял поставку, когда перевозчик сообщил, что груз в точке, или когда пройдена таможня. Срабатывание видно в истории поставки с пометкой «правило». Выключенное правило ничего не делает. Правило срабатывает, только если этап поставки меняется.</p>
@@ -9162,11 +9346,15 @@ ON.change['ship-rule-on']=t=>{
 };
 ON.change['ship-rule-when']=t=>{
   const r=shipRuleOf(t.dataset.id);if(!r) return;
+  const why=shipRuleBlock(t.value,shipRuleStages().find(x=>x.id===r.then));
+  if(why){render();return toast(why,'warn')}
   r.when=t.value;render();
   toast(`Правило теперь срабатывает на событие «${Ships.eventLabel(r.when)}».`);
 };
 ON.change['ship-rule-then']=t=>{
   const r=shipRuleOf(t.dataset.id),st=shipRuleStages().find(x=>x.id===t.value);if(!r||!st) return;
+  const why=shipRuleBlock(r.when,st);
+  if(why){render();return toast(why,'warn')}
   r.then=st.id;render();
   toast(`Правило «если ${Ships.eventLabel(r.when)}» ставит этап «${st.name}».`);
 };
@@ -9178,6 +9366,7 @@ A['ship-rule-del']=el=>{
 FORMS['ship-rule-add']=()=>{
   const when=byId('sr-new-when').value,then=byId('sr-new-then').value,st=shipRuleStages().find(x=>x.id===then);
   if(!when||!st) return showErr('sr-err','Выберите событие и этап.');
+  if(shipRuleBlock(when,st)) return showErr('sr-err',shipRuleBlock(when,st));
   if(shipRules().some(r=>r.when===when&&r.then===then)) return showErr('sr-err','Такое правило уже есть.');
   if(!S.shipRules) S.shipRules=[];
   S.shipRules.push({id:Store.freeId(S.shipRules,'sr'),on:true,when,then});
@@ -9682,7 +9871,8 @@ function dspDraftFrom(pre,editId){
     address:p.address&&p.address!==Dispatch.NO_ADDRESS&&p.purpose!=='transfer'?p.address:'',
     date:w.date?iso(w.date):'',from:w.from||'',till:w.till||'',note:p.note||'',dealId:p.dealId||'',
     fromE:f.e,fromC:f.k,toE:t.e,toC:t.k,
-    items:(p.items||[]).map(i=>i.productId?{productId:i.productId,qty:i.qty}:{text:i.text,qty:i.qty}),
+    // списанная при продаже строка в форме не меняется и не удаляется (Dispatch.update тоже откажет)
+    items:(p.items||[]).map(i=>Object.assign(i.productId?{productId:i.productId,qty:i.qty}:{text:i.text,qty:i.qty},i.sold?{locked:true}:{})),
     files:(p.files||[]).map(x=>({...x}))};
 }
 // Открыть форму новой заявки. pre — те же поля, что у Dispatch.create: purpose, to, address, when, items, files, note, dealId.
@@ -9713,6 +9903,7 @@ function dspItemsHtml(x){
   if(!x.items.length) return '<p class="muted m0">Список пуст: найдите товар в каталоге или добавьте свою строку.</p>';
   return `<ul class="dsp-its">${x.items.map((it,i)=>{
     const name=it.productId?(product(it.productId)||{}).name||'нет данных: товар':it.text;
+    if(it.locked) return `<li class="dsp-it"><div class="dsp-it-n"><b>${esc(name)}</b><small>списано при продаже — строку не изменить и не удалить</small></div><input class="inp dsp-q" type="number" value="${esc(it.qty)}" disabled aria-label="Количество: ${esc(name)} (списано)"></li>`;
     return `<li class="dsp-it"><div class="dsp-it-n"><b>${esc(name)}</b><small>${it.productId?esc(dspFreeText(it.productId)):'своя строка — склад не трогает'}</small></div><input class="inp dsp-q" type="number" min="1" step="1" inputmode="numeric" value="${esc(it.qty)}" data-on="dsp-qty" data-i="${i}" aria-label="Количество: ${esc(name)}"><button type="button" class="btn ghost icon" data-act="dsp-line-del" data-i="${i}" aria-label="Убрать строку: ${esc(name)}">${ic('x')}</button></li>`;
   }).join('')}</ul>`;
 }
@@ -9814,7 +10005,7 @@ A['dsp-sell']=el=>{
 // форма
 A['dsp-add']=el=>{
   const x=dspDraft();if(!x) return;
-  const row=x.items.find(i=>i.productId===el.dataset.pid);
+  const row=x.items.find(i=>i.productId===el.dataset.pid&&!i.locked);
   if(row) row.qty=(Number(row.qty)||0)+1;else x.items.push({productId:el.dataset.pid,qty:1});
   byId('dsp-items').innerHTML=dspItemsHtml(x);
 };
@@ -9823,7 +10014,7 @@ A['dsp-own-add']=()=>{
   if(!x||!text){if(inp.focus) inp.focus();return}
   x.items.push({text,qty:1});inp.value='';byId('dsp-items').innerHTML=dspItemsHtml(x);
 };
-A['dsp-line-del']=el=>{const x=dspDraft();if(!x) return;x.items.splice(+el.dataset.i,1);byId('dsp-items').innerHTML=dspItemsHtml(x)};
+A['dsp-line-del']=el=>{const x=dspDraft();if(!x||(x.items[+el.dataset.i]||{}).locked) return;x.items.splice(+el.dataset.i,1);byId('dsp-items').innerHTML=dspItemsHtml(x)};
 A['dsp-file-del']=el=>{const x=dspDraft();if(!x) return;x.files.splice(+el.dataset.i,1);byId('dsp-files').innerHTML=dspFilesEditHtml(x)};
 
 ON.input['dsp-q']=t=>{dspU().q=t.value;const box=byId('dsp-body');if(box) box.innerHTML=dspBody()};
@@ -9845,13 +10036,16 @@ ON.change['dsp-purpose']=t=>{
   // у перемещения получатель — склад: подставим, если поле пустое
   if(x.purpose==='transfer'&&!x.name.trim()){x.name=`Склад: ${dspCell({entityId:x.toE,cityId:x.toC})}`;const n=byId('dsp-name');if(n) n.value=x.name}
 };
-ON.input['dsp-qty']=t=>{const x=dspDraft();if(x&&x.items[+t.dataset.i]) x.items[+t.dataset.i].qty=t.value};
+ON.input['dsp-qty']=t=>{const x=dspDraft();if(x&&x.items[+t.dataset.i]&&!x.items[+t.dataset.i].locked) x.items[+t.dataset.i].qty=t.value};
 ON.input['dsp-pq']=t=>{const box=byId('dsp-pres');if(box) box.innerHTML=dspPresHtml(t.value)};
 ON.change['dsp-file']=t=>{dspReadFiles(t.files);t.value=''};
-// Выбранные файлы читаются в data-URL и встают в черновик; в сохранение они попадают вместе с заявкой (Store.dump)
+// Выбранные файлы читаются в data-URL и встают в черновик; в сохранение они попадают вместе с заявкой (Store.dump).
+// Файл больше Store.FILE_MAX (2 МБ) не прикрепляется.
 function dspReadFiles(files){
   const x=dspDraft();if(!x||typeof FileReader==='undefined') return;
   [...files].forEach(f=>{
+    // больше предела — отказ сразу, файл не читается (те же слова, что у ядра заявки)
+    const big=Store.fileTooBig(f);if(big){toast(big,'warn');return}
     const fr=new FileReader();
     fr.onload=()=>{
       if(dspDraft()!==x) return;
@@ -9952,6 +10146,21 @@ const clientsSel=()=>Object.assign({},CLIENTS_DEF,S.ui.clients||{});
 const clientNoData=t=>`<span class="muted">нет данных: ${t}</span>`;
 const clientWho=id=>person(id)?.name||'нет данных: менеджер';
 const clientKindPill=c=>`<span class="pill sm${c.kind==='company'?' info':''}">${esc(Clients.KIND[c.kind]||'нет данных: вид')}</span>`;
+// Виден ли клиент человеку: клиент называет сделку, поэтому отбор — через видимые сделки и лиды (Clients.related с personId:
+// Leads.dealsVisible и Leads.visible). Виден, если у него есть видимая сделка или лид, если человек — его менеджер, или если
+// у клиента ещё нет ни сделок, ни лидов (только что заведён). Один отбор на список, поиск, карточку и подсказку о дублях.
+function clientVisible(c,pid=S.me){
+  if(!c) return false;
+  if(c.managerId&&c.managerId===pid) return true;
+  const mine=Clients.related(S,c.id,pid);
+  if(mine.deals.length||mine.leads.length) return true;
+  const all=Clients.related(S,c.id);
+  return !all.deals.length&&!all.leads.length;
+}
+const clientsSeen=list=>list.filter(c=>clientVisible(c));
+// Заводить и править клиентов — тем, кто заводит и правит сделки (право dealsEdit); право clients — только смотреть (R30)
+const clientCanEdit=()=>can('clients')&&can('dealsEdit');
+const CLIENT_NO_EDIT='Заводить и править клиентов могут те, у кого есть право «Заводить и править сделки».';
 // Телефоны из одной строки: через запятую, точку с запятой или с новой строки
 const clientPhonesOf=s=>String(s||'').split(/[,;\n]+/).map(x=>x.trim()).filter(Boolean);
 
@@ -9959,7 +10168,7 @@ const clientPhonesOf=s=>String(s||'').split(/[,;\n]+/).map(x=>x.trim()).filter(B
 // Совпадения с заведёнными клиентами по тому, что ввели в форме: q = {phone | phones, email, inn}. Нет совпадений — пустая строка.
 // Показывает, по чему совпало; кнопка «Выбрать его» — dup-pick, ссылка на имя — dup-open. Дубль всё равно можно сохранить.
 function clientDupHtml(q){
-  const found=Clients.find(S,q||{}).slice(0,3);
+  const found=clientsSeen(Clients.find(S,q||{})).slice(0,3);
   if(!found.length) return '';
   const ids=x=>new Set(Clients.find(S,x).map(c=>c.id));
   const by=[['ИНН',ids({inn:(q||{}).inn})],['телефон',ids({phone:(q||{}).phone,phones:(q||{}).phones})],['почта',ids({email:(q||{}).email})]];
@@ -9969,7 +10178,7 @@ function clientDupHtml(q){
 
 // ——— список ———
 function clientsList(u){
-  return Clients.search(S,u.q).filter(c=>!u.kind||c.kind===u.kind).sort((a,b)=>a.name.localeCompare(b.name,'ru'));
+  return clientsSeen(Clients.search(S,u.q)).filter(c=>!u.kind||c.kind===u.kind).sort((a,b)=>a.name.localeCompare(b.name,'ru'));
 }
 function clientsTable(list){
   const rows=list.map(c=>{
@@ -9980,8 +10189,8 @@ function clientsTable(list){
 }
 // Тело раздела: счёт и таблица (его же перерисовывает поиск)
 function clientsBody(){
-  const u=clientsSel(),all=S.clients||[],list=clientsList(u),dirty=u.q.trim()||u.kind;
-  if(!all.length) return `<section class="card">${emptyState('Клиентов пока нет. Они появляются, когда из лида создают сделку. Клиента можно завести и руками.','Новый клиент','client-new')}</section>`;
+  const u=clientsSel(),all=clientsSeen(S.clients||[]),list=clientsList(u),dirty=u.q.trim()||u.kind;
+  if(!all.length) return `<section class="card">${emptyState('Клиентов пока нет. Они появляются, когда из лида создают сделку. Клиента можно завести и руками.',clientCanEdit()?'Новый клиент':'','client-new')}</section>`;
   const comp=list.filter(c=>c.kind==='company').length;
   const head=`<p class="count"><span>Клиентов: <b>${list.length}</b>${list.length!==all.length?` из ${all.length}`:''}</span><span>компаний: <b>${comp}</b> · людей: <b>${list.length-comp}</b></span></p>`;
   if(!list.length) return `${head}<section class="card">${emptyState('По этим условиям клиентов нет.',dirty?'Сбросить поиск и фильтры':'','client-reset')}</section>`;
@@ -9993,7 +10202,7 @@ function vClients(){
   return `<p class="hint">Клиент — одна карточка на человека или компанию: в ней все его сделки, лиды, сообщения и лента. Ищите по имени, телефону или ИНН. В столбце «Сделок» и в карточке — только те сделки, которые видны вам.</p>
   <div class="bar cbar"><div class="seg" role="group" aria-label="Вид клиента">${kinds.map(([k,l])=>`<button type="button" class="${u.kind===k?'on':''}" aria-pressed="${u.kind===k}" data-act="client-kind" data-k="${k}">${l}</button>`).join('')}</div>
     <div class="search-in">${ic('search')}<input id="client-q" class="inp" type="search" placeholder="Поиск: имя, телефон, ИНН, почта" value="${esc(u.q)}" data-on="client-q" autocomplete="off" aria-label="Поиск по клиентам"></div>
-    ${dirty?'<button type="button" class="btn ghost sm" data-act="client-reset">Сбросить</button>':''}<span class="grow"></span><button type="button" class="btn pri" data-act="client-new">${ic('plus')}Новый клиент</button></div>
+    ${dirty?'<button type="button" class="btn ghost sm" data-act="client-reset">Сбросить</button>':''}<span class="grow"></span>${clientCanEdit()?`<button type="button" class="btn pri" data-act="client-new">${ic('plus')}Новый клиент</button>`:''}</div>
   <div id="client-body" class="stack-s">${clientsBody()}</div>`;
 }
 
@@ -10059,9 +10268,9 @@ function clientMsgs(list){
   return `<ul class="crel">${sorted.slice(0,CLIENT_MSGS).map(m=>`<li><div class="crow cmsg"><span class="crow-t"><span><b>${esc(CH[m.channel]||'нет данных: канал')}</b> · ${esc(m.deal)}${m.auto?' · автоматическое':''}${m.sim?' · имитация':''}</span><small>${esc(fWhen(m.at))}</small><span class="cmsg-t">${esc(m.text)}</span></span></div></li>`).join('')}</ul>${more>0?`<p class="hint">и ещё ${more} — все они в ленте ниже.</p>`:''}`;
 }
 function dClient(c){
-  const edit=can('clients'),rel=Clients.related(S,c.id,S.me);
+  const edit=clientCanEdit(),rel=Clients.related(S,c.id,S.me);
   const sec=(t,n,html)=>`<div><h4 class="sh">${t}${n===null?'':' · '+n}</h4>${html}</div>`;
-  const locked=edit?'':`<p class="lock">${ic('lock')}Править клиентов могут те, у кого есть право «Видеть клиентов и сделки».</p>`;
+  const locked=edit?'':`<p class="lock">${ic('lock')}${CLIENT_NO_EDIT} Вам карточка открыта на просмотр.</p>`;
   return {kind:'Клиент '+c.id,title:esc(c.name),sub:`${esc(Clients.KIND[c.kind]||'нет данных: вид')}${c.demo?' · пример':''}`,body:`${locked}${clientFields(c,edit)}
     ${sec('Сделки',rel.deals.length,clientDeals(rel.deals))}${sec('Лиды',rel.leads.length,clientLeads(rel.leads))}${sec('Сообщения',rel.msgs.length,clientMsgs(rel.msgs))}
     ${sec('Отправки',rel.dispatches.length,clientDispatches(rel.dispatches))}
@@ -10070,7 +10279,7 @@ function dClient(c){
 
 // ——— действия ———
 function clientsRefresh(){const box=byId('client-body');if(box&&S.view==='clients') box.innerHTML=clientsBody()}
-A['client-new']=()=>openModal('clientNew');
+A['client-new']=()=>{if(!clientCanEdit()) return toast(CLIENT_NO_EDIT,'warn');openModal('clientNew')};
 A['client-kind']=el=>{clientsU().kind=Clients.KIND[el.dataset.k]?el.dataset.k:'';render()};
 A['client-reset']=()=>{S.ui.clients=Object.assign({},CLIENTS_DEF);render()};
 // «Похоже, это …»: имя — открыть карточку найденного (окно закрывается: оно лежит поверх карточки)
@@ -10101,6 +10310,7 @@ ON.input['client-dup']=()=>{
 // Поле карточки: одно поле — одна правка Clients.update. Выбор из списка перерисовывает всё,
 // текст — только название в шапке, ленту и список за карточкой, чтобы не сбить ввод в соседнем поле.
 ON.change['client-f']=t=>{
+  if(!clientCanEdit()){toast(CLIENT_NO_EDIT,'warn');render();return}
   const id=t.dataset.id,f=t.dataset.f,r=Clients.update(S,id,{[f]:f==='phones'?clientPhonesOf(t.value):t.value},S.me,new Date());
   if(!r.ok){toast(r.reason,'warn');render();return}
   if(!r.changed.length) return;
@@ -10116,6 +10326,7 @@ ON.change['client-f']=t=>{
 
 // ——— формы ———
 FORMS['client-new']=()=>{
+  if(!clientCanEdit()) return showErr('cn-err',CLIENT_NO_EDIT);
   const name=byId('cn-name').value.trim(),inn=byId('cn-inn').value.trim();
   if(!name) return showErr('cn-err','Напишите имя клиента или название компании.');
   const r=Clients.create(S,{name,kind:inn?'company':byId('cn-kind').value,inn,phones:clientPhonesOf(byId('cn-phones').value),email:byId('cn-email').value,address:byId('cn-addr').value,managerId:byId('cn-mgr').value||undefined},S.me,new Date());
@@ -10127,8 +10338,8 @@ FORMS['client-new']=()=>{
 // ——— регистрация в реестрах оболочки ———
 NAV.push({id:'clients',label:'Клиенты',icon:'person',group:'Продажи',order:15,hint:'Картотека клиентов: у каждого свои сделки, лиды, сообщения и лента событий.',ok:()=>can('clients')});
 VIEWS.clients=vClients;
-SEARCH.push({kind:'client',label:'Клиент',order:40,find:q=>!can('clients')?[]:Clients.search(S,q).map(c=>({title:c.name,sub:`${c.id}${c.inn?' · ИНН '+c.inn:''}`,open:`data-act="open-client" data-id="${esc(c.id)}"`}))});
-DRAWERS.client=id=>{const c=can('clients')?Clients.byId(S,id):null;return c?dClient(c):null};
+SEARCH.push({kind:'client',label:'Клиент',order:40,find:q=>!can('clients')?[]:clientsSeen(Clients.search(S,q)).map(c=>({title:c.name,sub:`${c.id}${c.inn?' · ИНН '+c.inn:''}`,open:`data-act="open-client" data-id="${esc(c.id)}"`}))});
+DRAWERS.client=id=>{const c=can('clients')?Clients.byId(S,id):null;return c&&clientVisible(c)?dClient(c):null};
 
 // Запуск: состояние из браузера (localStorage[Store.KEY]); нет или битое — демо seed(). Затем первая отрисовка.
 

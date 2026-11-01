@@ -295,7 +295,8 @@ const Ships = (() => {
     for (const rule of st.shipRules || []) {
       if (rule.on !== true || !ruleHits(rule, event)) continue;
       const stage = Pipes.stage(st, s.pipeId, rule.then);
-      if (!stage || s.stageId === rule.then) continue;
+      // «На складе» и «Прибыло в город» правило ставит, только если оно «принято на складе»: иначе поставка закрылась бы без приёмки
+      if (!stage || s.stageId === rule.then || !Pipes.ruleMayTo(rule, stage)) continue;
       put(st, s, rule.then, by, now, SRC.rule(`если ${eventLabel(rule.when)} — «${stage.name}»`));
       fired.push(rule.id);
     }
@@ -472,10 +473,11 @@ SEEDS.push(st => {
   });
 
   st.shipments = shipments;
-  // правила директора по умолчанию (Настройки → Поставки); третье выключено — пример выключенного
+  // правила директора по умолчанию (Настройки → Поставки); третье выключено — пример выключенного. «Прибыло в город»
+  // и «На складе» ставит только «принято на складе» (Pipes.ruleMayTo): прибытие отмечает шаг перевозчика, склад — приёмка
   st.shipRules = [
     { id: 'sr1', on: true, when: 'received', then: 'inStock' },
     { id: 'sr2', on: true, when: 'customs', then: 'transship' },
-    { id: 'sr3', on: false, when: 'carrier:irk', then: 'arrived' },
+    { id: 'sr3', on: false, when: 'customs', then: 'toStock' },
   ];
 });

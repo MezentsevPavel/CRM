@@ -19,10 +19,15 @@ function shipRuleEventSel(r,attrs){
   if(!evs.includes(r.when)) evs.push(r.when);
   return `<select ${attrs} class="inp sm">${evs.map(ev=>`<option value="${esc(ev)}" ${ev===r.when?'selected':''}>${esc(Ships.eventLabel(ev))}</option>`).join('')}</select>`;
 }
+// Этапы, которые правило может ставить: «Прибыло в город» и «На складе» — только правилу «принято на складе»
+// (Pipes.ruleMayTo — то же условие, по которому ядро Ships.applyRules правило пропускает)
 function shipRuleStageSel(r,attrs){
-  const st=shipRuleStages(),known=st.some(x=>x.id===r.then);
-  return `<select ${attrs} class="inp sm">${known?'':`<option value="" selected>нет данных: этап</option>`}${st.map(x=>`<option value="${esc(x.id)}" ${x.id===r.then?'selected':''}>${esc(x.name)}${x.flag==='final'?' (на складе)':''}</option>`).join('')}</select>`;
+  const all=shipRuleStages(),st=all.filter(x=>Pipes.ruleMayTo(r,x)),cur=all.find(x=>x.id===r.then),known=st.includes(cur);
+  const none=cur&&!known?`этап «${esc(cur.name)}» ставит только приёмка — выберите другой`:'нет данных: этап';
+  return `<select ${attrs} class="inp sm">${known?'':`<option value="" selected>${none}</option>`}${st.map(x=>`<option value="${esc(x.id)}" ${x.id===r.then?'selected':''}>${esc(x.name)}${x.flag==='final'?' (на складе)':''}</option>`).join('')}</select>`;
 }
+// Почему правило не может ставить этап: '' — может
+const shipRuleBlock=(when,stage)=>stage&&!Pipes.ruleMayTo({when},stage)?`Этап «${stage.name}» правило «если ${Ships.eventLabel(when)}» не ставит: туда поставка попадает только своим путём (прибытие — шаг перевозчика, «На складе» — приёмка).`:'';
 function vShipSettings(){
   const rules=shipRules();
   const rows=rules.map(r=>`<li class="rule srule" data-rule="${esc(r.id)}">
@@ -32,8 +37,8 @@ function vShipSettings(){
     <button type="button" class="btn sm ghost" data-act="ship-rule-del" data-id="${esc(r.id)}" aria-label="Удалить правило">${ic('x')}Удалить</button>
   </li>`).join('');
   const add=`<form class="srule-add" data-form="ship-rule-add" novalidate>
-    <div class="field"><label for="sr-new-when">Если</label>${shipRuleEventSel({when:'received'},'id="sr-new-when"')}</div>
-    <div class="field"><label for="sr-new-then">Поставить этап</label>${shipRuleStageSel({then:(shipRuleStages().find(x=>x.flag==='final')||{}).id},'id="sr-new-then"')}</div>
+    <div class="field"><label for="sr-new-when">Если</label>${shipRuleEventSel({when:'customs'},'id="sr-new-when"')}</div>
+    <div class="field"><label for="sr-new-then">Поставить этап</label>${shipRuleStageSel({when:'customs',then:Pipes.beforeEnd(S,(shipPipe('in')||{}).id)},'id="sr-new-then"')}</div>
     <button class="btn" type="submit">${ic('plus')}Добавить правило</button></form><p class="err" id="sr-err" hidden></p>`;
   return `<section class="card"><div class="card-h"><h3>Правила смены этапа поставки</h3></div><div class="card-b stack-s">
     <p class="hint">Правило «если событие — поставить этап» срабатывает само: когда склад принял поставку, когда перевозчик сообщил, что груз в точке, или когда пройдена таможня. Срабатывание видно в истории поставки с пометкой «правило». Выключенное правило ничего не делает. Правило срабатывает, только если этап поставки меняется.</p>
@@ -51,11 +56,15 @@ ON.change['ship-rule-on']=t=>{
 };
 ON.change['ship-rule-when']=t=>{
   const r=shipRuleOf(t.dataset.id);if(!r) return;
+  const why=shipRuleBlock(t.value,shipRuleStages().find(x=>x.id===r.then));
+  if(why){render();return toast(why,'warn')}
   r.when=t.value;render();
   toast(`Правило теперь срабатывает на событие «${Ships.eventLabel(r.when)}».`);
 };
 ON.change['ship-rule-then']=t=>{
   const r=shipRuleOf(t.dataset.id),st=shipRuleStages().find(x=>x.id===t.value);if(!r||!st) return;
+  const why=shipRuleBlock(r.when,st);
+  if(why){render();return toast(why,'warn')}
   r.then=st.id;render();
   toast(`Правило «если ${Ships.eventLabel(r.when)}» ставит этап «${st.name}».`);
 };
@@ -67,6 +76,7 @@ A['ship-rule-del']=el=>{
 FORMS['ship-rule-add']=()=>{
   const when=byId('sr-new-when').value,then=byId('sr-new-then').value,st=shipRuleStages().find(x=>x.id===then);
   if(!when||!st) return showErr('sr-err','Выберите событие и этап.');
+  if(shipRuleBlock(when,st)) return showErr('sr-err',shipRuleBlock(when,st));
   if(shipRules().some(r=>r.when===when&&r.then===then)) return showErr('sr-err','Такое правило уже есть.');
   if(!S.shipRules) S.shipRules=[];
   S.shipRules.push({id:Store.freeId(S.shipRules,'sr'),on:true,when,then});

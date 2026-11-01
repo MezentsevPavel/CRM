@@ -232,7 +232,8 @@ test('Store: не влезает в лимит — фото выкинуты и 
 // Права по умолчанию — spec.md, «Решения по реализации» и истории R28–R30.
 const ROLE_NAMES = ['Директор', 'Менеджер B2B', 'Менеджер B2C', 'Логист', 'Кладовщик', 'Главный инженер', 'Инженер'];
 // tasksAssign менеджерам вернули как в прошлой версии прототипа (таск 06): задачу можно поставить другому отделу
-const MANAGER = ['stock', 'prices', 'reserve', 'leads', 'clients', 'write', 'mail', 'sell', 'tasksAssign'];
+// dealsEdit «Заводить и править сделки» — таск F1: у менеджеров есть, у инженеров нет (R30: сделки на просмотр)
+const MANAGER = ['stock', 'prices', 'reserve', 'leads', 'clients', 'dealsEdit', 'write', 'mail', 'sell', 'tasksAssign'];
 const DEFAULT_ON = {
   'Менеджер B2B': MANAGER,
   'Менеджер B2C': MANAGER,
@@ -257,8 +258,9 @@ function team(Perms) {
 test('Perms: список прав — v2 и новые; семь встроенных ролей с правами по спецификации', () => {
   const { Perms } = load();
   const keys = Array.from(Perms.LIST, p => p[0]);
-  assert.deepEqual(keys, [...V2_PERMS, 'mail', 'leads', 'leadsAssign', 'dealsAll', 'settings', 'dispatch', 'sell']);
+  assert.deepEqual(keys, [...V2_PERMS, 'mail', 'leads', 'leadsAssign', 'dealsAll', 'dealsEdit', 'settings', 'dispatch', 'sell']);
   assert.equal(Perms.LIST.find(p => p[0] === 'dealsAll')[1], 'Видеть сделки всех типов');
+  assert.equal(Perms.LIST.find(p => p[0] === 'dealsEdit')[1], 'Заводить и править сделки');
   const roles = Perms.defaultRoles();
   assert.deepEqual(Array.from(roles, r => r.name), ROLE_NAMES);
   assert.ok(roles.every(r => r.builtin === true));
@@ -758,10 +760,11 @@ test('реестры ON, DRAWERS, SIMS: поля data-on и карточки с�
 // а «не сохранено — мало места в браузере» (interfaces.md: Store помечает запись unsaved).
 const NO_SPACE = 'не сохранено — мало места в браузере';
 const PHOTO = 'data:image/jpeg;base64,' + 'A'.repeat(2000);
-// Перезагрузка после сохранения, где места не хватило ровно на фото
+// Перезагрузка после сохранения, где места не хватило ни на одно фото (выкидывается только то, что не влезло;
+// фото принятой поставки лежат и в карточке, и в закрытом черновике приёмки)
 function reloadTight(app) {
-  const full = app.Store.dump(app.S).text.length;
-  const r = app.Store.dump(app.S, full - 1);
+  const text = app.Store.dump(app.S).text;
+  const r = app.Store.dump(app.S, text.length - text.split(PHOTO).length * PHOTO.length);
   assert.ok(r.droppedPhotos >= 2, 'малый лимит не выкинул фото');
   return load({ storage: { [app.Store.KEY]: r.text } });
 }

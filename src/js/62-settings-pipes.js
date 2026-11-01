@@ -72,10 +72,14 @@ const pipeOpt=(x,sel)=>`<option value="${esc(x.id)}" ${sel?'selected':''}>${esc(
 MODALS.pipeStageDel=key=>{
   const [pid,sid]=String(key).split('|'),p=pipeById(pid),s=p&&Pipes.stage(S,pid,sid);
   if(!s) return '';
-  const u=Pipes.usage(S,pid,sid),i=p.stages.indexOf(s),rest=p.stages.filter(x=>x!==s),next=p.stages[i+1]||p.stages[i-1];
+  // куда переносить — решает ядро (Pipes.moveTargets): завершающие этапы («На складе», «Сдана», «Доставлена»…) запись получает
+  // только своим действием, поэтому здесь их нет; по умолчанию — ближайший следующий из разрешённых
+  const u=Pipes.usage(S,pid,sid),i=p.stages.indexOf(s),rest=Pipes.moveTargets(S,pid,sid);
+  const next=p.stages.slice(i+1).find(x=>rest.includes(x))||[...p.stages.slice(0,i)].reverse().find(x=>rest.includes(x));
   const what=[u.items?`${u.items} ${pl(u.items,'запись','записи','записей')}`:'',u.rules?`${u.rules} ${pl(u.rules,'правило','правила','правил')} поставок`:''].filter(Boolean).join(' и ');
+  if(!rest.length) return `${mHead('Удалить этап «'+esc(s.name)+'»?')}<div class="modal-b"><p class="m0">${esc(Pipes.stuck(S,pid,sid))}</p></div>`;
   return `<form data-form="pipe-stage-del" data-pipe="${esc(pid)}" data-stage="${esc(sid)}" novalidate>${mHead('Удалить этап «'+esc(s.name)+'»?')}<div class="modal-b">
-    <p class="m0">На этапе: ${what}. Ничего не пропадёт — всё переедет на этап, который вы выберете.</p>
+    <p class="m0">На этапе: ${what}. Ничего не пропадёт — всё переедет на этап, который вы выберете. Завершающих этапов в списке нет: туда запись попадает только своим действием.</p>
     <div class="field"><label for="pm-to">Куда перенести</label><select id="pm-to" class="inp">${rest.map(x=>pipeOpt(x,x===next)).join('')}</select></div>
     <p class="err" id="pm-err" hidden></p></div>${mFoot('Перенести и удалить')}</form>`;
 };

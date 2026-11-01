@@ -8,8 +8,12 @@
 // ——— плитки дня ———
 // Реестр плиток: {id, label, show, calc → {value, sub, tone, …}, open}. tone '' · 'bad' (просрочено) · 'warn' (нужно действие).
 const homeOpenDeals=()=>Leads.dealsVisible(S,S.me).filter(d=>Deals.state(S,d)==='open');
-// Резервы с истёкшим сроком (Stock.expired) по сделкам, которые видит человек
-const homeExpired=()=>{const vis=new Set(Leads.dealsVisible(S,S.me).map(d=>d.id));return Stock.expired(S,new Date()).filter(r=>vis.has(r.dealId))};
+// Резервы по сделкам, которые видит человек (Leads.dealsVisible): резерв называет сделку и клиента, чужой — не показываем
+const homeVisible=list=>{const vis=new Set(Leads.dealsVisible(S,S.me).map(d=>d.id));return list.filter(r=>vis.has(r.dealId))};
+// Резервы с истёкшим сроком (Stock.expired) по видимым сделкам — одно число на плитку и на «Требует внимания»
+const homeExpired=()=>homeVisible(Stock.expired(S,new Date()));
+// Резервы видимых сделок, срок которых выходит за два дня
+const homeSoon=()=>homeVisible(S.reserves.filter(r=>{const n=dd(r.until);return n>=0&&n<=2}));
 // Сделки без следующего шага: открытые видимые сделки, у которых Acts.noNext
 const homeNoNext=()=>homeOpenDeals().filter(d=>Acts.noNext(S,{t:'deal',id:d.id}));
 const homeIsDriver=()=>Dispatch.drivers(S).some(p=>p.id===S.me);
@@ -102,8 +106,8 @@ function attention(){
       if(k.freeAfter<0) a.push({lvl:'bad',icon:'box',text:`${p.name}: под резервы не хватает ${qtyOf(-k.freeAfter,p)}`,sub:'Даже с учётом всех поставок в пути',act:`data-act="open-product" data-pid="${esc(p.id)}"`});
       else if(k.onHand>0&&k.free<=0&&!k.incoming) a.push({lvl:'warn',icon:'box',text:`${p.name}: свободный остаток закончился`,sub:'Всё, что на складе, в резерве. Поставок нет',act:`data-act="open-product" data-pid="${esc(p.id)}"`});
     });
-    Stock.expired(S,new Date()).forEach(r=>{const p=product(r.productId),d=deal(r.dealId);a.push({lvl:'bad',icon:'clock',text:`Срок резерва вышел: ${p?p.name:'нет данных: товар'} — ${qtyOf(r.qty,p)}`,sub:`${r.dealId} · ${d?.client||''} · был до ${fD(r.until)}`,act:`data-act="open-product" data-pid="${esc(r.productId)}"`})});
-    S.reserves.filter(r=>{const n=dd(r.until);return n>=0&&n<=2}).forEach(r=>{const p=product(r.productId),d=deal(r.dealId);a.push({lvl:'info',icon:'clock',text:`Резерв истекает ${fRel(r.until)}: ${p.name} — ${qtyOf(r.qty,p)}`,sub:`${r.dealId} · ${d?.client||''}`,act:`data-act="open-product" data-pid="${esc(p.id)}"`})});
+    homeExpired().forEach(r=>{const p=product(r.productId),d=deal(r.dealId);a.push({lvl:'bad',icon:'clock',text:`Срок резерва вышел: ${p?p.name:'нет данных: товар'} — ${qtyOf(r.qty,p)}`,sub:`${r.dealId} · ${d?.client||''} · был до ${fD(r.until)}`,act:`data-act="open-product" data-pid="${esc(r.productId)}"`})});
+    homeSoon().forEach(r=>{const p=product(r.productId),d=deal(r.dealId);a.push({lvl:'info',icon:'clock',text:`Резерв истекает ${fRel(r.until)}: ${p.name} — ${qtyOf(r.qty,p)}`,sub:`${r.dealId} · ${d?.client||''}`,act:`data-act="open-product" data-pid="${esc(p.id)}"`})});
   }
   return a;
 }

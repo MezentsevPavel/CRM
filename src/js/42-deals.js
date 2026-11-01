@@ -42,7 +42,9 @@ const Deals = (() => {
   const state = (st, d) => (lostOf(d) ? 'lost' : Pipes.isFinal(st, d.pipeId, d.stageId) ? 'won' : 'open');
 
   // ——— права ———
-  const canMake = (st, by) => !!personOf(st, by) && Perms.can(st, by, 'clients');
+  // Видеть сделки — право clients (и Leads.dealsVisible); заводить, править, двигать по этапам, закрывать, резервировать — dealsEdit.
+  // У инженеров по умолчанию только просмотр (R30).
+  const canMake = (st, by) => !!personOf(st, by) && Perms.can(st, by, 'dealsEdit');
   const canEdit = (st, d, by) => !!d && canMake(st, by) && Leads.dealsVisible(st, by).includes(d);
   // Сделка, с которой человек может работать, или отказ.
   function open(st, id, by) {
@@ -318,49 +320,89 @@ const Deals = (() => {
     return { ok: true, reason: '' };
   }
 
-  // ——— резерв строки ———
-  // Зарезервировать строку idx со склада под эту сделку: {entityId, cityId, qty?, until?}. Количество по умолчанию — вся
-  // нерезервированная часть строки; не больше неё и не больше свободного в клетке (Stock.canReserve, его причина — наша).
-  // Юрлицо и город не названы — берётся клетка, где больше всего свободного. Срок по умолчанию — 14 дней от now.
-  // Склад и директор получают уведомление «Резерв», как при резерве из карточки товара. → {ok, reserve, reason, max}
-  function reserveItem(st, id, idx, opt, by, now) {
+  // ——— резервы сделки ———
+  // Уведомление о резерве: постоянные адресаты вида reserve (Notify.RECIPIENTS — склад и директор) и менеджер этой сделки.
+  // Менеджеры другого типа его не получают: чужую сделку они не видят.
+  const managerOf = d => (d && d.managerId ? [d.managerId] : []);
+  // Сколько товара сделки ещё можно зарезервировать: «в строках − уже в резерве». Единственный расчёт: ядро и экран зовут его.
+  const left = (st, d, productId) => round2(lined(d, productId) - reserved(st, d, productId));
+
+  // Один путь резерва под сделку — из строки сделки (reserveItem) и из карточки товара.
+  // o: {productId, qty?, src? ('stock' | id поставки), entityId?, cityId?, until?}. Нужно право править сделку (canEdit) и право
+  // reserve; товар должен быть в строках сделки; не больше «в строках − уже в резерве» (left) и не больше свободного
+  // (Stock.canReserve, его причина — наша). Количество по умолчанию — вся нерезервированная часть. Юрлицо и город не названы —
+  // клетка, где свободного больше всего. Срок по умолчанию — 14 дней от now. Запись в ленту сделки, уведомление — складу,
+  // директору и менеджеру сделки. → {ok, reserve, reason, max}
+  function reserve(st, id, opt, by, now) {
     const { d, err } = open(st, id, by);
     if (err) return err;
     if (!Perms.can(st, by, 'reserve')) return fail('У вашей роли нет права ставить резервы.');
-    const it = (d.items || [])[idx], o = opt || {};
-    if (!it) return fail('Такой строки нет.');
-    if (!it.productId) return fail('Своя строка: такого товара нет в каталоге, резервировать нечего.');
+    const o = opt || {}, pid = o.productId, p = productOf(st, pid);
+    if (!p) return fail('Такого товара нет в каталоге.');
+    const rows = (d.items || []).filter(x => x.productId === pid).length;
+    if (!rows) return fail(`В сделке ${d.id} нет строки с товаром «${p.name}»: сначала добавьте его в сделку, потом ставьте резерв.`, { max: 0 });
     // Предел — по товару, а не по строке: две строки одного товара (10 и 5) дают 15, а не 10.
-    const all = lined(d, it.productId), rows = d.items.filter(x => x.productId === it.productId).length;
-    const held = reserved(st, d, it.productId), left = round2(all - held);
-    if (!(left > 0)) return fail(`Строка «${itemName(st, it)}» уже зарезервирована целиком (${num(held)}).`);
-    const qty = o.qty === undefined || str(o.qty) === '' ? left : toNum(o.qty);
-    if (qty > left) return fail(`${rows > 1 ? `В ${rows} строках этого товара ${num(all)}` : `В строке ${num(all)}`}, уже зарезервировано ${num(held)}: можно ещё ${num(left)}.`, { max: left });
-    const cell = o.entityId === undefined && o.cityId === undefined ? Stock.bestCell(st, it.productId) : { entityId: o.entityId, cityId: o.cityId };
+    const all = lined(d, pid), held = reserved(st, d, pid), rest = left(st, d, pid);
+    if (!(rest > 0)) return fail(`Строка «${p.name}» уже зарезервирована целиком (${num(held)}).`, { max: 0 });
+    const qty = o.qty === undefined || str(o.qty) === '' ? rest : toNum(o.qty);
+    if (qty > rest) return fail(`${rows > 1 ? `В ${rows} строках этого товара ${num(all)}` : `В строке ${num(all)}`}, уже зарезервировано ${num(held)}: можно ещё ${num(rest)}.`, { max: rest });
+    const src = o.src || 'stock';
+    const cell = src !== 'stock' || (o.entityId === undefined && o.cityId === undefined) ? Stock.bestCell(st, pid) : { entityId: o.entityId, cityId: o.cityId };
     const until = o.until || new Date(new Date(now).getTime() + 14 * 864e5);
-    const ask = { productId: it.productId, qty, entityId: cell.entityId, cityId: cell.cityId, src: 'stock' };
+    const ask = { productId: pid, qty, entityId: cell.entityId, cityId: cell.cityId, src };
     const chk = Stock.canReserve(st, ask);
     if (!chk.ok) return fail(chk.reason, { max: chk.max });
     const res = Stock.reserve(st, Object.assign(ask, { dealId: d.id, until, by, at: now }));
     if (!res.ok) return fail(res.reason, { max: res.max });
     res.reserve.at = now;
     res.reserve.by = by;
-    log(st, d, 'reserve', Feed.reserveText(st, res.reserve), by, now, { reserveId: res.reserve.id, productId: it.productId, qty });
-    Notify.push(st, 'reserve', by, Feed.reserveText(st, res.reserve, true), now);
+    log(st, d, 'reserve', Feed.reserveText(st, res.reserve), by, now, { reserveId: res.reserve.id, productId: pid, qty });
+    Notify.push(st, 'reserve', by, Feed.reserveText(st, res.reserve, true), now, managerOf(d));
     return { ok: true, reserve: res.reserve, reason: '', max: res.max };
   }
 
-  // Снять резерв сделки: товар возвращается в свободный остаток. → {ok, reason}
+  // Зарезервировать строку idx со склада под эту сделку: {entityId, cityId, qty?, until?} — тот же reserve по товару строки.
+  function reserveItem(st, id, idx, opt, by, now) {
+    const { d, err } = open(st, id, by);
+    if (err) return err;
+    if (!Perms.can(st, by, 'reserve')) return fail('У вашей роли нет права ставить резервы.');
+    const it = (d.items || [])[idx];
+    if (!it) return fail('Такой строки нет.');
+    if (!it.productId) return fail('Своя строка: такого товара нет в каталоге, резервировать нечего.');
+    return reserve(st, id, Object.assign({}, opt, { productId: it.productId, src: 'stock' }), by, now);
+  }
+
+  // Лента сделки помнит резерв. Пока у резерва нет своей записи в ленте, её подмешивает сам резерв (Feed.of) — и снятый
+  // резерв пропал бы из ленты бесследно. keepTrail пишет эту запись — с прежним временем и автором — до того, как резерв
+  // уменьшат или снимут. Зовут все, кто снимает или списывает резерв: сделка, приёмка, карточка товара, отправка.
+  function keepTrail(st, r) {
+    const d = r && byId(st, r.dealId);
+    if (!d || (st.feed || []).some(e => e.ref.t === 'deal' && e.ref.id === d.id && e.data && e.data.reserveId === r.id)) return;
+    const w = Feed.reserveWhen(st, r);
+    log(st, d, 'reserve', Feed.reserveText(st, r), w.by, w.at, { reserveId: r.id, productId: r.productId, qty: r.qty });
+  }
+  // Из резерва r снято q (целиком или частью): запись «Снят резерв» в ленте сделки с причиной why и уведомление складу,
+  // директору и менеджеру сделки. Зовётся до того, как резерв изменён. Один текст на снятие из сделки, из карточки товара
+  // и при приёмке.
+  function noteRelease(st, r, q, why, by, now) {
+    const d = r && byId(st, r.dealId);
+    if (!d) return;
+    keepTrail(st, r);
+    const name = low((productOf(st, r.productId) || {}).name || 'нет данных: товар'), tail = why ? ' ' + why : '';
+    log(st, d, 'reserve', `Снят резерв: ${name} — ${num(q)}${why ? '.' + tail : ''}`, by, now, { reserveId: r.id, productId: r.productId, qty: q, removed: true });
+    Notify.push(st, 'reserve', by, `Снят резерв: ${name} — ${num(q)} (${d.id}, ${d.client}).${tail}`, now, managerOf(d));
+  }
+
+  // Снять резерв сделки: товар возвращается в свободный остаток. Нужно право править сделку и право reserve. → {ok, reason}
   function unreserve(st, id, reserveId, by, now) {
     const { d, err } = open(st, id, by);
     if (err) return err;
     if (!Perms.can(st, by, 'reserve')) return fail('У вашей роли нет права снимать резервы.');
     const r = (st.reserves || []).find(x => x.id === reserveId && x.dealId === d.id);
     if (!r) return fail('Такого резерва в сделке нет.');
+    noteRelease(st, r, r.qty, '', by, now);
     const res = Stock.unreserve(st, reserveId, by, now);
     if (!res.ok) return fail(res.reason);
-    log(st, d, 'reserve', `Снят резерв: ${low((productOf(st, r.productId) || {}).name || 'нет данных: товар')} — ${num(r.qty)}`, by, now, { reserveId, productId: r.productId, qty: r.qty, removed: true });
-    Notify.push(st, 'reserve', by, `Снят резерв: ${low((productOf(st, r.productId) || {}).name || 'нет данных: товар')} — ${num(r.qty)} (${d.id}, ${d.client}).`, now);
     return { ok: true, reason: '' };
   }
 
@@ -392,8 +434,8 @@ const Deals = (() => {
   }
 
   return {
-    defaultReasons, reasons, lineSum, total, sumOf, noPrice, state, canEdit, itemName, reserved, lined, byId,
-    create, update, move, win, lose, reopen, addItem, setItem, removeItem, reserveItem, unreserve, query, columns,
+    defaultReasons, reasons, lineSum, total, sumOf, noPrice, state, canEdit, itemName, reserved, lined, left, byId,
+    create, update, move, win, lose, reopen, addItem, setItem, removeItem, reserve, reserveItem, keepTrail, noteRelease, unreserve, query, columns,
   };
 })();
 
@@ -404,6 +446,9 @@ const Deals = (() => {
 // Всё помечено «пример» (demo:true и слово в названиях клиентов), телефоны вида +7 900 000-00-NN.
 SEEDS.push(st => {
   st.lostReasons = Deals.defaultReasons();
+  // РОП (роль заводит шаг лидов, 35-leads.js) заводит и правит сделки, как менеджеры
+  const rop = st.roles.find(r => r.id === 'rop');
+  if (rop) rop.perms.dealsEdit = true;
   const DAY = 864e5, STAGES = ['request', 'calc', 'offer', 'contract', 'payment', 'delivery', 'install', 'done'];
   const pad = (n, w) => String(n).padStart(w, '0');
   const mgrs = type => Leads.managers(st, type).map(p => p.id);
