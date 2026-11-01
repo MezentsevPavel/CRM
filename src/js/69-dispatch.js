@@ -24,7 +24,7 @@ const dspStagePill=d=>`<span class="pill sm ${dspTone(d)}">${esc(dspStageName(d)
 // «сегодня, 10:00–14:00»: дата и окно, если оно задано
 const dspWhen=d=>{const w=d.when||{};return fRel(w.date)+(w.from?', '+w.from+(w.till?'–'+w.till:''):'')};
 const dspTel=p=>String(p||'').replace(/[^\d+]/g,'');
-const dspSize=n=>n<1024?n+' Б':n<1048576?Math.round(n/1024)+' КБ':(n/1048576).toFixed(1).replace('.',',')+' МБ';
+const dspSize=attSize;
 const dspCell=c=>`${Stock.entityName(S,c.entityId)??c.entityId}, ${Stock.cityName(S,c.cityId)??c.cityId}`;
 const dspPicked=d=>{const p=Dispatch.picked(d);return `собрано ${p.done} из ${p.total}`};
 // Подсказка «свободно N» у товара из каталога: число берёт Stock.summary (stockOf), своего расчёта нет
@@ -40,15 +40,10 @@ function dspBadge(st=S,personId=S.me,now=new Date()){
 }
 
 // ——— файлы ———
-const dspIsImage=f=>/^image\//.test(f.type||'')&&typeof f.data==='string'&&f.data.startsWith('data:image/');
+const dspIsImage=attIsImage;
 // Файл заявки в карточке: картинка — миниатюра, открывается крупно; остальное — название, размер, «скачать».
 // Не поместился в браузер (unsaved) — пометка вместо файла.
-function dspFileHtml(d,f){
-  const size=dspSize(f.size||0);
-  if(f.unsaved||!f.data) return `<div class="dsp-fl bad">${ic('file')}<span>${esc(f.name)}<small>${size}</small><small class="warn-t">${f.unsaved?'не сохранено — мало места в браузере':'нет данных: файл'}</small></span></div>`;
-  if(dspIsImage(f)) return `<button type="button" class="dsp-th" data-act="dsp-file" data-key="${esc(d.id+'|'+f.id)}" aria-label="Открыть: ${esc(f.name)}"><img src="${esc(f.data)}" alt="${esc(f.name)}"><small>${esc(f.name)}</small></button>`;
-  return `<a class="dsp-fl" href="${esc(f.data)}" download="${esc(f.name)}">${ic('file')}<span>${esc(f.name)}<small>${size} · скачать</small></span></a>`;
-}
+function dspFileHtml(d,f){return attFileHtml(f,'dsp-file',d.id+'|'+f.id)}
 
 // ——— отбор: одни условия на список, воронку и блок «Назначены мне» ———
 function dspList(u,funnel){
@@ -208,14 +203,7 @@ function dspPresHtml(q){
   if(!hits.length) return '<p class="hint">В каталоге такого нет — добавьте свою строку.</p>';
   return `<ul class="dsp-pres">${hits.map(p=>`<li><button type="button" class="dpr" data-act="dsp-add" data-pid="${esc(p.id)}"><span class="dpr-n">${esc(p.name)}</span><small>${esc(dspFreeText(p.id))}</small>${ic('plus')}</button></li>`).join('')}</ul>`;
 }
-function dspFilesEditHtml(x){
-  if(!x.files.length) return '<p class="muted m0">Файлов нет.</p>';
-  return x.files.map((f,i)=>{
-    const rm=`<button type="button" class="btn ghost icon dsp-rm" data-act="dsp-file-del" data-i="${i}" aria-label="Убрать файл: ${esc(f.name)}">${ic('x')}</button>`;
-    return dspIsImage(f)?`<figure class="dsp-th"><img src="${esc(f.data)}" alt="${esc(f.name)}"><small>${esc(f.name)}</small>${rm}</figure>`
-      :`<div class="dsp-fl">${ic('file')}<span>${esc(f.name)}<small>${dspSize(f.size||0)}${f.unsaved?' · не сохранено — мало места в браузере':''}</small></span>${rm}</div>`;
-  }).join('');
-}
+function dspFilesEditHtml(x){return attEditHtml(x.files,'dsp-file-del')}
 MODALS.dispatchForm=()=>{
   const x=dspDraft()||dspDraftFrom({},'');
   const f=(id,label,html,cls)=>`<div class="field${cls?' '+cls:''}"><label for="dsp-${id}">${label}</label>${html}</div>`;
@@ -259,7 +247,7 @@ MODALS.dspSell=o=>{
 MODALS.dspFile=key=>{
   const [id,fid]=String(key).split('|'),d=Dispatch.byId(S,id),f=d&&d.files.find(x=>x.id===fid);
   if(!f) return `<div>${mHead('Файл')}<div class="modal-b"><p class="m0">Файла нет.</p></div></div>`;
-  return `<div>${mHead(esc(f.name))}<div class="modal-b">${dspIsImage(f)?`<img class="dsp-big" src="${esc(f.data)}" alt="${esc(f.name)}">`:''}<a class="btn" href="${esc(f.data)}" download="${esc(f.name)}">${ic('file')}Скачать · ${esc(dspSize(f.size||0))}</a></div></div>`;
+  return `<div>${mHead(esc(f.name))}<div class="modal-b">${attBigHtml(f)}</div></div>`;
 };
 
 // ——— действия ———
@@ -336,18 +324,11 @@ ON.change['dsp-file']=t=>{dspReadFiles(t.files);t.value=''};
 // Выбранные файлы читаются в data-URL и встают в черновик; в сохранение они попадают вместе с заявкой (Store.dump).
 // Файл больше Store.FILE_MAX (2 МБ) не прикрепляется.
 function dspReadFiles(files){
-  const x=dspDraft();if(!x||typeof FileReader==='undefined') return;
-  [...files].forEach(f=>{
-    // больше предела — отказ сразу, файл не читается (те же слова, что у ядра заявки)
-    const big=Store.fileTooBig(f);if(big){toast(big,'warn');return}
-    const fr=new FileReader();
-    fr.onload=()=>{
-      if(dspDraft()!==x) return;
-      x.files.push({name:f.name,type:f.type||'',size:f.size,data:String(fr.result)});
-      const box=byId('dsp-files');if(box) box.innerHTML=dspFilesEditHtml(x);
-    };
-    fr.onerror=()=>toast(`Файл «${f.name}» не прочитался.`,'warn');
-    fr.readAsDataURL(f);
+  const x=dspDraft();if(!x) return;
+  attReadFiles(files,file=>{
+    if(dspDraft()!==x) return;
+    x.files.push(file);
+    const box=byId('dsp-files');if(box) box.innerHTML=dspFilesEditHtml(x);
   });
 }
 // «Собрано»: галочка строки → Dispatch.pick; не вышло — вернуть галочку и сказать почему

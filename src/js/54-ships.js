@@ -378,6 +378,7 @@ function shipCreate(f){
   const s={id,number:id,dir:'in',supplier:from,to:'Наш склад',carrier:byId('ns-car').value,track:byId('ns-doc').value.trim()||'нет данных: номер накладной',
     entityId:byId('ns-ent').value,cityId:city,route,pos:{i:0,t:0},eta,pipeId:pipe.id,stageId:start.id,
     items,history:[{at:now,by:m.id,text:`Поставка создана. Маршрут: ${Ships.routeText(route)}.`,source:Ships.SRC.manual}]};
+  const files=attDraftFiles();if(files) s.files=files;
   S.shipments.push(s);
   // сразу на нужный этап — тоже через ядро: оно расставит груз на маршруте, запишет историю и разошлёт уведомление
   if(wanted&&wanted.id!==start.id) Ships.setStage(S,id,wanted.id,m.id,now,Ships.SRC.manual);
@@ -459,6 +460,7 @@ function dShip(s){
       ${Array.isArray(s.route)&&s.route.length>1?`<dt>Маршрут</dt><dd>${esc(Ships.routeText(s.route))}</dd>`:''}</dl>
     <div><h4 class="sh">Позиции · штук ${num(Ships.units(s))}</h4>${shipItems(s)}</div>
     ${waits.length?`<div class="waits">${ic('users')}<span>${s.dir==='in'?'Ждут этот товар':'Для сделки'}: ${waits.join(', ')}</span></div>`:''}
+    ${attCardHtml('ship',s)}
     ${photos}${acts.length?`<div class="ship-f">${acts.join('')}</div>`:''}
     <div><h4 class="sh">История отметок</h4><ul class="shist">${hist||'<li class="muted">Отметок пока нет.</li>'}</ul></div>`};
 }

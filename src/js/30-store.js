@@ -63,8 +63,8 @@ const Store = (() => {
   const atOf = v => (v && v.at && v.at.$date && Date.parse(v.at.$date)) || 0;
   const GONE = Symbol('выкинуто');
 
-  // Что можно выкинуть из копии: фото приёмки (строки data:image/… вне заявок) и данные файлов заявок на отправку.
-  // Картинка, приложенная к заявке, — файл заявки, а не фото приёмки.
+  // Что можно выкинуть из копии: фото приёмки (строки data:image/… вне файлов) и данные файлов заявок на отправку, задач и поставок.
+  // Картинка, приложенная к записи, — её файл (поле files), а не фото приёмки.
   function heavy(copy) {
     const out = [];
     const walk = (v, at) => {
@@ -73,6 +73,7 @@ const Store = (() => {
       const here = atOf(v) || at;
       for (const k of Object.keys(v)) {
         if (v === copy && k === 'dispatches') continue;
+        if (k === 'files') continue;
         const x = v[k];
         if (isPhoto(x)) out.push({ photo: true, holder: v, key: k, size: x.length, at: here });
         else if (Array.isArray(x)) x.forEach((y, i) => isPhoto(y) ? out.push({ photo: true, holder: v, key: k, index: i, size: y.length, at: here }) : walk(y, here));
@@ -80,9 +81,11 @@ const Store = (() => {
       }
     };
     walk(copy, NEWEST);
-    for (const d of copy.dispatches || []) {
-      for (const f of (d && d.files) || []) {
-        if (f && typeof f.data === 'string' && f.data) out.push({ file: f, size: f.data.length, at: atOf(f) || atOf(d) || NEWEST });
+    for (const list of [copy.dispatches, copy.tasks, copy.shipments]) {
+      for (const d of list || []) {
+        for (const f of (d && d.files) || []) {
+          if (f && typeof f.data === 'string' && f.data) out.push({ file: f, size: f.data.length, at: atOf(f) || atOf(d) || NEWEST });
+        }
       }
     }
     return out;

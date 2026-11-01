@@ -1163,6 +1163,10 @@ button.crow:hover{border-color:var(--line-2);background:var(--surface-2)}
   .lreason .btn{grid-column:2;grid-row:1}
   .lreason-new{flex-direction:column;align-items:stretch}
 }
+
+/* Файлы у задачи и поставки: сами файлы рисуются классами отправок (.dsp-files, .dsp-th, .dsp-fl) */
+.att-item{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:0;max-width:100%}
+.att-add{align-self:flex-start;margin-top:8px;cursor:pointer}
 </style>
 
 <div class="app" id="app">
@@ -2025,8 +2029,8 @@ const Store = (() => {
   const atOf = v => (v && v.at && v.at.$date && Date.parse(v.at.$date)) || 0;
   const GONE = Symbol('выкинуто');
 
-  // Что можно выкинуть из копии: фото приёмки (строки data:image/… вне заявок) и данные файлов заявок на отправку.
-  // Картинка, приложенная к заявке, — файл заявки, а не фото приёмки.
+  // Что можно выкинуть из копии: фото приёмки (строки data:image/… вне файлов) и данные файлов заявок на отправку, задач и поставок.
+  // Картинка, приложенная к записи, — её файл (поле files), а не фото приёмки.
   function heavy(copy) {
     const out = [];
     const walk = (v, at) => {
@@ -2035,6 +2039,7 @@ const Store = (() => {
       const here = atOf(v) || at;
       for (const k of Object.keys(v)) {
         if (v === copy && k === 'dispatches') continue;
+        if (k === 'files') continue;
         const x = v[k];
         if (isPhoto(x)) out.push({ photo: true, holder: v, key: k, size: x.length, at: here });
         else if (Array.isArray(x)) x.forEach((y, i) => isPhoto(y) ? out.push({ photo: true, holder: v, key: k, index: i, size: y.length, at: here }) : walk(y, here));
@@ -2042,9 +2047,11 @@ const Store = (() => {
       }
     };
     walk(copy, NEWEST);
-    for (const d of copy.dispatches || []) {
-      for (const f of (d && d.files) || []) {
-        if (f && typeof f.data === 'string' && f.data) out.push({ file: f, size: f.data.length, at: atOf(f) || atOf(d) || NEWEST });
+    for (const list of [copy.dispatches, copy.tasks, copy.shipments]) {
+      for (const d of list || []) {
+        for (const f of (d && d.files) || []) {
+          if (f && typeof f.data === 'string' && f.data) out.push({ file: f, size: f.data.length, at: atOf(f) || atOf(d) || NEWEST });
+        }
       }
     }
     return out;
@@ -4455,19 +4462,6 @@ const Dispatch = (() => {
     }
     return { items, bad };
   }
-  function cleanFiles(st, list, existing) {
-    const used = [...(existing || [])];
-    const out = [];
-    for (const f of Array.isArray(list) ? list : []) {
-      if (!f || !str(f.name)) continue;
-      const file = { id: f.id || Store.freeId(used, 'fl'), name: str(f.name), type: str(f.type), size: Number(f.size) || 0, data: typeof f.data === 'string' && f.data ? f.data : null };
-      if (f.unsaved) file.unsaved = true;
-      used.push(file);
-      out.push(file);
-    }
-    return out;
-  }
-
   // Введённое → запись заявки без служебных полей. → {rec} | {missing:[ключ…], reason}
   function normalize(st, data, current) {
     const d = data || {};
@@ -4498,8 +4492,7 @@ const Dispatch = (() => {
     if (dealId && !(st.deals || []).some(x => x.id === dealId)) return { missing: [], reason: `Сделки ${dealId} нет.` };
     // новый файл с данными больше предела (Store.FILE_MAX) — отказ; уже сохранённые файлы заявки и файлы без данных
     // (не поместились в браузер) места не занимают и не проверяются
-    const had = new Set(((current && current.files) || []).map(f => f.id));
-    const big = (Array.isArray(d.files) ? d.files : []).filter(f => f && !had.has(f.id) && typeof f.data === 'string' && f.data).map(Store.fileTooBig).find(Boolean);
+    const big = Attach.tooBig(d.files, current && current.files);
     if (big) return { missing: [], reason: big };
     if (missing.length) {
       return { missing, reason: reason || `Не заполнено: ${missing.map(k => MISSING[k]).join(', ')}.` };
@@ -4509,7 +4502,7 @@ const Dispatch = (() => {
     if (hhmm(d.when && d.when.till)) when.till = hhmm(d.when.till);
     const rec = {
       purpose, to: { name, phone }, address, when, items: it.items,
-      files: cleanFiles(st, d.files, current && current.files), note: str(d.note),
+      files: Attach.clean(d.files, current && current.files), note: str(d.note),
     };
     if (purpose === 'transfer') { rec.from = from; rec.toCell = toCell; }
     if (dealId) rec.dealId = dealId;
@@ -6081,6 +6074,66 @@ SEEDS.push(st => {
   st.leads.filter(l => !Pipes.isFinal(st, l.pipeId, l.stageId)).forEach((l, k) => seedFor({ t: 'lead', id: l.id }, l.managerId, l.at || day(-3, 9, 0), k));
 });
 
+// Ядро: файлы, приложенные к записи — к задаче, поставке, заявке на отправку. Чистые функции, без DOM.
+// Файл: {id, name, type, size, data|null, by?, at?, unsaved?}. data — data-URL; null — файл не поместился в браузер
+// (тогда unsaved:true, это ставит Store.dump). Запись держит файлы в поле files. Предел одного файла — Store.FILE_MAX;
+// сколько файлов влезет в браузер всего, решает Store.dump: выкидывает новые и крупные, остальное остаётся.
+
+const Attach = (() => {
+  const str = v => (v == null ? '' : String(v).trim());
+
+  // Список от формы → чистые файлы. Без названия — выкидывается; свой id остаётся, нет — выдаётся новый (existing — занятые).
+  function clean(list, existing) {
+    const all = Array.isArray(list) ? list : [];
+    // новые id не совпадают ни с занятыми, ни со своими id файлов дальше по списку
+    const used = [...(existing || []), ...all.filter(f => f && f.id).map(f => ({ id: f.id }))];
+    const out = [];
+    for (const f of all) {
+      if (!f || !str(f.name)) continue;
+      const file = { id: f.id || Store.freeId(used, 'fl'), name: str(f.name), type: str(f.type), size: Number(f.size) || 0, data: typeof f.data === 'string' && f.data ? f.data : null };
+      if (f.by) file.by = str(f.by);
+      if (f.at) file.at = f.at;
+      if (f.unsaved) file.unsaved = true;
+      used.push(file);
+      out.push(file);
+    }
+    return out;
+  }
+
+  // Новый файл с данными больше предела (Store.FILE_MAX) → причина отказа, иначе null. Уже сохранённые файлы записи
+  // (existing) и файлы без данных (не поместились в браузер) места не занимают и не проверяются.
+  function tooBig(list, existing) {
+    const had = new Set((existing || []).map(f => f.id));
+    return (Array.isArray(list) ? list : []).filter(f => f && !had.has(f.id) && typeof f.data === 'string' && f.data).map(Store.fileTooBig).find(Boolean) || null;
+  }
+
+  // Приложить файлы к готовой записи. → {ok:true, added:[файл…]} | {ok:false, reason}. Либо все, либо ни одного.
+  function add(rec, list, by, now) {
+    const fresh = (Array.isArray(list) ? list : []).filter(f => f && str(f.name) && typeof f.data === 'string' && f.data);
+    if (!fresh.length) return { ok: false, reason: 'Нет файла, который можно приложить.' };
+    const files = Array.isArray(rec.files) ? rec.files : (rec.files = []);
+    const big = tooBig(fresh, files);
+    if (big) return { ok: false, reason: big };
+    const added = clean(fresh.map(f => ({ ...f, id: '', by, at: now })), files);
+    files.push(...added);
+    return { ok: true, added };
+  }
+
+  // Может ли by убрать файл f: свой — тот, кто приложил; чужой — только если any (право решает вызывающий).
+  const canRemove = (f, by, any) => !!f && (!!any || (!!f.by && f.by === by));
+
+  // Убрать файл из записи. → {ok:true, file} | {ok:false, reason}
+  function remove(rec, fileId, by, any) {
+    const files = (rec && rec.files) || [];
+    const i = files.findIndex(f => f.id === fileId);
+    if (i < 0) return { ok: false, reason: 'Такого файла нет.' };
+    if (!canRemove(files[i], by, any)) return { ok: false, reason: 'Убрать файл может тот, кто его приложил.' };
+    return { ok: true, file: files.splice(i, 1)[0] };
+  }
+
+  return { clean, tooBig, add, canRemove, remove };
+})();
+
 // Оболочка: состояние S и его сохранение, тема, разделы NAV, боковая панель, «Кто я», уведомления, окна,
 // карточка справа, поиск, переходы, render(), действия A, формы FORMS, обработчики событий.
 // Права — Perms.can(S, S.me, …), этапы — по id и флагам Pipes, уведомления — только Notify.push.
@@ -6125,7 +6178,7 @@ function save(){
     }
   }
   if(!ok) toast('Изменения не сохранены — мало места в браузере','warn');
-  else if((r.droppedPhotos||r.droppedFiles)&&(r.droppedPhotos+r.droppedFiles)!==_photoWarn) toast((r.droppedPhotos?'Фото':'Файлы заявок')+(r.droppedPhotos&&r.droppedFiles?' и файлы заявок':'')+' не сохранены — мало места в браузере','warn');
+  else if((r.droppedPhotos||r.droppedFiles)&&(r.droppedPhotos+r.droppedFiles)!==_photoWarn) toast((r.droppedPhotos?'Фото':'Файлы')+(r.droppedPhotos&&r.droppedFiles?' и файлы':'')+' не сохранены — мало места в браузере','warn');
   _photoWarn=(r.droppedPhotos||0)+(r.droppedFiles||0);
   return {ok,droppedPhotos:r.droppedPhotos,fits:r.fits&&ok};
 }
@@ -6231,6 +6284,7 @@ function mTask(){
     <div class="grid2"><div class="field"><label for="t-due">Срок</label><input id="t-due" type="date" class="inp" value="${iso(day(2))}"></div><div class="field"><label for="t-prio">Важность</label><select id="t-prio" class="inp"><option value="normal">Обычная</option><option value="high">Срочно</option></select></div></div>
     ${can('clients')?`<div class="field"><label for="t-deal">Сделка</label><select id="t-deal" class="inp"><option value="">Без сделки</option>${Leads.dealsVisible(S,S.me).map(d=>`<option value="${d.id}">${d.id} · ${esc(d.client)}</option>`).join('')}</select></div>`:''}
     <div class="field"><label for="t-desc">Подробности</label><textarea id="t-desc" class="inp" rows="3" placeholder="Что важно знать исполнителю"></textarea></div>
+    ${attFormHtml()}
     ${all?'':'<p class="hint">У вашей роли нет права ставить задачи другим отделам — в списке только ваш отдел.</p>'}
     <p class="err" id="t-err" hidden></p></div>${mFoot('Поставить и уведомить')}</form>`;
 }
@@ -6258,6 +6312,7 @@ function mShip(){
     <div class="grid2"><div class="field"><label for="ns-city">Куда едет (город)</label><select id="ns-city" class="inp">${S.cities.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select></div><div class="field"><label for="ns-ent">На какое юрлицо</label><select id="ns-ent" class="inp">${S.entities.map(e=>`<option value="${esc(e.id)}">${esc(e.name)}</option>`).join('')}</select></div></div>
     <p class="hint">Маршрут: Китай → Чита (таможня и перевалка) → выбранный город.</p>
     <div class="field"><span class="lbl">Что едет</span><div id="ns-items" class="stack-s" style="gap:8px">${irow()}</div><div><button type="button" class="btn sm ghost" data-act="add-irow">${ic('plus')}Ещё позиция</button></div></div>
+    ${attFormHtml()}
     <p class="err" id="ns-err" hidden></p></div>${mFoot('Создать и уведомить')}</form>`;
 }
 function mProduct(){
@@ -6271,8 +6326,8 @@ const mReset=()=>`<form data-form="reset" novalidate>${mHead('Сбросить �
     <p class="hint">Останутся: кто вы в «Кто я», открытый раздел и тема.</p>
   </div>${mFoot('Сбросить')}</form>`;
 const MODALS={task:()=>mTask(),stage:id=>mStage(ship(id)),ship:()=>mShip(),product:()=>mProduct(),reset:()=>mReset()};
-function openModal(type,id){S.ui.modal={type,id};const r=byId('modal-root');r.innerHTML=`<div class="modal-wrap"><div class="modal" role="dialog" aria-modal="true">${MODALS[type](id)}</div></div>`;setTimeout(()=>r.querySelector('input:not([type=checkbox]),select')?.focus(),30)}
-function closeModal(){if(S) S.ui.modal=null;byId('modal-root').innerHTML=''}
+function openModal(type,id){S.ui.modal={type,id};S.ui.attDraft=type==='task'||type==='ship'?{kind:type,files:[]}:null;const r=byId('modal-root');r.innerHTML=`<div class="modal-wrap"><div class="modal" role="dialog" aria-modal="true">${MODALS[type](id)}</div></div>`;setTimeout(()=>r.querySelector('input:not([type=checkbox]),select')?.focus(),30)}
+function closeModal(){if(S){S.ui.modal=null;S.ui.attDraft=null}byId('modal-root').innerHTML=''}
 const showErr=(id,t)=>{const e=byId(id);e.textContent=t;e.hidden=false};
 
 // ——— карточка справа ———
@@ -6585,6 +6640,7 @@ const FORMS={
     if(!title){showErr('t-err','Напишите, что нужно сделать.');byId('t-title').focus();return}
     const [tt,id]=byId('t-to').value.split(':'),due=byId('t-due').value,m=me(),now=new Date(),board=curBoard();
     const t={id:Store.freeId(S.tasks,'t'),title,desc:byId('t-desc').value.trim(),to:{t:tt,id},from:m.id,due:due?fromIso(due,18):day(2,18),boardId:board.id,stageId:startStage(board.id).id,prio:byId('t-prio').value,deal:byId('t-deal')?.value||'',at:now};
+    const files=attDraftFiles();if(files) t.files=files;
     S.tasks.push(t);
     Notify.push(S,'task',m.id,`Новая задача: «${title}», срок ${fD(t.due)}.${t.deal?' Сделка '+t.deal+'.':''} От: ${m.name}.`,now,targetPeople(t.to),{t:'task',id:t.id});
     closeModal();render();toast(`Задача поставлена. ${targetName(t)} — уведомление отправлено.`);
@@ -6880,7 +6936,8 @@ function dTask(t){
     <div class="seg wide">${stagesFor(t).map(st=>`<button class="${t.stageId===st.id?'on':''}" data-act="task-st" data-id="${t.id}" data-st="${esc(st.id)}">${esc(st.name)}</button>`).join('')}</div>
     ${taskTakable(t)?`<div class="tk-box"><p class="m0">Задача поставлена отделу. Нажмите «Взять» — вы станете исполнителем, у остальных в отделе она пропадёт из «Моих задач».</p><button type="button" class="btn pri" data-act="task-take" data-id="${t.id}">Взять задачу</button></div>`:''}
     <dl class="kv"><dt>Кому</dt><dd>${esc(targetName(t))}${dept?' <span class="pill info sm">отделу</span>':''}</dd>${t.took?`<dt>Взял(а)</dt><dd>${esc(person(t.to.id)?.name||'нет данных: сотрудник')} из отдела «${esc(deptName(t.took.dept))}», ${fWhen(t.took.at)}</dd>`:''}<dt>Срок</dt><dd class="${over?'bad-t':''}">${fD(t.due)}, ${WD[new Date(t.due).getDay()]}${over?' · просрочена':''}</dd><dt>Важность</dt><dd>${t.prio==='high'?'Срочно':'Обычная'}</dd>${d?`<dt>Сделка</dt><dd>${can('clients')?`<button class="link" data-act="open-deal" data-id="${d.id}">${d.id} · ${esc(d.client)}</button>`:d.id}</dd>`:''}</dl>
-    ${t.desc?`<div><h4 class="sh">Подробности</h4><p class="prose">${esc(t.desc)}</p></div>`:''}`};
+    ${t.desc?`<div><h4 class="sh">Подробности</h4><p class="prose">${esc(t.desc)}</p></div>`:''}
+    ${attCardHtml('task',t)}`};
 }
 
 // «Взять»: первый взявший из отдела становится исполнителем. Задача уходит из «Моих задач» остальных,
@@ -7556,6 +7613,7 @@ function shipCreate(f){
   const s={id,number:id,dir:'in',supplier:from,to:'Наш склад',carrier:byId('ns-car').value,track:byId('ns-doc').value.trim()||'нет данных: номер накладной',
     entityId:byId('ns-ent').value,cityId:city,route,pos:{i:0,t:0},eta,pipeId:pipe.id,stageId:start.id,
     items,history:[{at:now,by:m.id,text:`Поставка создана. Маршрут: ${Ships.routeText(route)}.`,source:Ships.SRC.manual}]};
+  const files=attDraftFiles();if(files) s.files=files;
   S.shipments.push(s);
   // сразу на нужный этап — тоже через ядро: оно расставит груз на маршруте, запишет историю и разошлёт уведомление
   if(wanted&&wanted.id!==start.id) Ships.setStage(S,id,wanted.id,m.id,now,Ships.SRC.manual);
@@ -7637,6 +7695,7 @@ function dShip(s){
       ${Array.isArray(s.route)&&s.route.length>1?`<dt>Маршрут</dt><dd>${esc(Ships.routeText(s.route))}</dd>`:''}</dl>
     <div><h4 class="sh">Позиции · штук ${num(Ships.units(s))}</h4>${shipItems(s)}</div>
     ${waits.length?`<div class="waits">${ic('users')}<span>${s.dir==='in'?'Ждут этот товар':'Для сделки'}: ${waits.join(', ')}</span></div>`:''}
+    ${attCardHtml('ship',s)}
     ${photos}${acts.length?`<div class="ship-f">${acts.join('')}</div>`:''}
     <div><h4 class="sh">История отметок</h4><ul class="shist">${hist||'<li class="muted">Отметок пока нет.</li>'}</ul></div>`};
 }
@@ -9893,7 +9952,7 @@ const dspStagePill=d=>`<span class="pill sm ${dspTone(d)}">${esc(dspStageName(d)
 // «сегодня, 10:00–14:00»: дата и окно, если оно задано
 const dspWhen=d=>{const w=d.when||{};return fRel(w.date)+(w.from?', '+w.from+(w.till?'–'+w.till:''):'')};
 const dspTel=p=>String(p||'').replace(/[^\d+]/g,'');
-const dspSize=n=>n<1024?n+' Б':n<1048576?Math.round(n/1024)+' КБ':(n/1048576).toFixed(1).replace('.',',')+' МБ';
+const dspSize=attSize;
 const dspCell=c=>`${Stock.entityName(S,c.entityId)??c.entityId}, ${Stock.cityName(S,c.cityId)??c.cityId}`;
 const dspPicked=d=>{const p=Dispatch.picked(d);return `собрано ${p.done} из ${p.total}`};
 // Подсказка «свободно N» у товара из каталога: число берёт Stock.summary (stockOf), своего расчёта нет
@@ -9909,15 +9968,10 @@ function dspBadge(st=S,personId=S.me,now=new Date()){
 }
 
 // ——— файлы ———
-const dspIsImage=f=>/^image\//.test(f.type||'')&&typeof f.data==='string'&&f.data.startsWith('data:image/');
+const dspIsImage=attIsImage;
 // Файл заявки в карточке: картинка — миниатюра, открывается крупно; остальное — название, размер, «скачать».
 // Не поместился в браузер (unsaved) — пометка вместо файла.
-function dspFileHtml(d,f){
-  const size=dspSize(f.size||0);
-  if(f.unsaved||!f.data) return `<div class="dsp-fl bad">${ic('file')}<span>${esc(f.name)}<small>${size}</small><small class="warn-t">${f.unsaved?'не сохранено — мало места в браузере':'нет данных: файл'}</small></span></div>`;
-  if(dspIsImage(f)) return `<button type="button" class="dsp-th" data-act="dsp-file" data-key="${esc(d.id+'|'+f.id)}" aria-label="Открыть: ${esc(f.name)}"><img src="${esc(f.data)}" alt="${esc(f.name)}"><small>${esc(f.name)}</small></button>`;
-  return `<a class="dsp-fl" href="${esc(f.data)}" download="${esc(f.name)}">${ic('file')}<span>${esc(f.name)}<small>${size} · скачать</small></span></a>`;
-}
+function dspFileHtml(d,f){return attFileHtml(f,'dsp-file',d.id+'|'+f.id)}
 
 // ——— отбор: одни условия на список, воронку и блок «Назначены мне» ———
 function dspList(u,funnel){
@@ -10077,14 +10131,7 @@ function dspPresHtml(q){
   if(!hits.length) return '<p class="hint">В каталоге такого нет — добавьте свою строку.</p>';
   return `<ul class="dsp-pres">${hits.map(p=>`<li><button type="button" class="dpr" data-act="dsp-add" data-pid="${esc(p.id)}"><span class="dpr-n">${esc(p.name)}</span><small>${esc(dspFreeText(p.id))}</small>${ic('plus')}</button></li>`).join('')}</ul>`;
 }
-function dspFilesEditHtml(x){
-  if(!x.files.length) return '<p class="muted m0">Файлов нет.</p>';
-  return x.files.map((f,i)=>{
-    const rm=`<button type="button" class="btn ghost icon dsp-rm" data-act="dsp-file-del" data-i="${i}" aria-label="Убрать файл: ${esc(f.name)}">${ic('x')}</button>`;
-    return dspIsImage(f)?`<figure class="dsp-th"><img src="${esc(f.data)}" alt="${esc(f.name)}"><small>${esc(f.name)}</small>${rm}</figure>`
-      :`<div class="dsp-fl">${ic('file')}<span>${esc(f.name)}<small>${dspSize(f.size||0)}${f.unsaved?' · не сохранено — мало места в браузере':''}</small></span>${rm}</div>`;
-  }).join('');
-}
+function dspFilesEditHtml(x){return attEditHtml(x.files,'dsp-file-del')}
 MODALS.dispatchForm=()=>{
   const x=dspDraft()||dspDraftFrom({},'');
   const f=(id,label,html,cls)=>`<div class="field${cls?' '+cls:''}"><label for="dsp-${id}">${label}</label>${html}</div>`;
@@ -10128,7 +10175,7 @@ MODALS.dspSell=o=>{
 MODALS.dspFile=key=>{
   const [id,fid]=String(key).split('|'),d=Dispatch.byId(S,id),f=d&&d.files.find(x=>x.id===fid);
   if(!f) return `<div>${mHead('Файл')}<div class="modal-b"><p class="m0">Файла нет.</p></div></div>`;
-  return `<div>${mHead(esc(f.name))}<div class="modal-b">${dspIsImage(f)?`<img class="dsp-big" src="${esc(f.data)}" alt="${esc(f.name)}">`:''}<a class="btn" href="${esc(f.data)}" download="${esc(f.name)}">${ic('file')}Скачать · ${esc(dspSize(f.size||0))}</a></div></div>`;
+  return `<div>${mHead(esc(f.name))}<div class="modal-b">${attBigHtml(f)}</div></div>`;
 };
 
 // ——— действия ———
@@ -10205,18 +10252,11 @@ ON.change['dsp-file']=t=>{dspReadFiles(t.files);t.value=''};
 // Выбранные файлы читаются в data-URL и встают в черновик; в сохранение они попадают вместе с заявкой (Store.dump).
 // Файл больше Store.FILE_MAX (2 МБ) не прикрепляется.
 function dspReadFiles(files){
-  const x=dspDraft();if(!x||typeof FileReader==='undefined') return;
-  [...files].forEach(f=>{
-    // больше предела — отказ сразу, файл не читается (те же слова, что у ядра заявки)
-    const big=Store.fileTooBig(f);if(big){toast(big,'warn');return}
-    const fr=new FileReader();
-    fr.onload=()=>{
-      if(dspDraft()!==x) return;
-      x.files.push({name:f.name,type:f.type||'',size:f.size,data:String(fr.result)});
-      const box=byId('dsp-files');if(box) box.innerHTML=dspFilesEditHtml(x);
-    };
-    fr.onerror=()=>toast(`Файл «${f.name}» не прочитался.`,'warn');
-    fr.readAsDataURL(f);
+  const x=dspDraft();if(!x) return;
+  attReadFiles(files,file=>{
+    if(dspDraft()!==x) return;
+    x.files.push(file);
+    const box=byId('dsp-files');if(box) box.innerHTML=dspFilesEditHtml(x);
   });
 }
 // «Собрано»: галочка строки → Dispatch.pick; не вышло — вернуть галочку и сказать почему
@@ -10505,6 +10545,114 @@ VIEWS.clients=vClients;
 SEARCH.push({kind:'client',label:'Клиент',order:40,find:q=>!can('clients')?[]:clientsSeen(Clients.search(S,q)).map(c=>({title:c.name,sub:`${c.id}${c.inn?' · ИНН '+c.inn:''}`,open:`data-act="open-client" data-id="${esc(c.id)}"`}))});
 DRAWERS.client=id=>{const c=can('clients')?Clients.byId(S,id):null;return c&&clientVisible(c)?dClient(c):null};
 regRef('client','клиент',id=>!!Clients.byId(S,id),'open-client');
+
+// Файлы у записи: разметка и чтение файлов с диска. Ядро — Attach (44-attach.js); общие помощники (размер, миниатюра,
+// чтение) берут и отправки (69-dispatch.js), здесь же — поле «Файлы» в формах новой задачи и поставки и блок «Файлы»
+// в карточках задачи и поставки. Черновик формы лежит в S.ui.attDraft ({kind, files}) и не сохраняется.
+
+const ATT_MAX_HINT='Фото и документы любого типа, каждый до 2 МБ. Большие файлы могут не поместиться в браузер: тогда у них будет пометка.';
+
+// Чьи файлы и кто что может: kind → запись, видна ли она человеку и может ли он убирать чужие файлы.
+// Видна — так же, как открывается её карточка (taskVisible, право на остатки или перевозки).
+const ATT={
+  task:{rec:id=>S.tasks.find(t=>t.id===id),see:t=>taskVisible(t),any:t=>t.from===S.me},
+  ship:{rec:id=>ship(id),see:()=>can('stock')||can('logistics'),any:()=>can('logistics')}
+};
+
+function attSize(n){return n<1024?n+' Б':n<1048576?Math.round(n/1024)+' КБ':(n/1048576).toFixed(1).replace('.',',')+' МБ'}
+function attIsImage(f){return /^image\//.test(f.type||'')&&typeof f.data==='string'&&f.data.startsWith('data:image/')}
+
+// Файл в карточке: картинка — миниатюра, она открывается крупно (act, key); остальное — название, размер, «скачать».
+// Не поместился в браузер (unsaved) — пометка вместо файла. who — подпись «кто приложил», если известна.
+function attFileHtml(f,act,key,who){
+  const size=attSize(f.size||0);
+  if(f.unsaved||!f.data) return `<div class="dsp-fl bad">${ic('file')}<span>${esc(f.name)}<small>${size}</small><small class="warn-t">${f.unsaved?'не сохранено — мало места в браузере':'нет данных: файл'}</small></span></div>`;
+  if(attIsImage(f)) return `<button type="button" class="dsp-th" data-act="${act}" data-key="${esc(key)}" aria-label="Открыть: ${esc(f.name)}"><img src="${esc(f.data)}" alt="${esc(f.name)}"><small>${esc(f.name)}</small></button>`;
+  return `<a class="dsp-fl" href="${esc(f.data)}" download="${esc(f.name)}">${ic('file')}<span>${esc(f.name)}<small>${size} · скачать${who?' · '+esc(who):''}</small></span></a>`;
+}
+// Список файлов в форме: у каждого крестик (act убирает файл по номеру data-i).
+function attEditHtml(files,delAct){
+  if(!files.length) return '<p class="muted m0">Файлов нет.</p>';
+  return files.map((f,i)=>{
+    const rm=`<button type="button" class="btn ghost icon dsp-rm" data-act="${delAct}" data-i="${i}" aria-label="Убрать файл: ${esc(f.name)}">${ic('x')}</button>`;
+    return attIsImage(f)?`<figure class="dsp-th"><img src="${esc(f.data)}" alt="${esc(f.name)}"><small>${esc(f.name)}</small>${rm}</figure>`
+      :`<div class="dsp-fl">${ic('file')}<span>${esc(f.name)}<small>${attSize(f.size||0)}${f.unsaved?' · не сохранено — мало места в браузере':''}</small></span>${rm}</div>`;
+  }).join('');
+}
+// Крупно: картинка и кнопка «Скачать» — тело окна файла.
+function attBigHtml(f){
+  return `${attIsImage(f)?`<img class="dsp-big" src="${esc(f.data)}" alt="${esc(f.name)}">`:''}<a class="btn" href="${esc(f.data)}" download="${esc(f.name)}">${ic('file')}Скачать · ${esc(attSize(f.size||0))}</a>`;
+}
+// Выбранные на диске файлы читаются в data-URL; каждый готовый уходит в onAdd({name, type, size, data}).
+// Файл больше Store.FILE_MAX (2 МБ) не читается: сразу отказ, те же слова, что у ядра.
+function attReadFiles(files,onAdd){
+  if(typeof FileReader==='undefined') return;
+  [...files].forEach(f=>{
+    const big=Store.fileTooBig(f);if(big){toast(big,'warn');return}
+    const fr=new FileReader();
+    fr.onload=()=>onAdd({name:f.name,type:f.type||'',size:f.size,data:String(fr.result)});
+    fr.onerror=()=>toast(`Файл «${f.name}» не прочитался.`,'warn');
+    fr.readAsDataURL(f);
+  });
+}
+
+// ——— форма новой записи: поле «Файлы» ———
+const attDraft=()=>S.ui.attDraft||null;
+function attFormHtml(){
+  const d=attDraft();
+  return `<div class="field"><span class="lbl">Файлы</span><div id="att-files" class="dsp-files">${attEditHtml(d?d.files:[],'att-draft-del')}</div><label class="btn att-add" for="att-add-draft">${ic('plus')}Прикрепить файлы<input id="att-add-draft" class="sr" type="file" multiple data-on="att-draft"></label><small class="hint">${ATT_MAX_HINT}</small></div>`;
+}
+// Файлы черновика → чистые файлы для новой записи; пусто — undefined (поля files у записи тогда нет).
+function attDraftFiles(){
+  const d=attDraft(),files=d?Attach.clean(d.files,[]):[];
+  return files.length?files:undefined;
+}
+ON.change['att-draft']=t=>{
+  const d=attDraft();if(!d) return;
+  attReadFiles(t.files,file=>{
+    if(attDraft()!==d) return;
+    d.files.push({...file,by:S.me,at:new Date()});
+    const box=byId('att-files');if(box) box.innerHTML=attEditHtml(d.files,'att-draft-del');
+  });
+  t.value='';
+};
+A['att-draft-del']=el=>{const d=attDraft();if(!d) return;d.files.splice(+el.dataset.i,1);byId('att-files').innerHTML=attEditHtml(d.files,'att-draft-del')};
+
+// ——— карточка готовой записи: блок «Файлы» ———
+// Прикрепляются сразу, без «Сохранить». Убрать свой файл может тот, кто его приложил; чужой — тот, кому ATT[kind].any разрешает.
+function attCardHtml(kind,rec){
+  const o=ATT[kind],files=rec.files||[];
+  const list=files.length?files.map(f=>{
+    const who=f.by?(person(f.by)?.name||'')+(f.at?', '+fWhen(f.at):''):'';
+    const rm=Attach.canRemove(f,S.me,o.any(rec))?`<button type="button" class="btn sm ghost" data-act="att-del" data-kind="${kind}" data-id="${esc(rec.id)}" data-fid="${esc(f.id)}" aria-label="Убрать файл: ${esc(f.name)}">Убрать</button>`:'';
+    return `<div class="att-item">${attFileHtml(f,'att-file',kind+'|'+rec.id+'|'+f.id,who)}${rm}</div>`;
+  }).join(''):'<p class="muted m0">Файлов нет.</p>';
+  return `<div><h4 class="sh">Файлы</h4><div class="dsp-files">${list}</div><label class="btn att-add" for="att-add-${kind}">${ic('plus')}Прикрепить файлы<input id="att-add-${kind}" class="sr" type="file" multiple data-on="att-add" data-kind="${kind}" data-id="${esc(rec.id)}"></label><small class="hint">${ATT_MAX_HINT}</small></div>`;
+}
+ON.change['att-add']=t=>{
+  const {kind,id}=t.dataset,o=ATT[kind],rec=o&&o.rec(id);
+  if(!rec||!o.see(rec)){toast('Сюда файлы прикрепить нельзя.','warn');t.value='';return}
+  attReadFiles(t.files,file=>{
+    const cur=o.rec(id);if(!cur||!o.see(cur)) return;
+    const r=Attach.add(cur,[file],S.me,new Date());
+    if(!r.ok){toast(r.reason,'warn');return}
+    render();toast(`Файл «${file.name}» приложен.`);
+  });
+  t.value='';
+};
+A['att-del']=el=>{
+  const {kind,id,fid}=el.dataset,o=ATT[kind],rec=o&&o.rec(id);
+  if(!rec||!o.see(rec)) return;
+  const r=Attach.remove(rec,fid,S.me,o.any(rec));
+  if(!r.ok){toast(r.reason,'warn');return}
+  render();toast(`Файл «${r.file.name}» убран.`);
+};
+A['att-file']=el=>openModal('attFile',el.dataset.key);
+MODALS.attFile=key=>{
+  const [kind,id,fid]=String(key).split('|'),o=ATT[kind],rec=o&&o.rec(id),f=rec&&o.see(rec)&&(rec.files||[]).find(x=>x.id===fid);
+  if(!f) return `<div>${mHead('Файл')}<div class="modal-b"><p class="m0">Файла нет.</p></div></div>`;
+  return `<div>${mHead(esc(f.name))}<div class="modal-b">${attBigHtml(f)}</div></div>`;
+};
 
 // Запуск: состояние из браузера (localStorage[Store.KEY]); нет или битое — демо seed(). Затем первая отрисовка.
 

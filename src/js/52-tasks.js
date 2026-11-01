@@ -65,7 +65,8 @@ function dTask(t){
     <div class="seg wide">${stagesFor(t).map(st=>`<button class="${t.stageId===st.id?'on':''}" data-act="task-st" data-id="${t.id}" data-st="${esc(st.id)}">${esc(st.name)}</button>`).join('')}</div>
     ${taskTakable(t)?`<div class="tk-box"><p class="m0">Задача поставлена отделу. Нажмите «Взять» — вы станете исполнителем, у остальных в отделе она пропадёт из «Моих задач».</p><button type="button" class="btn pri" data-act="task-take" data-id="${t.id}">Взять задачу</button></div>`:''}
     <dl class="kv"><dt>Кому</dt><dd>${esc(targetName(t))}${dept?' <span class="pill info sm">отделу</span>':''}</dd>${t.took?`<dt>Взял(а)</dt><dd>${esc(person(t.to.id)?.name||'нет данных: сотрудник')} из отдела «${esc(deptName(t.took.dept))}», ${fWhen(t.took.at)}</dd>`:''}<dt>Срок</dt><dd class="${over?'bad-t':''}">${fD(t.due)}, ${WD[new Date(t.due).getDay()]}${over?' · просрочена':''}</dd><dt>Важность</dt><dd>${t.prio==='high'?'Срочно':'Обычная'}</dd>${d?`<dt>Сделка</dt><dd>${can('clients')?`<button class="link" data-act="open-deal" data-id="${d.id}">${d.id} · ${esc(d.client)}</button>`:d.id}</dd>`:''}</dl>
-    ${t.desc?`<div><h4 class="sh">Подробности</h4><p class="prose">${esc(t.desc)}</p></div>`:''}`};
+    ${t.desc?`<div><h4 class="sh">Подробности</h4><p class="prose">${esc(t.desc)}</p></div>`:''}
+    ${attCardHtml('task',t)}`};
 }
 
 // «Взять»: первый взявший из отдела становится исполнителем. Задача уходит из «Моих задач» остальных,

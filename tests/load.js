@@ -37,8 +37,9 @@ function fakeEl(id) {
 
 // Заглушки окружения браузера. storage — содержимое localStorage, hash — location.hash,
 // dark — ответ prefers-color-scheme: dark (undefined — в окружении нет matchMedia),
-// now — «сейчас» страницы: new Date() и Date.now() без аргументов отдают его (undefined — настоящие часы).
-function fakeWindow({ storage = {}, hash = '', dark, now } = {}) {
+// now — «сейчас» страницы: new Date() и Date.now() без аргументов отдают его (undefined — настоящие часы),
+// globals — что ещё положить в окно (например, поддельный FileReader).
+function fakeWindow({ storage = {}, hash = '', dark, now, globals } = {}) {
   const els = new Map();
   const byId = id => { if (!els.has(id)) els.set(id, fakeEl(id)); return els.get(id); };
   // слушатели страницы на document запоминаются: тест шлёт событие через dispatchEvent({type, target})
@@ -60,6 +61,7 @@ function fakeWindow({ storage = {}, hash = '', dark, now } = {}) {
   // таймеры страницы (тосты, отложенное сохранение) не держат процесс тестов
   const timer = (f, ms) => { const t = setTimeout(f, ms); t.unref?.(); return t; };
   const sandbox = { document, localStorage, location: { hash }, console, setTimeout: timer, clearTimeout };
+  if (globals) Object.assign(sandbox, globals);
   if (now !== undefined) {
     const at = new Date(now).getTime();
     sandbox.Date = new Proxy(Date, {

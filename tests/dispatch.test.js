@@ -1001,7 +1001,7 @@ test('сохранение страницы: файлы заявок не пом
   const r = Dispatch.create(S, { purpose: 'other', to: { name: 'Клиент-пример 81', phone: '+7 900 000-00-81' }, address: 'г. Иркутск, ул. Примерная, 81 (пример)', when: { date: new Date(2026, 10, 5) }, items: [{ text: 'Документы', qty: 1 }], files: [1, 2, 3].map(k => ({ name: `большой-${k}.txt`, type: 'text/plain', size: big.length, data: big })) }, S.me, new Date(2026, 10, 1));
   assert.equal(r.ok, true, r.reason);
   assert.equal(app.save().ok, true);
-  assert.equal(toasts.filter(t => t.includes('Файлы заявок не сохранены — мало места в браузере')).length, 1, `тост про файлы заявок: ${JSON.stringify(toasts)}`);
+  assert.equal(toasts.filter(t => t.includes('Файлы не сохранены — мало места в браузере')).length, 1, `тост про файлы заявок: ${JSON.stringify(toasts)}`);
   app.save();
   assert.equal(toasts.filter(t => t.includes('не сохранены')).length, 1, 'тост повторяется при каждом сохранении');
   // в сохранении файла нет, у файла пометка — после перезагрузки карточка говорит «не сохранено»

@@ -183,19 +183,6 @@ const Dispatch = (() => {
     }
     return { items, bad };
   }
-  function cleanFiles(st, list, existing) {
-    const used = [...(existing || [])];
-    const out = [];
-    for (const f of Array.isArray(list) ? list : []) {
-      if (!f || !str(f.name)) continue;
-      const file = { id: f.id || Store.freeId(used, 'fl'), name: str(f.name), type: str(f.type), size: Number(f.size) || 0, data: typeof f.data === 'string' && f.data ? f.data : null };
-      if (f.unsaved) file.unsaved = true;
-      used.push(file);
-      out.push(file);
-    }
-    return out;
-  }
-
   // Введённое → запись заявки без служебных полей. → {rec} | {missing:[ключ…], reason}
   function normalize(st, data, current) {
     const d = data || {};
@@ -226,8 +213,7 @@ const Dispatch = (() => {
     if (dealId && !(st.deals || []).some(x => x.id === dealId)) return { missing: [], reason: `Сделки ${dealId} нет.` };
     // новый файл с данными больше предела (Store.FILE_MAX) — отказ; уже сохранённые файлы заявки и файлы без данных
     // (не поместились в браузер) места не занимают и не проверяются
-    const had = new Set(((current && current.files) || []).map(f => f.id));
-    const big = (Array.isArray(d.files) ? d.files : []).filter(f => f && !had.has(f.id) && typeof f.data === 'string' && f.data).map(Store.fileTooBig).find(Boolean);
+    const big = Attach.tooBig(d.files, current && current.files);
     if (big) return { missing: [], reason: big };
     if (missing.length) {
       return { missing, reason: reason || `Не заполнено: ${missing.map(k => MISSING[k]).join(', ')}.` };
@@ -237,7 +223,7 @@ const Dispatch = (() => {
     if (hhmm(d.when && d.when.till)) when.till = hhmm(d.when.till);
     const rec = {
       purpose, to: { name, phone }, address, when, items: it.items,
-      files: cleanFiles(st, d.files, current && current.files), note: str(d.note),
+      files: Attach.clean(d.files, current && current.files), note: str(d.note),
     };
     if (purpose === 'transfer') { rec.from = from; rec.toCell = toCell; }
     if (dealId) rec.dealId = dealId;

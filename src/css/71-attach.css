@@ -1,0 +1,3 @@
+/* Файлы у задачи и поставки: сами файлы рисуются классами отправок (.dsp-files, .dsp-th, .dsp-fl) */
+.att-item{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:0;max-width:100%}
+.att-add{align-self:flex-start;margin-top:8px;cursor:pointer}

@@ -42,7 +42,7 @@ function save(){
     }
   }
   if(!ok) toast('Изменения не сохранены — мало места в браузере','warn');
-  else if((r.droppedPhotos||r.droppedFiles)&&(r.droppedPhotos+r.droppedFiles)!==_photoWarn) toast((r.droppedPhotos?'Фото':'Файлы заявок')+(r.droppedPhotos&&r.droppedFiles?' и файлы заявок':'')+' не сохранены — мало места в браузере','warn');
+  else if((r.droppedPhotos||r.droppedFiles)&&(r.droppedPhotos+r.droppedFiles)!==_photoWarn) toast((r.droppedPhotos?'Фото':'Файлы')+(r.droppedPhotos&&r.droppedFiles?' и файлы':'')+' не сохранены — мало места в браузере','warn');
   _photoWarn=(r.droppedPhotos||0)+(r.droppedFiles||0);
   return {ok,droppedPhotos:r.droppedPhotos,fits:r.fits&&ok};
 }
@@ -148,6 +148,7 @@ function mTask(){
     <div class="grid2"><div class="field"><label for="t-due">Срок</label><input id="t-due" type="date" class="inp" value="${iso(day(2))}"></div><div class="field"><label for="t-prio">Важность</label><select id="t-prio" class="inp"><option value="normal">Обычная</option><option value="high">Срочно</option></select></div></div>
     ${can('clients')?`<div class="field"><label for="t-deal">Сделка</label><select id="t-deal" class="inp"><option value="">Без сделки</option>${Leads.dealsVisible(S,S.me).map(d=>`<option value="${d.id}">${d.id} · ${esc(d.client)}</option>`).join('')}</select></div>`:''}
     <div class="field"><label for="t-desc">Подробности</label><textarea id="t-desc" class="inp" rows="3" placeholder="Что важно знать исполнителю"></textarea></div>
+    ${attFormHtml()}
     ${all?'':'<p class="hint">У вашей роли нет права ставить задачи другим отделам — в списке только ваш отдел.</p>'}
     <p class="err" id="t-err" hidden></p></div>${mFoot('Поставить и уведомить')}</form>`;
 }
@@ -175,6 +176,7 @@ function mShip(){
     <div class="grid2"><div class="field"><label for="ns-city">Куда едет (город)</label><select id="ns-city" class="inp">${S.cities.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select></div><div class="field"><label for="ns-ent">На какое юрлицо</label><select id="ns-ent" class="inp">${S.entities.map(e=>`<option value="${esc(e.id)}">${esc(e.name)}</option>`).join('')}</select></div></div>
     <p class="hint">Маршрут: Китай → Чита (таможня и перевалка) → выбранный город.</p>
     <div class="field"><span class="lbl">Что едет</span><div id="ns-items" class="stack-s" style="gap:8px">${irow()}</div><div><button type="button" class="btn sm ghost" data-act="add-irow">${ic('plus')}Ещё позиция</button></div></div>
+    ${attFormHtml()}
     <p class="err" id="ns-err" hidden></p></div>${mFoot('Создать и уведомить')}</form>`;
 }
 function mProduct(){
@@ -188,8 +190,8 @@ const mReset=()=>`<form data-form="reset" novalidate>${mHead('Сбросить �
     <p class="hint">Останутся: кто вы в «Кто я», открытый раздел и тема.</p>
   </div>${mFoot('Сбросить')}</form>`;
 const MODALS={task:()=>mTask(),stage:id=>mStage(ship(id)),ship:()=>mShip(),product:()=>mProduct(),reset:()=>mReset()};
-function openModal(type,id){S.ui.modal={type,id};const r=byId('modal-root');r.innerHTML=`<div class="modal-wrap"><div class="modal" role="dialog" aria-modal="true">${MODALS[type](id)}</div></div>`;setTimeout(()=>r.querySelector('input:not([type=checkbox]),select')?.focus(),30)}
-function closeModal(){if(S) S.ui.modal=null;byId('modal-root').innerHTML=''}
+function openModal(type,id){S.ui.modal={type,id};S.ui.attDraft=type==='task'||type==='ship'?{kind:type,files:[]}:null;const r=byId('modal-root');r.innerHTML=`<div class="modal-wrap"><div class="modal" role="dialog" aria-modal="true">${MODALS[type](id)}</div></div>`;setTimeout(()=>r.querySelector('input:not([type=checkbox]),select')?.focus(),30)}
+function closeModal(){if(S){S.ui.modal=null;S.ui.attDraft=null}byId('modal-root').innerHTML=''}
 const showErr=(id,t)=>{const e=byId(id);e.textContent=t;e.hidden=false};
 
 // ——— карточка справа ———
@@ -502,6 +504,7 @@ const FORMS={
     if(!title){showErr('t-err','Напишите, что нужно сделать.');byId('t-title').focus();return}
     const [tt,id]=byId('t-to').value.split(':'),due=byId('t-due').value,m=me(),now=new Date(),board=curBoard();
     const t={id:Store.freeId(S.tasks,'t'),title,desc:byId('t-desc').value.trim(),to:{t:tt,id},from:m.id,due:due?fromIso(due,18):day(2,18),boardId:board.id,stageId:startStage(board.id).id,prio:byId('t-prio').value,deal:byId('t-deal')?.value||'',at:now};
+    const files=attDraftFiles();if(files) t.files=files;
     S.tasks.push(t);
     Notify.push(S,'task',m.id,`Новая задача: «${title}», срок ${fD(t.due)}.${t.deal?' Сделка '+t.deal+'.':''} От: ${m.name}.`,now,targetPeople(t.to),{t:'task',id:t.id});
     closeModal();render();toast(`Задача поставлена. ${targetName(t)} — уведомление отправлено.`);
