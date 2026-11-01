@@ -6534,7 +6534,8 @@ const Visible = (() => {
   // клиенты — client, задачи — task, лента и дела — по видимости карточки; резерв и движение невидимой сделки остаются,
   // но вместо номера сделки — Stock.HIDDEN_ID; уведомления — свои (с правом «вся фирма» — все); без права «цены» — без цен
   // (товары, суммы и строки сделок, цены в тексте ленты); почта и переписка — пустые; prefs — только свои строки;
-  // поставки — с правом остатков, перевозок или приёмки. Исходное состояние не меняется.
+  // поставки — с правом остатков, перевозок или приёмки; в заявке на отправку номер невидимой сделки — Stock.HIDDEN_ID.
+  // Исходное состояние не меняется.
   function of(st, pid) {
     const s = seen(st, pid), out = {};
     const exists = new Set((st.deals || []).map(d => d.id));
@@ -6560,6 +6561,10 @@ const Visible = (() => {
           break;
         case 'moves':
           out.moves = (v || []).map(m => { const c = copy(m); if (c.doc) c.doc = hideDeal(c.doc); return c; });
+          break;
+        // заявки на отправку видят все, но номер невидимой сделки в заявке скрыт
+        case 'dispatches':
+          out.dispatches = (v || []).map(d => { const c = copy(d); if (c.dealId) c.dealId = hideDeal(c.dealId); return c; });
           break;
         case 'mail': out.mail = { boxes: [], suppliers: [], letters: [] }; break;
         case 'msgs': out.msgs = []; break;
