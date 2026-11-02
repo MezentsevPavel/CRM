@@ -4,8 +4,10 @@
 // такой заголовок без спроса не пошлёт), иначе 403; без сеанса — 401.
 
 const fs = require('node:fs');
+const crypto = require('node:crypto');
 const path = require('node:path');
 const http = require('node:http');
+const net = require('node:net');
 const { openDb } = require('./db.js');
 const { createRuntime } = require('./runtime.js');
 const { createAuth, generatePassword, PASSWORD_MIN } = require('./auth.js');
@@ -35,8 +37,49 @@ function serverPage(lite = false) {
     + body + '\n</body>\n</html>\n';
 }
 
+// Запрет посторонних скриптов (Content-Security-Policy). Скрипты страницы встроены в неё же, поэтому разрешены не словом
+// 'unsafe-inline', а хэшем sha256 каждого из них — считается с тех байтов, что уходят в ответ, а не заранее. Чужой <script>,
+// обработчик в атрибуте (onclick=), eval и javascript:-ссылка не выполняются. Подключения (fetch, поток событий) — только к себе;
+// шрифты в страницу встроены data:-адресами, картинки — свои, data: (логотип, фото до отправки) и blob:. Стили встроены и
+// в style="", поэтому для стилей 'unsafe-inline' остаётся — скрипты он не открывает.
+function scriptHashes(html) {
+  const out = [];
+  for (const m of html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)) {
+    // браузер читает страницу, заменив CRLF и CR на LF: хэш считается с того же текста
+    const text = m[1].replace(/\r\n?/g, '\n');
+    out.push("'sha256-" + crypto.createHash('sha256').update(text, 'utf8').digest('base64') + "'");
+  }
+  return [...new Set(out)];
+}
+function pageCsp(html) {
+  return [
+    "default-src 'self'",
+    'script-src ' + (scriptHashes(html).join(' ') || "'none'"),
+    "connect-src 'self'",
+    "img-src 'self' data: blob:",
+    "font-src 'self' data:",
+    "style-src 'self' 'unsafe-inline'",
+    "object-src 'none'", "base-uri 'none'", "form-action 'self'", "frame-ancestors 'none'",
+  ].join('; ');
+}
+// Ответы без страницы (JSON, поток событий, копии): им не нужно ничего исполнять и встраивать
+const API_CSP = "default-src 'none'; base-uri 'none'; frame-ancestors 'none'";
+
+// Адрес клиента для счёта неудачных входов. Сервер слушает только 127.0.0.1, и настоящий адрес ему сообщает Caddy в заголовке
+// X-Forwarded-For (deploy/install.sh ставит его сам: header_up X-Forwarded-For {remote_host}); берётся последний элемент — тот,
+// что дописал Caddy. Заголовку верим, только если соединение пришло с этой же машины (127.0.0.1, ::1): с любого другого адреса
+// его мог написать кто угодно, и тогда адрес — сам адрес соединения.
+const bare = a => String(a || '').replace(/^::ffff:/i, '');
+function clientIp(remoteAddress, forwardedFor) {
+  const remote = bare(remoteAddress);
+  if (remote !== '127.0.0.1' && remote !== '::1') return remote;
+  const list = (Array.isArray(forwardedFor) ? forwardedFor.join(',') : String(forwardedFor || '')).split(',');
+  const last = bare(list[list.length - 1].trim());
+  return net.isIP(last) ? last : remote;
+}
+
 // База, ядро, вход, файлы и состояние — без HTTP. Ревизия базы меньше Store.REV — миграции или отказ с текстом.
-function openCore({ dataDir, now = Date.now, fileMaxMb = 20, secureCookie = false, onSeq, backupHour, backupKeep } = {}) {
+function openCore({ dataDir, now = Date.now, fileMaxMb = 20, secureCookie = false, onSeq, backupHour, backupKeep, passwordCostLog2 } = {}) {
   if (!dataDir) throw new Error('Не задана папка данных (CRM_DATA)');
   const clock = () => { const v = now(); return v instanceof Date ? v.getTime() : Number(v); };
   const store = openDb(dataDir);
@@ -45,7 +88,7 @@ function openCore({ dataDir, now = Date.now, fileMaxMb = 20, secureCookie = fals
     const files = createFiles({ store, dataDir, maxBytes: fileMaxMb * 1048576, now: clock });
     let sync = null;
     const personOf = pid => (sync ? sync.personOf(pid) : null);
-    const auth = createAuth({ store, now: clock, secureCookie: !!secureCookie, personOf });
+    const auth = createAuth({ store, now: clock, secureCookie: !!secureCookie, personOf, costLog2: passwordCostLog2 });
     sync = createSync({ store, core, now: clock, files, onSeq: s => onSeq && onSeq(s) });
     if (isEmpty(store)) sync.init();
     else {
@@ -97,7 +140,7 @@ function adminOf({ sync, auth, backups }) {
 function send(res, status, body, headers = {}) {
   const text = JSON.stringify(body);
   res.writeHead(status, {
-    'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
+    'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': API_CSP,
     'Content-Length': Buffer.byteLength(text), ...headers,
   });
   res.end(text);
@@ -137,8 +180,14 @@ function readJson(req) {
   });
 }
 
-async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCookie = false, now = Date.now, fileMaxMb = 20, backupHour, backupKeep } = {}) {
+// passwordCostLog2 — только для тестов: степень двойки для N новых хешей паролей (в работе не задаётся — 17)
+async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCookie = false, now = Date.now, fileMaxMb = 20, backupHour, backupKeep, passwordCostLog2 } = {}) {
   const page = serverPage(), pageLite = serverPage(true);
+  const pageHeaders = html => ({
+    'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY', 'Referrer-Policy': 'same-origin', 'Content-Security-Policy': pageCsp(html),
+  });
+  const pageHead = pageHeaders(page), pageLiteHead = pageHeaders(pageLite);
   // Поток событий: сеанс → открытые потоки
   const streams = new Map();
   const write = (res, event, data) => { try { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch { /* поток закрыт */ } };
@@ -150,7 +199,7 @@ async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCooki
     }
   }
 
-  const ctx = openCore({ dataDir, now, fileMaxMb, secureCookie, backupHour, backupKeep, onSeq: s => broadcast('seq', s) });
+  const ctx = openCore({ dataDir, now, fileMaxMb, secureCookie, backupHour, backupKeep, passwordCostLog2, onSeq: s => broadcast('seq', s) });
   const { store, core, files, sync, auth, backups, clock } = ctx;
   // После восстановления базы все вкладки перезагружаются, а потоки закрытых сеансов закрываются
   backups.onRestored = ({ closed }) => { broadcast('reload', {}); bye(closed); };
@@ -168,7 +217,7 @@ async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCooki
     if (route === '/api/login' && method === 'POST') {
       const b = await readJson(req);
       if (b.error) return send(res, b.error[0], { error: b.error[1] });
-      const r = await auth.login(b.value || {}, req.socket.remoteAddress);
+      const r = await auth.login(b.value || {}, clientIp(req.socket.remoteAddress, req.headers['x-forwarded-for']));
       return send(res, r.status, r.body, r.cookie ? { 'Set-Cookie': r.cookie } : {});
     }
 
@@ -188,7 +237,7 @@ async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCooki
     if (route === '/api/password' && method === 'POST') {
       const b = await readJson(req);
       if (b.error) return send(res, b.error[0], { error: b.error[1] });
-      const r = await auth.changePassword(ses, b.value || {});
+      const r = await auth.changePassword(ses, b.value || {}, clientIp(req.socket.remoteAddress, req.headers['x-forwarded-for']));
       if (r.closed) closed(r.closed);
       return send(res, r.status, r.body, extra);
     }
@@ -213,7 +262,7 @@ async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCooki
       return ids ? send(res, 200, { ids }, extra) : send(res, 400, { error: 'Номера с таким началом сервер не выдаёт' }, extra);
     }
     if (route === '/api/events' && method === 'GET') {
-      res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no', ...extra });
+      res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no', 'Content-Security-Policy': API_CSP, ...extra });
       res.write('retry: 3000\n\n');
       write(res, 'seq', sync.seq);
       const set = streams.get(ses.tokenHash) || new Set();
@@ -285,7 +334,7 @@ async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCooki
         const file = backups.resolve(name);
         if (!file) return send(res, 404, { error: 'Такой копии нет' }, extra);
         res.writeHead(200, {
-          'Content-Type': 'application/octet-stream', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
+          'Content-Type': 'application/octet-stream', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': API_CSP,
           'Content-Length': fs.statSync(file).size, 'Content-Disposition': `attachment; filename="${name}"`, ...extra,
         });
         fs.createReadStream(file).on('error', () => res.destroy()).pipe(res);
@@ -307,13 +356,10 @@ async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCooki
         // вошедшему — полная страница, остальным — только форма входа (сеанс проверяется так же, как в API)
         sync.fresh();
         const ses = auth.session(req);
-        res.writeHead(200, {
-          'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
-          'X-Frame-Options': 'DENY', 'Referrer-Policy': 'same-origin', ...(ses && ses.refresh ? { 'Set-Cookie': ses.refresh } : {}),
-        });
+        res.writeHead(200, { ...(ses ? pageHead : pageLiteHead), ...(ses && ses.refresh ? { 'Set-Cookie': ses.refresh } : {}) });
         return res.end(ses ? page : pageLite);
       }
-      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Content-Security-Policy': API_CSP });
       res.end('Нет такой страницы');
     } catch (e) {
       console.error('Ошибка запроса', req.method, url.pathname + ':', e.message);
@@ -350,4 +396,4 @@ async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCooki
   };
 }
 
-module.exports = { createApp, openCore, adminOf, serverPage };
+module.exports = { createApp, openCore, adminOf, serverPage, pageCsp, scriptHashes, clientIp };

@@ -124,7 +124,7 @@ test('пароль: только scrypt с солью в users; ни хеша, �
     d.close();
     assert.equal(rows.length, 2);
     for (const u of rows) {
-      assert.match(u.hash, /^[0-9a-f]{128}$/);
+      assert.match(u.hash, /^scrypt\$1024\$8\$1\$[0-9a-f]{128}$/);
       assert.match(u.salt, /^[0-9a-f]{32}$/);
       assert.ok(!Object.values(u).includes(boss.password) && !Object.values(u).includes(anna.password), 'пароль открытым текстом');
     }
@@ -211,4 +211,121 @@ test('API директора: не директору — 403; «Отключи�
     const r = await login(srv, anna.login, fresh);
     assert.deepEqual([r.status, r.body.mustChange], [200, true]);
   } finally { await srv.stop(); }
+});
+
+// ——— предел попыток по компьютеру ———
+// Адрес клиента приходит от Caddy в X-Forwarded-For (соединение с этой же машины); в тестах его ставим сами.
+const A = '203.0.113.5', B = '203.0.113.6', C = '203.0.113.7';
+const loginFrom = (srv, ip, user, password) => call(srv, 'POST', '/api/login', { body: { login: user, password }, headers: { 'X-Forwarded-For': ip } });
+
+test('вход: 5 неудач с адреса А закрывают вход под этим логином только с А — с Б тот же логин и верный пароль входят; другие логины с А тоже', async () => {
+  const srv = await start();
+  try {
+    const boss = await director(srv);
+    const anna = await employee(srv, boss, { id: 'p2', name: 'Анна (тест)', role: 'managerB2c', dept: 'sales' });
+    for (let i = 0; i < 5; i++) assert.equal((await loginFrom(srv, A, 'boss', secret())).status, 401, 'попытка ' + (i + 1));
+    const closed = await loginFrom(srv, A, 'boss', boss.password);
+    assert.equal(closed.status, 429, 'с А вход закрыт даже с верным паролем');
+    assert.equal(closed.body.retryMin, 15);
+    assert.equal((await loginFrom(srv, B, 'boss', boss.password)).status, 200, 'с Б директор входит');
+    assert.equal((await loginFrom(srv, A, anna.login, anna.password)).status, 200, 'с А другой логин входит: закрыта пара, а не адрес');
+    srv.clock.t += 15 * MIN + 1;
+    assert.equal((await loginFrom(srv, A, 'boss', boss.password)).status, 200, 'через 15 минут и с А');
+  } finally { await srv.stop(); }
+});
+
+test('вход: 20 неудач с адреса по любым логинам закрывают адрес целиком; удачный вход под своей учёткой счёт адреса не обнуляет', async () => {
+  const srv = await start();
+  try {
+    const boss = await director(srv);
+    // 19 неудач по разным логинам, включая несуществующие
+    for (let i = 0; i < 19; i++) assert.equal((await loginFrom(srv, C, i % 2 ? 'boss' + i : 'нет' + i, secret())).status, 401, 'попытка ' + (i + 1));
+    assert.equal((await loginFrom(srv, C, 'boss', secret())).status, 401, '20-я неудача ещё отвечает как неудача');
+    const closed = await loginFrom(srv, C, 'boss', boss.password);
+    assert.equal(closed.status, 429, 'после 20 неудач адрес закрыт и для верного пароля');
+    assert.equal((await loginFrom(srv, B, 'boss', boss.password)).status, 200, 'другой адрес не закрыт');
+    srv.clock.t += 15 * MIN + 1;
+    assert.equal((await loginFrom(srv, C, 'boss', boss.password)).status, 200);
+    // обнулить счёт адреса удачным входом нельзя: 4 круга «4 неудачи и свой вход» и ещё 4 неудачи = 20 неудач
+    srv.clock.t += 20 * MIN;
+    for (let round = 0; round < 4; round++) {
+      for (let i = 0; i < 4; i++) assert.equal((await loginFrom(srv, A, 'boss', secret())).status, 401);
+      assert.equal((await loginFrom(srv, A, 'boss', boss.password)).status, 200, 'круг ' + (round + 1) + ': вход сбрасывает счёт пары, не адреса');
+    }
+    for (let i = 0; i < 4; i++) assert.equal((await loginFrom(srv, A, 'boss', secret())).status, 401);
+    assert.equal((await loginFrom(srv, A, 'boss', boss.password)).status, 429, 'счёт адреса не обнулился');
+  } finally { await srv.stop(); }
+});
+
+test('адрес клиента: X-Forwarded-For верен только с этой же машины, берётся последний элемент; с чужого адреса игнорируется', () => {
+  const { clientIp } = require('../server/app.js');
+  assert.equal(clientIp('127.0.0.1', '198.51.100.1'), '198.51.100.1');
+  assert.equal(clientIp('::ffff:127.0.0.1', '198.51.100.1, 198.51.100.2'), '198.51.100.2', 'последний — тот, что дописал Caddy');
+  assert.equal(clientIp('::1', '2001:db8::5'), '2001:db8::5');
+  assert.equal(clientIp('127.0.0.1', undefined), '127.0.0.1');
+  assert.equal(clientIp('127.0.0.1', 'не-адрес'), '127.0.0.1', 'мусор вместо адреса — адрес соединения');
+  // с чужого адреса заголовок написал сам клиент
+  assert.equal(clientIp('203.0.113.9', '198.51.100.1'), '203.0.113.9');
+  assert.equal(clientIp('::ffff:203.0.113.9', '127.0.0.1'), '203.0.113.9');
+  assert.equal(clientIp('2001:db8::1', '198.51.100.1'), '2001:db8::1');
+});
+
+test('вход: заголовок X-Forwarded-For от клиента не обходит предел — дописанный Caddy последний элемент решает', async () => {
+  const srv = await start();
+  try {
+    const boss = await director(srv);
+    // клиент подсунул свой адрес первым, Caddy дописал настоящий (A): считается А
+    for (let i = 0; i < 5; i++) await loginFrom(srv, `198.51.100.${i}, ${A}`, 'boss', secret());
+    assert.equal((await loginFrom(srv, `198.51.100.99, ${A}`, 'boss', boss.password)).status, 429, 'смена первого элемента не помогла');
+    assert.equal((await loginFrom(srv, B, 'boss', boss.password)).status, 200);
+  } finally { await srv.stop(); }
+});
+
+// ——— стойкость хранения паролей ———
+const { DatabaseSync: Sqlite } = require('node:sqlite');
+const crypto = require('node:crypto');
+const userRow = (srv, login) => { const d = db(srv); try { return d.prepare('SELECT hash, salt, mustChange FROM users WHERE login = ?').get(login); } finally { d.close(); } };
+
+test('пароль: новый хеш — scrypt N=2^17 с параметрами в строке; Node 24 считает без ошибки; неверный пароль не проходит', async () => {
+  const srv = await start({ passwordCostLog2: undefined });
+  try {
+    const boss = await director(srv);
+    const row = userRow(srv, 'boss');
+    assert.match(row.hash, /^scrypt\$131072\$8\$1\$[0-9a-f]{128}$/, 'N=2^17 = 131072, r=8, p=1 в самой строке');
+    assert.equal((await login(srv, 'boss', boss.password)).status, 200);
+    assert.equal((await login(srv, 'boss', secret())).status, 401);
+  } finally { await srv.stop(); }
+});
+
+test('пароль: прежний хеш (N=2^14, без приставки) проверяется, а после удачного входа заменяется новым (2^17); неудачный вход его не трогает', async () => {
+  const srv = await start({ passwordCostLog2: undefined });
+  try {
+    const boss = await director(srv);
+    const password = secret(), salt = crypto.randomBytes(16);
+    const old = crypto.scryptSync(password, salt, 64, { N: 16384, r: 8, p: 1 }).toString('hex');
+    const w = new Sqlite(path.join(srv.dir, 'crm.db'));
+    w.prepare('UPDATE users SET hash = ?, salt = ?, mustChange = 1 WHERE login = ?').run(old, salt.toString('hex'), 'boss');
+    w.close();
+    assert.equal((await login(srv, 'boss', boss.password)).status, 401, 'прежний пароль после подмены хеша не подходит');
+    assert.equal(userRow(srv, 'boss').hash, old, 'неудачный вход хеш не менял');
+    const ok = await login(srv, 'boss', password);
+    assert.equal(ok.status, 200, 'прежний хеш проверяется');
+    assert.equal(ok.body.mustChange, true);
+    const now = userRow(srv, 'boss');
+    assert.match(now.hash, /^scrypt\$131072\$8\$1\$[0-9a-f]{128}$/, 'после входа хеш записан новыми параметрами');
+    assert.notEqual(now.salt, salt.toString('hex'), 'и с новой солью');
+    assert.equal(now.mustChange, 1, 'требование сменить пароль перехеширование не сняло');
+    assert.equal((await login(srv, 'boss', password)).status, 200, 'новый хеш проверяется тем же паролем');
+    assert.equal((await login(srv, 'boss', boss.password)).status, 401);
+  } finally { await srv.stop(); }
+});
+
+test('needsRehash: прежний хеш и хеш с иными параметрами — да, текущий — нет, мусор — да', () => {
+  const { needsRehash } = require('../server/auth.js');
+  assert.equal(needsRehash('a'.repeat(128)), true);
+  assert.equal(needsRehash('scrypt$16384$8$1$' + 'a'.repeat(128)), true);
+  assert.equal(needsRehash('scrypt$131072$8$1$' + 'a'.repeat(128)), false);
+  assert.equal(needsRehash('scrypt$131072$8$1$' + 'a'.repeat(128), 10), true);
+  assert.equal(needsRehash('scrypt$131073$8$1$zz'), true);
+  assert.equal(needsRehash(null), true);
 });

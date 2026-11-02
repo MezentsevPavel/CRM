@@ -1171,3 +1171,28 @@ test('приёмка: этап ставит только ядро — в код�
   assert.ok(!/\.stageId\s*=[^=]/.test(src), 'приёмка пишет stageId мимо Ships.setStage');
   assert.ok(src.includes('Ships.setStage(') && src.includes('Ships.applyRules('));
 });
+
+// ——— одно нажатие — один save() (в рабочей версии каждый save() — отдельная пачка на сервер) ———
+test('форма «Отметить этап» с новым сроком и комментарием сохраняется одним save(): этап, срок, история и уведомление в одной пачке', () => {
+  const vm = require('node:vm');
+  const { loadCode } = require('../tools/vm-load.js');
+  const { api: app, ctx } = loadCode();
+  vm.runInContext("S = startState();", ctx);
+  // save() считается, если с прошлого раза изменилось общее состояние (то же, что режет в пачку серверная вкладка)
+  vm.runInContext(`globalThis.__saves = 0; { let snap = JSON.stringify(Docs.split(S)); const orig = save;
+    save = function () { const c = JSON.stringify(Docs.split(S)); if (c !== snap) { __saves++; snap = c; } return orig.apply(this, arguments); }; }`, ctx);
+  const saves = () => vm.runInContext('__saves', ctx);
+  const s = app.S.shipments.find(x => x.dir === 'in' && x.stageId === 'toBorder');
+  const set = (id, v) => { app.byId(id).value = v; };
+  const newEta = new Date(s.eta.getFullYear(), s.eta.getMonth(), s.eta.getDate() + 5);
+  set('st-stage', 'customs'); set('st-eta', app.iso(newEta)); set('st-note', 'Водитель звонил');
+  app.FORMS.stage({ dataset: { id: s.id } });
+  assert.equal(s.stageId, 'customs');
+  assert.equal(app.iso(s.eta), app.iso(newEta));
+  assert.equal(s.history.at(-1).text, 'Комментарий: Водитель звонил');
+  assert.equal(saves(), 1, 'этап, срок и комментарий ушли разными пачками');
+  // отметка этапа из списка — по-прежнему один save()
+  const before = saves();
+  app.ON.change['ship-stage']({ dataset: { id: s.id }, value: 'transship' });
+  assert.equal(saves() - before, 1);
+});

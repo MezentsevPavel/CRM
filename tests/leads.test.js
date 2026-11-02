@@ -5,7 +5,9 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const vm = require('node:vm');
 const { load } = require('./load.js');
+const { loadCode } = require('../tools/vm-load.js');
 
 const NOW = new Date(2026, 9, 31, 12, 0);
 const LATER = new Date(2026, 9, 31, 13, 0);
@@ -822,6 +824,20 @@ test('«Настройки → Лиды и сделки»: вкладка меж
   const n = app.S.leads.length;
   app.A['lead-sim']({ dataset: { source: 'site' } });
   assert.equal(app.S.leads.length, n);
+});
+
+test('«Настройки → Лиды и сделки»: выбор «Битрикс24 / сайт» есть в демо и скрыт в рабочей версии, остальное на вкладке осталось', () => {
+  const demo = asRole(load(), 'director');
+  // в серверном режиме S поднимает вход в систему; здесь ставим состояние рабочей базы сами
+  const { api: srv, ctx } = loadCode({ globals: { CRM_SERVER: 1 } });
+  vm.runInContext("S = Object.assign(seedBase(), { me: 'pDir', ui: defaultUi() }); S.people.push({ id: 'pDir', name: 'Директор-пример', role: 'director' });", ctx);
+  const tabHtml = app => app.SETTINGS_TABS.find(t => t.id === 'leads').render();
+  const dh = tabHtml(demo), sh = tabHtml(srv);
+  assert.ok(dh.includes('Откуда приходят лиды') && dh.includes('name="lead-source"') && dh.includes('Сайт напрямую'), 'в демо выбор источника пропал');
+  assert.ok(!sh.includes('Откуда приходят лиды') && !sh.includes('lead-source') && !sh.includes('Сайт напрямую'), 'в рабочей версии выбор источника виден');
+  assert.ok(!sh.includes('Битрикс24'), 'в рабочей версии на вкладке упоминается Битрикс24');
+  for (const v of ['Время реакции на новый лид', 'Причины отказа']) assert.ok(sh.includes(v), 'на вкладке пропало «' + v + '»');
+  assert.ok(srv.settingsTabs().some(t => t.id === 'leads'), 'вкладка осталась с содержимым, значит остаётся');
 });
 
 test('раздел «Сделки»: менеджер B2C видит только воронку B2C и только сделки B2C; у сделки видны тип и менеджер', () => {

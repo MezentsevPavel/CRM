@@ -154,3 +154,55 @@ test('рабочая версия: права «писать клиентам» 
   assert.equal(manager.perms.write, true, 'у менеджера пропало право писать клиентам');
   assert.equal(manager.perms.mail, true, 'у менеджера пропало право на почту');
 });
+
+// ——— запрет посторонних скриптов (Content-Security-Policy) ———
+// Эталон хэша считается здесь же, по тексту, что принял браузер (тело страницы), а не функциями сервера.
+const crypto = require('node:crypto');
+const hashOf = text => "'sha256-" + crypto.createHash('sha256').update(text.replace(/\r\n?/g, '\n'), 'utf8').digest('base64') + "'";
+const inlineScripts = html => [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
+
+test('CSP: страница (и вошедшему, и нет) и ответы API несут заголовок; скрипты — только по хэшу, без unsafe-inline и unsafe-eval', async () => {
+  const srv = await kit.start();
+  try {
+    const boss = await kit.director(srv);
+    for (const cookie of [boss.cookie, undefined]) {
+      const r = await kit.call(srv, 'GET', '/', { cookie });
+      const csp = r.headers.get('content-security-policy');
+      assert.ok(csp, 'на странице нет Content-Security-Policy');
+      const dir = name => (csp.split(/;\s*/).find(d => d.startsWith(name + ' ')) || '').slice(name.length + 1);
+      const script = dir('script-src');
+      assert.ok(script, 'нет script-src');
+      assert.doesNotMatch(script, /unsafe-inline|unsafe-eval|\*|https?:|'self'|data:|blob:/, 'script-src шире хэшей: ' + script);
+      assert.doesNotMatch(csp, /unsafe-eval/);
+      assert.equal(dir('connect-src'), "'self'");
+      assert.equal(dir('frame-ancestors'), "'none'");
+      assert.equal(dir('object-src'), "'none'");
+      assert.equal(dir('base-uri'), "'none'");
+      assert.ok(/'self'/.test(dir('font-src')) && /'self'/.test(dir('img-src')) && /data:/.test(dir('img-src')) && /blob:/.test(dir('img-src')));
+      // каждый встроенный скрипт страницы проходит по хэшу, и лишних хэшей нет
+      const html = r.body.toString('utf8');
+      const scripts = inlineScripts(html);
+      assert.ok(scripts.length >= 2, 'встроенных скриптов меньше двух: метка режима и страница');
+      const allowed = script.split(/\s+/);
+      for (const code of scripts) assert.ok(allowed.includes(hashOf(code)), 'встроенный скрипт не проходит по хэшу: ' + code.slice(0, 40));
+      assert.equal(new Set(allowed).size, new Set(scripts.map(hashOf)).size, 'в script-src лишние хэши');
+      // скриптов вне <script>…</script> страница не подгружает
+      assert.doesNotMatch(html, /<script[^>]*\ssrc=/i);
+    }
+    const api = await kit.call(srv, 'GET', '/api/me', { cookie: boss.cookie });
+    assert.match(api.headers.get('content-security-policy'), /default-src 'none'/);
+    assert.equal((await kit.call(srv, 'GET', '/нет-такого')).headers.get('content-security-policy') !== null, true);
+  } finally { await srv.stop(); }
+});
+
+test('CSP: в коде страницы нет того, что она сломает — обработчиков в атрибутах, eval, new Function, javascript:-ссылок', () => {
+  const html = require('../tools/build.js').build();
+  // код страницы — всё, кроме снимков каталога и остатков (в них названия товаров, не код)
+  const code = inlineScripts(html).join('\n').replace(/\/\*CRM-GATE-OPEN\*\/[\s\S]*?\/\*CRM-GATE-STUB[\s\S]*?\*\/\/\*CRM-GATE-CLOSE\*\//g, '');
+  const markup = html.replace(/<script>[\s\S]*?<\/script>/g, '') + '\n' + code;
+  assert.doesNotMatch(markup, /\son(click|change|input|submit|load|error|keydown|keyup|keypress|focus|blur|mouse\w+|dblclick|toggle|touch\w+|drag\w*|drop)\s*=\s*["'`]/i, 'обработчик в атрибуте');
+  assert.doesNotMatch(code, /\beval\s*\(/);
+  assert.doesNotMatch(code, /new\s+Function\b|\bFunction\s*\(/);
+  assert.doesNotMatch(code, /javascript:/i);
+  assert.doesNotMatch(code, /set(Timeout|Interval)\s*\(\s*['"`]/, 'таймер со строкой — это eval');
+});

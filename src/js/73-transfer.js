@@ -34,18 +34,18 @@ async function trStockSend(){
 }
 // Неразобранное: текст, который перенос не понял, с названием товара и колонкой
 const trUnparsed=list=>!list||!list.length?'':`<details class="tr-un"><summary>Что не разобралось (${num(list.length)})</summary><ul>${list.map(u=>`<li><b>${esc(u.name)}</b> · ${esc(u.column)}: «${esc(u.text)}»</li>`).join('')}</ul></details>`;
-const trStockNums=p=>`<ul class="tr-n">${trNum(p.products,'товаров в файле')}${trNum(p.matched,'склеено с каталогом')}${trNum(p.created,'новых товаров «нет в каталоге»')}${trNum(p.withStock,`товаров с остатком (клеток склада: ${num(p.cells)})`)}${trNum(p.reserves,'резервов из колонки «Резерв»')}${trNum(p.unparsed.length,'неразобранных клеток и резервов')}</ul>`;
+const trStockNums=p=>`<ul class="tr-n">${trNum(p.products,'товаров в файле')}${trNum(p.matched,'склеено с каталогом')}${trNum(p.created,'новых товаров «нет в каталоге»')}${trNum(p.withStock,`товаров с остатком (клеток склада: ${num(p.cells)})`)}<li>Изменилось клеток: <b>${num(p.changed)}</b> (остаток стал другим против нынешнего)</li>${trNum(p.reserves,'резервов из колонки «Резерв»')}<li>Резервов поставлено или снято заново: <b>${num(p.reservesChanged)}</b></li>${trNum(p.unparsed.length,'неразобранных клеток и резервов')}</ul>`;
 
 function trStockHtml(){
   const s=trUi().stock;
   let body='';
   if(s&&s.problems) body=s.problems.map(p=>`<p class="err">${esc(p)}</p>`).join('');
-  else if(s&&s.done) body=`<p class="ok-t m0"><b>Загружено.</b> Остатки склада заменены, в журнале склада — «Ввод остатков».</p>${trStockNums(s.done)}${trUnparsed(s.done.unparsed)}`;
+  else if(s&&s.done) body=`<p class="ok-t m0"><b>Загружено.</b> Остатки склада заменены; в журнале склада «Ввод остатков» — только по клеткам, где остаток изменился (записей: ${num(s.done.moves)}).</p>${trStockNums(s.done)}${trUnparsed(s.done.unparsed)}`;
   else if(s&&s.rows) body=`<p class="m0">В файле найдено:</p>${trStockNums(s.pv)}${s.skipped?`<p class="hint">Строк с цифрами, но без названия: ${num(s.skipped)} — они пропущены.</p>`:''}${trUnparsed(s.pv.unparsed)}
     <form class="tr-go" data-form="tr-stock" novalidate><button type="submit" class="btn pri"${s.busy?' disabled':''}>${s.busy?'Загружаю…':'Загрузить'}</button><span class="hint">Остатки склада будут заменены этими.</span></form>${s.err?`<p class="err">${esc(s.err)}</p>`:''}`;
   return `<section class="card"><div class="card-h"><h3>Остатки склада</h3></div><div class="card-b stack-s">
     <p class="m0">Лист «Остатки» таблицы менеджеров, сохранённый как CSV (UTF-8 или Windows-1251, разделитель — запятая или точка с запятой).
-      Загрузка <b>заменяет</b> остатки склада и пишет в журнал склада «Ввод остатков» по каждому товару. Повторная загрузка того же файла остатки не удваивает.</p>
+      Загрузка <b>заменяет</b> остатки склада и пишет в журнал склада «Ввод остатков» по каждой клетке, где остаток изменился. Повторная загрузка того же файла остатки не удваивает и журнал не дополняет.</p>
     <p class="hint">Колонка «Резерв»: количество становится резервом, имя клиента — примечанием к нему, без привязки к сделке. До первой загрузки у товаров остаток — «нет данных».</p>
     <div><label class="btn" for="tr-stock-file">${ic('plus')}Выбрать файл CSV</label><input id="tr-stock-file" class="sr" type="file" accept=".csv,.txt,text/csv,text/plain" data-on="tr-stock-file"></div>
     ${body}

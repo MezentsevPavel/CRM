@@ -14,7 +14,8 @@ const secret = () => crypto.randomBytes(12).toString('base64url');
 async function start(opts = {}) {
   const dir = opts.dataDir || fs.mkdtempSync(path.join(os.tmpdir(), 'crm-test-'));
   const clock = opts.clock || { t: T0 };
-  const app = await createApp({ dataDir: dir, port: 0, now: () => clock.t, ...opts, clock: undefined });
+  // пароли в тестах считаются по самой дешёвой настройке (N=2^10): иначе каждый вход — треть секунды и 128 МБ; настоящая (2^17) — в тестах пароля
+  const app = await createApp({ dataDir: dir, port: 0, now: () => clock.t, passwordCostLog2: 10, ...opts, clock: undefined });
   return {
     app, dir, clock, url: app.url,
     async stop(keep) { await app.close(); if (!keep) fs.rmSync(dir, { recursive: true, force: true }); },

@@ -234,13 +234,28 @@ const Import = (() => {
     st.moves.unshift(rec);
   }
 
+  // Сколько «листьев» (клеток) двух деревьев остатков различаются; нет клетки с одной стороны — это различие
+  function leafDiff(a, b) {
+    const deep = v => v !== null && typeof v === 'object';
+    if (deep(a) || deep(b)) {
+      const x = deep(a) ? a : {}, y = deep(b) ? b : {};
+      let n = 0;
+      for (const k of new Set([...Object.keys(x), ...Object.keys(y)])) n += leafDiff(x[k], y[k]);
+      return n;
+    }
+    return a === b ? 0 : 1;
+  }
+
   // Заменить остатки фирмы строками листа. rows — из stockRows (или присланные клиентом: чистятся). Что происходит:
   // товар строки — позиция каталога (точное совпадение названия) или товар «нет в каталоге» с id по нормализованному названию
-  // (повторный перенос попадает в те же товары); stock и aside заменяются целиком; на каждую клетку склада с остатком больше
-  // нуля — движение «Ввод остатков»; резервы прошлого переноса (imported) снимаются, из ячейки «Резерв» ставятся новые: количество —
-  // резервом, остальной текст — примечанием, без сделки. Резервы из CRM (со сделкой) остаются. st.stockSheet — разобранные строки
-  // без текста резервов (в нём имена клиентов, а stockSheet видят все).
-  // → { products, matched, created, cells, withStock, reserves, moves, unparsed: [{name, column, text}] }
+  // (повторный перенос попадает в те же товары); stock и aside заменяются целиком; движение «Ввод остатков» пишется только на
+  // клетку склада с остатком больше нуля, которая изменилась против прежнего остатка (тот же файл второй раз журнал не трогает);
+  // резервы прошлого переноса (imported) сверяются с новыми: тот же (товар, клетка, количество, примечание) остаётся как есть,
+  // остальные старые снимаются, недостающие ставятся — количество резервом, остальной текст примечанием, без сделки. Резервы из
+  // CRM (со сделкой) остаются. st.stockSheet — разобранные строки без текста резервов (в нём имена клиентов, а stockSheet видят все).
+  // → { products, matched, created, cells, changed, withStock, reserves, reservesChanged, moves, unparsed: [{name, column, text}] }
+  // cells — клеток с числом в файле; changed — клеток (склад и «в пути/ответхранение/бой»), чьё значение стало другим, включая
+  // пропавшие из файла; reservesChanged — резервов снято плюс поставлено.
   function applyStock(st, rows, by, now) {
     const list = cleanStockRows(rows);
     const at = new Date(now), who = by || null;
@@ -254,19 +269,14 @@ const Import = (() => {
       // товар листа — новый; позиция каталога — только если снята из списка, а остаток у неё есть
       if (sheetIds.has(p.id)) { st.products.push(p); created++; } else if (built.stock[p.id] || built.aside[p.id]) st.products.push(p);
     }
+    const was = st.stock || {}, wasAside = st.aside || {};
+    const changed = leafDiff(was, built.stock) + leafDiff(wasAside, built.aside);
     st.stock = built.stock;
     st.aside = built.aside;
+    const wasCell = (pid, e) => ((was[pid] || {})[e] || {})[Stock.ANY];
 
-    // резервы прошлого переноса снимаются
-    for (let i = st.reserves.length - 1; i >= 0; i--) {
-      const r = st.reserves[i];
-      if (!r.imported) continue;
-      st.reserves.splice(i, 1);
-      logMove(st, { at, productId: r.productId, kind: Stock.KINDS.unreserve, qty: r.qty, entityId: r.entityId || Stock.ANY, cityId: r.cityId || Stock.ANY, doc: 'перенос заменён', by: who });
-    }
-
-    const doc = `перенос, ${ru(at)}`, unparsed = [];
-    let cells = 0, withStock = 0, moves = 0, reserves = 0;
+    const doc = `перенос, ${ru(at)}`, unparsed = [], wanted = [];
+    let cells = 0, withStock = 0, moves = 0;
     list.forEach((row, i) => {
       const pid = built.ids[i];
       let any = false;
@@ -275,7 +285,9 @@ const Import = (() => {
         if (n === null) continue;
         cells++;
         if (n > 0) {
-          any = true; moves++;
+          any = true;
+          if (wasCell(pid, e) === n) continue;
+          moves++;
           logMove(st, { at, productId: pid, kind: INPUT, qty: n, entityId: e, cityId: Stock.ANY, doc, by: who });
         }
       }
@@ -285,15 +297,32 @@ const Import = (() => {
       const pr = parseReserve(row.reserve);
       for (const it of pr.items) {
         const cell = biggestCell(st, pid);
-        const r = { id: Store.freeId(st.reserves, 'r'), productId: pid, qty: it.qty, entityId: cell.entityId, cityId: cell.cityId, src: 'stock', note: it.note, imported: true, at, by: who };
-        st.reserves.push(r);
-        reserves++;
-        logMove(st, { at, productId: pid, kind: Stock.KINDS.reserve, qty: r.qty, entityId: r.entityId, cityId: r.cityId, doc: it.note ? `перенос: ${it.note}` : 'перенос', by: who });
+        wanted.push({ productId: pid, qty: it.qty, entityId: cell.entityId, cityId: cell.cityId, note: it.note });
       }
       if (pr.rest) unparsed.push({ name: row.name, column: 'Резерв', text: pr.rest });
     });
+
+    // резервы прошлого переноса: тот же резерв остаётся как есть, остальные снимаются, недостающие ставятся
+    const sameReserve = (r, w) => r.productId === w.productId && r.qty === w.qty && (r.entityId || Stock.ANY) === w.entityId
+      && (r.cityId || Stock.ANY) === w.cityId && (r.note || '') === w.note;
+    const toAdd = wanted.slice();
+    let removed = 0;
+    for (let i = st.reserves.length - 1; i >= 0; i--) {
+      const r = st.reserves[i];
+      if (!r.imported) continue;
+      const k = toAdd.findIndex(w => sameReserve(r, w));
+      if (k >= 0) { toAdd.splice(k, 1); continue; }
+      st.reserves.splice(i, 1);
+      removed++;
+      logMove(st, { at, productId: r.productId, kind: Stock.KINDS.unreserve, qty: r.qty, entityId: r.entityId || Stock.ANY, cityId: r.cityId || Stock.ANY, doc: 'перенос заменён', by: who });
+    }
+    for (const w of toAdd) {
+      const r = { id: Store.freeId(st.reserves, 'r'), productId: w.productId, qty: w.qty, entityId: w.entityId, cityId: w.cityId, src: 'stock', note: w.note, imported: true, at, by: who };
+      st.reserves.push(r);
+      logMove(st, { at, productId: r.productId, kind: Stock.KINDS.reserve, qty: r.qty, entityId: r.entityId, cityId: r.cityId, doc: w.note ? `перенос: ${w.note}` : 'перенос', by: who });
+    }
     st.stockSheet = { at, by: who, rows: list.map(({ name, cat, ip, npp, vs, custody, transit, damaged }) => ({ name, cat, ip, npp, vs, custody, transit, damaged })) };
-    return { products: list.length, matched: list.length - built.unmatched.length, created, cells, withStock, reserves, moves, unparsed };
+    return { products: list.length, matched: list.length - built.unmatched.length, created, cells, changed, withStock, reserves: wanted.length, reservesChanged: removed + toAdd.length, moves, unparsed };
   }
 
   // ——— клиенты из Битрикса ———

@@ -95,12 +95,14 @@ function vLeadSettings(){
   };
   const radios=Object.entries(Leads.SOURCES).map(([k,l])=>`<label class="check lset-opt${cur===k?' on':''}"><input type="radio" name="lead-source" value="${k}" ${cur===k?'checked':''} data-on="lead-source"> <span><b>${esc(l)}</b><small>${esc(hint[k])}</small></span></label>`).join('');
   const rows=LEAD_BITRIX.map(r=>`<li><b>${esc(r.what)}</b><span>${esc(r.crm)}</span></li>`).join('');
-  return `<section class="card"><div class="card-h"><h3>Откуда приходят лиды</h3></div><div class="card-b stack-s">
+  const sourceCard=`<section class="card"><div class="card-h"><h3>Откуда приходят лиды</h3></div><div class="card-b stack-s">
     <div class="lset-opts" role="radiogroup" aria-label="Источник лидов">${radios}</div>
     <p class="hint">Сейчас выбрано: <b>${esc(Leads.SOURCES[cur])}</b>. В CRM лидов: ${n.all} (с сайта — ${n.site}, из Битрикса24 — ${n.bitrix}); у каждого лида в карточке стоит метка, откуда он пришёл. Выбор запоминается.</p>
     ${SERVER?'':`<div class="bar"><button type="button" class="btn sm" data-act="lead-sim" data-source="site">${ic('plus')}Имитация: пришёл лид с сайта</button><button type="button" class="btn sm" data-act="lead-sim" data-source="bitrix">${ic('plus')}Имитация: пришёл лид из Битрикса24</button></div>
     <p class="hint">Если источник выключен, его кнопка лид не создаёт и сообщает, что источник сейчас не используется.</p>`}
-  </div></section>
+  </div></section>`;
+  // В рабочей версии выбора «Битрикс24 / сайт» нет: Битрикса там не видно, лиды приходят как есть (источник — «оба»)
+  return `${SERVER?'':sourceCard}
   ${leadWaitCard()}
   ${lostReasonsCard()}
   ${SERVER?'':leadBitrixCard(rows)}`;

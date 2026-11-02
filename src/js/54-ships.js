@@ -324,7 +324,8 @@ function vLogistics(){
 // ——— смена этапа: единственный путь ———
 // Ручная отметка из строки, карточки, воронки и формы. Этап пишет только Ships.setStage (история с источником
 // «вручную», уведомление всем, у кого включён вид «Поставки»); здесь — права, закрытые поставки и сообщение клиенту.
-function shipMark(shipId,stageId){
+// hold — не перерисовывать и не сохранять: вызывающий дописывает своё и сам делает render() — одно нажатие, один save()
+function shipMark(shipId,stageId,hold){
   const s=ship(shipId),m=me(),now=new Date();
   if(!s) return {ok:false,reason:'Поставки нет.'};
   const fail=(msg,quiet)=>{if(!quiet) toast(msg,'warn');return {ok:false,reason:msg}};
@@ -343,11 +344,12 @@ function shipMark(shipId,stageId){
     if(d&&d.channel!=='phone') S.msgs.push({id:Store.freeId(S.msgs,'m'),at:now,deal:d.id,channel:d.channel,auto:true,text:`${d.contact}, здравствуйте! Ваш заказ отгружен: ${s.track}. Привезём ${fD(s.eta)}. Ваш менеджер — ${person(d.managerId)?.name||''}.`});
   }
   const got=r.note?r.note.to.filter(id=>id!==m.id).length:0;
-  render();
+  if(!hold) render();
   toast(`${s.id}: «${stg.name}». Уведомление получили ${got} ${pl(got,'сотрудник','сотрудника','сотрудников')}.`);
   return r;
 }
-// Форма «Отметить этап»: этап — через shipMark, срок и комментарий — отдельными отметками в историю.
+// Форма «Отметить этап»: этап — через shipMark, срок и комментарий — отдельными отметками в историю. Всё — одним save():
+// этап меняет склад (отгрузка клиенту уходит со склада), и срок с комментарием должны уйти на сервер той же пачкой.
 function shipStageForm(f){
   const s=ship(f.dataset.id),m=me(),now=new Date();
   if(!s){closeModal();return}
@@ -356,7 +358,7 @@ function shipStageForm(f){
   const termNote=()=>s.history.push({at:now,by:m.id,text:`Срок прихода: было ${fD(old)}, стало ${fD(ne)}.`,source:Ships.SRC.manual});
   if(stageId!==s.stageId){
     if(moved) s.eta=ne;               // срок ставим до отметки: в уведомлении уже новая дата
-    const r=shipMark(s.id,stageId);
+    const r=shipMark(s.id,stageId,true);
     if(!r.ok){s.eta=old;return}
     if(moved) termNote();
   }else if(moved){

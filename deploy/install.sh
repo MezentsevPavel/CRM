@@ -170,6 +170,8 @@ $DOMAIN {
 	encode @packable zstd gzip
 	reverse_proxy 127.0.0.1:$PORT {
 		flush_interval -1
+		# настоящий адрес посетителя для предела попыток входа: сервер читает последний элемент X-Forwarded-For
+		header_up X-Forwarded-For {remote_host}
 	}
 }
 CADDYEOF

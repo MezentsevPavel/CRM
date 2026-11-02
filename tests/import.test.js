@@ -171,7 +171,7 @@ test('Import.applyStock: повторный перенос того же фай�
   assert.deepEqual(plain({ stock: st.stock, aside: st.aside, products: st.products.map(p => p.id), reserves: st.reserves.map(q => [q.productId, q.qty, q.note]) }), once);
   assert.equal(new Set(st.products.map(p => p.id)).size, st.products.length, 'товары не продублировались');
   assert.equal(st.reserves.filter(q => q.imported).length, 2);
-  assert.ok(st.moves.length > movesOnce, 'журнал дописывается: движение — запись, не правка');
+  assert.equal(st.moves.length, movesOnce, 'тот же файл второй раз: ни одного нового движения (ни «Ввод остатков», ни «Резерв»)');
   assert.equal(new Set(st.moves.map(m => m.id)).size, st.moves.length, 'у движений разные id');
   // другой файл заменяет: товар, которого в нём нет, остаток теряет; чужой (не из переноса) резерв остаётся
   st.reserves.push({ id: 'r-мой', productId: 'sheet:панель икс-100', qty: 1, entityId: 'ip', cityId: '_', src: 'stock', dealId: 'Д-1' });
@@ -191,6 +191,39 @@ test('Import.applyStock: кривые строки не ломают базу (�
   assert.equal(r.products, 1);
   assert.deepEqual(plain(st.stock), { 'sheet:щит': { ip: { _: 7 }, vs: { _: -2 } } }, 'Infinity — не число, пусто; минус остаётся как есть');
   assert.equal(st.moves.filter(m => m.kind === INPUT).length, 1, 'отрицательное — не движение');
+});
+
+test('Import.applyStock: повтор того же файла не пишет в журнал, резервы те же по id; изменилась одна клетка — одно движение «Ввод остатков»', () => {
+  const app = load(), { Import } = app;
+  const st = stockState(app);
+  const rows = plain(Import.stockRows(tableOf(app, STOCK_CSV)).rows);
+  const first = plain(Import.applyStock(st, rows, 'p1', NOW));
+  assert.equal(first.changed, 8, 'первая загрузка: все клетки новые (склад 5, включая нулевую, и в пути, ответхранение, бой)');
+  const movesBefore = st.moves.length, reservesBefore = plain(st.reserves);
+  const again = plain(Import.applyStock(st, rows, 'p1', new Date(2026, 10, 3, 9, 0, 0)));
+  assert.equal(st.moves.length, movesBefore, 'журнал не вырос');
+  assert.deepEqual(plain(st.reserves), reservesBefore, 'резервы те же: id, время, автор');
+  assert.deepEqual([again.changed, again.reservesChanged, again.moves, again.reserves], [0, 0, 0, 2]);
+  // одна клетка стала другой: ровно одно движение «Ввод остатков» с новым остатком, резервы не тронуты
+  const edited = plain(rows);
+  edited.find(r => r.name === 'Панель Икс-100').npp = 9;
+  const one = plain(Import.applyStock(st, edited, 'p1', new Date(2026, 10, 4, 9, 0, 0)));
+  const fresh = st.moves.slice(0, st.moves.length - movesBefore);
+  assert.equal(fresh.length, 1);
+  assert.deepEqual([fresh[0].kind, fresh[0].productId, fresh[0].entityId, fresh[0].qty], [INPUT, 'sheet:панель икс-100', 'npp', 9]);
+  assert.deepEqual([one.changed, one.reservesChanged, one.moves], [1, 0, 1]);
+  assert.deepEqual(plain(st.reserves), reservesBefore);
+  // изменилась строка резерва: старый снят, новый поставлен (две записи журнала), второй резерв остался
+  const re = plain(edited);
+  re.find(r => r.name === 'Панель Игрек-200').reserve = '40шт автоношкин, 64 Алексей Н.';
+  const n0 = st.moves.length;
+  const two = plain(Import.applyStock(st, re, 'p1', new Date(2026, 10, 5, 9, 0, 0)));
+  const kinds = st.moves.slice(0, st.moves.length - n0).map(m => m.kind).sort();
+  assert.deepEqual(plain(kinds), ['Резерв', 'Снят резерв']);
+  assert.deepEqual([two.changed, two.reservesChanged, two.moves], [0, 2, 0]);
+  const keep = st.reserves.find(q => q.qty === 64);
+  assert.equal(keep.id, reservesBefore.find(q => q.qty === 64).id, 'неизменный резерв остался с тем же id');
+  assert.ok(st.reserves.some(q => q.qty === 40) && !st.reserves.some(q => q.qty === 36));
 });
 
 // ——— рабочая база: снимок 31.10 не используется ———
@@ -484,6 +517,31 @@ test('экран «Перенос»: «Загрузить» шлёт на сер
     await app.trClientsSend();
     assert.match(tab.render(), /<b>0<\/b> новых клиентов/);
     assert.equal((await state(srv, boss.cookie)).clients.length, 2500, 'повтор не плодит клиентов');
+  } finally { await srv.stop(); }
+});
+
+test('экран «Перенос»: тот же файл второй раз — «Изменилось клеток: 0», журнал склада не растёт; изменённый — «1»', async () => {
+  const srv = await start();
+  try {
+    const { boss } = await firm(srv);
+    const { app } = await openPage(srv, boss);
+    const tab = tabOf(app);
+    app.trStockRead(encUtf8(STOCK_CSV, false));
+    assert.match(tab.render(), /Изменилось клеток: <b>8<\/b>/, 'первая загрузка: всё новое');
+    await app.trStockSend();
+    await app.srvPull();
+    const moves1 = (await state(srv, boss.cookie)).moves.length;
+    app.trStockRead(encUtf8(STOCK_CSV, false));
+    assert.match(tab.render(), /Изменилось клеток: <b>0<\/b>/, 'предпросмотр повтора');
+    assert.match(tab.render(), /Резервов поставлено или снято заново: <b>0<\/b>/);
+    await app.trStockSend();
+    await app.srvPull();
+    assert.match(tab.render(), /Изменилось клеток: <b>0<\/b>/, 'итог повтора');
+    assert.equal((await state(srv, boss.cookie)).moves.length, moves1, 'журнал склада на сервере не вырос');
+    app.trStockRead(encUtf8(STOCK_CSV.replace('Панель Икс-100;12;5', 'Панель Икс-100;12;6'), false));
+    assert.match(tab.render(), /Изменилось клеток: <b>1<\/b>/);
+    await app.trStockSend();
+    assert.equal((await state(srv, boss.cookie)).moves.length, moves1 + 1, 'одна клетка — одно движение');
   } finally { await srv.stop(); }
 });
 

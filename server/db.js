@@ -6,7 +6,7 @@
 //   sessions(tokenHash, personId, tag, createdAt, lastSeen, expiresAt, foreign) — в базе только sha256 токена
 //   files(id, name, type, size, by, at, deletedAt), file_refs(fileId, key, docId) — файлы на диске и кто на них ссылается
 //   log(seq, at, personId, key, docId, op) — журнал правок: кто, когда, что
-//   attempts(login, ip, at)        — неудачные попытки входа (предел попыток)
+//   attempts(login, ip, at)        — неудачные попытки входа (предел попыток по адресу и по паре «адрес + логин»; login '' — прощённые)
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -24,7 +24,8 @@ CREATE INDEX IF NOT EXISTS file_refs_doc ON file_refs(key, docId);
 CREATE TABLE IF NOT EXISTS log (n INTEGER PRIMARY KEY AUTOINCREMENT, seq INTEGER NOT NULL, at INTEGER NOT NULL, personId TEXT, key TEXT NOT NULL, docId TEXT NOT NULL, op TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS log_doc ON log(key, docId);
 CREATE TABLE IF NOT EXISTS attempts (login TEXT NOT NULL, ip TEXT, at INTEGER NOT NULL);
-CREATE INDEX IF NOT EXISTS attempts_login ON attempts(login, at);
+CREATE INDEX IF NOT EXISTS attempts_login ON attempts(login, ip, at);
+CREATE INDEX IF NOT EXISTS attempts_ip ON attempts(ip, at);
 `;
 
 function openDb(dataDir) {
