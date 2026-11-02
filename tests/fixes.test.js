@@ -319,3 +319,14 @@ test('docs/server-install.md: домен и IP — места <домен> и <I
   // ни одного настоящего IP-адреса и домена верхнего уровня .ru/.com из примеров
   assert.ok(!/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/.test(d), 'в инструкции выдуманный IP');
 });
+
+// ——— ремонт ветки F1: адрес фото приёмки в карточке поставки экранируется ———
+test('карточка поставки: кавычка в адресе фото приёмки не выходит из src — onerror не становится атрибутом', () => {
+  const app = load({ now: NOW });
+  const s = app.S.shipments[0];
+  s.received = { at: NOW, by: 'p5', photos: 1, urls: ['x" onerror="alert(1)'], note: '' };
+  app.S.me = 'p1';
+  const body = app.DRAWERS.ship(s.id).body;
+  assert.ok(body.includes('Фото приёмки'), 'в карточке нет фото приёмки — тест ничего не проверит');
+  assert.ok(!body.includes('onerror="alert(1)"'), 'адрес фото вставлен в src без экранирования');
+});

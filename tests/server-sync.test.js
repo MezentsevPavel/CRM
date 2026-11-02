@@ -378,3 +378,32 @@ test('POST /api/changes: правка человека без права «це�
     assert.deepEqual([full.dealId, full.note], ['Д-302', 'Забрать до обеда (тест)']);
   } finally { await srv.stop(); }
 });
+
+// Ремонт F1: служебные имена (__proto__, constructor, prototype) в ключах, id и productId — 400 после разбора JSON,
+// а не по тексту запроса: экранированный "\u005f_proto__" текстовую проверку проходит, а JSON.parse делает из него обычный ключ
+test('POST /api/changes: __proto__ в id товара, ключе или id записи, записанный экранированно, — 400; остаток без движения после этого по-прежнему нельзя', async () => {
+  const srv = await start();
+  try {
+    const { boss } = await firm(srv);
+    const P = (await state(srv, boss.cookie)).products[0].id;
+    const raw = text => call(srv, 'POST', '/api/changes', { cookie: boss.cookie, raw: text, headers: { 'Content-Type': 'application/json' } });
+    const at = JSON.stringify(dateDoc(T0));
+    const move = pid => `{"changes":[{"key":"moves","id":"mvF1","base":null,"data":{"id":"mvF1","kind":"Приход","productId":${pid},"qty":5,"entityId":"_","cityId":"_","doc":"П-1","by":"p1","at":${at}}}]}`;
+    const proto = '"' + String.fromCharCode(92) + 'u005f_proto__"';   // экранированное _ — текст запроса без буквального __proto__
+    assert.ok(!move(proto).includes('"__proto__"'), 'в тексте запроса нет буквального "__proto__" — иначе тест проверяет старую проверку');
+    for (const [what, text] of [
+      ['productId = __proto__', move(proto)],
+      ['productId = constructor', move('"constructor"')],
+      ['ключ __proto__ в данных', `{"changes":[{"key":"notes","id":"nF1","base":null,"data":{"id":"nF1",${proto}:{"x":1},"by":"p1","to":["p1"],"read":[],"text":"пример"}}]}`],
+      ['id записи = prototype', '{"changes":[{"key":"stock","id":"prototype","base":null,"data":{"_":{"_":5}}}]}'],
+    ]) {
+      const r = await raw(text);
+      assert.equal(r.status, 400, `${what}: ${r.status} ${r.text}`);
+    }
+    // ядро сервера не тронуто: остаток клетки «_/_» без движения — по-прежнему отказ
+    const r = await changes(srv, boss.cookie, [{ key: 'stock', id: P, base: null, data: { _: { _: 5 } } }]);
+    assert.equal(r.status, 403, 'остаток меняется без движения: ' + r.text);
+    // обычная запись проходит
+    assert.equal((await changes(srv, boss.cookie, [{ key: 'deals', id: 'Д-951', base: null, data: deal('Д-951', { managerId: 'p1' }) }])).status, 200);
+  } finally { await srv.stop(); }
+});

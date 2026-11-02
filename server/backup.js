@@ -17,6 +17,7 @@ const { MIGRATIONS, migrate } = require('./migrate.js');
 const MINUTE = 60e3;
 const NAME_RE = /^crm-(\d{4})-(\d{2})-(\d{2})(?:-(\d{2})(\d{2})(\d{2}))?(-before-restore)?\.db$/;
 // Что переносится из копии. Вход (sessions, attempts) остаётся как есть; сеансы людей, которых в копии нет, закрываются.
+// Отключённый в текущей базе остаётся отключённым и без сеансов: копия, снятая до отключения, вход ему не возвращает.
 const TABLES = ['docs', 'meta', 'users', 'files', 'file_refs', 'log'];
 const REQUIRED = ['docs', 'meta', 'users', 'sessions', 'files', 'file_refs', 'log'];
 // Счётчики в meta, которые не откатываются назад: номера и метки сеансов не должны повториться
@@ -65,8 +66,12 @@ function createBackups({ store, dataDir, sync, revision, now, keep, hour } = {})
   }
   const publicOf = e => ({ name: e.name, size: e.size, at: e.at, kind: e.kind });
 
+  // Каждый вид копий хранится по KEEP своих: ручные и «перед восстановлением» ночные не вытесняют
   function prune() {
-    for (const e of list().slice(KEEP)) { try { fs.rmSync(path.join(dir, e.name), { force: true }); } catch { /* занят — удалится в следующий раз */ } }
+    const all = list();
+    for (const kind of ['nightly', 'manual', 'before-restore']) {
+      for (const e of all.filter(x => x.kind === kind).slice(KEEP)) { try { fs.rmSync(path.join(dir, e.name), { force: true }); } catch { /* занят — удалится в следующий раз */ } }
+    }
   }
 
   // Копия базы сейчас. Пишется во временный файл и переименовывается: недописанной копии в списке не бывает.
@@ -155,6 +160,7 @@ function createBackups({ store, dataDir, sync, revision, now, keep, hour } = {})
     const before = make('before-restore', true);
     const tokensBefore = store.db.prepare('SELECT tokenHash FROM sessions').all().map(r => r.tokenHash);
     const keepNow = new Map(store.db.prepare('SELECT k, v FROM meta').all().map(r => [r.k, r.v]));
+    const disabledNow = store.db.prepare('SELECT personId FROM users WHERE disabled = 1').all().map(r => r.personId);
     store.db.exec(`ATTACH DATABASE ${sql(src)} AS bk`);
     try {
       store.tx(() => {
@@ -171,6 +177,8 @@ function createBackups({ store, dataDir, sync, revision, now, keep, hour } = {})
           const top = Math.max(Number(v) || 0, got === null ? 0 : Number(got) || 0);
           store.meta.set(k, k === 'seq' ? top + 1 : top);
         }
+        const off = store.db.prepare('UPDATE users SET disabled = 1 WHERE personId = ?'), drop = store.db.prepare('DELETE FROM sessions WHERE personId = ?');
+        for (const pid of disabledNow) { off.run(pid); drop.run(pid); }
         store.db.exec('DELETE FROM sessions WHERE personId NOT IN (SELECT personId FROM users)');
       });
     } finally {

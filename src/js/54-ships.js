@@ -444,7 +444,7 @@ function dShip(s){
     const src=h.source||(h.auto?'автоматически':'вручную'),who=h.by?person(h.by)?.name:null;
     return `<li><div class="sh-t">${esc(h.text)}</div><small>${fWhen(h.at)}${who?' · '+esc(who):''} · <span class="pill sm${h.auto?' info':''}">${esc(src)}</span></small></li>`;
   }).join('');
-  const photos=s.received?(()=>{const r=s.received;return `<div class="photos-row">${(r.urls.length?r.urls.map(u=>`<img src="${u}" alt="Фото приёмки">`):Array.from({length:r.photos},()=>`<span class="ph-ph">${ic('photo')}</span>`)).join('')}<small>${r.photos} фото · принял(а) ${esc(person(r.by)?.name||'')}${r.note?' · '+esc(r.note):''}</small></div>${unsavedNote(r)}`})():'';
+  const photos=s.received?(()=>{const r=s.received;return `<div class="photos-row">${(r.urls.length?r.urls.map(u=>`<img src="${esc(u)}" alt="Фото приёмки">`):Array.from({length:r.photos},()=>`<span class="ph-ph">${ic('photo')}</span>`)).join('')}<small>${r.photos} фото · принял(а) ${esc(person(r.by)?.name||'')}${r.note?' · '+esc(r.note):''}</small></div>${unsavedNote(r)}`})():'';
   const acts=[];
   if(can('logistics')&&!done) acts.push(`<button type="button" class="btn sm" data-act="stage" data-id="${esc(s.id)}">${ic('pin')}Отметить этап…</button>`);
   if(can('logistics')&&shipCarrierCan(s)) acts.push(`<button type="button" class="btn sm" data-act="ship-carrier" data-id="${esc(s.id)}">${ic('truck')}Имитация: статус от перевозчика</button>`);

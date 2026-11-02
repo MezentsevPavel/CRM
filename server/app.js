@@ -99,6 +99,23 @@ function send(res, status, body, headers = {}) {
   });
   res.end(text);
 }
+// Служебные имена объектов JavaScript: ключом, id или productId записи они подменили бы прототип объектов ядра сервера
+// (ключ __proto__, записанный в JSON через экранирование символа, JSON.parse делает обычным полем). Обход без рекурсии — глубина любая.
+const RESERVED = new Set(['__proto__', 'constructor', 'prototype']);
+function reservedName(value) {
+  const stack = [value];
+  while (stack.length) {
+    const v = stack.pop();
+    if (v === null || typeof v !== 'object') continue;
+    for (const k of Object.keys(v)) {
+      if (RESERVED.has(k)) return true;
+      const x = v[k];
+      if ((k === 'id' || k === 'productId') && typeof x === 'string' && RESERVED.has(x)) return true;
+      if (x !== null && typeof x === 'object') stack.push(x);
+    }
+  }
+  return false;
+}
 function readJson(req) {
   return new Promise(resolve => {
     const chunks = [];
@@ -108,9 +125,10 @@ function readJson(req) {
       if (over) return resolve({ error: [413, 'Слишком большой запрос'] });
       const text = Buffer.concat(chunks).toString('utf8');
       if (!text) return resolve({ value: {} });
-      // ключ __proto__ в данных подменил бы прототип объектов при слиянии
-      if (text.includes('"__proto__"')) return resolve({ error: [400, 'Неверные данные'] });
-      try { resolve({ value: JSON.parse(text) }); } catch { resolve({ error: [400, 'Неверные данные: не JSON'] }); }
+      let value;
+      try { value = JSON.parse(text); } catch { return resolve({ error: [400, 'Неверные данные: не JSON'] }); }
+      if (reservedName(value)) return resolve({ error: [400, 'Неверные данные'] });
+      resolve({ value });
     });
     req.on('error', () => resolve({ error: [400, 'Запрос не дошёл до сервера'] }));
   });

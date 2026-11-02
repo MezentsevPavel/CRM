@@ -144,7 +144,7 @@ function receiveShip(by,now){
     // менеджеру сделки — отдельно: уведомите клиента (R15). Клиента, номер сделки и менеджера называем только тому, кому сделка
     // видна (Stock.dealRef); остальные читают тот же текст со словами «сделка скрыта» — он же в asked для экрана после приёмки
     const text=withDeal=>withDeal?`Уведомите клиента: ${d.client} (${d.id}) — товар на складе: ${items}. ${tail} Менеджер: ${mg?.name||'нет данных'}.`:`Уведомите клиента (${Stock.HIDDEN_DEAL}) — товар на складе: ${items}. ${tail}`;
-    const made=Notify.pushFor(S,'msg',null,id=>text(!!Stock.dealRef(S,d.id,id)),now,[d.managerId],{t:'deal',id:d.id});
+    const made=Notify.pushFor(S,'msg',by,id=>text(!!Stock.dealRef(S,d.id,id)),now,[d.managerId],{t:'deal',id:d.id});
     notes.push(...made);
     asked.push({dealId:d.id,noteIds:made.map(n=>n.id),hidden:text(false)});
   });

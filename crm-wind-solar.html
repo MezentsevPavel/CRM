@@ -6900,25 +6900,27 @@ const Guard = (() => {
   const REF_KEY = { deal: 'deals', lead: 'leads', client: 'clients', dispatch: 'dispatches' };
   // Писать в карточку: может комментировать её (Feed.canComment, G01) или меняет её в той же пачке (её правило проверено
   // отдельно); в ленту сделки пишет и тот, кто в этой пачке меняет её резерв (приёмка, продажа)
+  // В этой пачке меняется резерв сделки ref (приёмка, продажа, снятие)
+  const reserveOf = (ctx, ref) => !!ref && ref.t === 'deal' && ctx.list.some(x => x.key === 'reserves'
+    && [(ctx.before(x) || {}).dealId, ((x.deleted ? null : x.data) || {}).dealId].includes(ref.id));
   function parentOk(ctx, ref) {
     if (!ref || !REF_KEY[ref.t]) return false;
     if (Feed.canComment(ctx.st, ctx.pid, ref) || Feed.canComment(ctx.after, ctx.pid, ref)) return true;
     if (changeOf(ctx, REF_KEY[ref.t], ref.id)) return true;
-    return ref.t === 'deal' && ctx.list.some(x => x.key === 'reserves'
-      && [(ctx.before(x) || {}).dealId, ((x.deleted ? null : x.data) || {}).dealId].includes(ref.id));
+    return reserveOf(ctx, ref);
   }
   function feedRule(ctx, c) {
     if (ctx.before(c) !== undefined || c.deleted) return no('записи ленты не правят и не удаляют');
     const e = c.data || {};
-    // запись о резерве (Deals.keepTrail) хранит того, кто его ставил
-    if (e.by && e.by !== ctx.pid && e.kind !== 'reserve') return no('запись в ленте — только от своего имени');
+    // запись о резерве (Deals.keepTrail) хранит того, кто его ставил, — когда в той же пачке меняется резерв этой сделки
+    if (e.by !== ctx.pid && !(e.kind === 'reserve' && reserveOf(ctx, e.ref))) return no('запись в ленте — только от своего имени');
     return parentOk(ctx, e.ref) ? null : no('писать в эту ленту');
   }
   function actsRule(ctx, c) {
     const b = ctx.before(c), a = ctx.data(c);
     if (!b) {
       if (!a) return null;
-      if (a.by && a.by !== ctx.pid) return no('дело — только от своего имени');
+      if (a.by !== ctx.pid) return no('дело — только от своего имени');
       return parentOk(ctx, a.ref) ? null : no('ставить дела в эту карточку');
     }
     if (!a) return no('дела не удаляют');
@@ -6958,14 +6960,54 @@ const Guard = (() => {
     if (a.from !== b.from) return no('автора задачи не меняют');
     return same(a.to, b.to) || targetOk(ctx, a) ? null : TO_TEXT;
   }
+  // Груз перемещения: отметки moved («в пути») и landed («пришло») — только вместе со складом, как их ставит Dispatch.setStage.
+  // moved ставится «Перемещением» каждой строки откуда → куда той же пачкой, снимается обратным; landed — этапом «Доставлена»
+  // с правом dispatch; пока груз ушёл со склада, строки, цель и склады заявки не меняются (как в Dispatch.update).
+  const lineOf = it => JSON.stringify([(it && it.productId) || null, (it && it.text) || null, Number(it && it.qty)]);
+  const sameLines = (b, a) => JSON.stringify((b.items || []).map(lineOf)) === JSON.stringify((a.items || []).map(lineOf));
+  // Каждой строке с товаром — своё «Перемещение» пачки from → to: тот же товар, количество и номер заявки
+  function transferMoves(ctx, d, from, to) {
+    if (d.purpose !== 'transfer' || !from || !to) return false;
+    const used = ctx.legs || (ctx.legs = new Set());
+    for (const it of d.items || []) {
+      if (!it || !it.productId) continue;
+      const i = ctx.moves.findIndex((m, j) => !used.has(j) && m.kind === Stock.KINDS.transfer && m.productId === it.productId
+        && Number(m.qty) === Number(it.qty) && m.doc === d.number
+        && cellOf(m.entityId, m.cityId) === cellOf(from.entityId, from.cityId) && cellOf(m.toEntityId, m.toCityId) === cellOf(to.entityId, to.cityId));
+      if (i < 0) return false;
+      used.add(i);
+    }
+    return true;
+  }
+  function cargoRule(ctx, b, a) {
+    if (b.moved && (!sameLines(b, a) || !same(b.purpose, a.purpose) || !same(b.from, a.from) || !same(b.toCell, a.toCell))) {
+      return no('товар перемещения уже ушёл со склада: строки, цель и склады заявки не меняются');
+    }
+    if (!!a.landed !== !!b.landed && (b.landed || !a.moved || a.stageId !== Dispatch.ST.delivered || same(b.stageId, a.stageId)
+      || !Dispatch.canWork(ctx.st, ctx.pid))) {
+      return needs('отметку «пришло на склад» ставит только этап «Доставлена»', 'dispatch');
+    }
+    if (!b.moved && a.moved && !transferMoves(ctx, a, a.from, a.toCell)) {
+      return no('отметка «в пути» ставится только вместе с «Перемещением» каждой строки в журнале склада');
+    }
+    if (b.moved && !a.moved && !transferMoves(ctx, a, a.toCell, a.from)) {
+      return no('отметка «в пути» снимается только обратным «Перемещением» каждой строки в журнале склада');
+    }
+    return null;
+  }
   function dispatchesRule(ctx, c) {
     const b = ctx.before(c), a = ctx.data(c);
-    if (!b) return !a || a.by === ctx.pid ? null : no('заявка — только от своего имени');
+    if (!b) return !a ? null : a.by !== ctx.pid ? no('заявка — только от своего имени') : cargoRule(ctx, {}, a);
     if (!a) return no('заявки на отправку не удаляют');
+    const cargo = cargoRule(ctx, b, a);
+    if (cargo) return cargo;
     const d = recOf(ctx.st, 'dispatches', c.id), ch = changedFields(b, a);
     if (ch.includes('stageId')) {
       const ok = a.stageId === Dispatch.ST.cancelled ? Dispatch.canCancel(ctx.st, ctx.pid, d) : Dispatch.canWork(ctx.st, ctx.pid);
-      return ok ? null : needs('двигать этапы заявки', 'dispatch');
+      if (!ok) return needs('двигать этапы заявки', 'dispatch');
+      // вместе с этапом меняются только отметки груза; прочее — кто может править заявку
+      const rest = ch.filter(f => !['stageId', 'moved', 'landed'].includes(f));
+      return !rest.length || Dispatch.canEdit(ctx.st, ctx.pid, d) ? null : no('править эту заявку — автору до начала сборки или тому, кто ведёт отправки');
     }
     if (Dispatch.canEdit(ctx.st, ctx.pid, d)) return null;
     // продажа строки заявки: только отметка «списано» у строк
@@ -6976,7 +7018,7 @@ const Guard = (() => {
     const b = ctx.before(c), a = ctx.data(c);
     if (!b) {
       if (!a) return null;
-      if (a.by && a.by !== ctx.pid) return no('уведомление — только от своего имени');
+      if (a.by !== ctx.pid) return no('уведомление — только от своего имени');
       return (a.to || []).every(id => personOf(ctx.st, id)) ? null : no('уведомление несуществующему сотруднику');
     }
     if (!a) return no('уведомления не удаляют');
@@ -8994,7 +9036,7 @@ function dShip(s){
     const src=h.source||(h.auto?'автоматически':'вручную'),who=h.by?person(h.by)?.name:null;
     return `<li><div class="sh-t">${esc(h.text)}</div><small>${fWhen(h.at)}${who?' · '+esc(who):''} · <span class="pill sm${h.auto?' info':''}">${esc(src)}</span></small></li>`;
   }).join('');
-  const photos=s.received?(()=>{const r=s.received;return `<div class="photos-row">${(r.urls.length?r.urls.map(u=>`<img src="${u}" alt="Фото приёмки">`):Array.from({length:r.photos},()=>`<span class="ph-ph">${ic('photo')}</span>`)).join('')}<small>${r.photos} фото · принял(а) ${esc(person(r.by)?.name||'')}${r.note?' · '+esc(r.note):''}</small></div>${unsavedNote(r)}`})():'';
+  const photos=s.received?(()=>{const r=s.received;return `<div class="photos-row">${(r.urls.length?r.urls.map(u=>`<img src="${esc(u)}" alt="Фото приёмки">`):Array.from({length:r.photos},()=>`<span class="ph-ph">${ic('photo')}</span>`)).join('')}<small>${r.photos} фото · принял(а) ${esc(person(r.by)?.name||'')}${r.note?' · '+esc(r.note):''}</small></div>${unsavedNote(r)}`})():'';
   const acts=[];
   if(can('logistics')&&!done) acts.push(`<button type="button" class="btn sm" data-act="stage" data-id="${esc(s.id)}">${ic('pin')}Отметить этап…</button>`);
   if(can('logistics')&&shipCarrierCan(s)) acts.push(`<button type="button" class="btn sm" data-act="ship-carrier" data-id="${esc(s.id)}">${ic('truck')}Имитация: статус от перевозчика</button>`);
@@ -9210,7 +9252,7 @@ function receiveShip(by,now){
     // менеджеру сделки — отдельно: уведомите клиента (R15). Клиента, номер сделки и менеджера называем только тому, кому сделка
     // видна (Stock.dealRef); остальные читают тот же текст со словами «сделка скрыта» — он же в asked для экрана после приёмки
     const text=withDeal=>withDeal?`Уведомите клиента: ${d.client} (${d.id}) — товар на складе: ${items}. ${tail} Менеджер: ${mg?.name||'нет данных'}.`:`Уведомите клиента (${Stock.HIDDEN_DEAL}) — товар на складе: ${items}. ${tail}`;
-    const made=Notify.pushFor(S,'msg',null,id=>text(!!Stock.dealRef(S,d.id,id)),now,[d.managerId],{t:'deal',id:d.id});
+    const made=Notify.pushFor(S,'msg',by,id=>text(!!Stock.dealRef(S,d.id,id)),now,[d.managerId],{t:'deal',id:d.id});
     notes.push(...made);
     asked.push({dealId:d.id,noteIds:made.map(n=>n.id),hidden:text(false)});
   });

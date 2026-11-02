@@ -547,3 +547,92 @@ test('Guard id: у записи массива id документа и data.id 
   allowed(check(a, pr, 'p1'), 'честный товар');
   denied(check(a, tamper(pr, 'products', 'tov-primer', a.S.products[0].id), 'p1'), 'товар с id существующего', /Нет прав/);
 });
+
+// ——— ремонт ветки F1: отметки перемещения и автор записей ———
+// Заявка-перемещение логиста p6 из клетки с остатком в «ИП, Москва»: [app, id, [p, e, c]]
+function transferApp(qty = 2) {
+  const a = app(), S = a.S;
+  const cell = cellWith(S, qty);
+  const r = a.Dispatch.create(S, { purpose: 'transfer', to: { name: 'Склад Москва', phone: '+7 900 000-00-95' }, from: { entityId: cell[1], cityId: cell[2] }, toCell: { entityId: 'ip', cityId: 'msk' }, when: { date: NOW }, items: [{ productId: cell[0], qty }] }, 'p6', NOW, { silent: true });
+  assert.equal(r.ok, true, r.reason || JSON.stringify(r.missing));
+  return [a, r.id || r.dispatch.id, cell];
+}
+
+test('Guard перемещение: «в пути» и «пришло» — только вместе с «Перемещением» каждой строки и этапом «Доставлена»; строки в пути не меняются', () => {
+  const [a, id, [p, e, c]] = transferApp(2);
+  const copy = () => a.Docs.join(a.Docs.split(a.S));
+  const freeThere = st => a.Stock.grid(st, p).cell('ip', 'msk');
+  // новая заявка сразу «в пути» на 1000 шт. без движений — «Свободно» в «куда» уменьшилось бы без записи в журнале
+  const forged = batch(a, st => {
+    const r = a.Dispatch.create(st, { purpose: 'transfer', to: { name: 'Склад-пример', phone: '+7 900 000-00-91' }, from: { entityId: e, cityId: c }, toCell: { entityId: 'ip', cityId: 'msk' }, when: { date: NOW }, items: [{ productId: p, qty: 1000 }] }, 'p6', NOW, { silent: true });
+    assert.equal(r.ok, true, r.reason);
+    st.dispatches.find(x => x.id === r.id).moved = true;
+  }, copy());
+  assert.notEqual(freeThere(a.Docs.apply(forged.st0, forged.changes)), freeThere(forged.st0), 'отметка «в пути» не трогает «Свободно» — тест ничего не проверит');
+  denied(check(a, forged, 'p6'), 'новая заявка с moved без движений', /Перемещени/);
+  // своя заявка: «в пути» без движения, «пришло» без этапа
+  denied(check(a, batch(a, st => { st.dispatches.find(x => x.id === id).moved = true; }, copy()), 'p6'), 'moved без «Перемещения»', /Перемещени/);
+  denied(check(a, batch(a, st => { const d = st.dispatches.find(x => x.id === id); d.moved = true; d.landed = true; }, copy()), 'p6'), 'landed без этапа «Доставлена»', /Доставлена/);
+  // настоящий выход со склада — можно
+  const way = batch(a, st => { const r = a.Dispatch.setStage(st, id, 'onWay', 'p6', NOW, { silent: true }); assert.equal(r.ok, true, r.reason); });
+  allowed(check(a, way, 'p6'), 'отправка логистом');
+  // груз в пути: строки не меняются, moved не снимается без обратного движения
+  denied(check(a, batch(a, st => { st.dispatches.find(x => x.id === id).items[0].qty = 1; }, copy()), 'p6'), 'строки в пути', /ушёл со склада/);
+  denied(check(a, batch(a, st => { st.dispatches.find(x => x.id === id).moved = false; }, copy()), 'p6'), 'moved снят без обратного движения', /Перемещени/);
+  // «пришло» — этапом «Доставлена» и только с правом dispatch
+  const raw = batch(a, st => { const d = st.dispatches.find(x => x.id === id); d.stageId = 'delivered'; d.landed = true; }, copy());
+  allowed(check(a, raw, 'p6'), 'этап «Доставлена» с отметкой «пришло» у логиста');
+  denied(check(a, batch(a, st => { st.dispatches.find(x => x.id === id).landed = true; }, copy()), 'p6'), 'landed без смены этапа', /Доставлена/);
+  // возврат из пути отменой — настоящая функция ядра — можно
+  const back = batch(a, st => { const r = a.Dispatch.setStage(st, id, 'cancelled', 'p6', NOW, { silent: true }); assert.equal(r.ok, true, r.reason); });
+  assert.ok(back.changes.some(x => x.key === 'moves' && x.data.kind === 'Перемещение'), 'возврат без обратного «Перемещения»');
+  allowed(check(a, back, 'p6'), 'возврат из пути логистом');
+  // доставка — настоящая функция ядра — можно (на свежей заявке: сразу из «Новая»)
+  const [a2, id2] = transferApp(1);
+  const done = batch(a2, st => { const r = a2.Dispatch.setStage(st, id2, 'delivered', 'p6', NOW, { silent: true }); assert.equal(r.ok, true, r.reason); });
+  allowed(check(a2, done, 'p6'), 'доставка сразу из «Новая»');
+});
+
+test('Guard отправки: при смене этапа прочие поля заявки меняет только тот, кто может её править', () => {
+  const a = app();
+  const r = a.Dispatch.create(a.S, { purpose: 'sale', to: { name: 'Клиент-пример 7', phone: '+7 900 000-00-94' }, address: 'Адрес-пример', when: { date: NOW }, items: [{ text: 'Строка-пример', qty: 1 }] }, 'p7', NOW, { silent: true });
+  const id = r.id || r.dispatch.id;
+  assert.equal(a.Dispatch.setStage(a.S, id, 'picking', 'p6', NOW, { silent: true }).ok, true);
+  const copy = () => a.Docs.join(a.Docs.split(a.S));
+  assert.equal(a.Dispatch.canCancel(a.S, 'p7', a.S.dispatches.find(x => x.id === id)), true, 'автор не может отменить — тест ничего не проверит');
+  // автор отменяет на «Сборке» — можно; заодно переписать получателя и строки — нельзя
+  const cancel = batch(a, st => { const x = a.Dispatch.setStage(st, id, 'cancelled', 'p7', NOW, { silent: true }); assert.equal(x.ok, true, x.reason); }, copy());
+  allowed(check(a, cancel, 'p7'), 'отмена автором до «В пути»');
+  const sneak = batch(a, st => { const d = st.dispatches.find(x => x.id === id); d.stageId = 'cancelled'; d.items = [{ text: 'Другая строка', qty: 99 }]; d.to = { name: 'Другой', phone: '+7 900 000-00-00' }; }, copy());
+  denied(check(a, sneak, 'p7'), 'отмена автором с правкой строк', /заявк/);
+});
+
+test('Guard автор: новая запись ленты, дела и уведомления — только от своего имени, без автора тоже нельзя; «резерв» с чужим автором — только с резервом сделки', () => {
+  const unsigned = (a, key, fn) => { const b = batch(a, fn); const c = b.changes.find(x => x.key === key && x.base === null); assert.ok(c, `нет новой записи ${key}`); c.data = { ...c.data, by: null }; return b; };
+  const a1 = app();
+  denied(check(a1, unsigned(a1, 'feed', st => a1.Feed.comment(st, { t: 'deal', id: 'Д-311' }, 'Комментарий-пример', 'p2', NOW)), 'p2'), 'комментарий без автора', /своего имени/);
+  const a2 = app();
+  denied(check(a2, unsigned(a2, 'acts', st => a2.Acts.plan(st, { t: 'deal', id: 'Д-311' }, { type: 'call', due: NOW }, 'p2', NOW)), 'p2'), 'дело без автора', /своего имени/);
+  const a3 = app();
+  denied(check(a3, unsigned(a3, 'notes', st => a3.Notify.push(st, 'task', 'p2', 'Уведомление-пример', NOW, ['p3'], { t: 'task', id: 't1' })), 'p2'), 'уведомление без автора', /своего имени/);
+  // запись «резерв» от чужого имени без резерва сделки в пачке
+  const a4 = app();
+  const fake = batch(a4, st => { a4.Feed.add(st, { t: 'deal', id: 'Д-311' }, { kind: 'reserve', text: 'Резерв-пример', by: 'p1', at: NOW }); });
+  denied(check(a4, fake, 'p2'), 'запись о резерве от имени директора без резерва', /своего имени/);
+  // настоящие действия ядра: комментарий, дело, снятие резерва, поставленного другим (запись о резерве — с его автором), уведомление о ходе заявки
+  const a5 = app();
+  allowed(check(a5, batch(a5, st => assert.equal(a5.Feed.comment(st, { t: 'deal', id: 'Д-311' }, 'Комментарий-пример', 'p2', NOW).ok, true)), 'p2'), 'комментарий');
+  const a5b = app();
+  allowed(check(a5b, batch(a5b, st => assert.equal(a5b.Acts.plan(st, { t: 'deal', id: 'Д-311' }, { type: 'call', due: NOW }, 'p2', NOW).ok, true)), 'p2'), 'дело');
+  const a6 = app();
+  const r6 = a6.S.reserves.find(x => x.dealId === 'Д-311');
+  r6.by = 'p1'; r6.at = NOW;
+  const un = batch(a6, st => { const x = a6.Deals.unreserve(st, 'Д-311', r6.id, 'p2', NOW); assert.equal(x.ok, true, x.reason); });
+  assert.ok(un.changes.some(x => x.key === 'feed' && x.data && x.data.kind === 'reserve' && x.data.by === 'p1'), 'запись о резерве с автором p1 не появилась — тест ничего не проверит');
+  allowed(check(a6, un, 'p2'), 'снятие резерва, поставленного директором');
+  const a7 = app();
+  const r7 = a7.Dispatch.create(a7.S, { purpose: 'sale', to: { name: 'Клиент-пример 6', phone: '+7 900 000-00-93' }, address: 'Адрес-пример', when: { date: NOW }, items: [{ text: 'Строка-пример', qty: 1 }] }, 'p7', NOW, { silent: true });
+  const st7 = batch(a7, st => { const x = a7.Dispatch.setStage(st, r7.id, 'picking', 'p6', NOW); assert.equal(x.ok, true, x.reason); });
+  assert.ok(st7.changes.some(x => x.key === 'notes' && x.base === null), 'уведомления автору нет — тест ничего не проверит');
+  allowed(check(a7, st7, 'p6'), 'уведомление автору о смене этапа');
+});

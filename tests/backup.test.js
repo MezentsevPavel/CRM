@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
-const { start, call, director, employee, changes, state, deal, events } = require('./server-kit.js');
+const { start, call, login, director, employee, changes, state, deal, events } = require('./server-kit.js');
 const admin = require('../server/admin.js');
 
 const at = (d, h = 0, mi = 0, s = 0) => new Date(2026, 10, d, h, mi, s).getTime();
@@ -230,4 +230,37 @@ test('server/admin.js: backups показывает список, restore <фа�
     if (saved.data === undefined) delete process.env.CRM_DATA; else process.env.CRM_DATA = saved.data;
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// ——— ремонт ветки F1 ———
+test('восстановление: отключённый после копии сотрудник остаётся отключённым и без сеансов — вход 401', async () => {
+  const clock = { t: at(2, 12) };
+  const srv = await start({ clock });
+  try {
+    const { boss, ivan } = await firm(srv);
+    clock.t = at(2, 13);
+    const copy = (await post(srv, boss, '/api/backups')).body.backup.name;
+    assert.equal((await post(srv, boss, '/api/users/p5/disable', {})).status, 200);
+    assert.equal((await login(srv, ivan.login, ivan.password)).status, 401, 'отключённый входит и до восстановления — тест ничего не проверит');
+    clock.t = at(2, 14);
+    assert.equal((await post(srv, boss, `/api/backups/${copy}/restore`)).status, 200);
+    assert.equal((await login(srv, ivan.login, ivan.password)).status, 401, 'восстановление вернуло вход отключённому');
+    assert.equal((await get(srv, ivan, '/api/me')).status, 401, 'старый сеанс отключённого ожил');
+    const u = (await get(srv, boss, '/api/users')).body.users.find(x => x.personId === 'p5');
+    assert.equal(u.disabled, true);
+    assert.equal((await get(srv, boss, '/api/me')).status, 200, 'сеанс директора жив');
+  } finally { await srv.stop(); }
+});
+
+test('копии: ручные не вытесняют ночные — после 31 «Сделать копию сейчас» ночные на месте, ручных 30', async () => {
+  const clock = { t: at(2, 12) };
+  const srv = await start({ clock });
+  try {
+    const nightlyNow = () => files(srv).filter(f => /^crm-\d{4}-\d{2}-\d{2}\.db$/.test(f));
+    const before = nightlyNow();
+    assert.deepEqual(before, [nightly(2)]);
+    for (let i = 0; i < 31; i++) { clock.t = at(2, 13, 0, i); srv.app.backups.make('manual'); }
+    assert.deepEqual(nightlyNow(), before, 'ручные копии стёрли ночную');
+    assert.equal(files(srv).filter(f => /-\d{6}\.db$/.test(f)).length, 30, 'ручных — 30 последних');
+  } finally { await srv.stop(); }
 });

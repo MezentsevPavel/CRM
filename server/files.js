@@ -18,6 +18,21 @@ const INLINE = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'a
 
 const cleanName = s => String(s || '').replace(/[\u0000-\u001f\u007f/\\]/g, '_').trim().slice(0, 200) || 'файл';
 const cleanType = s => { const t = String(s || '').split(';')[0].trim().toLowerCase(); return /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/.test(t) ? t : 'application/octet-stream'; };
+// Адрес файла сервера целиком: иначе строка с javascript: или кавычкой стала бы ссылкой или src картинки в браузере
+const FILE_URL_RE = /^\/api\/files\/fl[0-9a-f]{24}$/;
+const fileUrl = u => typeof u === 'string' && FILE_URL_RE.test(u);
+// Каждый файл записи (поле files на любой глубине) — с адресом файла сервера, каждое фото приёмки (received.urls) — адрес
+function urlsOk(value) {
+  const stack = [value];
+  while (stack.length) {
+    const v = stack.pop();
+    if (v === null || typeof v !== 'object') continue;
+    if (Array.isArray(v.files) && !v.files.every(f => f && typeof f === 'object' && fileUrl(f.url))) return false;
+    if (v.received && typeof v.received === 'object' && Array.isArray(v.received.urls) && !v.received.urls.every(fileUrl)) return false;
+    for (const x of Object.values(v)) if (x !== null && typeof x === 'object') stack.push(x);
+  }
+  return true;
+}
 // Файлы, на которые ссылается значение документа
 function idsIn(value) {
   const out = new Set();
@@ -116,10 +131,12 @@ function createFiles({ store, dataDir, maxBytes, now }) {
   }
 
   // Новые ссылки пачки на файлы: можно ссылаться только на свой файл или на тот, что человек уже видит.
+  // Адрес файла в записи (files[].url, received.urls[]) — только адрес файла этого сервера.
   // changes — после слияния; → null или {key, id, text}
   function checkRefs(changes, personId, canSee) {
     for (const c of changes) {
       if (c.deleted) continue;
+      if (!urlsOk(c.data)) return { key: c.key, id: c.id, text: 'Нет прав: адрес файла в записи — только адрес файла, загруженного на сервер CRM' };
       const had = new Set(S.refsOfDoc.all(c.key, String(c.id)).map(r => r.fileId));
       for (const id of idsIn(c.data)) {
         if (had.has(id)) continue;

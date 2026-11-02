@@ -114,3 +114,29 @@ test('обслуживание: брошенный файл стирается �
     assert.ok(!onDisk(kept));
   } finally { await srv.stop(); }
 });
+
+// Ремонт F1: адрес файла в записи — только адрес файла этого сервера (/api/files/fl + 24 знака), иначе через него
+// во вкладке директора выполнился бы скрипт: javascript:… в ссылке «скачать» или кавычка в src фото приёмки
+test('файл: url файла задачи или фото приёмки не вида /api/files/fl… — 403; настоящий загруженный файл и фото — проходят', async () => {
+  const srv = await start();
+  try {
+    const { boss } = await firm(srv);
+    const up = await upload(srv, boss.cookie, Buffer.from('фото-пример'), 'фото.jpg', 'image/jpeg');
+    const file = (url, id = up.body.id) => ({ id, name: 'фото.jpg', type: 'image/jpeg', size: 10, url, by: 'p1', at: dateDoc(T0), data: null });
+    const ship = (id, urls) => ({ id, dir: 'in', items: [], received: { at: dateDoc(T0), by: 'p1', photos: urls.length, urls, note: '' } });
+    const put = (key, data) => changes(srv, boss.cookie, [{ key, id: data.id, base: null, data }]);
+    for (const [what, key, data] of [
+      ['задача с javascript: в url', 'tasks', task('tkF1-1', 'p1', 'p1', [file('javascript:1')])],
+      ['задача с чужим адресом', 'tasks', task('tkF1-2', 'p1', 'p1', [file('https://example.invalid/x')])],
+      ['задача с файлом без url', 'tasks', task('tkF1-3', 'p1', 'p1', [{ ...file(undefined), url: undefined, data: 'javascript:1' }])],
+      ['поставка с кавычкой в фото', 'shipments', ship('П-9101', ['x" onerror=1'])],
+      ['поставка с адресом файла и хвостом', 'shipments', ship('П-9102', [up.body.url + '" onerror=1'])],
+    ]) {
+      const r = await put(key, data);
+      assert.equal(r.status, 403, `${what}: ${r.status} ${r.text}`);
+    }
+    assert.equal((await put('tasks', task('tkF1-4', 'p1', 'p1', [file(up.body.url)]))).status, 200, 'задача с загруженным файлом');
+    assert.equal((await put('shipments', ship('П-9103', [up.body.url]))).status, 200, 'поставка с загруженным фото');
+    assert.equal((await put('shipments', ship('П-9104', []))).status, 200, 'приёмка без фото');
+  } finally { await srv.stop(); }
+});
