@@ -345,7 +345,7 @@ const Import = (() => {
 
   // Таблица CSV контактов или компаний Битрикса → { rows, unknown, skipped, kind, problems }. Тип файла — по колонке
   // «Название компании». rows: { kind, name, phones, email, inn, address, org, managerName, bitrixId }; unknown — названия колонок,
-  // которых перенос не знает; skipped — строки без имени. Колонки — spec.md, «Колонки переноса».
+  // которых перенос не знает; skipped — строки без имени; lines — номер каждой из rows в файле (запись таблицы, заголовок — первая). Колонки — spec.md, «Колонки переноса».
   function clientRows(table) {
     const t = Array.isArray(table) ? table : [];
     const fail = text => ({ rows: [], unknown: [], skipped: 0, kind: null, problems: [text] });
@@ -364,10 +364,10 @@ const Import = (() => {
     head.forEach((c, j) => { const name = str(c); if (name && !CLIENT_KNOWN.has(heads[j]) && !isPhoneHead(heads[j]) && !isMailHead(heads[j]) && !unknown.includes(name)) unknown.push(name); });
     const cell = (r, names) => { const j = at(...names)[0]; return j === undefined ? '' : str(r[j]); };
     const first = (r, names) => { for (const j of at(...names)) if (str(r[j])) return str(r[j]); return ''; };
-    const rows = [];
+    const rows = [], lines = [];
     let skipped = 0;
-    for (const r of t.slice(hi + 1)) {
-      if (rowEmpty(r)) continue;
+    for (const [ti, r] of t.entries()) {
+      if (ti <= hi || rowEmpty(r)) continue;
       const name = company ? cell(r, ['названиекомпании']) : [cell(r, ['фамилия']), cell(r, ['имя']), cell(r, ['отчество'])].filter(Boolean).join(' ');
       if (!name) { skipped++; continue; }
       const phones = [], seen = new Set();
@@ -384,8 +384,9 @@ const Import = (() => {
         org: company ? '' : [cell(r, ['компания']), cell(r, ['должность'])].filter(Boolean).join(', '),
         managerName: cell(r, ['ответственный']), bitrixId: cell(r, ['id']),
       });
+      lines.push(ti + 1);
     }
-    return { rows, unknown, skipped, kind: company ? 'company' : 'person', problems: [] };
+    return { rows, unknown, skipped, kind: company ? 'company' : 'person', problems: [], lines };
   }
 
   // Присланная строка клиента → чистые поля; без имени — null
@@ -397,17 +398,17 @@ const Import = (() => {
     return {
       name, kind: r.kind === 'company' ? 'company' : 'person', phones: list(r.phones), email: str(r.email).slice(0, 200), inn: str(r.inn).slice(0, 30),
       address: str(r.address).slice(0, 500), org: str(r.org).slice(0, 500), bitrixId: str(r.bitrixId).slice(0, 60), managerName: str(r.managerName).slice(0, NAME_MAX),
-      fresh: r.fresh === true,
+      fresh: r.fresh === true, same: r.same === true,
     };
   }
 
   // Имя для сравнения: без регистра, без лишних пробелов, ё = е («  Иван   Пётр » и «иван петр» — одно имя)
   const nameKey = s => str(s).toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ');
   // Клиент, которого перенос узнаёт сам: тот же ИНН, телефон или почта (Clients.find: ИНН > телефон > почта), а без них —
-  // тот же ID Битрикса того же вида
+  // тот же ID Битрикса того же вида (свой или тот, что при объединении записан в bitrixAlso)
   function known(st, r) {
     const found = Clients.find(st, r)[0];
-    return found || (r.bitrixId ? st.clients.find(c => c.bitrixId === r.bitrixId && c.kind === r.kind) : null) || null;
+    return found || (r.bitrixId ? st.clients.find(c => c.kind === r.kind && (c.bitrixId === r.bitrixId || (c.bitrixAlso || []).includes(r.bitrixId))) : null) || null;
   }
   // Клиенты по имени: из них ищутся возможные двойники (ключ — nameKey)
   function byName(clients) {
@@ -415,38 +416,69 @@ const Import = (() => {
     for (const c of clients) { const k = nameKey(c.name); if (k) { if (!m.has(k)) m.set(k, []); m.get(k).push(c); } }
     return m;
   }
-  // Возможный двойник строки среди клиентов index: то же имя; если компания (колонка «Компания» контакта) есть у обоих — и она та же;
-  // у разных ID Битрикса (оба заполнены) — не двойник: Битрикс сам знает, что это две записи
+  // Одна ли это компания: сравнивается, только если она есть у обоих
+  const sameOrg = (a, b) => !(a && b && nameKey(a) !== nameKey(b));
+  // Возможный двойник строки среди клиентов index: то же имя; если компания (колонка «Компания» контакта) есть у обоих — и она та же.
+  // → { c, clash } или null. clash: у обоих заполнен ID Битрикса, и они разные — Битрикс считает это двумя записями; такой двойник
+  // берётся, только если нет другого, и по умолчанию строка с ним заводится новым клиентом (объединяет лишь явное same: true)
   function twinOf(index, r) {
+    let clash = null;
     for (const c of index.get(nameKey(r.name)) || []) {
-      if (c.org && r.org && nameKey(c.org) !== nameKey(r.org)) continue;
-      if (c.bitrixId && r.bitrixId && c.bitrixId !== r.bitrixId) continue;
-      return c;
+      if (!sameOrg(c.org, r.org)) continue;
+      if (c.bitrixId && r.bitrixId && c.bitrixId !== r.bitrixId) { clash = clash || c; continue; }
+      return { c, clash: false };
     }
-    return null;
+    return clash ? { c: clash, clash: true } : null;
+  }
+  // Строка без телефона, почты, ИНН и ID Битрикса: узнать её не по чему, кроме имени
+  const isBare = r => !r.phones.length && !r.email && !r.inn && !r.bitrixId;
+  // Повторы внутри файла: для каждой из строк cl (очищенных, null — пустая) — номер более ранней такой же «голой» строки (то же имя и та же
+  // компания, пустая — тоже «та же»: так повторы не цепляются друг за друга через строку без компании) или -1. Те, у кого контакты
+  // есть, склеиваются сами и сюда не попадают.
+  function repeats(cl) {
+    const firsts = new Map();
+    return cl.map((r, i) => {
+      if (!r || !isBare(r)) return -1;
+      const k = nameKey(r.name) + '|' + nameKey(r.org);
+      if (!firsts.has(k)) { firsts.set(k, i); return -1; }
+      return firsts.get(k);
+    });
   }
 
-  // Строки файла, которые загрузка не узнает по ИНН, телефону, почте и ID Битрикса, но которые совпали по имени с уже заведённым
-  // клиентом: «Возможно, уже есть». → [{ index, name, clientId, clientName }] (index — место строки в rows). Загрузка по умолчанию
-  // считает такую строку тем же клиентом; строка с fresh: true заводится новым клиентом. st не меняется.
-  function twins(st, rows) {
+  // Строки файла, про которые загрузка не уверена («Возможно, уже есть»), тремя путями:
+  //  — строка без телефона, почты, ИНН и ID Битрикса совпала по имени с уже заведённым клиентом;
+  //  — имя совпало с заведённым клиентом, но у обоих заполнены разные ID Битрикса (clash);
+  //  — строка без всего этого повторена в файле под тем же именем (dup); если такая пара ещё и совпала с заведённым клиентом —
+  //    это одна запись списка.
+  // → [{ index, indexes, lines, name, clientId, clientName, clash: {had, got} | null, dup }]: index — первая строка в rows, indexes —
+  // все строки записи, lines — их номера в файле (если передан lines из clientRows, иначе порядковые). По умолчанию (без fresh и same)
+  // строка считается тем же клиентом, а при clash — новым. fresh: true заводит нового, same: true объединяет и при clash. st не меняется.
+  function twins(st, rows, lines) {
     const out = [], list = Array.isArray(rows) ? rows : [];
     if (!list.length) return out;
-    const index = byName(st.clients || []);
-    list.forEach((raw, i) => {
-      const r = cleanClient(raw);
-      if (!r || known({ clients: st.clients || [] }, r)) return;
-      const c = twinOf(index, r);
-      if (c) out.push({ index: i, name: r.name, clientId: c.id, clientName: c.name });
+    const cl = list.map(cleanClient), first = repeats(cl), index = byName(st.clients || []);
+    const rest = new Map();
+    first.forEach((j, i) => { if (j >= 0) { if (!rest.has(j)) rest.set(j, [j]); rest.get(j).push(i); } });
+    cl.forEach((r, i) => {
+      if (!r || first[i] >= 0) return;
+      const group = rest.get(i) || [i];
+      const t = known({ clients: st.clients || [] }, r) ? null : twinOf(index, r);
+      if (!t && group.length < 2) return;
+      out.push({
+        index: i, indexes: group, lines: group.map(k => (lines && lines[k]) || k + 1), name: r.name,
+        clientId: t ? t.c.id : '', clientName: t ? t.c.name : '', clash: t && t.clash ? { had: t.c.bitrixId, got: r.bitrixId } : null, dup: group.length > 1,
+      });
     });
     return out;
   }
 
   // Завести клиентов из строк (clientRows). Тот же ИНН, телефон или почта (Clients.find: ИНН > телефон > почта), а без них —
-  // тот же ID Битрикса того же вида: клиент не создаётся заново, недостающее дописывается. Строка без всего этого, но с именем
-  // уже заведённого клиента (twins) — тоже тот же клиент, если в строке не стоит fresh: true («новый»). Двойник ищется среди
-  // клиентов, что были до загрузки: два «Ивана Петрова» в одном файле друг с другом не склеиваются. «Ответственный» → менеджер
-  // клиента, если имя совпало с именем сотрудника точно и такой один. → { created, merged, skipped }
+  // тот же ID Битрикса того же вида: клиент не создаётся заново, недостающее дописывается. Строка с именем уже заведённого клиента
+  // (twins) — тот же клиент, если в строке не стоит fresh: true («новый»); если у обоих разные ID Битрикса — наоборот, новый, пока
+  // не стоит same: true (тогда дополняется найденный: его ID остаётся, ID из файла — в bitrixAlso, чтобы повтор файла узнал строку, и
+  // строкой в ленту клиента). Повтор строки без контактов в самом файле (twins, dup) склеивается с первой такой строкой, если не fresh.
+  // Двойник ищется среди клиентов, что были до загрузки, и среди повторов файла; строки с контактами друг с другом по имени не склеиваются.
+  // «Ответственный» → менеджер клиента, если имя совпало с именем сотрудника точно и такой один. → { created, merged, skipped }
   function applyClients(st, rows, by, now) {
     if (!Array.isArray(rows)) throw new Error('Перенос: нужен список клиентов.');
     if (rows.length > ROWS_MAX) throw new Error(`Перенос: в файле больше ${ROWS_MAX} клиентов.`);
@@ -454,19 +486,28 @@ const Import = (() => {
     if (!st.clients) st.clients = [];
     const people = st.people || [];
     const index = byName(st.clients.slice());
-    for (const raw of rows) {
-      const r = cleanClient(raw);
+    const cl = rows.map(cleanClient), first = repeats(cl), got = [];
+    for (const [i, r] of cl.entries()) {
       if (!r) { out.skipped++; continue; }
       const same = r.managerName ? people.filter(p => str(p.name) === r.managerName) : [];
       const managerId = same.length === 1 ? same[0].id : '';
-      let found = known(st, r);
-      if (!found && !r.fresh) found = twinOf(index, r);
+      let found = known(st, r), clash = false;
+      if (!found && !r.fresh) {
+        const t = twinOf(index, r);
+        if (t && (!t.clash || r.same)) { found = t.c; clash = t.clash; }
+        else if (!t && first[i] >= 0) found = got[first[i]] || null;
+      }
       if (!found) {
-        Clients.make(st, { ...r, managerId: managerId || undefined }, by || null, now);
+        got[i] = Clients.make(st, { ...r, managerId: managerId || undefined }, by || null, now).client;
         out.created++;
         continue;
       }
+      got[i] = found;
       Clients.fill(st, found, r, by || null, now, 'переноса');
+      if (clash && !(found.bitrixAlso || []).includes(r.bitrixId)) {
+        (found.bitrixAlso = found.bitrixAlso || []).push(r.bitrixId);
+        Feed.add(st, { t: 'client', id: found.id }, { kind: 'field', text: `Из переноса объединено по выбору: в Битриксе это разные записи, ID ${found.bitrixId} (остаётся) и ID ${r.bitrixId} (из файла)`, by: by || null, at: now });
+      }
       if (!found.managerId && managerId) {
         found.managerId = managerId;
         Feed.add(st, { t: 'client', id: found.id }, { kind: 'field', text: `Из переноса добавлено: менеджер ${people.find(p => p.id === managerId).name}`, by: by || null, at: now });

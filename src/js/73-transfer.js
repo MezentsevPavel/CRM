@@ -58,7 +58,7 @@ function trClientsRead(bytes){
   try{
     const r=Import.clientRows(Import.parseCsv(Import.decode(bytes)));
     if(r.problems.length){t.clients={problems:r.problems};return}
-    t.clients={rows:r.rows,kind:r.kind,unknown:r.unknown,skipped:r.skipped,twins:Import.twins(S,r.rows),pv:Import.preview('clients',S,r.rows,S.me,new Date()),busy:false,err:'',done:null,at:0,sum:null};
+    t.clients={rows:r.rows,kind:r.kind,unknown:r.unknown,skipped:r.skipped,twins:Import.twins(S,r.rows,r.lines),pv:Import.preview('clients',S,r.rows,S.me,new Date()),busy:false,err:'',done:null,at:0,sum:null};
   }catch(e){t.clients={problems:[trWhy(e)]}}
 }
 async function trClientsSend(){
@@ -83,18 +83,35 @@ async function trClientsSend(){
 }
 const trClientNums=(p,file)=>`<ul class="tr-n">${trNum(p.created,'новых клиентов')}${trNum(p.merged,'объединено с уже заведёнными (недостающее дописано)')}${trNum(p.skipped+(file||0),'пропущено без имени')}</ul>`;
 
-// «Возможно, уже есть»: строки без телефона, почты, ИНН и ID Битрикса, но с именем заведённого клиента. У каждой выбор: «тот же»
-// (по умолчанию — данные из файла дополнят клиента) или «новый» (строка получает fresh: true и заведёт второго клиента).
+// «Возможно, уже есть»: строки без телефона, почты, ИНН и ID Битрикса с именем заведённого клиента; строки, где имя то же, а ID
+// Битрикса у обоих разные; строки, повторённые в самом файле. У каждой записи выбор: «тот же» (данные из файла дополнят клиента или
+// первую строку, нового не будет) или «новый» (fresh: true — заведётся ещё один). Для записи с разными ID Битрикса по умолчанию «новый»,
+// «тот же» — same: true. Выбор ложится на все строки записи (Import.twins: indexes).
+function trTwinText(w){
+  const n=w.lines.length,list=n===2?w.lines.join(' и '):w.lines.slice(0,-1).join(', ')+' и '+w.lines[n-1];
+  const twice=n>1?`в файле ${n===2?'дважды':num(n)+' раз'} (строки ${list})`:'';
+  if(!w.clientId) return `<b>${esc(w.name)}</b> — ${twice}`;
+  return `Возможно, уже есть: <b>${esc(w.name)}</b> → ${esc(w.clientName)} (${esc(w.clientId)})`
+    +(twice?` — ${twice}`:'')+(w.clash?` — в Битриксе это разные записи: ID ${esc(w.clash.had)} и ${esc(w.clash.got)}`:'');
+}
 function trTwinsHtml(s){
   if(!s.twins||!s.twins.length) return '';
   const lock=s.busy||s.at>0?' disabled':'';
-  return `<div class="tr-tw"><p class="warn-t m0">Строк, похожих на уже заведённых клиентов: <b>${num(s.twins.length)}</b>. У них нет ни телефона, ни почты, ни ИНН, ни ID Битрикса, совпало только имя. «Тот же» — данные из файла дополнят клиента, нового не будет; «новый» — заведётся ещё один.</p>
-    <ul>${s.twins.map(w=>`<li><span>Возможно, уже есть: <b>${esc(w.name)}</b> → ${esc(w.clientName)} (${esc(w.clientId)})</span><select class="inp" aria-label="Это тот же клиент? ${esc(w.name)}" data-on="tr-twin" data-i="${w.index}"${lock}><option value="same">тот же</option><option value="new"${s.rows[w.index]&&s.rows[w.index].fresh?' selected':''}>новый</option></select></li>`).join('')}</ul></div>`;
+  const row=w=>{
+    const r=s.rows[w.index]||{},cur=w.clash?(r.same&&!r.fresh?'same':'new'):(r.fresh?'new':'same');
+    return `<li><span>${trTwinText(w)}</span><select class="inp" aria-label="Это тот же клиент? ${esc(w.name)}" data-on="tr-twin" data-i="${w.index}"${lock}><option value="same"${w.clash&&cur==='same'?' selected':''}>тот же</option><option value="new"${cur==='new'?' selected':''}>новый</option></select></li>`;
+  };
+  return `<div class="tr-tw"><p class="warn-t m0">Строк, про которые не ясно, один ли это клиент: <b>${num(s.twins.length)}</b>. Совпало только имя: нет ни телефона, ни почты, ни ИНН, ни ID Битрикса, или ID в Битриксе разные, или строка повторена в файле. «Тот же» — данные из файла дополнят клиента, нового не будет (у найденного ID Битрикса остаётся прежний, ID из файла запишется в его ленту); «новый» — заведётся ещё один.</p>
+    <ul>${s.twins.map(row).join('')}</ul></div>`;
 }
 ON.change['tr-twin']=el=>{
-  const s=trUi().clients,r=s&&s.rows&&!s.busy&&!s.at?s.rows[Number(el.dataset.i)]:null;
-  if(!r) return;
-  if(el.value==='new') r.fresh=true;else delete r.fresh;
+  const s=trUi().clients,i=Number(el.dataset.i),w=s&&s.twins&&s.twins.find(x=>x.index===i);
+  if(!s||!s.rows||s.busy||s.at||!s.rows[i]) return;
+  for(const k of w?w.indexes:[i]){
+    const r=s.rows[k];
+    if(!r) continue;
+    if(el.value==='new'){r.fresh=true;delete r.same}else{delete r.fresh;r.same=true}
+  }
   s.pv=Import.preview('clients',S,s.rows,S.me,new Date());
   trRefresh();
 };
@@ -109,7 +126,7 @@ function trClientsHtml(){
     <form class="tr-go" data-form="tr-clients" novalidate><button type="submit" class="btn pri"${s.busy?' disabled':''}>${s.busy?'Загружаю…':'Загрузить'}</button><span class="hint">Клиенты добавятся к уже заведённым.</span></form>${s.err?`<p class="err">${esc(s.err)}</p>`:''}`;
   return `<section class="card"><div class="card-h"><h3>Клиенты из Битрикса</h3></div><div class="card-b stack-s">
     <p class="m0">Выгрузка контактов или компаний Битрикса в CSV, как она есть (UTF-8 или Windows-1251, разделитель — точка с запятой или запятая). Два файла — по очереди, тем же экраном: тип файла узнаётся по колонке «Название компании».</p>
-    <p class="hint">Клиент с тем же ИНН, телефоном или почтой дополняется, а не дублируется; у кого их нет — «Возможно, уже есть» по имени, и вы решаете, тот же это клиент или новый. «Ответственный» становится менеджером клиента, если имя совпало с именем сотрудника. Сам файл на сервер не отправляется и нигде не хранится.</p>
+    <p class="hint">Клиент с тем же ИНН, телефоном или почтой дополняется, а не дублируется; у кого их нет, у кого ID Битрикса разные или кто повторён в файле — «Возможно, уже есть» по имени, и вы решаете, тот же это клиент или новый. «Ответственный» становится менеджером клиента, если имя совпало с именем сотрудника. Сам файл на сервер не отправляется и нигде не хранится.</p>
     <div><label class="btn" for="tr-clients-file">${ic('plus')}Выбрать файл CSV</label><input id="tr-clients-file" class="sr" type="file" accept=".csv,.txt,text/csv,text/plain" data-on="tr-clients-file"></div>
     ${body}
   </div></section>`;
