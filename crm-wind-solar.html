@@ -12178,12 +12178,16 @@ MODALS.attFile=key=>{
 // Серверный режим в браузере (SERVER — страница, отданная сервером): вход и смена пароля, «Выйти», работа на общей базе.
 // В демо (страница без метки) отсюда работает только то, что под if(SERVER), то есть ничего.
 //
-// Синхронизация документами. srv.confirmed — документы (Docs.split), которые сервер подтвердил этой вкладке; всё, чем S
-// отличается от них, — неотправленные правки. save() → serverSave(): личное — в localStorage этого браузера, общее —
-// Docs.diff(confirmed, Docs.split(S)) → POST /api/changes. Пришли документы с сервера (ответ на пачку или /api/sync по
-// событию seq): своей правки в документе нет — берётся серверный; есть — трёхстороннее слияние (Docs.merge); не сошлось —
-// своя правка остаётся и уходит на сервер, а сервер отвечает 409 с именем того, кто правил (тост и свежая версия).
-// Запросы идут строго по одному (srvKick), обрыв связи — плашка и повтор сам.
+// Синхронизация документами. srv.confirmed — документы (Docs.split), которые сервер подтвердил этой вкладке.
+// Действие — всё, что изменилось в S от прошлого save() до этого: save() → serverSave() режет его в пачку
+// Docs.diff(srv.local, Docs.split(S)) и ставит в очередь srv.queue (srv.local — документы на момент прошлого среза).
+// Пачки уходят POST /api/changes строго по одной, по порядку (srvKick); сервер проводит пачку целиком или не проводит.
+// Отказ (409 — правки разошлись, 403 — нет прав) снимает только эту пачку: S собирается заново — подтверждённое сервером
+// плюс оставшиеся в очереди пачки плюс несохранённое (srvReject); правки других действий остаются и уходят дальше.
+// Пришли документы с сервера (ответ на пачку или /api/sync по событию seq): своей правки в документе нет — берётся
+// серверный; есть — трёхстороннее слияние (Docs.merge); не сошлось — своя правка остаётся, а сервер ответит на неё 409
+// с именем того, кто правил (тост и свежая версия). Обрыв связи — плашка и повтор той же пачки; повтор не задваивает:
+// документ, который на сервере уже такой же, сервер пропускает.
 
 const SRV_RETRY=[2,4,8,16,30];                  // повтор при обрыве связи, секунды
 const SRV_NIGHT_HOUR=4;                         // вкладка, открытая с прошлых суток, перезагружается после 04:00
@@ -12200,9 +12204,9 @@ const SRV_GONE_TEXT='Запись уже удалена или недоступ�
 const SRV_HIDE={nav:['mail','messages','sims'],tabs:['mail','data']};
 
 const srv={
-  confirmed:{},view:'',seq:0,pools:{},refill:{},tag:'',tab:'',n:0,person:null,
+  confirmed:{},local:{},queue:[],view:'',seq:0,pools:{},refill:{},tag:'',tab:'',n:0,person:null,
   busy:false,wantPush:false,wantPull:false,gate:false,offline:false,retry:0,retryT:0,
-  es:null,waiters:[],refused:'',forced:new Set(),openedAt:null,timer:0,users:null,usersBusy:false,usersErr:'',shown:null
+  es:null,waiters:[],openedAt:null,timer:0,users:null,usersBusy:false,usersErr:'',shown:null
 };
 
 if(SERVER){
@@ -12267,6 +12271,7 @@ async function srvLoad(){
   if(loc.theme) prefs.theme=loc.theme;
   if(loc.ship) prefs.ship=loc.ship;
   S=Docs.join(srv.confirmed,{me:pid,view:loc.view||'home',ui:defaultUi(),rcv:loc.rcv||null,v:3,prefs});
+  srv.local=Docs.split(S);srv.queue=[];
   const h=hashView();if(h) S.view=h;
   srv.openedAt=new Date();srv.gate=false;srvClose();
   render();
@@ -12283,11 +12288,20 @@ function srvSaveLocal(){
   if(!S||!S.me) return;
   try{localStorage.setItem(SRV_LOCAL+S.me,JSON.stringify(Store.plain({view:S.view,theme:S.prefs&&S.prefs.theme,ship:S.prefs&&S.prefs.ship,rcv:S.rcv})))}catch(_){}
 }
-// save() в серверном режиме: личное — в браузер, общее — на сервер (только изменённые документы)
+// save() в серверном режиме: личное — в браузер, общее — пачкой этого действия в очередь на сервер
 function serverSave(){
   srvSaveLocal();
+  // запись без id Docs.split не режет: срез не делается, правки ждут следующего save() (закрыть вкладку — предупредит)
+  try{srvCut()}catch(_){}
   srv.wantPush=true;srvKick();
   return {ok:true,droppedPhotos:0,fits:true};
+}
+// Срез действия: всё, чем S отличается от прошлого среза, — одна пачка в очередь
+function srvCut(){
+  if(!S) return;
+  const cur=Docs.split(S),changes=Docs.diff(srv.local,cur);
+  if(changes.length) srv.queue.push({changes});
+  srv.local=cur;
 }
 
 // ——— номера и id ———
@@ -12311,10 +12325,10 @@ async function srvRefill(prefix){
 }
 
 // ——— очередь запросов ———
-// Есть ли неотправленное: правки вне подтверждённой копии или запрос в пути
+// Есть ли неотправленное: запрос в пути, пачки в очереди или правки после прошлого среза
 function srvPending(){
   if(!S) return false;
-  return srv.busy||Docs.diff(srv.confirmed,Docs.split(S)).length>0;
+  return srv.busy||srv.queue.length>0||Docs.diff(srv.local,Docs.split(S)).length>0;
 }
 // Когда всё отправлено и получено (или связь пропала, или нужен вход) — для «Выйти», заведения сотрудника и тестов
 function serverIdle(){
@@ -12342,35 +12356,26 @@ function srvKick(){
   })();
 }
 
-// Отправить изменённые документы
+// Отправить первую пачку очереди. Принята — подтверждена; отвергнута — снимается только она (srvReject), остальные
+// ждут своей очереди; 401 и смена пароля — пачка остаётся первой и уйдёт после входа
 async function srvPush(){
-  const changes=Docs.diff(srv.confirmed,Docs.split(S));
-  if(!changes.length) return;
-  const sig=JSON.stringify(changes);
-  // эту же пачку сервер уже отверг — второй раз её не шлём (иначе отрисовка повторяла бы отказ по кругу)
-  if(sig===srv.refused) return;
-  const r=await srvApi('POST','/api/changes',{changes,view:srv.view});
+  const act=srv.queue[0];
+  if(!act) return;
+  const r=await srvApi('POST','/api/changes',{changes:act.changes,view:srv.view});
+  if(r.status!==200&&srvStatus(r)){srv.wantPush=true;return}
+  srv.queue.shift();
+  if(srv.queue.length) srv.wantPush=true;
   if(r.status===200){
-    srv.refused='';
-    for(const c of changes){const d=Docs.docId(c.key,c.id);if(c.deleted) delete srv.confirmed[d];else srv.confirmed[d]=c.data}
+    for(const c of act.changes){const d=Docs.docId(c.key,c.id);if(c.deleted) delete srv.confirmed[d];else srv.confirmed[d]=c.data}
     srvTake(r.body);
     return;
   }
-  if(r.status===409){
-    const d=Docs.docId(r.body.key,r.body.id),label=srvLabel(r.body.key,r.body.id);
-    const got=srvTake(r.body,new Set([d]));
-    // свежей версии в ответе нет (её уже отдали этой вкладке раньше) — берём всё заново
-    if(!got.has(d)){srv.forced.add(d);srv.view='';srv.wantPull=true}
-    toast(`Пока ты правил, «${label}» изменил(а) ${r.body.by||'нет данных: кто'} — показана свежая версия, повтори`,'warn');
-    // остальные правки пачки уйдут следующей: свежая версия перерисована, render() → save()
-    return;
-  }
-  if(srvStatus(r)){srv.wantPush=true;return}
-  // 403 (нет прав, запись удалена) и прочие отказы: откат к подтверждённой копии, тост с текстом сервера
-  srv.refused=sig;
-  const err=String(r.body.error||'Сервер не принял изменения');
-  srvRollback();
-  toast(/^Нет прав: править эту запись/.test(err)?SRV_GONE_TEXT:err,'warn');
+  const b=r.body||{};
+  let text;
+  if(r.status===409) text=`Пока ты правил, «${srvLabel(b.key,b.id)}» изменил(а) ${b.by||'нет данных: кто'} — показана свежая версия, повтори`;
+  else{const err=String(b.error||'Сервер не принял изменения');text=/^Нет прав: править эту запись/.test(err)?SRV_GONE_TEXT:err}
+  srvReject(act,b);
+  toast(text,'warn');
   srv.wantPull=true;
 }
 async function srvPull(){
@@ -12378,36 +12383,74 @@ async function srvPull(){
   if(r.status===200){srvTake(r.body);return}
   srvStatus(r);
 }
-// Откат: S — подтверждённая копия (личное остаётся)
-function srvRollback(){
-  S=Docs.join(srv.confirmed,S);
+// Отказ пачки act: снимается только она. Свежие документы из ответа (409) — в подтверждённую копию; srv.local —
+// подтверждённое плюс пачки, что остались в очереди; S — srv.local плюс несохранённое после прошлого среза.
+function srvReject(act,body){
+  const unsaved=Docs.diff(srv.local,Docs.split(S));
+  for(const [d,theirs] of srvIncoming(body)){if(theirs===undefined) delete srv.confirmed[d];else srv.confirmed[d]=theirs}
+  srv.local=srvReplay(srv.confirmed,srv.queue.flatMap(a=>a.changes));
+  S=Docs.join(srvReplay(srv.local,unsaved),S);
+  if(!S.people.some(p=>p.id===S.me)&&srv.person) S.people.push({...srv.person});
+  const n=srv.queue.length,sig=JSON.stringify(act.changes);
   render();
+  // отрисовка сама повторила отвергнутую правку (запись при отрисовке) — второй раз её не шлём, иначе отказ по кругу
+  srv.queue=srv.queue.filter((a,i)=>i<n||JSON.stringify(a.changes)!==sig);
 }
-
-// Документы с сервера → S. body — {seq, view, docs, gone, full}; force — документы, где берётся серверная версия, даже
-// если тут есть своя правка (409). → Set документов, пришедших в ответе
-function srvTake(body,force){
+// Товар снимка каталога: его запись снимка (документа о нём нет, пока его не правили) или null
+function srvSnap(key,id){
+  if(key!=='products') return null;
+  const p=Catalog.base().byId.get(id);
+  return p?Store.plain(p):null;
+}
+// Наложить правки (формы Docs.diff) на документы трёхсторонним слиянием: base → data поверх того, что есть.
+// Не сошлось (правка опиралась на отвергнутую) — остаётся то, что есть; сама пачка уйдёт, и сервер ответит на неё.
+function srvReplay(docs,changes){
+  const out={...docs};
+  for(const c of changes){
+    const d=Docs.docId(c.key,c.id),snap=srvSnap(c.key,c.id),cur=d in out?out[d]:snap;
+    const m=Docs.merge(c.base===undefined?null:c.base,c.deleted?null:c.data,cur===undefined?null:cur);
+    if(!m.ok) continue;
+    const v=m.value===undefined?null:m.value;
+    if(snap?Docs.same(v,snap):v===null) delete out[d];else out[d]=v;
+  }
+  return out;
+}
+// Ответ сервера → Map документов (data или undefined — исчез); номер правки и вкладка запоминаются
+function srvIncoming(body){
   const inc=new Map();
-  if(!body) return new Set();
+  if(!body) return inc;
   if(typeof body.seq==='number'&&body.seq>srv.seq) srv.seq=body.seq;
   if(body.view) srv.view=body.view;
   for(const x of body.docs||[]) inc.set(Docs.docId(x.key,x.id),x.data);
   for(const x of body.gone||[]) inc.set(Docs.docId(x.key,x.id),undefined);
   if(body.full) for(const d of Object.keys(srv.confirmed)) if(!inc.has(d)) inc.set(d,undefined);
+  return inc;
+}
+
+// Документы с сервера → S и srv.local. body — {seq, view, docs, gone, full}. Своя правка в документе (в очереди или ещё
+// не сохранённая) — слияние; не сошлось — своя остаётся вместе со своей основой, и сервер ответит на неё 409.
+// → Set документов, пришедших в ответе
+function srvTake(body){
+  const inc=srvIncoming(body);
   if(!inc.size) return new Set();
   const before=new Set(Notify.unreadIds(S,S.me)),cur=Docs.split(S);
   let clash=false;
-  for(const [d,theirs] of inc){
-    const base=srv.confirmed[d],mine=cur[d];
+  // своё docs[d] (правка поверх base) и серверное theirs: слияние; не сошлось — docs[d] не трогается, → false
+  const put=(docs,d,base,theirs)=>{
+    const mine=docs[d];
     let v=theirs;
-    const taken=(force&&force.has(d))||srv.forced.delete(d);
-    if(!taken&&!Docs.same(base,mine)&&!Docs.same(mine,theirs)){
-      // своя неотправленная правка: слияние; не сошлось — своя остаётся, сервер ответит на неё 409 с именем
+    if(!Docs.same(base,mine)&&!Docs.same(mine,theirs)){
       const m=Docs.merge(base,mine,theirs);
-      if(!m.ok){clash=true;continue}
+      if(!m.ok) return false;
       v=m.value;
     }
-    if(v===undefined) delete cur[d];else cur[d]=v;
+    if(v===undefined) delete docs[d];else docs[d]=v;
+    return true;
+  };
+  for(const [d,theirs] of inc){
+    const base=srv.confirmed[d];
+    // не сошлось с несохранённым — и основа среза (srv.local) остаётся прежней: иначе своя правка ушла бы поверх чужой молча
+    if(!put(cur,d,base,theirs)||!put(srv.local,d,base,theirs)) clash=true;
     if(theirs===undefined) delete srv.confirmed[d];else srv.confirmed[d]=theirs;
   }
   S=Docs.join(cur,S);

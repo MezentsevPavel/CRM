@@ -408,3 +408,55 @@ test('POST /api/changes: __proto__ в id товара, ключе или id за
     assert.equal((await changes(srv, boss.cookie, [{ key: 'deals', id: 'Д-951', base: null, data: deal('Д-951', { managerId: 'p1' }) }])).status, 200);
   } finally { await srv.stop(); }
 });
+
+test('POST /api/changes: пачка «списание + запретная или спорная запись» не меняет ни одной записи — ни движения, ни остатка, ни журнала', async () => {
+  const srv = await start();
+  try {
+    const { boss, anna } = await firm(srv);
+    const P = (await state(srv, boss.cookie)).products[0].id;
+    const mv = (id, kind, qty, by) => ({ id, at: dateDoc(T0), productId: P, kind, qty, entityId: 'ip', cityId: 'irk', doc: 'тест', by });
+    // приход 100 — директором
+    const got = await changes(srv, boss.cookie, [
+      { key: 'moves', id: 'mv-in', base: null, data: mv('mv-in', 'Приход', 100, 'p1') },
+      { key: 'stock', id: P, base: null, data: { ip: { irk: 100 } } },
+    ]);
+    assert.equal(got.status, 200, got.text);
+    const d0 = deal('Д-301', { managerId: 'p2' });
+    assert.equal((await changes(srv, boss.cookie, [{ key: 'deals', id: 'Д-301', base: null, data: d0 }])).status, 200);
+    const seq0 = (await state(srv, anna.cookie)).seq, logs0 = count(srv, 'SELECT COUNT(*) AS n FROM log');
+    const sale = [
+      { key: 'moves', id: 'mv-out', base: null, data: mv('mv-out', 'Отгрузка', 5, 'p2') },
+      { key: 'stock', id: P, base: { ip: { irk: 100 } }, data: { ip: { irk: 95 } } },
+    ];
+    const untouched = async what => {
+      const st = await state(srv, boss.cookie);
+      assert.equal(st.stock[P].ip.irk, 100, what + ': остаток не тронут');
+      assert.deepEqual(st.moves.map(m => m.id), ['mv-in'], what + ': движения нет');
+      assert.equal(docOf(st, 'deals', 'Д-301').object, d0.object, what + ': сделка не тронута');
+      assert.ok(!st.roles.find(r => r.id === 'managerB2c').perms.admin, what + ': роль не тронута');
+      assert.equal(st.seq, seq0, what + ': номер правки тот же');
+      assert.equal(count(srv, 'SELECT COUNT(*) AS n FROM log'), logs0, what + ': журнал без строк');
+    };
+    // одна запись без права — 403, ни одна из трёх не проведена
+    const role = (await state(srv, anna.cookie)).roles.find(r => r.id === 'managerB2c');
+    const forbidden = await changes(srv, anna.cookie, [...sale, { key: 'roles', id: 'managerB2c', base: role, data: { ...role, perms: { ...role.perms, admin: true } } }]);
+    assert.equal(forbidden.status, 403, forbidden.text);
+    await untouched('отказ Guard');
+    // одна запись спорная: директор успел поменять то же поле — 409, ни одна из трёх не проведена
+    assert.equal((await changes(srv, boss.cookie, [{ key: 'deals', id: 'Д-301', base: d0, data: { ...d0, object: 'СЭС директора' } }])).status, 200);
+    const seq1 = (await state(srv, anna.cookie)).seq, logs1 = count(srv, 'SELECT COUNT(*) AS n FROM log');
+    const clash = await changes(srv, anna.cookie, [...sale, { key: 'deals', id: 'Д-301', base: d0, data: { ...d0, object: 'СЭС Анны' } }]);
+    assert.equal(clash.status, 409, clash.text);
+    const st = await state(srv, boss.cookie);
+    assert.equal(st.stock[P].ip.irk, 100, 'конфликт: остаток не тронут');
+    assert.deepEqual(st.moves.map(m => m.id), ['mv-in'], 'конфликт: движения нет');
+    assert.equal(docOf(st, 'deals', 'Д-301').object, 'СЭС директора');
+    assert.deepEqual([st.seq, count(srv, 'SELECT COUNT(*) AS n FROM log')], [seq1, logs1], 'конфликт: ни правки, ни строк журнала');
+    // та же пачка без лишнего — проходит, и повтор её не задваивает
+    assert.equal((await changes(srv, anna.cookie, sale)).status, 200);
+    assert.equal((await changes(srv, anna.cookie, sale)).status, 200, 'повтор той же пачки (ответ потерялся) — не отказ');
+    const end = await state(srv, boss.cookie);
+    assert.equal(end.stock[P].ip.irk, 95, 'списано ровно 5');
+    assert.deepEqual(end.moves.map(m => m.id).sort(), ['mv-in', 'mv-out']);
+  } finally { await srv.stop(); }
+});

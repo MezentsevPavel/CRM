@@ -460,3 +460,96 @@ test('ночная перезагрузка: вкладка с прошлых с
   A.app.srvMinute(at5);
   assert.equal(A.reloads.length, 1);
 }));
+
+// ——— действие — одна пачка (R20i): отказ снимает только своё действие ———
+// Остаток товара в клетке по серверу: stock[pid][e][c]
+const stockAt = (st, pid, e, c) => (((st.stock || {})[pid] || {})[e] || {})[c];
+
+test('одно действие — одна пачка: списание по заявке, а заявку в ту же секунду правит логист — не проходит ничего; повтор списывает ровно 5, а не 10', () => withServer(async (srv, pages) => {
+  const { boss, anna } = await firm(srv);
+  const logist = await kit.employee(srv, boss, { id: 'p6', name: 'Ольга (тест)', role: 'logist', dept: 'logistics' });
+  const A = await open(srv, 'boss', boss.password), B = await open(srv, anna.login, anna.password), L = await open(srv, logist.login, logist.password);
+  pages.push(A, B, L);
+  const [P, P2] = A.app.S.products.map(p => p.id);
+  const CELL = { entityId: 'ip', cityId: 'irk' };
+  // приход 100 шт. и заявка «Продажа» на 5 шт. — от директора
+  assert.equal(A.app.Stock.move(A.app.S, { kind: A.app.Stock.KINDS.receive, productId: P, qty: 100, ...CELL, doc: 'П-тест', by: 'p1', at: new Date() }).ok, true);
+  A.app.save();
+  const made = A.app.Dispatch.create(A.app.S, { purpose: 'sale', to: { name: 'Клиент (тест)', phone: '+7 900 000-00-01' }, address: 'г. Иркутск (тест)', when: { date: '2026-11-05' }, items: [{ productId: P, qty: 5 }] }, 'p1', new Date());
+  assert.equal(made.ok, true, made.reason);
+  A.app.save();
+  await A.app.serverIdle();
+  assert.equal(stockAt(await kit.state(srv, boss.cookie), P, 'ip', 'irk'), 100);
+  const dsp = app => app.Dispatch.byId(app.S, made.id);
+  await until(() => dsp(B.app) && stockAt(B.app.S, P, 'ip', 'irk') === 100, 5000, 'заявка у менеджера');
+  await until(() => dsp(L.app), 5000, 'заявка у логиста');
+  // менеджер не слышит событий: правка логиста до него не дошла
+  B.app.srv.es.close(); B.app.srv.es = null;
+  const upd = L.app.Dispatch.update(L.app.S, made.id, { items: [{ productId: P, qty: 5 }, { productId: P2, qty: 1 }] }, 'p6', new Date());
+  assert.equal(upd.ok, true, upd.reason);
+  L.app.save();
+  await L.app.serverIdle();
+  assert.equal(dsp(L.app).items.length, 2);
+
+  const sell = () => B.app.Dispatch.sell(B.app.S, made.id, 0, CELL, 'p2', new Date());
+  assert.equal(sell().ok, true);
+  assert.equal(stockAt(B.app.S, P, 'ip', 'irk'), 95, 'на экране списано до ответа сервера');
+  B.app.save();
+  await B.app.serverIdle();
+  assert.ok(B.toasts().some(t => t.startsWith('Пока ты правил') && t.includes('Ольга (тест)')), B.toasts().join(' | '));
+  let st = await kit.state(srv, boss.cookie);
+  assert.equal(stockAt(st, P, 'ip', 'irk'), 100, 'остаток на сервере не тронут: пачка не проведена целиком');
+  assert.equal(st.moves.filter(m => m.kind === 'Отгрузка').length, 0, 'отгрузки в журнале нет');
+  assert.equal(stockAt(B.app.S, P, 'ip', 'irk'), 100, 'на экране — свежая версия: списания нет');
+  assert.equal(dsp(B.app).items.length, 2, 'на экране — заявка с правкой логиста');
+  assert.ok(!dsp(B.app).items[0].sold, 'строка не списана');
+  assert.equal(B.app.srvPending(), false, 'отвергнутое действие не досылается');
+
+  // «повтори»: менеджер жмёт ещё раз
+  assert.equal(sell().ok, true);
+  B.app.save();
+  await B.app.serverIdle();
+  st = await kit.state(srv, boss.cookie);
+  assert.equal(stockAt(st, P, 'ip', 'irk'), 95, 'списано ровно 5');
+  assert.equal(st.moves.filter(m => m.kind === 'Отгрузка').length, 1, 'одна отгрузка');
+  const d = st.dispatches.find(x => x.id === made.id);
+  assert.equal(d.items.length, 2, 'правка логиста осталась');
+  assert.equal(d.items[0].sold.by, 'p2', 'строка списана');
+}));
+
+test('отказ в одной пачке не стирает другие: без связи три действия, второе сервер отверг — первое и третье на сервере и на экране', () => withServer(async (srv, pages) => {
+  const { boss, anna } = await firm(srv);
+  const A = await open(srv, 'boss', boss.password), B = await open(srv, anna.login, anna.password);
+  pages.push(A, B);
+  const id = addDeal(A.app, { managerId: 'p2', client: 'Клиент Е' });
+  await A.app.serverIdle();
+  await until(() => dealOf(B.app, id), 5000, 'сделка у менеджера');
+  const posts = () => B.b.calls.filter(c => c.url === '/api/changes').length;
+  const n0 = posts();
+  B.b.net.down = true;
+  // 1: своя задача
+  const board = B.app.curBoard(), t = B.app.Store.freeId(B.app.S.tasks, 't');
+  B.app.S.tasks.push({ id: t, title: 'Перезвонить (тест)', desc: '', to: { t: 'p', id: 'p2' }, from: 'p2', due: new Date(), boardId: board.id, stageId: B.app.startStage(board.id).id, prio: 'normal', deal: '', at: new Date() });
+  B.app.save();
+  // 2: права админа своей роли — нельзя
+  const role = B.app.S.roles.find(r => r.id === 'managerB2c');
+  const was = !!role.perms.admin;
+  role.perms.admin = true;
+  B.app.save();
+  // 3: правка своей сделки
+  dealOf(B.app, id).object = 'СЭС 12 кВт (тест)';
+  B.app.save();
+  await B.app.serverIdle();
+  B.b.net.down = false;
+  await until(() => !B.app.srvPending() && B.app.srv.offline === false && posts() > n0, 8000, 'неотправленное ушло');
+  await B.app.serverIdle();
+  assert.ok(B.toasts().some(t => t.startsWith('Нет прав')), B.toasts().join(' | '));
+  const st = await kit.state(srv, boss.cookie);
+  assert.ok(st.tasks.some(x => x.id === t), 'первое действие на сервере');
+  assert.equal(docOfDeal(st, id).object, 'СЭС 12 кВт (тест)', 'третье действие на сервере');
+  assert.equal(!!st.roles.find(r => r.id === 'managerB2c').perms.admin, was, 'второе не проведено');
+  assert.ok(B.app.S.tasks.some(x => x.id === t), 'первое на экране');
+  assert.equal(dealOf(B.app, id).object, 'СЭС 12 кВт (тест)', 'третье на экране');
+  assert.equal(!!B.app.S.roles.find(r => r.id === 'managerB2c').perms.admin, was, 'второе откачено на экране');
+}));
+const docOfDeal = (st, id) => st.deals.find(d => d.id === id);
