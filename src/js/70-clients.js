@@ -133,15 +133,55 @@ function dClient(c){
   const edit=clientCanEdit(),rel=Clients.related(S,c.id,S.me);
   const sec=(t,n,html)=>`<div><h4 class="sh">${t}${n===null?'':' · '+n}</h4>${html}</div>`;
   const locked=edit?'':`<p class="lock">${ic('lock')}${CLIENT_NO_EDIT} Вам карточка открыта на просмотр.</p>`;
-  return {kind:'Клиент '+c.id,title:esc(c.name),sub:`${esc(Clients.KIND[c.kind]||'нет данных: вид')}${c.demo?' · пример':''}`,body:`${locked}${clientFields(c,edit)}
+  const merge=edit?`<p class="m0"><button type="button" class="btn sm" data-act="client-merge" data-id="${esc(c.id)}">Объединить</button> <span class="hint">с другим клиентом: двойник удаляется, его сделки, лиды, дела, лента и контакты переходят сюда</span></p>`:'';
+  return {kind:'Клиент '+c.id,title:esc(c.name),sub:`${esc(Clients.KIND[c.kind]||'нет данных: вид')}${c.demo?' · пример':''}`,body:`${locked}${clientFields(c,edit)}${merge}
     ${sec('Сделки',rel.deals.length,clientDeals(rel.deals))}${sec('Лиды',rel.leads.length,clientLeads(rel.leads))}${sec('Сообщения',rel.msgs.length,clientMsgs(rel.msgs))}
     ${sec('Отправки',rel.dispatches.length,clientDispatches(rel.dispatches))}
     ${sec('Лента',null,feedHtml({t:'client',id:c.id}))}`};
 }
 
+// ——— окно «Объединить» ———
+// Выбор лежит в S.ui.merge = {id, q, other}: id — клиент, который остаётся, other — второй (его удалят), q — поиск. Не сохраняется.
+// Объединение делает ядро (Clients.merge, 40-clients.js); сервер пускает его по тем же правилам (Guard, 47-guard.js).
+const clientMergeU=()=>S.ui.merge||(S.ui.merge={id:'',q:'',pick:'',other:''});
+// Кого предложить вторым: найденные по строке поиска; пока строка пуста — похожие на этого клиента (тот же ИНН, телефон, почта)
+function clientMergeOpts(c,q){
+  const list=(String(q||'').trim()?clientsSeen(Clients.search(S,q)):clientsSeen(Clients.find(S,c))).filter(x=>x.id!==c.id).slice(0,8);
+  if(!list.length) return `<p class="hint">${String(q||'').trim()?'Такого клиента нет.':'Введите имя, телефон или ИНН второго клиента — похожих на этого сейчас нет.'}</p>`;
+  return list.map(x=>`<label class="dpick"><input type="radio" name="cm-c" value="${esc(x.id)}" data-on="client-mc"${clientMergeU().pick===x.id?' checked':''}><span>${esc(x.name)}<small>${esc(x.id)}${(x.phones||[])[0]?' · '+esc(x.phones[0]):''}${x.inn?' · ИНН '+esc(x.inn):''}${x.demo?' · пример':''}</small></span></label>`).join('');
+}
+// Что переедет: числа для окна подтверждения (то же, что соберёт Clients.merge)
+function clientMergeCounts(drop){
+  const r=Clients.refsTo(S,drop.id);
+  const parts=[['сделок',r.deals.length],['лидов',r.leads.length],['дел',r.acts.length],['записей ленты',r.feed.length]].filter(x=>x[1]).map(x=>`${x[0]}: <b>${x[1]}</b>`);
+  return parts.length?`Переедет: ${parts.join(', ')}.`:'Связанных записей у него нет.';
+}
+MODALS.clientMerge=id=>{
+  const c=Clients.byId(S,id),m=clientMergeU(),other=m.other?Clients.byId(S,m.other):null;
+  if(!c) return '';
+  if(other){
+    return `<form data-form="client-merge" data-id="${esc(c.id)}" novalidate>${mHead('Объединить клиентов')}<div class="modal-b">
+      <p class="m0"><b>${esc(other.name)}</b> <small class="muted mono">${esc(other.id)}</small> будет удалён, его сделки, задачи, дела, лента и контакты перейдут к <b>${esc(c.name)}</b> <small class="muted mono">${esc(c.id)}</small>.</p>
+      <p class="hint">${clientMergeCounts(other)} Название, менеджер и прочее, что уже заполнено у ${esc(c.name)}, не меняется; телефоны и недостающие поля второго добавятся. Отменить объединение нельзя.</p>
+      <p><button type="button" class="link" data-act="client-merge-back" data-id="${esc(c.id)}">Выбрать другого клиента</button></p>
+      <p class="err" id="cm-err" hidden></p></div>${mFoot('Объединить')}</form>`;
+  }
+  return `<form data-form="client-merge" data-id="${esc(c.id)}" novalidate>${mHead('Объединить клиента '+esc(c.id))}<div class="modal-b">
+    <p class="m0">Найдите двойника «${esc(c.name)}». Он будет удалён, а всё его перейдёт сюда.</p>
+    <div class="field"><label for="cm-q">Второй клиент</label><input id="cm-q" class="inp" type="search" placeholder="Имя, телефон или ИНН" value="${esc(m.q)}" data-on="client-mq" autocomplete="off"></div>
+    <div id="cm-res" class="dpicks">${clientMergeOpts(c,m.q)}</div>
+    <p class="err" id="cm-err" hidden></p></div>${mFoot('Дальше')}</form>`;
+};
+
 // ——— действия ———
 function clientsRefresh(){const box=byId('client-body');if(box&&S.view==='clients') box.innerHTML=clientsBody()}
 A['client-new']=()=>{if(!clientCanEdit()) return toast(CLIENT_NO_EDIT,'warn');openModal('clientNew')};
+A['client-merge']=el=>{
+  if(!clientCanEdit()) return toast(CLIENT_NO_EDIT,'warn');
+  if(!Clients.byId(S,el.dataset.id)) return;
+  S.ui.merge={id:el.dataset.id,q:'',pick:'',other:''};openModal('clientMerge',el.dataset.id);
+};
+A['client-merge-back']=el=>{clientMergeU().other='';openModal('clientMerge',el.dataset.id)};
 A['client-kind']=el=>{clientsU().kind=Clients.KIND[el.dataset.k]?el.dataset.k:'';render()};
 A['client-reset']=()=>{S.ui.clients=Object.assign({},CLIENTS_DEF);render()};
 // «Похоже, это …»: имя — открыть карточку найденного (окно закрывается: оно лежит поверх карточки)
@@ -165,6 +205,11 @@ A['dup-pick']=el=>{
 
 // ——— поля ———
 ON.input['client-q']=t=>{clientsU().q=t.value;clientsRefresh()};
+ON.change['client-mc']=t=>{clientMergeU().pick=t.value};
+ON.input['client-mq']=t=>{
+  const m=clientMergeU(),c=Clients.byId(S,m.id),box=byId('cm-res');
+  m.q=t.value;m.pick='';if(c&&box) box.innerHTML=clientMergeOpts(c,t.value);
+};
 ON.input['client-dup']=()=>{
   const box=byId('cn-dup');
   if(box) box.innerHTML=clientDupHtml({phones:clientPhonesOf(byId('cn-phones').value),email:byId('cn-email').value,inn:byId('cn-inn').value});
@@ -195,6 +240,23 @@ FORMS['client-new']=()=>{
   if(!r.ok) return showErr('cn-err',r.reason);
   closeModal();render();openDrawer('client',r.id);
   toast(`Клиент ${r.id} заведён: ${r.client.name}. Запись в ленте есть.`);
+};
+
+// Окно «Объединить»: первый шаг — выбран второй клиент; второй — подтверждение, и одно действие меняет всё разом (одно save() в render)
+FORMS['client-merge']=f=>{
+  const id=f.dataset.id,m=clientMergeU();
+  if(!clientCanEdit()) return showErr('cm-err',CLIENT_NO_EDIT);
+  if(!m.other){
+    if(!m.pick||m.pick===id||!Clients.byId(S,m.pick)) return showErr('cm-err','Выберите клиента из списка.');
+    const block=Clients.mergeBlock(S,id,m.pick,S.me);
+    if(block) return showErr('cm-err',block);
+    m.other=m.pick;openModal('clientMerge',id);return;
+  }
+  const drop=Clients.byId(S,m.other),keep=Clients.byId(S,id);
+  const r=Clients.merge(S,id,m.other,S.me,new Date());
+  if(!r.ok) return showErr('cm-err',r.reason);
+  S.ui.merge=null;closeModal();render();
+  toast(`Клиент ${drop.id} объединён с ${keep.id}: ${drop.name} удалён, его записи теперь у ${keep.name}. Запись в ленте есть.`);
 };
 
 // ——— регистрация в реестрах оболочки ———

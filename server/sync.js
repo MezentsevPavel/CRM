@@ -207,6 +207,20 @@ function createSync({ store, core, now, files, onSeq }) {
     return out;
   }
 
+  // Каскад объединения клиентов: уведомления на удалённого клиента, которых человек не видит (они чужие), тоже ссылаются
+  // теперь на первого — иначе «Открыть» вело бы в пустоту. Видимые ему уведомления он переводит сам, в своей пачке.
+  function cascadeMerge(list) {
+    const merged = core.Guard.merges(st, list), out = [];
+    if (!merged.size) return out;
+    for (const n of st.notes || []) {
+      const keep = n.ref && n.ref.t === 'client' ? merged.get(String(n.ref.id)) : undefined;
+      if (!keep || list.some(x => x.key === 'notes' && String(x.id) === String(n.id))) continue;
+      const cur = current('notes', String(n.id));
+      out.push({ key: 'notes', id: String(n.id), base: cur, data: { ...cur, ref: { t: 'client', id: keep } }, op: 'cascade' });
+    }
+    return out;
+  }
+
   // Записать пачку (уже проверенную): документы, ссылки на файлы, журнал, seq — одной транзакцией
   function commit(list, personId) {
     const at = now();
@@ -280,7 +294,7 @@ function createSync({ store, core, now, files, onSeq }) {
       if (refusal) return bad(403, refusal.text, { key: refusal.key, id: refusal.id });
       const fileRefusal = files.checkRefs(list, ses.personId, canSee(ses.personId));
       if (fileRefusal) return bad(403, fileRefusal.text, { key: fileRefusal.key, id: fileRefusal.id });
-      commit([...list, ...cascade(list)], ses.personId);
+      commit([...list, ...cascade(list), ...cascadeMerge(list)], ses.personId);
     }
     const out = viewId ? syncFor(ses, viewId) : { seq, docs: [], gone: [] };
     return { status: 200, body: out };

@@ -329,3 +329,25 @@ test('needsRehash: прежний хеш и хеш с иными парамет�
   assert.equal(needsRehash('scrypt$131073$8$1$zz'), true);
   assert.equal(needsRehash(null), true);
 });
+
+test('пароли: 5 входов одновременно — считается не больше двух scrypt сразу (по 128 МБ), остальные ждут очереди, все пять отвечают верно', async () => {
+  const crypto = require('node:crypto');
+  const real = crypto.scrypt;
+  let now = 0, top = 0, calls = 0;
+  // каждое обращение к scrypt считаем от вызова до ответа и держим подольше, чтобы наплыв был настоящим
+  crypto.scrypt = (...a) => {
+    const cb = a.pop();
+    calls++; now++; top = Math.max(top, now);
+    real(...a, (e, key) => setTimeout(() => { now--; cb(e, key); }, 40));
+  };
+  const srv = await start();
+  try {
+    const boss = await director(srv);
+    calls = 0; top = 0;
+    const answers = await Promise.all(Array.from({ length: 5 }, (_, i) => login(srv, 'boss', i === 4 ? secret() : boss.password)));
+    assert.deepEqual(answers.map(r => r.status), [200, 200, 200, 200, 401], 'каждый получил свой верный ответ');
+    assert.ok(calls >= 5, 'считались все пять проверок: ' + calls);
+    assert.ok(top <= 2, 'одновременно считалось не больше двух: было ' + top);
+    assert.ok(top >= 2, 'но и два сразу идут (очередь не по одному): было ' + top);
+  } finally { crypto.scrypt = real; await srv.stop(); }
+});

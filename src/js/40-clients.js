@@ -134,13 +134,18 @@ const Clients = (() => {
   // Дописать найденному клиенту то, чего у него не было (занятое не затирается): телефоны, почта, ИНН, адрес, а из переноса —
   // компания и ID Битрикса. source — откуда данные, для записи в ленте («заявки», «переноса»). → список дописанного (пусто — ничего).
   function fill(st, found, d, by, now, source = 'заявки') {
+    const add = gather(found, d);
+    if (add.length) Feed.add(st, { t: 'client', id: found.id }, { kind: 'field', text: `Из ${source} добавлено: ${add.join(', ')}`, by, at: now });
+    return add;
+  }
+  // Само дописывание (без записи в ленту) — им же объединение двух клиентов. → список дописанного
+  function gather(found, d) {
     const add = [];
     const have = new Set((found.phones || []).map(phoneKey));
     for (const ph of phonesOf(d)) if (!have.has(phoneKey(ph))) { (found.phones = found.phones || []).push(ph); have.add(phoneKey(ph)); add.push(`телефон ${ph}`); }
     for (const [f, label] of [['email', 'почта'], ['inn', 'ИНН'], ['address', 'адрес'], ['org', 'компания'], ['bitrixId', 'ID в Битриксе']]) {
       if (!str(found[f]) && str(d[f]) && (f !== 'inn' || innKey(d.inn))) { found[f] = str(d[f]); add.push(`${label} ${found[f]}`); }
     }
-    if (add.length) Feed.add(st, { t: 'client', id: found.id }, { kind: 'field', text: `Из ${source} добавлено: ${add.join(', ')}`, by, at: now });
     return add;
   }
 
@@ -175,7 +180,63 @@ const Clients = (() => {
       || (ik.length >= 3 && innKey(c.inn).includes(ik)));
   }
 
-  return { KIND, phoneKey, byId, find, canEdit, create, make, update, findOrCreate, fill, related, search };
+  // ——— объединение двух клиентов ———
+  // Что ссылается на клиента id и переедет к другому: сделки (clientId), лиды (привязанные к нему и ещё не привязанные, но
+  // совпавшие с ним по контактам — Clients.related), записи ленты и дела его карточки, уведомления на неё.
+  // Отправки и резервы клиента не называют: они идут за его сделками.
+  function refsTo(st, id) {
+    const on = r => !!r && r.t === 'client' && r.id === id;
+    return {
+      deals: (st.deals || []).filter(d => d.clientId === id),
+      leads: byId(st, id) ? related(st, id).leads : [],
+      feed: (st.feed || []).filter(e => on(e.ref)),
+      acts: (st.acts || []).filter(a => on(a.ref)),
+      notes: (st.notes || []).filter(n => on(n.ref)),
+    };
+  }
+  // Можно ли by объединить клиентов: keepId остаётся, dropId удаляется. → текст отказа или null.
+  // by пустой — система (проверка прав не нужна). Человеку нужно право править клиентов, оба клиента ему видны, а всё, что
+  // переезжает (сделки второго, его лиды), он видит и может править: иначе часть данных осталась бы без него. Ту же проверку делает сервер (Guard).
+  function mergeBlock(st, keepId, dropId, by) {
+    const keep = byId(st, keepId), drop = byId(st, dropId);
+    if (!keep || !drop) return 'Такого клиента нет.';
+    if (keep.id === drop.id) return 'Клиента нельзя объединить с ним самим.';
+    if (!by) return null;
+    if (!canEdit(st, by)) return NO_RIGHT.reason;
+    if (!Visible.client(st, keep, by) || !Visible.client(st, drop, by)) return 'Один из клиентов вам не виден, поэтому объединить их нельзя.';
+    const refs = refsTo(st, drop.id), seenLeads = new Set(Leads.visible(st, by).map(l => l.id));
+    const hidden = refs.deals.filter(d => !Deals.canEdit(st, d, by)).length + refs.leads.filter(l => !seenLeads.has(l.id)).length;
+    if (hidden) return `У клиента «${drop.name}» есть сделки или лиды (${hidden}), которые вам не видны или которые вам нельзя править, поэтому объединить нельзя. Объединить может тот, кто видит и ведёт их все.`;
+    return null;
+  }
+  // Слить клиента dropId в keepId: всё, что ссылалось на второго (refsTo), переходит к первому; телефоны, почта, ИНН, адрес,
+  // компания, ID Битрикса и менеджер второго дополняют первого (занятое у первого не затирается); второй удаляется; в ленту первого
+  // — запись «объединён с …». Название первого остаётся, в его сделках название клиента то же. → {ok, reason, moved, added, kept}
+  function merge(st, keepId, dropId, by, now) {
+    const block = mergeBlock(st, keepId, dropId, by);
+    if (block) return { ok: false, reason: block, moved: null, added: [], kept: [] };
+    const keep = byId(st, keepId), drop = byId(st, dropId), refs = refsTo(st, dropId);
+    const ref = { t: 'client', id: keep.id };
+    const added = gather(keep, drop);
+    if (!keep.managerId && drop.managerId) { keep.managerId = drop.managerId; added.push(`менеджер ${(personOf(st, drop.managerId) || {}).name || drop.managerId}`); }
+    // чужое при занятом поле у первого не переносится — в ленте остаётся, чтобы не потерять
+    const kept = [];
+    for (const [f, label] of [['email', 'почта'], ['inn', 'ИНН'], ['address', 'адрес'], ['org', 'компания'], ['bitrixId', 'ID в Битриксе']]) {
+      if (str(drop[f]) && str(keep[f]) && (f === 'email' ? emailKey(drop[f]) !== emailKey(keep[f]) : str(drop[f]) !== str(keep[f]))) kept.push(`${label} ${str(drop[f])}`);
+    }
+    for (const d of refs.deals) { d.clientId = keep.id; d.client = keep.name; }
+    for (const l of refs.leads) l.clientId = keep.id;
+    for (const x of [...refs.feed, ...refs.acts, ...refs.notes]) x.ref = { t: ref.t, id: ref.id };
+    st.clients.splice(st.clients.indexOf(drop), 1);
+    const moved = { deals: refs.deals.length, leads: refs.leads.length, feed: refs.feed.length, acts: refs.acts.length, notes: refs.notes.length };
+    const parts = [['сделок', moved.deals], ['лидов', moved.leads], ['дел', moved.acts], ['записей ленты', moved.feed], ['уведомлений', moved.notes]].filter(x => x[1]).map(x => `${x[0]} ${x[1]}`);
+    const text = `Объединён с ${drop.id} «${drop.name}», тот удалён. Перешло: ${parts.join(', ') || 'ничего (связанных записей не было)'}.`
+      + (added.length ? ` Добавлено: ${added.join(', ')}.` : '') + (kept.length ? ` Не перенесено, у этого клиента уже другое: ${kept.join(', ')}.` : '');
+    Feed.add(st, ref, { kind: 'merge', text, by: by || null, at: now, data: { dropId: drop.id, dropName: drop.name, moved } });
+    return { ok: true, reason: '', moved, added, kept };
+  }
+
+  return { KIND, phoneKey, byId, find, canEdit, create, make, update, findOrCreate, fill, related, search, refsTo, mergeBlock, merge };
 })();
 
 // Шаг SEEDS: демо-клиенты. Каждая сделка получает клиента (clientId) из своего названия, контакта и телефона: сделки из лидов

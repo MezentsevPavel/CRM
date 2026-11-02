@@ -486,3 +486,123 @@ test('«Настройки → Лиды и сделки»: причины отк
   app.A['reason-del']({ dataset: { id: S.lostReasons[0].id } });
   assert.equal([...Deals.reasons(S)].length, n, 'менеджер без права «Настройки» поменял список причин');
 });
+
+// ——— объединение клиентов ———
+// Демо-клиенты двух сделок: Д-311 (B2C, Анна p2) и Д-314 (B2B, Максим p3); к ним добавлено то, что должно переехать
+function mergeFixture(app) {
+  const { S, Clients, Acts } = app;
+  const keep = Clients.byId(S, S.deals.find(d => d.id === 'Д-311').clientId);
+  const drop = Clients.byId(S, S.deals.find(d => d.id === 'Д-314').clientId);
+  drop.phones.push('+7 900 000-00-77');
+  drop.address = 'Иркутск, ул. Пример, 1';
+  drop.email = 'vtoroy@example.com';
+  keep.email = keep.email || 'pervyj@example.com';
+  const act = Acts.plan(S, { t: 'client', id: drop.id }, { type: 'call', title: 'Позвонить второму', due: new Date(2026, 10, 3, 10, 0) }, 'p1', NOW);
+  assert.equal(act.ok, true, act.reason);
+  S.notes.unshift({ id: 'n-merge', kind: 'task', by: null, at: NOW, text: 'Пример', to: ['p1'], read: [], ref: { t: 'client', id: drop.id } });
+  return { keep, drop, act: act.act };
+}
+const on = id => r => !!r && r.t === 'client' && r.id === id;
+const refsTo = (S, id) => S.deals.filter(d => d.clientId === id).length + S.leads.filter(l => l.clientId === id).length
+  + [S.feed, S.acts, S.notes].reduce((n, list) => n + list.filter(x => on(id)(x.ref)).length, 0);
+
+test('Clients.merge: сделки, лиды, дела, лента и уведомления второго у первого, контакты слиты без затирания, второй удалён, в ленте первого запись', () => {
+  const app = load(), { S, Clients, Feed } = app;
+  const { keep, drop, act } = mergeFixture(app);
+  const before = Clients.refsTo(S, drop.id);
+  assert.ok(before.deals.length && before.feed.length && before.acts.length === 1 && before.notes.length === 1, 'в примере есть что переносить');
+  const keepEmail = keep.email, keepName = keep.name, keepPhones = [...keep.phones], n = S.clients.length, feedN = S.feed.length;
+  const r = Clients.merge(S, keep.id, drop.id, 'p1', LATER);
+  assert.equal(r.ok, true, r.reason);
+  assert.deepEqual(JSON.parse(JSON.stringify(r.moved)), { deals: before.deals.length, leads: before.leads.length, feed: before.feed.length, acts: 1, notes: 1 });
+  // второй удалён, ссылок на него не осталось нигде
+  assert.equal(Clients.byId(S, drop.id), null);
+  assert.equal(S.clients.length, n - 1);
+  assert.equal(refsTo(S, drop.id), 0, 'на удалённого клиента что-то ещё ссылается');
+  // всё переехало к первому
+  for (const d of before.deals) assert.deepEqual([d.clientId, d.client], [keep.id, keepName]);
+  for (const l of before.leads) assert.equal(l.clientId, keep.id);
+  assert.deepEqual({ ...act.ref }, { t: 'client', id: keep.id });
+  assert.deepEqual({ ...S.notes.find(x => x.id === 'n-merge').ref }, { t: 'client', id: keep.id });
+  for (const e of before.feed) assert.equal(e.ref.id, keep.id);
+  // контакты: занятое не затёрто, пустое и чужие телефоны добавлены
+  assert.equal(keep.name, keepName);
+  assert.equal(keep.email, keepEmail, 'почта первого осталась');
+  assert.equal(keep.address, 'Иркутск, ул. Пример, 1', 'пустой адрес заполнен');
+  assert.ok(keepPhones.every(p => keep.phones.includes(p)) && keep.phones.includes('+7 900 000-00-77'), 'телефоны слиты');
+  assert.equal(new Set(keep.phones.map(Clients.phoneKey)).size, keep.phones.length, 'без повторов');
+  // запись в ленте первого: одна новая, видом «merge», с номером удалённого
+  assert.equal(S.feed.length, feedN + 1);
+  const last = S.feed[S.feed.length - 1];
+  assert.deepEqual([last.kind, last.ref.t, last.ref.id, last.data.dropId, last.by], ['merge', 'client', keep.id, drop.id, 'p1']);
+  assert.ok(last.text.includes(drop.id) && last.text.includes(drop.name) && last.text.includes('vtoroy@example.com'), 'в записи названо, что объединено и что не перенесено: ' + last.text);
+  assert.ok(Feed.of(S, { t: 'client', id: keep.id }).some(e => e.kind === 'merge'), 'запись видна в ленте клиента');
+  assert.ok(Feed.of(S, { t: 'client', id: keep.id }).some(e => e.text.includes('Клиент заведён: ' + drop.name)), 'лента второго пришла к первому');
+});
+
+test('Clients.merge: отказ — тот же клиент, нет такого, нет права, невидимая сделка второго; состояние при отказе не меняется', () => {
+  const app = load(), { S, Clients, Deals } = app;
+  const { keep, drop } = mergeFixture(app);
+  const snap = () => JSON.stringify(app.Docs.split(S));
+  const was = snap();
+  const no = (id1, id2, by, re) => {
+    const r = Clients.merge(S, id1, id2, by, LATER);
+    assert.equal(r.ok, false);
+    assert.match(r.reason, re);
+    assert.equal(snap(), was, 'отказ изменил состояние');
+  };
+  no(keep.id, keep.id, 'p1', /с ним самим/);
+  no(keep.id, 'К-нет', 'p1', /нет/);
+  no(keep.id, drop.id, 'p7', /нет права заводить и править клиентов/);   // инженер клиентов видит, но не правит
+  // Анна (B2C) не видит клиента Д-314 (B2B)
+  no(keep.id, drop.id, 'p2', /не виден/);
+  // клиент виден Анне через её сделку, но у него есть ещё B2B-сделка Максима — её Анна не видит
+  const hidden = Deals.create(S, { clientId: keep.id, type: 'b2b', managerId: 'p3' }, 'p1', NOW);
+  assert.equal(hidden.ok, true, hidden.reason);
+  const other = Clients.create(S, { name: 'Клиент-пример Третий', phone: '+7 900 000-00-79', managerId: 'p2' }, 'p1', NOW).client;
+  assert.equal(Deals.create(S, { clientId: other.id, type: 'b2c', managerId: 'p2' }, 'p1', NOW).ok, true);
+  const was2 = snap();
+  const r = Clients.merge(S, other.id, keep.id, 'p2', LATER);
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /не видны или которые вам нельзя править/);
+  assert.equal(snap(), was2);
+  // директор видит и правит всё — объединяет
+  assert.equal(Clients.merge(S, other.id, keep.id, 'p1', LATER).ok, true);
+});
+
+test('демо: в карточке клиента есть «Объединить» (только у кого есть право править клиентов); выбор второго → подтверждение с текстом → клиент объединён, лента первого пополнена', () => {
+  const app = load(), { S, Clients } = app;
+  asPerson(app, 'p1');
+  const { keep, drop, act } = mergeFixture(app);
+  assert.ok(app.DRAWERS.client(keep.id).body.includes('data-act="client-merge"'), 'кнопки нет у директора');
+  asPerson(app, 'p7');
+  assert.ok(!app.DRAWERS.client(keep.id).body.includes('data-act="client-merge"'), 'кнопка у инженера, который клиентов не правит');
+  app.A['client-merge']({ dataset: { id: keep.id } });
+  assert.equal(S.ui.modal, null, 'инженеру окно не открылось');
+  asPerson(app, 'p1');
+  app.A['client-merge']({ dataset: { id: keep.id } });
+  assert.equal(S.ui.modal.type, 'clientMerge');
+  // поиск второго по имени; сам себя не предлагает
+  input(app, 'client-mq', drop.name);
+  const res = el(app, 'cm-res').innerHTML;
+  assert.ok(res.includes(`value="${drop.id}"`), 'второй не найден поиском');
+  assert.ok(!res.includes(`value="${keep.id}"`), 'клиент предложен сам себе');
+  // без выбора — ошибка, дальше не идёт
+  app.FORMS['client-merge']({ dataset: { id: keep.id } });
+  assert.ok(!el(app, 'cm-err').hidden && /Выберите клиента/.test(el(app, 'cm-err').textContent));
+  assert.equal(Clients.byId(S, drop.id) !== null, true);
+  // выбран → подтверждение с текстом из задания
+  change(app, 'client-mc', drop.id);
+  app.FORMS['client-merge']({ dataset: { id: keep.id } });
+  const confirm = app.MODALS.clientMerge(keep.id);
+  assert.ok(confirm.includes(`${drop.name}</b> <small class="muted mono">${drop.id}</small> будет удалён, его сделки, задачи, дела, лента и контакты перейдут к <b>${keep.name}`), 'нет текста подтверждения');
+  assert.equal(Clients.byId(S, drop.id) !== null, true, 'до подтверждения второй цел');
+  // подтверждено
+  app.FORMS['client-merge']({ dataset: { id: keep.id } });
+  assert.equal(Clients.byId(S, drop.id), null, 'второй не удалён');
+  assert.equal(S.ui.modal, null);
+  assert.equal(refsTo(S, drop.id), 0);
+  assert.equal(S.deals.find(d => d.id === 'Д-314').clientId, keep.id);
+  assert.deepEqual({ ...act.ref }, { t: 'client', id: keep.id });
+  assert.ok(app.feedHtml({ t: 'client', id: keep.id }).includes('Объединён с ' + drop.id), 'в ленте первого нет записи об объединении');
+});

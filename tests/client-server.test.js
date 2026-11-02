@@ -553,3 +553,78 @@ test('отказ в одной пачке не стирает другие: бе
   assert.equal(!!B.app.S.roles.find(r => r.id === 'managerB2c').perms.admin, was, 'второе откачено на экране');
 }));
 const docOfDeal = (st, id) => st.deals.find(d => d.id === id);
+
+// ——— объединение клиентов на сервере ———
+// Директор заводит двух клиентов Анны (p2) со сделками B2C, у второго — дело, уведомления (одно Анне, одно директору) и телефон
+async function mergeFirm(srv, pages, { hidden = false } = {}) {
+  const { boss, anna } = await firm(srv);
+  const A = await open(srv, 'boss', boss.password), B = await open(srv, anna.login, anna.password);
+  pages.push(A, B);
+  const { S, Clients, Deals, Acts } = A.app, now = new Date();
+  const mk = (name, phone) => { const r = Clients.create(S, { name, phone, managerId: 'p2' }, 'p1', now); assert.equal(r.ok, true, r.reason); return r.client; };
+  const keep = mk('Клиент-пример Первый (слияние)', '+7 900 000-00-81'), drop = mk('Клиент-пример Второй (слияние)', '+7 900 000-00-82');
+  drop.address = 'Иркутск, ул. Пример, 1';
+  for (const c of [keep, drop]) assert.equal(Deals.create(S, { clientId: c.id, type: 'b2c', managerId: 'p2' }, 'p1', now).ok, true);
+  if (hidden) assert.equal(Deals.create(S, { clientId: drop.id, type: 'b2b', managerId: 'p1' }, 'p1', now).ok, true);
+  assert.equal(Acts.plan(S, { t: 'client', id: drop.id }, { type: 'todo', title: 'Дело (слияние)', due: new Date(Date.now() + 864e5) }, 'p1', now).ok, true);
+  for (const [id, to] of [['n-слияние-1', 'p1'], ['n-слияние-2', 'p2']]) S.notes.unshift({ id, kind: 'task', by: 'p1', at: now, text: 'Пример', to: [to], read: [], ref: { t: 'client', id: drop.id } });
+  A.app.save();
+  await A.app.serverIdle();
+  await until(() => B.app.Clients.byId(B.app.S, drop.id) && B.app.S.notes.some(n => n.id === 'n-слияние-2') && B.app.S.acts.some(a => a.ref.id === drop.id), 5000, 'клиенты у Анны');
+  return { boss, anna, A, B, keep: keep.id, drop: drop.id };
+}
+const postsOf = p => p.b.calls.filter(c => c.method === 'POST' && c.url === '/api/changes').length;
+
+test('объединение клиентов: менеджер объединяет своих — одно действие одной пачкой; на сервере ссылки у первого (и чужое уведомление тоже), контакты слиты, второго нет', () => withServer(async (srv, pages) => {
+  const { boss, B, keep, drop } = await mergeFirm(srv, pages);
+  const posts = postsOf(B);
+  const r = B.app.Clients.merge(B.app.S, keep, drop, 'p2', new Date());
+  assert.equal(r.ok, true, r.reason);
+  B.app.save();
+  await B.app.serverIdle();
+  assert.equal(postsOf(B) - posts, 1, 'на сервер ушла ровно одна пачка');
+  assert.ok(!B.toasts().some(t => t.startsWith('Нет прав')), B.toasts().join(' | '));
+  const st = await kit.state(srv, boss.cookie);
+  assert.equal(kit.docOf(st, 'clients', drop), undefined, 'второй удалён на сервере');
+  const k = kit.docOf(st, 'clients', keep);
+  assert.deepEqual([k.phones.length, k.address], [2, 'Иркутск, ул. Пример, 1'], 'телефон и адрес второго дописаны');
+  assert.deepEqual(st.deals.map(d => d.clientId).filter(id => id === drop), [], 'сделок на втором нет');
+  assert.equal(st.deals.filter(d => d.clientId === keep).length, 2, 'обе сделки у первого');
+  assert.equal(st.acts.filter(a => a.ref.t === 'client' && a.ref.id === drop).length, 0);
+  assert.equal(st.acts.filter(a => a.ref.t === 'client' && a.ref.id === keep).length, 1, 'дело переехало');
+  assert.equal(st.feed.filter(e => e.ref.t === 'client' && e.ref.id === drop).length, 0);
+  assert.ok(st.feed.some(e => e.kind === 'merge' && e.ref.id === keep && e.data.dropId === drop), 'запись об объединении в ленте первого');
+  assert.deepEqual(st.notes.filter(n => n.id.startsWith('n-слияние')).map(n => n.ref.id), [keep, keep], 'оба уведомления ведут к первому, в том числе директору — его Анна не видит');
+}));
+
+test('объединение клиентов: у второго есть сделка, которую менеджер не видит, — сервер 403 с понятным текстом, экран откатывается, на сервере ничего не изменилось', () => withServer(async (srv, pages) => {
+  const { boss, B, keep, drop } = await mergeFirm(srv, pages, { hidden: true });
+  const before = JSON.stringify((({ clients, deals, feed, acts, notes }) => ({ clients, deals, feed, acts, notes }))(await kit.state(srv, boss.cookie)));
+  assert.equal(B.app.S.deals.filter(d => d.clientId === drop).length, 1, 'Анна видит только свою сделку второго клиента');
+  const r = B.app.Clients.merge(B.app.S, keep, drop, 'p2', new Date());
+  assert.equal(r.ok, true, 'в своей копии Анна объединить может: скрытого она не видит');
+  B.app.save();
+  await B.app.serverIdle();
+  assert.ok(B.toasts().some(t => t.startsWith('Нет прав') && t.includes('не видны или которые вам нельзя править')), B.toasts().join(' | '));
+  assert.ok(B.app.Clients.byId(B.app.S, drop), 'на экране второй клиент вернулся');
+  assert.equal(B.app.srvPending(), false);
+  const after = JSON.stringify((({ clients, deals, feed, acts, notes }) => ({ clients, deals, feed, acts, notes }))(await kit.state(srv, boss.cookie)));
+  assert.equal(after, before, 'на сервере ничего не изменилось');
+}));
+
+test('удаление клиента без объединения — 403 для всех; объединение без права править клиентов — 403', () => withServer(async (srv, pages) => {
+  const { boss, anna, keep, drop } = await mergeFirm(srv, pages);
+  const eng = await kit.employee(srv, boss, { id: 'p4', name: 'Инженер (тест)', role: 'engineer', dept: 'eng' });
+  for (const who of [boss, anna, eng]) {
+    const st = await kit.state(srv, who.cookie);
+    const r = await kit.changes(srv, who.cookie, [{ key: 'clients', id: drop, base: kit.docOf(st, 'clients', drop), deleted: true }]);
+    assert.equal(r.status, 403, who.login + ': ' + r.text);
+    assert.match(r.body.error, /^Нет прав/);
+  }
+  assert.ok(kit.docOf(await kit.state(srv, boss.cookie), 'clients', drop), 'клиент на месте');
+  // инженер клиентов видит, но объединить не может: его пачка с честным объединением не проходит
+  const E = await open(srv, eng.login, eng.password); pages.push(E);
+  await until(() => E.app.Clients.byId(E.app.S, drop), 5000, 'клиент у инженера');
+  assert.equal(E.app.Clients.merge(E.app.S, keep, drop, 'p4', new Date()).ok, false, 'и ядро отказывает');
+  void keep;
+}));

@@ -7,3 +7,8 @@
 .tr-un ul{display:grid;gap:4px;max-height:260px;margin:0;padding:4px 12px 10px 28px;overflow-y:auto;font-size:13px}
 .tr-un li{overflow-wrap:anywhere}
 .tr-go{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+.tr-tw{display:grid;gap:8px}
+.tr-tw ul{display:grid;gap:6px;max-height:320px;margin:0;padding:0;overflow-y:auto;list-style:none}
+.tr-tw li{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 12px}
+.tr-tw li span{overflow-wrap:anywhere}
+.tr-tw select{width:auto}

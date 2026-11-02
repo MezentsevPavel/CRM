@@ -636,3 +636,73 @@ test('Guard автор: новая запись ленты, дела и увед
   assert.ok(st7.changes.some(x => x.key === 'notes' && x.base === null), 'уведомления автору нет — тест ничего не проверит');
   allowed(check(a7, st7, 'p6'), 'уведомление автору о смене этапа');
 });
+
+// ——— объединение клиентов: удалять клиента можно только в составе объединения ———
+// Два клиента менеджера B2C p2, у каждого его сделка; у второго ещё дело p2, запись ленты и уведомление p2
+function mergeApp() {
+  const a = app(), S = a.S;
+  const mk = (name, phone) => a.Clients.create(S, { name, phone, managerId: 'p2' }, 'p1', NOW).client;
+  const keep = mk('Клиент-пример Первый (слияние)', '+7 900 000-00-81'), drop = mk('Клиент-пример Второй (слияние)', '+7 900 000-00-82');
+  for (const c of [keep, drop]) assert.equal(a.Deals.create(S, { clientId: c.id, type: 'b2c', managerId: 'p2' }, 'p1', NOW).ok, true);
+  assert.equal(a.Acts.plan(S, { t: 'client', id: drop.id }, { type: 'todo', title: 'Дело (слияние)', due: new Date(2026, 10, 3, 10, 0) }, 'p2', NOW).ok, true);
+  S.notes.unshift({ id: 'n-слияние', kind: 'task', by: null, at: NOW, text: 'Пример', to: ['p2'], read: [], ref: { t: 'client', id: drop.id } });
+  return { a, keep, drop };
+}
+
+test('Guard клиенты: объединение своих клиентов (ссылки переведены, запись в ленте) — можно менеджеру с правом; без права править клиентов — нельзя', () => {
+  const { a, keep, drop } = mergeApp();
+  const b = batch(a, st => assert.equal(a.Clients.merge(st, keep.id, drop.id, 'p2', NOW).ok, true));
+  assert.deepEqual(keys(b), ['acts', 'clients', 'deals', 'feed', 'notes']);
+  allowed(check(a, b, 'p2'), 'менеджер объединяет своих клиентов');
+  denied(check(a, b, 'p1'), 'та же пачка от имени p2 у директора: запись в ленте не от его имени', /только от своего имени/);
+  denied(check(a, b, 'p7'), 'инженер: клиентов видит, но не правит', /Нет прав/);
+  denied(check(a, b, 'p3'), 'менеджер B2B: клиенты B2C ему не видны', /Нет прав/);
+  // директор объединяет от своего имени
+  const D = mergeApp();
+  const bd = batch(D.a, st => assert.equal(D.a.Clients.merge(st, D.keep.id, D.drop.id, 'p1', NOW).ok, true));
+  allowed(check(D.a, bd, 'p1'), 'директор объединяет');
+});
+
+test('Guard клиенты: голое удаление клиента — нельзя никому, даже директору; удаление с чужой записью-признаком или без перевода ссылок — нельзя', () => {
+  // голое удаление
+  const { a, keep, drop } = mergeApp();
+  void keep;
+  const bare = batch(a, st => { st.clients.splice(st.clients.findIndex(c => c.id === drop.id), 1); });
+  assert.deepEqual(keys(bare), ['clients']);
+  denied(check(a, bare, 'p1'), 'голое удаление директором', /удалять клиентов нельзя/);
+  denied(check(a, bare, 'p2'), 'голое удаление менеджером', /удалять клиентов нельзя/);
+  // удаление и признак объединения, но сделки второго остались на нём
+  const L = mergeApp(), dealOfDrop = L.a.S.deals.find(d => d.clientId === L.drop.id).id;
+  const lazy = batch(L.a, st => assert.equal(L.a.Clients.merge(st, L.keep.id, L.drop.id, 'p2', NOW).ok, true));
+  const back = lazy.changes.find(c => c.key === 'deals' && c.id === dealOfDrop);
+  assert.ok(back, 'сделка второго среди изменений');
+  back.data = { ...back.data, clientId: L.drop.id };
+  denied(check(L.a, lazy, 'p2'), 'сделка осталась на удалённом', /остались ссылки/);
+  // признак есть, а удаляется другой клиент
+  const W = mergeApp();
+  const wrong = batch(W.a, st => assert.equal(W.a.Clients.merge(st, W.keep.id, W.drop.id, 'p2', NOW).ok, true));
+  wrong.changes.find(c => c.key === 'clients' && c.deleted).id = W.keep.id;
+  denied(check(W.a, wrong, 'p1'), 'удаляется не тот, что назван в записи об объединении', /Нет прав/);
+});
+
+test('Guard клиенты: объединение, в котором у второго есть сделка, невидимая человеку, — отказ целиком; ссылки ленты и дел без объединения не правятся', () => {
+  const { a, keep, drop } = mergeApp();
+  // у второго клиента есть B2B-сделка Максима p3 — Анна p2 её не видит, и браузер Анны её в пачку не положит
+  assert.equal(a.Deals.create(a.S, { clientId: drop.id, type: 'b2b', managerId: 'p3' }, 'p1', NOW).ok, true);
+  const view = a.Visible.of(a.S, 'p2');
+  assert.ok(!view.deals.some(d => d.clientId === drop.id && d.type === 'b2b'), 'сделка скрыта от p2');
+  const docs = a.Docs.split(view), vst = a.Docs.join(a.Docs.split(view));
+  assert.equal(a.Clients.merge(vst, keep.id, drop.id, 'p2', NOW).ok, true, 'в своей копии Анна объединить может');
+  const sent = { st0: a.Docs.join(a.Docs.split(a.S)), changes: a.Docs.diff(docs, a.Docs.split(vst)) };
+  // номера новых записей у браузера свои (метка сеанса): с невидимыми ему записями демо они не пересекаются
+  sent.changes.filter(c => c.key === 'feed' && c.base === null).forEach((c, i) => { c.id = 'f-свой-' + i; c.data.id = c.id; });
+  denied(check(a, sent, 'p2'), 'объединение с невидимой сделкой', /не видны или которые вам нельзя править/);
+  // запись ленты просто переписана на другого клиента, никто не удалён
+  const { a: b2, keep: k2, drop: d2 } = mergeApp();
+  const feedMove = batch(b2, st => { const e = st.feed.find(x => x.ref.t === 'client' && x.ref.id === d2.id); e.ref = { t: 'client', id: k2.id }; });
+  denied(check(b2, feedMove, 'p1'), 'запись ленты перенесена без объединения', /записи ленты не правят/);
+  const actMove = batch(b2, st => { st.acts.find(x => x.ref.id === d2.id).ref = { t: 'client', id: k2.id }; });
+  denied(check(b2, actMove, 'p1'), 'дело перенесено без объединения', /дело можно только отметить/);
+  const noteMove = batch(b2, st => { st.notes.find(x => x.id === 'n-слияние').ref = { t: 'client', id: k2.id }; });
+  denied(check(b2, noteMove, 'p2'), 'уведомление перенесено без объединения', /только отметить своё прочтение/);
+});

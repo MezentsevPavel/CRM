@@ -3,6 +3,7 @@
 // deleted}). Прежнее значение берётся из st (Docs.get), а не из change.base: прислать можно что угодно.
 // Остаток склада меняется только движением: изменение stock/aside должно сойтись с суммой новых записей moves той же пачки
 // (как их считает Stock.move). Правила по ключам — Guard.RULES[key](ctx, change) → null | текст «Нет прав: …».
+// Клиента нельзя удалить просто так — только объединением (Clients.merge): см. mergeRule.
 
 const Guard = (() => {
   const isNum = v => typeof v === 'number' && isFinite(v);
@@ -191,10 +192,43 @@ const Guard = (() => {
     }
     return null;
   }
+  // Объединение клиентов (Clients.merge): в пачке удаляется второй клиент, а в ленту первого пишется новая запись «merge» с
+  // номером удалённого (data.dropId). → Map(номер удалённого → номер оставшегося) только для тех, кого пачка правда удаляет
+  function merges(st, list) {
+    const gone = new Set(list.filter(x => x.key === 'clients' && x.deleted).map(x => String(x.id)));
+    const out = new Map();
+    for (const x of list) {
+      const e = x.key === 'feed' && !x.deleted && x.data && Docs.get(st, 'feed', x.id) === undefined ? x.data : null;
+      if (e && e.kind === 'merge' && e.ref && e.ref.t === 'client' && e.data && gone.has(String(e.data.dropId)) && String(e.data.dropId) !== String(e.ref.id)) {
+        out.set(String(e.data.dropId), String(e.ref.id));
+      }
+    }
+    return out;
+  }
+  // Запись, у которой в пачке сменилась только ссылка на карточку: клиент объединён с другим (ref → ref первого)
+  function repointed(ctx, b, a) {
+    if (!b || !a || !b.ref || !a.ref || b.ref.t !== 'client' || a.ref.t !== 'client') return false;
+    const keep = ctx.merges.get(String(b.ref.id));
+    return !!keep && String(a.ref.id) === keep && changedFields(b, a).every(f => f === 'ref');
+  }
+  // Удаление клиента — только в составе объединения: есть запись «объединён с …», человек видит и может править всё, что
+  // переезжает (Clients.mergeBlock по состоянию до пачки), и после пачки на удаляемого не осталось ни сделки, ни лида, ни записи ленты или дела
+  function mergeRule(ctx, c) {
+    const keep = ctx.merges.get(String(c.id));
+    if (!keep) return no('удалять клиентов нельзя — клиентов только объединяют (кнопка «Объединить» в карточке клиента)');
+    const block = Clients.mergeBlock(ctx.st, keep, String(c.id), ctx.pid);
+    if (block) return no(block.charAt(0).toLowerCase() + block.slice(1));
+    if (!recOf(ctx.after, 'clients', keep)) return no('объединить клиентов — первого клиента в пачке нет');
+    const on = r => !!r && r.t === 'client' && String(r.id) === String(c.id);
+    const left = (ctx.after.deals || []).some(d => String(d.clientId) === String(c.id)) || (ctx.after.leads || []).some(l => String(l.clientId) === String(c.id))
+      || (ctx.after.feed || []).some(e => on(e.ref)) || (ctx.after.acts || []).some(a => on(a.ref));
+    return left ? no('объединить клиентов — на удаляемого остались ссылки (сделки, лиды, записи ленты или дела), их надо перевести на первого') : null;
+  }
   function clientsRule(ctx, c) {
     if (!Clients.canEdit(ctx.st, ctx.pid)) return no('заводить и править клиентов — нужны права «Видеть клиентов и сделки» и «Заводить и править сделки»');
     const b = recOf(ctx.st, 'clients', c.id);
     if (b && !Visible.client(ctx.st, b, ctx.pid)) return no('править этого клиента');
+    if (c.deleted) return mergeRule(ctx, c);
     return null;
   }
 
@@ -212,6 +246,7 @@ const Guard = (() => {
     return reserveOf(ctx, ref);
   }
   function feedRule(ctx, c) {
+    if (repointed(ctx, ctx.before(c), ctx.data(c))) return null;
     if (ctx.before(c) !== undefined || c.deleted) return no('записи ленты не правят и не удаляют');
     const e = c.data || {};
     // запись о резерве (Deals.keepTrail) хранит того, кто его ставил, — когда в той же пачке меняется резерв этой сделки
@@ -226,6 +261,7 @@ const Guard = (() => {
       return parentOk(ctx, a.ref) ? null : no('ставить дела в эту карточку');
     }
     if (!a) return no('дела не удаляют');
+    if (repointed(ctx, b, a)) return null;
     const ch = changedFields(b, a);
     // лид стал сделкой: открытые дела переезжают на неё вместе с лидом той же пачки
     if (ch.length === 1 && ch[0] === 'ref' && b.ref && b.ref.t === 'lead' && a.ref && a.ref.t === 'deal') {
@@ -324,6 +360,7 @@ const Guard = (() => {
       return (a.to || []).every(id => personOf(ctx.st, id)) ? null : no('уведомление несуществующему сотруднику');
     }
     if (!a) return no('уведомления не удаляют');
+    if (repointed(ctx, b, a)) return null;
     const ch = changedFields(b, a), was = new Set(b.read || []), now = new Set(a.read || []);
     const added = [...now].filter(id => !was.has(id));
     if (ch.length === 1 && ch[0] === 'read' && [...was].every(id => now.has(id)) && added.length === 1 && added[0] === ctx.pid
@@ -365,7 +402,7 @@ const Guard = (() => {
     const after = Docs.apply(st, list);
     const moves = list.filter(x => x.key === 'moves' && !x.deleted && x.data && Docs.get(st, 'moves', x.id) === undefined).map(x => x.data);
     const ctx = {
-      st, after, pid, now, list, moves, exp: expected(moves),
+      st, after, pid, now, list, moves, exp: expected(moves), merges: merges(st, list),
       can: r => Perms.can(st, pid, r),
       before: x => Docs.get(st, x.key, x.id),
       data: x => (x.deleted ? null : x.data),
@@ -382,5 +419,5 @@ const Guard = (() => {
     return stockCovered(ctx);
   }
 
-  return { RULES, check };
+  return { RULES, check, merges };
 })();

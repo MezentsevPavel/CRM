@@ -181,6 +181,26 @@ test('Import.applyStock: повторный перенос того же фай�
   assert.deepEqual([...st.reserves.map(q => q.id)], ['r-мой']);
 });
 
+test('Import.applyStock: клетка, где остаток стал 0 или пропал из файла, пишет «Ввод остатков» с остатком 0; неизменённые и пустые с самого начала — ничего', () => {
+  const app = load(), { Import } = app;
+  const st = stockState(app);
+  Import.applyStock(st, plain(Import.stockRows(tableOf(app, STOCK_CSV)).rows), 'p1', NOW);
+  const base = st.moves.length, base0 = st.moves.filter(m => m.kind === INPUT).length;
+  // Икс-100: склад ИП 12 → 0, НПП 5 → пусто; Игрек-200: склад ИП был 0 и остался, ВС 3 без изменений; Крепление Зет (ИП 7) в файле больше нет
+  const next = ['Наименование;Склад ИП;НПП;ВС', 'Панель Икс-100;0;;', 'Панель Игрек-200;0;;3'].join('\n');
+  const r = plain(Import.applyStock(st, plain(Import.stockRows(tableOf(app, next)).rows), 'p1', new Date(2026, 10, 5, 9, 0, 0)));
+  const fresh = st.moves.slice(0, st.moves.length - base).filter(m => m.kind === INPUT);
+  assert.deepEqual(plain(fresh.map(m => [m.kind, m.productId, m.entityId, m.qty, m.by])).sort(),
+    [[INPUT, 'sheet:панель икс-100', 'ip', 0, 'p1'], [INPUT, 'sheet:панель икс-100', 'npp', 0, 'p1'], [INPUT, 'sheet:крепление зет', 'ip', 0, 'p1']].sort(),
+    'три клетки обнулились: ноль в файле, пустая клетка, товара в файле нет; Игрек-200 не тронут');
+  assert.ok(fresh.every(m => m.id && /^перенос.*05\.11\.2026/.test(m.doc) && m.cityId === '_'));
+  assert.equal(r.moves, 3, 'в итоге переноса те же три движения');
+  // тот же файл ещё раз: остатки те же, журнал не растёт
+  const again = plain(Import.applyStock(st, plain(Import.stockRows(tableOf(app, next)).rows), 'p1', new Date(2026, 10, 6, 9, 0, 0)));
+  assert.equal(st.moves.filter(m => m.kind === INPUT).length, base0 + 3, 'повтор: нулевые клетки уже нулевые, журнал не вырос');
+  assert.equal(again.moves, 0);
+});
+
 test('Import.applyStock: кривые строки не ломают базу (не число, без названия, не список)', () => {
   const app = load(), { Import } = app;
   const st = stockState(app);
@@ -343,6 +363,58 @@ test('Import.applyClients: повтор того же файла не плоди
   // правка org/bitrixId — как остальных полей
   assert.equal(Clients.update(st, sid.id, { org: 'ООО Другая' }, 'p1', NOW).ok, true);
   assert.equal(sid.org, 'ООО Другая');
+});
+
+const bare = (name, extra = {}) => ({ kind: 'person', name, phones: [], email: '', inn: '', address: '', org: '', managerName: '', bitrixId: '', ...extra });
+
+test('Import.applyClients: клиент без телефона, почты, ИНН и ID при повторе — тот же (по имени), данные дополняют; «новый» заводит второго', () => {
+  const app = load(), { Import, Clients } = app;
+  const st = peopleState(app);
+  assert.deepEqual(plain(Import.applyClients(st, [bare('Пётр Лесной')], 'p1', NOW)), { created: 1, merged: 0, skipped: 0 });
+  const first = st.clients[0];
+  // то же имя иначе записанное (регистр, пробелы, ё/е): тот же клиент, пустое заполнено, занятое не затёрто
+  const again = bare('  петр   ЛЕСНОЙ ', { email: 'les@example.org', address: 'Иркутск', phones: ['+7 900 123 45 67'] });
+  assert.deepEqual(plain(Import.applyClients(st, [again], 'p1', NOW)), { created: 0, merged: 1, skipped: 0 });
+  assert.equal(st.clients.length, 1, 'клиент один');
+  assert.deepEqual(plain([first.name, first.email, first.address, first.phones]), ['Пётр Лесной', 'les@example.org', 'Иркутск', ['+7 900 123 45 67']]);
+  const withOther = bare('Пётр Лесной', { email: 'other@example.org', address: 'Москва' });
+  Import.applyClients(st, [withOther], 'p1', NOW);
+  assert.deepEqual(plain([st.clients.length, first.email, first.address]), [1, 'les@example.org', 'Иркутск'], 'существующее не затирается');
+  // выбор «новый» — второй клиент с тем же именем
+  assert.deepEqual(plain(Import.applyClients(st, [{ ...bare('Пётр Лесной'), fresh: true }], 'p1', NOW)), { created: 1, merged: 0, skipped: 0 });
+  assert.equal(st.clients.length, 2, 'два клиента');
+  // в одном файле два одинаковых имени друг с другом не склеиваются: двойник ищется только среди заведённых до загрузки
+  const st2 = peopleState(app);
+  Import.applyClients(st2, [bare('Иван Иванов'), bare('Иван Иванов')], 'p1', NOW);
+  assert.equal(st2.clients.length, 2);
+  assert.equal(Clients.find(st2, { phone: '' }).length, 0);
+});
+
+test('Import.twins: «Возможно, уже есть» — по имени (регистр, пробелы, ё/е) и по компании, если она есть у обоих; узнанных по контактам и ID среди них нет', () => {
+  const app = load(), { Import } = app;
+  const st = peopleState(app);
+  Import.applyClients(st, [
+    bare('Пётр Лесной', { org: 'ООО Ромашка, директор' }), bare('Анна Белая', { bitrixId: '5' }), bare('Иван Чёрный'),
+    bare('Семён Серый', { phones: ['+7 900 000 11 22'] }),
+  ], 'p1', NOW);
+  const id = n => st.clients.find(c => c.name === n).id;
+  const rows = [
+    bare('петр  лесной'),                                          // 0: то же имя, компании у строки нет — двойник
+    bare('Пётр Лесной', { org: 'ооо  ромашка,  директор' }),       // 1: компания та же — двойник
+    bare('Пётр Лесной', { org: 'ООО Одуванчик, директор' }),       // 2: компании разные — не двойник
+    bare('Анна Белая', { bitrixId: '9' }),                         // 3: у обоих ID Битрикса, и они разные — не двойник
+    bare('Анна Белая', { bitrixId: '5' }),                         // 4: тот же ID Битрикса — узнан сам, вопроса нет
+    bare('Иван Чёрный', { phones: ['8 900 000 11 22'] }),          // 5: телефон Семёна — узнан по телефону, вопроса нет
+    bare('Нового Нет'),                                            // 6: имени нет в базе
+  ];
+  const t = plain(Import.twins(st, rows));
+  assert.deepEqual(t.map(x => [x.index, x.clientId]), [[0, id('Пётр Лесной')], [1, id('Пётр Лесной')]]);
+  assert.deepEqual([t[0].name, t[0].clientName], ['петр  лесной', 'Пётр Лесной']);
+  // предпросмотр считает выбор: по умолчанию «тот же», с fresh — новый
+  const before = JSON.stringify(plain(st));
+  assert.deepEqual(plain(Import.preview('clients', st, rows.slice(0, 1), 'p1', NOW)), { created: 0, merged: 1, skipped: 0 });
+  assert.deepEqual(plain(Import.preview('clients', st, [{ ...rows[0], fresh: true }], 'p1', NOW)), { created: 1, merged: 0, skipped: 0 });
+  assert.equal(JSON.stringify(plain(st)), before, 'предпросмотр состояние не меняет');
 });
 
 test('Import.preview: считает тем же кодом, что запись, и ничего не меняет в состоянии', () => {
@@ -517,6 +589,43 @@ test('экран «Перенос»: «Загрузить» шлёт на сер
     await app.trClientsSend();
     assert.match(tab.render(), /<b>0<\/b> новых клиентов/);
     assert.equal((await state(srv, boss.cookie)).clients.length, 2500, 'повтор не плодит клиентов');
+  } finally { await srv.stop(); }
+});
+
+test('экран «Перенос»: клиенты без контактов при втором переносе — «Возможно, уже есть», по умолчанию «тот же» (клиентов столько же); «новый» заводит второго', async () => {
+  const srv = await start();
+  try {
+    const { boss } = await firm(srv);
+    const { app } = await openPage(srv, boss);
+    const tab = tabOf(app);
+    const csv = encUtf8('Имя;Фамилия\nПётр;Лесной\nАнна;Белая', false);
+    const count = async () => (await state(srv, boss.cookie)).clients.length;
+    app.trClientsRead(csv);
+    assert.doesNotMatch(tab.render(), /data-on="tr-twin"/, 'в пустой базе вопросов нет');
+    await app.trClientsSend();
+    assert.equal(await count(), 2);
+    await app.srvPull();
+    // второй раз тот же файл: в предпросмотре обе строки с вопросом, «тот же» выбран, новых клиентов 0
+    app.trClientsRead(csv);
+    let html = tab.render();
+    const first = app.S.clients.find(c => c.name === 'Лесной Пётр');
+    assert.ok(html.includes(`Возможно, уже есть: <b>Лесной Пётр</b> → Лесной Пётр (${first.id})`), 'строка вопроса: имя из файла → имя (номер)');
+    assert.equal((html.match(/Возможно, уже есть: <b>/g) || []).length, 2);
+    assert.equal((html.match(/data-on="tr-twin"/g) || []).length, 2, 'у каждой строки свой выбор');
+    assert.match(html, /<b>0<\/b> новых клиентов/);
+    assert.match(html, /<option value="same">тот же<\/option><option value="new">новый<\/option>/, 'по умолчанию «тот же»');
+    await app.trClientsSend();
+    assert.equal(await count(), 2, 'тот же файл дважды — клиент один');
+    await app.srvPull();
+    // третий раз: у первой строки «новый» — предпросмотр и загрузка заводят второго Петра
+    app.trClientsRead(csv);
+    app.ON.change['tr-twin']({ dataset: { i: '0' }, value: 'new' });
+    html = tab.render();
+    assert.match(html, /<b>1<\/b> новых клиентов/);
+    assert.match(html, /<option value="new" selected>новый<\/option>/);
+    await app.trClientsSend();
+    const after = (await state(srv, boss.cookie)).clients;
+    assert.deepEqual(after.map(c => c.name).sort(), ['Белая Анна', 'Лесной Пётр', 'Лесной Пётр']);
   } finally { await srv.stop(); }
 });
 

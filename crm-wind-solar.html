@@ -1211,6 +1211,11 @@ html[data-mode="server"] .as,html[data-mode="server"] .demo,html[data-mode="serv
 .tr-un ul{display:grid;gap:4px;max-height:260px;margin:0;padding:4px 12px 10px 28px;overflow-y:auto;font-size:13px}
 .tr-un li{overflow-wrap:anywhere}
 .tr-go{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+.tr-tw{display:grid;gap:8px}
+.tr-tw ul{display:grid;gap:6px;max-height:320px;margin:0;padding:0;overflow-y:auto;list-style:none}
+.tr-tw li{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 12px}
+.tr-tw li span{overflow-wrap:anywhere}
+.tr-tw select{width:auto}
 
 /* «Настройки → Копии» (74-backups.js): имя файла под датой копии */
 .bk-name{display:block;font-family:var(--f-mono);font-size:11.5px}
@@ -5121,13 +5126,18 @@ const Clients = (() => {
   // Дописать найденному клиенту то, чего у него не было (занятое не затирается): телефоны, почта, ИНН, адрес, а из переноса —
   // компания и ID Битрикса. source — откуда данные, для записи в ленте («заявки», «переноса»). → список дописанного (пусто — ничего).
   function fill(st, found, d, by, now, source = 'заявки') {
+    const add = gather(found, d);
+    if (add.length) Feed.add(st, { t: 'client', id: found.id }, { kind: 'field', text: `Из ${source} добавлено: ${add.join(', ')}`, by, at: now });
+    return add;
+  }
+  // Само дописывание (без записи в ленту) — им же объединение двух клиентов. → список дописанного
+  function gather(found, d) {
     const add = [];
     const have = new Set((found.phones || []).map(phoneKey));
     for (const ph of phonesOf(d)) if (!have.has(phoneKey(ph))) { (found.phones = found.phones || []).push(ph); have.add(phoneKey(ph)); add.push(`телефон ${ph}`); }
     for (const [f, label] of [['email', 'почта'], ['inn', 'ИНН'], ['address', 'адрес'], ['org', 'компания'], ['bitrixId', 'ID в Битриксе']]) {
       if (!str(found[f]) && str(d[f]) && (f !== 'inn' || innKey(d.inn))) { found[f] = str(d[f]); add.push(`${label} ${found[f]}`); }
     }
-    if (add.length) Feed.add(st, { t: 'client', id: found.id }, { kind: 'field', text: `Из ${source} добавлено: ${add.join(', ')}`, by, at: now });
     return add;
   }
 
@@ -5162,7 +5172,63 @@ const Clients = (() => {
       || (ik.length >= 3 && innKey(c.inn).includes(ik)));
   }
 
-  return { KIND, phoneKey, byId, find, canEdit, create, make, update, findOrCreate, fill, related, search };
+  // ——— объединение двух клиентов ———
+  // Что ссылается на клиента id и переедет к другому: сделки (clientId), лиды (привязанные к нему и ещё не привязанные, но
+  // совпавшие с ним по контактам — Clients.related), записи ленты и дела его карточки, уведомления на неё.
+  // Отправки и резервы клиента не называют: они идут за его сделками.
+  function refsTo(st, id) {
+    const on = r => !!r && r.t === 'client' && r.id === id;
+    return {
+      deals: (st.deals || []).filter(d => d.clientId === id),
+      leads: byId(st, id) ? related(st, id).leads : [],
+      feed: (st.feed || []).filter(e => on(e.ref)),
+      acts: (st.acts || []).filter(a => on(a.ref)),
+      notes: (st.notes || []).filter(n => on(n.ref)),
+    };
+  }
+  // Можно ли by объединить клиентов: keepId остаётся, dropId удаляется. → текст отказа или null.
+  // by пустой — система (проверка прав не нужна). Человеку нужно право править клиентов, оба клиента ему видны, а всё, что
+  // переезжает (сделки второго, его лиды), он видит и может править: иначе часть данных осталась бы без него. Ту же проверку делает сервер (Guard).
+  function mergeBlock(st, keepId, dropId, by) {
+    const keep = byId(st, keepId), drop = byId(st, dropId);
+    if (!keep || !drop) return 'Такого клиента нет.';
+    if (keep.id === drop.id) return 'Клиента нельзя объединить с ним самим.';
+    if (!by) return null;
+    if (!canEdit(st, by)) return NO_RIGHT.reason;
+    if (!Visible.client(st, keep, by) || !Visible.client(st, drop, by)) return 'Один из клиентов вам не виден, поэтому объединить их нельзя.';
+    const refs = refsTo(st, drop.id), seenLeads = new Set(Leads.visible(st, by).map(l => l.id));
+    const hidden = refs.deals.filter(d => !Deals.canEdit(st, d, by)).length + refs.leads.filter(l => !seenLeads.has(l.id)).length;
+    if (hidden) return `У клиента «${drop.name}» есть сделки или лиды (${hidden}), которые вам не видны или которые вам нельзя править, поэтому объединить нельзя. Объединить может тот, кто видит и ведёт их все.`;
+    return null;
+  }
+  // Слить клиента dropId в keepId: всё, что ссылалось на второго (refsTo), переходит к первому; телефоны, почта, ИНН, адрес,
+  // компания, ID Битрикса и менеджер второго дополняют первого (занятое у первого не затирается); второй удаляется; в ленту первого
+  // — запись «объединён с …». Название первого остаётся, в его сделках название клиента то же. → {ok, reason, moved, added, kept}
+  function merge(st, keepId, dropId, by, now) {
+    const block = mergeBlock(st, keepId, dropId, by);
+    if (block) return { ok: false, reason: block, moved: null, added: [], kept: [] };
+    const keep = byId(st, keepId), drop = byId(st, dropId), refs = refsTo(st, dropId);
+    const ref = { t: 'client', id: keep.id };
+    const added = gather(keep, drop);
+    if (!keep.managerId && drop.managerId) { keep.managerId = drop.managerId; added.push(`менеджер ${(personOf(st, drop.managerId) || {}).name || drop.managerId}`); }
+    // чужое при занятом поле у первого не переносится — в ленте остаётся, чтобы не потерять
+    const kept = [];
+    for (const [f, label] of [['email', 'почта'], ['inn', 'ИНН'], ['address', 'адрес'], ['org', 'компания'], ['bitrixId', 'ID в Битриксе']]) {
+      if (str(drop[f]) && str(keep[f]) && (f === 'email' ? emailKey(drop[f]) !== emailKey(keep[f]) : str(drop[f]) !== str(keep[f]))) kept.push(`${label} ${str(drop[f])}`);
+    }
+    for (const d of refs.deals) { d.clientId = keep.id; d.client = keep.name; }
+    for (const l of refs.leads) l.clientId = keep.id;
+    for (const x of [...refs.feed, ...refs.acts, ...refs.notes]) x.ref = { t: ref.t, id: ref.id };
+    st.clients.splice(st.clients.indexOf(drop), 1);
+    const moved = { deals: refs.deals.length, leads: refs.leads.length, feed: refs.feed.length, acts: refs.acts.length, notes: refs.notes.length };
+    const parts = [['сделок', moved.deals], ['лидов', moved.leads], ['дел', moved.acts], ['записей ленты', moved.feed], ['уведомлений', moved.notes]].filter(x => x[1]).map(x => `${x[0]} ${x[1]}`);
+    const text = `Объединён с ${drop.id} «${drop.name}», тот удалён. Перешло: ${parts.join(', ') || 'ничего (связанных записей не было)'}.`
+      + (added.length ? ` Добавлено: ${added.join(', ')}.` : '') + (kept.length ? ` Не перенесено, у этого клиента уже другое: ${kept.join(', ')}.` : '');
+    Feed.add(st, ref, { kind: 'merge', text, by: by || null, at: now, data: { dropId: drop.id, dropName: drop.name, moved } });
+    return { ok: true, reason: '', moved, added, kept };
+  }
+
+  return { KIND, phoneKey, byId, find, canEdit, create, make, update, findOrCreate, fill, related, search, refsTo, mergeBlock, merge };
 })();
 
 // Шаг SEEDS: демо-клиенты. Каждая сделка получает клиента (clientId) из своего названия, контакта и телефона: сделки из лидов
@@ -5221,7 +5287,7 @@ const Feed = (() => {
   const KINDS = {
     comment: 'Комментарий', create: 'Создано', stage: 'Этап', field: 'Изменение', item: 'Товары',
     reserve: 'Резерв', win: 'Успешно', lose: 'Провалена', msg: 'Сообщение клиенту', history: 'История', act: 'Дело выполнено', actmove: 'Дела из лида',
-    dispatch: 'Отправка',
+    dispatch: 'Отправка', merge: 'Объединение клиентов',
   };
   // Что есть ссылка на карточку и как её назвать в ленте клиента.
   const REF = { deal: 'Сделка', lead: 'Лид', client: 'Клиент', dispatch: 'Отправка' };
@@ -6712,6 +6778,7 @@ const Visible = (() => {
 // deleted}). Прежнее значение берётся из st (Docs.get), а не из change.base: прислать можно что угодно.
 // Остаток склада меняется только движением: изменение stock/aside должно сойтись с суммой новых записей moves той же пачки
 // (как их считает Stock.move). Правила по ключам — Guard.RULES[key](ctx, change) → null | текст «Нет прав: …».
+// Клиента нельзя удалить просто так — только объединением (Clients.merge): см. mergeRule.
 
 const Guard = (() => {
   const isNum = v => typeof v === 'number' && isFinite(v);
@@ -6900,10 +6967,43 @@ const Guard = (() => {
     }
     return null;
   }
+  // Объединение клиентов (Clients.merge): в пачке удаляется второй клиент, а в ленту первого пишется новая запись «merge» с
+  // номером удалённого (data.dropId). → Map(номер удалённого → номер оставшегося) только для тех, кого пачка правда удаляет
+  function merges(st, list) {
+    const gone = new Set(list.filter(x => x.key === 'clients' && x.deleted).map(x => String(x.id)));
+    const out = new Map();
+    for (const x of list) {
+      const e = x.key === 'feed' && !x.deleted && x.data && Docs.get(st, 'feed', x.id) === undefined ? x.data : null;
+      if (e && e.kind === 'merge' && e.ref && e.ref.t === 'client' && e.data && gone.has(String(e.data.dropId)) && String(e.data.dropId) !== String(e.ref.id)) {
+        out.set(String(e.data.dropId), String(e.ref.id));
+      }
+    }
+    return out;
+  }
+  // Запись, у которой в пачке сменилась только ссылка на карточку: клиент объединён с другим (ref → ref первого)
+  function repointed(ctx, b, a) {
+    if (!b || !a || !b.ref || !a.ref || b.ref.t !== 'client' || a.ref.t !== 'client') return false;
+    const keep = ctx.merges.get(String(b.ref.id));
+    return !!keep && String(a.ref.id) === keep && changedFields(b, a).every(f => f === 'ref');
+  }
+  // Удаление клиента — только в составе объединения: есть запись «объединён с …», человек видит и может править всё, что
+  // переезжает (Clients.mergeBlock по состоянию до пачки), и после пачки на удаляемого не осталось ни сделки, ни лида, ни записи ленты или дела
+  function mergeRule(ctx, c) {
+    const keep = ctx.merges.get(String(c.id));
+    if (!keep) return no('удалять клиентов нельзя — клиентов только объединяют (кнопка «Объединить» в карточке клиента)');
+    const block = Clients.mergeBlock(ctx.st, keep, String(c.id), ctx.pid);
+    if (block) return no(block.charAt(0).toLowerCase() + block.slice(1));
+    if (!recOf(ctx.after, 'clients', keep)) return no('объединить клиентов — первого клиента в пачке нет');
+    const on = r => !!r && r.t === 'client' && String(r.id) === String(c.id);
+    const left = (ctx.after.deals || []).some(d => String(d.clientId) === String(c.id)) || (ctx.after.leads || []).some(l => String(l.clientId) === String(c.id))
+      || (ctx.after.feed || []).some(e => on(e.ref)) || (ctx.after.acts || []).some(a => on(a.ref));
+    return left ? no('объединить клиентов — на удаляемого остались ссылки (сделки, лиды, записи ленты или дела), их надо перевести на первого') : null;
+  }
   function clientsRule(ctx, c) {
     if (!Clients.canEdit(ctx.st, ctx.pid)) return no('заводить и править клиентов — нужны права «Видеть клиентов и сделки» и «Заводить и править сделки»');
     const b = recOf(ctx.st, 'clients', c.id);
     if (b && !Visible.client(ctx.st, b, ctx.pid)) return no('править этого клиента');
+    if (c.deleted) return mergeRule(ctx, c);
     return null;
   }
 
@@ -6921,6 +7021,7 @@ const Guard = (() => {
     return reserveOf(ctx, ref);
   }
   function feedRule(ctx, c) {
+    if (repointed(ctx, ctx.before(c), ctx.data(c))) return null;
     if (ctx.before(c) !== undefined || c.deleted) return no('записи ленты не правят и не удаляют');
     const e = c.data || {};
     // запись о резерве (Deals.keepTrail) хранит того, кто его ставил, — когда в той же пачке меняется резерв этой сделки
@@ -6935,6 +7036,7 @@ const Guard = (() => {
       return parentOk(ctx, a.ref) ? null : no('ставить дела в эту карточку');
     }
     if (!a) return no('дела не удаляют');
+    if (repointed(ctx, b, a)) return null;
     const ch = changedFields(b, a);
     // лид стал сделкой: открытые дела переезжают на неё вместе с лидом той же пачки
     if (ch.length === 1 && ch[0] === 'ref' && b.ref && b.ref.t === 'lead' && a.ref && a.ref.t === 'deal') {
@@ -7033,6 +7135,7 @@ const Guard = (() => {
       return (a.to || []).every(id => personOf(ctx.st, id)) ? null : no('уведомление несуществующему сотруднику');
     }
     if (!a) return no('уведомления не удаляют');
+    if (repointed(ctx, b, a)) return null;
     const ch = changedFields(b, a), was = new Set(b.read || []), now = new Set(a.read || []);
     const added = [...now].filter(id => !was.has(id));
     if (ch.length === 1 && ch[0] === 'read' && [...was].every(id => now.has(id)) && added.length === 1 && added[0] === ctx.pid
@@ -7074,7 +7177,7 @@ const Guard = (() => {
     const after = Docs.apply(st, list);
     const moves = list.filter(x => x.key === 'moves' && !x.deleted && x.data && Docs.get(st, 'moves', x.id) === undefined).map(x => x.data);
     const ctx = {
-      st, after, pid, now, list, moves, exp: expected(moves),
+      st, after, pid, now, list, moves, exp: expected(moves), merges: merges(st, list),
       can: r => Perms.can(st, pid, r),
       before: x => Docs.get(st, x.key, x.id),
       data: x => (x.deleted ? null : x.data),
@@ -7091,7 +7194,7 @@ const Guard = (() => {
     return stockCovered(ctx);
   }
 
-  return { RULES, check };
+  return { RULES, check, merges };
 })();
 
 // Ядро: перенос остатков и клиентов из CSV (Import). Без DOM и сети; st первым аргументом, время now аргументом.
@@ -7344,8 +7447,9 @@ const Import = (() => {
 
   // Заменить остатки фирмы строками листа. rows — из stockRows (или присланные клиентом: чистятся). Что происходит:
   // товар строки — позиция каталога (точное совпадение названия) или товар «нет в каталоге» с id по нормализованному названию
-  // (повторный перенос попадает в те же товары); stock и aside заменяются целиком; движение «Ввод остатков» пишется только на
-  // клетку склада с остатком больше нуля, которая изменилась против прежнего остатка (тот же файл второй раз журнал не трогает);
+  // (повторный перенос попадает в те же товары); stock и aside заменяются целиком; движение «Ввод остатков» пишется на клетку
+  // склада с остатком больше нуля, которая изменилась против прежнего остатка, и с остатком 0 — на клетку, где остаток был
+  // больше нуля, а стал 0 или пропал из файла (тот же файл второй раз журнал не трогает);
   // резервы прошлого переноса (imported) сверяются с новыми: тот же (товар, клетка, количество, примечание) остаётся как есть,
   // остальные старые снимаются, недостающие ставятся — количество резервом, остальной текст примечанием, без сделки. Резервы из
   // CRM (со сделкой) остаются. st.stockSheet — разобранные строки без текста резервов (в нём имена клиентов, а stockSheet видят все).
@@ -7397,6 +7501,17 @@ const Import = (() => {
       }
       if (pr.rest) unparsed.push({ name: row.name, column: 'Резерв', text: pr.rest });
     });
+
+    // клетка, где остаток был больше нуля, а стал 0 или пропал из файла (пустая клетка, текст, товара в файле больше нет), —
+    // тоже «Ввод остатков», с остатком 0; клетка, где и было нуль или пусто, журнал не трогает
+    for (const pid of Object.keys(was)) {
+      for (const e of ['ip', 'npp', 'vs']) {
+        const before = wasCell(pid, e), after = (((built.stock[pid] || {})[e]) || {})[Stock.ANY];
+        if (!(isNum(before) && before > 0) || !(after === undefined || after === null || after === 0)) continue;
+        moves++;
+        logMove(st, { at, productId: pid, kind: INPUT, qty: 0, entityId: e, cityId: Stock.ANY, doc, by: who });
+      }
+    }
 
     // резервы прошлого переноса: тот же резерв остаётся как есть, остальные снимаются, недостающие ставятся
     const sameReserve = (r, w) => r.productId === w.productId && r.qty === w.qty && (r.entityId || Stock.ANY) === w.entityId
@@ -7481,25 +7596,70 @@ const Import = (() => {
     return {
       name, kind: r.kind === 'company' ? 'company' : 'person', phones: list(r.phones), email: str(r.email).slice(0, 200), inn: str(r.inn).slice(0, 30),
       address: str(r.address).slice(0, 500), org: str(r.org).slice(0, 500), bitrixId: str(r.bitrixId).slice(0, 60), managerName: str(r.managerName).slice(0, NAME_MAX),
+      fresh: r.fresh === true,
     };
   }
 
+  // Имя для сравнения: без регистра, без лишних пробелов, ё = е («  Иван   Пётр » и «иван петр» — одно имя)
+  const nameKey = s => str(s).toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ');
+  // Клиент, которого перенос узнаёт сам: тот же ИНН, телефон или почта (Clients.find: ИНН > телефон > почта), а без них —
+  // тот же ID Битрикса того же вида
+  function known(st, r) {
+    const found = Clients.find(st, r)[0];
+    return found || (r.bitrixId ? st.clients.find(c => c.bitrixId === r.bitrixId && c.kind === r.kind) : null) || null;
+  }
+  // Клиенты по имени: из них ищутся возможные двойники (ключ — nameKey)
+  function byName(clients) {
+    const m = new Map();
+    for (const c of clients) { const k = nameKey(c.name); if (k) { if (!m.has(k)) m.set(k, []); m.get(k).push(c); } }
+    return m;
+  }
+  // Возможный двойник строки среди клиентов index: то же имя; если компания (колонка «Компания» контакта) есть у обоих — и она та же;
+  // у разных ID Битрикса (оба заполнены) — не двойник: Битрикс сам знает, что это две записи
+  function twinOf(index, r) {
+    for (const c of index.get(nameKey(r.name)) || []) {
+      if (c.org && r.org && nameKey(c.org) !== nameKey(r.org)) continue;
+      if (c.bitrixId && r.bitrixId && c.bitrixId !== r.bitrixId) continue;
+      return c;
+    }
+    return null;
+  }
+
+  // Строки файла, которые загрузка не узнает по ИНН, телефону, почте и ID Битрикса, но которые совпали по имени с уже заведённым
+  // клиентом: «Возможно, уже есть». → [{ index, name, clientId, clientName }] (index — место строки в rows). Загрузка по умолчанию
+  // считает такую строку тем же клиентом; строка с fresh: true заводится новым клиентом. st не меняется.
+  function twins(st, rows) {
+    const out = [], list = Array.isArray(rows) ? rows : [];
+    if (!list.length) return out;
+    const index = byName(st.clients || []);
+    list.forEach((raw, i) => {
+      const r = cleanClient(raw);
+      if (!r || known({ clients: st.clients || [] }, r)) return;
+      const c = twinOf(index, r);
+      if (c) out.push({ index: i, name: r.name, clientId: c.id, clientName: c.name });
+    });
+    return out;
+  }
+
   // Завести клиентов из строк (clientRows). Тот же ИНН, телефон или почта (Clients.find: ИНН > телефон > почта), а без них —
-  // тот же ID Битрикса того же вида: клиент не создаётся заново, недостающее дописывается. «Ответственный» → менеджер клиента,
-  // если имя совпало с именем сотрудника точно и такой один. → { created, merged, skipped }
+  // тот же ID Битрикса того же вида: клиент не создаётся заново, недостающее дописывается. Строка без всего этого, но с именем
+  // уже заведённого клиента (twins) — тоже тот же клиент, если в строке не стоит fresh: true («новый»). Двойник ищется среди
+  // клиентов, что были до загрузки: два «Ивана Петрова» в одном файле друг с другом не склеиваются. «Ответственный» → менеджер
+  // клиента, если имя совпало с именем сотрудника точно и такой один. → { created, merged, skipped }
   function applyClients(st, rows, by, now) {
     if (!Array.isArray(rows)) throw new Error('Перенос: нужен список клиентов.');
     if (rows.length > ROWS_MAX) throw new Error(`Перенос: в файле больше ${ROWS_MAX} клиентов.`);
     const out = { created: 0, merged: 0, skipped: 0 };
     if (!st.clients) st.clients = [];
     const people = st.people || [];
+    const index = byName(st.clients.slice());
     for (const raw of rows) {
       const r = cleanClient(raw);
       if (!r) { out.skipped++; continue; }
       const same = r.managerName ? people.filter(p => str(p.name) === r.managerName) : [];
       const managerId = same.length === 1 ? same[0].id : '';
-      let found = Clients.find(st, r)[0];
-      if (!found && r.bitrixId) found = st.clients.find(c => c.bitrixId === r.bitrixId && c.kind === r.kind);
+      let found = known(st, r);
+      if (!found && !r.fresh) found = twinOf(index, r);
       if (!found) {
         Clients.make(st, { ...r, managerId: managerId || undefined }, by || null, now);
         out.created++;
@@ -7529,7 +7689,7 @@ const Import = (() => {
     throw new Error('Перенос: неизвестный вид переноса.');
   }
 
-  return { INPUT, decode, parseCsv, stockRows, parseReserve, applyStock, clientRows, applyClients, preview };
+  return { INPUT, decode, parseCsv, stockRows, parseReserve, applyStock, clientRows, twins, applyClients, preview };
 })();
 
 // Оболочка: состояние S и его сохранение, тема, разделы NAV, боковая панель, «Кто я», уведомления, окна,
@@ -12019,15 +12179,55 @@ function dClient(c){
   const edit=clientCanEdit(),rel=Clients.related(S,c.id,S.me);
   const sec=(t,n,html)=>`<div><h4 class="sh">${t}${n===null?'':' · '+n}</h4>${html}</div>`;
   const locked=edit?'':`<p class="lock">${ic('lock')}${CLIENT_NO_EDIT} Вам карточка открыта на просмотр.</p>`;
-  return {kind:'Клиент '+c.id,title:esc(c.name),sub:`${esc(Clients.KIND[c.kind]||'нет данных: вид')}${c.demo?' · пример':''}`,body:`${locked}${clientFields(c,edit)}
+  const merge=edit?`<p class="m0"><button type="button" class="btn sm" data-act="client-merge" data-id="${esc(c.id)}">Объединить</button> <span class="hint">с другим клиентом: двойник удаляется, его сделки, лиды, дела, лента и контакты переходят сюда</span></p>`:'';
+  return {kind:'Клиент '+c.id,title:esc(c.name),sub:`${esc(Clients.KIND[c.kind]||'нет данных: вид')}${c.demo?' · пример':''}`,body:`${locked}${clientFields(c,edit)}${merge}
     ${sec('Сделки',rel.deals.length,clientDeals(rel.deals))}${sec('Лиды',rel.leads.length,clientLeads(rel.leads))}${sec('Сообщения',rel.msgs.length,clientMsgs(rel.msgs))}
     ${sec('Отправки',rel.dispatches.length,clientDispatches(rel.dispatches))}
     ${sec('Лента',null,feedHtml({t:'client',id:c.id}))}`};
 }
 
+// ——— окно «Объединить» ———
+// Выбор лежит в S.ui.merge = {id, q, other}: id — клиент, который остаётся, other — второй (его удалят), q — поиск. Не сохраняется.
+// Объединение делает ядро (Clients.merge, 40-clients.js); сервер пускает его по тем же правилам (Guard, 47-guard.js).
+const clientMergeU=()=>S.ui.merge||(S.ui.merge={id:'',q:'',pick:'',other:''});
+// Кого предложить вторым: найденные по строке поиска; пока строка пуста — похожие на этого клиента (тот же ИНН, телефон, почта)
+function clientMergeOpts(c,q){
+  const list=(String(q||'').trim()?clientsSeen(Clients.search(S,q)):clientsSeen(Clients.find(S,c))).filter(x=>x.id!==c.id).slice(0,8);
+  if(!list.length) return `<p class="hint">${String(q||'').trim()?'Такого клиента нет.':'Введите имя, телефон или ИНН второго клиента — похожих на этого сейчас нет.'}</p>`;
+  return list.map(x=>`<label class="dpick"><input type="radio" name="cm-c" value="${esc(x.id)}" data-on="client-mc"${clientMergeU().pick===x.id?' checked':''}><span>${esc(x.name)}<small>${esc(x.id)}${(x.phones||[])[0]?' · '+esc(x.phones[0]):''}${x.inn?' · ИНН '+esc(x.inn):''}${x.demo?' · пример':''}</small></span></label>`).join('');
+}
+// Что переедет: числа для окна подтверждения (то же, что соберёт Clients.merge)
+function clientMergeCounts(drop){
+  const r=Clients.refsTo(S,drop.id);
+  const parts=[['сделок',r.deals.length],['лидов',r.leads.length],['дел',r.acts.length],['записей ленты',r.feed.length]].filter(x=>x[1]).map(x=>`${x[0]}: <b>${x[1]}</b>`);
+  return parts.length?`Переедет: ${parts.join(', ')}.`:'Связанных записей у него нет.';
+}
+MODALS.clientMerge=id=>{
+  const c=Clients.byId(S,id),m=clientMergeU(),other=m.other?Clients.byId(S,m.other):null;
+  if(!c) return '';
+  if(other){
+    return `<form data-form="client-merge" data-id="${esc(c.id)}" novalidate>${mHead('Объединить клиентов')}<div class="modal-b">
+      <p class="m0"><b>${esc(other.name)}</b> <small class="muted mono">${esc(other.id)}</small> будет удалён, его сделки, задачи, дела, лента и контакты перейдут к <b>${esc(c.name)}</b> <small class="muted mono">${esc(c.id)}</small>.</p>
+      <p class="hint">${clientMergeCounts(other)} Название, менеджер и прочее, что уже заполнено у ${esc(c.name)}, не меняется; телефоны и недостающие поля второго добавятся. Отменить объединение нельзя.</p>
+      <p><button type="button" class="link" data-act="client-merge-back" data-id="${esc(c.id)}">Выбрать другого клиента</button></p>
+      <p class="err" id="cm-err" hidden></p></div>${mFoot('Объединить')}</form>`;
+  }
+  return `<form data-form="client-merge" data-id="${esc(c.id)}" novalidate>${mHead('Объединить клиента '+esc(c.id))}<div class="modal-b">
+    <p class="m0">Найдите двойника «${esc(c.name)}». Он будет удалён, а всё его перейдёт сюда.</p>
+    <div class="field"><label for="cm-q">Второй клиент</label><input id="cm-q" class="inp" type="search" placeholder="Имя, телефон или ИНН" value="${esc(m.q)}" data-on="client-mq" autocomplete="off"></div>
+    <div id="cm-res" class="dpicks">${clientMergeOpts(c,m.q)}</div>
+    <p class="err" id="cm-err" hidden></p></div>${mFoot('Дальше')}</form>`;
+};
+
 // ——— действия ———
 function clientsRefresh(){const box=byId('client-body');if(box&&S.view==='clients') box.innerHTML=clientsBody()}
 A['client-new']=()=>{if(!clientCanEdit()) return toast(CLIENT_NO_EDIT,'warn');openModal('clientNew')};
+A['client-merge']=el=>{
+  if(!clientCanEdit()) return toast(CLIENT_NO_EDIT,'warn');
+  if(!Clients.byId(S,el.dataset.id)) return;
+  S.ui.merge={id:el.dataset.id,q:'',pick:'',other:''};openModal('clientMerge',el.dataset.id);
+};
+A['client-merge-back']=el=>{clientMergeU().other='';openModal('clientMerge',el.dataset.id)};
 A['client-kind']=el=>{clientsU().kind=Clients.KIND[el.dataset.k]?el.dataset.k:'';render()};
 A['client-reset']=()=>{S.ui.clients=Object.assign({},CLIENTS_DEF);render()};
 // «Похоже, это …»: имя — открыть карточку найденного (окно закрывается: оно лежит поверх карточки)
@@ -12051,6 +12251,11 @@ A['dup-pick']=el=>{
 
 // ——— поля ———
 ON.input['client-q']=t=>{clientsU().q=t.value;clientsRefresh()};
+ON.change['client-mc']=t=>{clientMergeU().pick=t.value};
+ON.input['client-mq']=t=>{
+  const m=clientMergeU(),c=Clients.byId(S,m.id),box=byId('cm-res');
+  m.q=t.value;m.pick='';if(c&&box) box.innerHTML=clientMergeOpts(c,t.value);
+};
 ON.input['client-dup']=()=>{
   const box=byId('cn-dup');
   if(box) box.innerHTML=clientDupHtml({phones:clientPhonesOf(byId('cn-phones').value),email:byId('cn-email').value,inn:byId('cn-inn').value});
@@ -12081,6 +12286,23 @@ FORMS['client-new']=()=>{
   if(!r.ok) return showErr('cn-err',r.reason);
   closeModal();render();openDrawer('client',r.id);
   toast(`Клиент ${r.id} заведён: ${r.client.name}. Запись в ленте есть.`);
+};
+
+// Окно «Объединить»: первый шаг — выбран второй клиент; второй — подтверждение, и одно действие меняет всё разом (одно save() в render)
+FORMS['client-merge']=f=>{
+  const id=f.dataset.id,m=clientMergeU();
+  if(!clientCanEdit()) return showErr('cm-err',CLIENT_NO_EDIT);
+  if(!m.other){
+    if(!m.pick||m.pick===id||!Clients.byId(S,m.pick)) return showErr('cm-err','Выберите клиента из списка.');
+    const block=Clients.mergeBlock(S,id,m.pick,S.me);
+    if(block) return showErr('cm-err',block);
+    m.other=m.pick;openModal('clientMerge',id);return;
+  }
+  const drop=Clients.byId(S,m.other),keep=Clients.byId(S,id);
+  const r=Clients.merge(S,id,m.other,S.me,new Date());
+  if(!r.ok) return showErr('cm-err',r.reason);
+  S.ui.merge=null;closeModal();render();
+  toast(`Клиент ${drop.id} объединён с ${keep.id}: ${drop.name} удалён, его записи теперь у ${keep.name}. Запись в ленте есть.`);
 };
 
 // ——— регистрация в реестрах оболочки ———
@@ -12789,17 +13011,18 @@ function trClientsRead(bytes){
   try{
     const r=Import.clientRows(Import.parseCsv(Import.decode(bytes)));
     if(r.problems.length){t.clients={problems:r.problems};return}
-    t.clients={rows:r.rows,kind:r.kind,unknown:r.unknown,skipped:r.skipped,pv:Import.preview('clients',S,r.rows,S.me,new Date()),busy:false,err:'',done:null};
+    t.clients={rows:r.rows,kind:r.kind,unknown:r.unknown,skipped:r.skipped,twins:Import.twins(S,r.rows),pv:Import.preview('clients',S,r.rows,S.me,new Date()),busy:false,err:'',done:null,at:0,sum:null};
   }catch(e){t.clients={problems:[trWhy(e)]}}
 }
 async function trClientsSend(){
   const s=trUi().clients;
   if(!s||!s.rows||s.busy) return;
   s.busy=true;s.err='';trRefresh();
-  const sum={created:0,merged:0,skipped:s.skipped||0};
+  // порции уже принятые сервером не шлются заново: иначе строки с выбором «новый» завелись бы второй раз
+  const sum=s.sum||(s.sum={created:0,merged:0,skipped:s.skipped||0});
   try{
-    for(let i=0;i<s.rows.length;i+=TR_CHUNK){
-      const r=await srvApi('POST','/api/import/clients',{rows:s.rows.slice(i,i+TR_CHUNK)});
+    for(;s.at<s.rows.length;s.at+=TR_CHUNK){
+      const r=await srvApi('POST','/api/import/clients',{rows:s.rows.slice(s.at,s.at+TR_CHUNK)});
       if(srvStatus(r)) throw new Error('нужен вход');
       if(r.status!==200) throw new Error((r.body&&r.body.error)||'Клиенты не загружены.');
       sum.created+=r.body.created;sum.merged+=r.body.merged;sum.skipped+=r.body.skipped;
@@ -12807,23 +13030,39 @@ async function trClientsSend(){
     s.done=sum;s.rows=null;s.pv=null;
   }catch(e){
     // часть порций могла дойти: повторная загрузка того же файла дописывает недостающее и дублей не плодит
-    s.err=(e instanceof TypeError?'Нет связи с сервером':e.message)+(sum.created+sum.merged?` Уже обработано клиентов: ${num(sum.created+sum.merged)}; повторите загрузку — дублей не будет.`:' Повторите загрузку.');
+    s.err=(e instanceof TypeError?'Нет связи с сервером':e.message)+(sum.created+sum.merged?` Уже обработано клиентов: ${num(sum.created+sum.merged)}; повторите загрузку — принятое не шлётся заново.`:' Повторите загрузку.');
   }
   s.busy=false;trRefresh();
 }
 const trClientNums=(p,file)=>`<ul class="tr-n">${trNum(p.created,'новых клиентов')}${trNum(p.merged,'объединено с уже заведёнными (недостающее дописано)')}${trNum(p.skipped+(file||0),'пропущено без имени')}</ul>`;
+
+// «Возможно, уже есть»: строки без телефона, почты, ИНН и ID Битрикса, но с именем заведённого клиента. У каждой выбор: «тот же»
+// (по умолчанию — данные из файла дополнят клиента) или «новый» (строка получает fresh: true и заведёт второго клиента).
+function trTwinsHtml(s){
+  if(!s.twins||!s.twins.length) return '';
+  const lock=s.busy||s.at>0?' disabled':'';
+  return `<div class="tr-tw"><p class="warn-t m0">Строк, похожих на уже заведённых клиентов: <b>${num(s.twins.length)}</b>. У них нет ни телефона, ни почты, ни ИНН, ни ID Битрикса, совпало только имя. «Тот же» — данные из файла дополнят клиента, нового не будет; «новый» — заведётся ещё один.</p>
+    <ul>${s.twins.map(w=>`<li><span>Возможно, уже есть: <b>${esc(w.name)}</b> → ${esc(w.clientName)} (${esc(w.clientId)})</span><select class="inp" aria-label="Это тот же клиент? ${esc(w.name)}" data-on="tr-twin" data-i="${w.index}"${lock}><option value="same">тот же</option><option value="new"${s.rows[w.index]&&s.rows[w.index].fresh?' selected':''}>новый</option></select></li>`).join('')}</ul></div>`;
+}
+ON.change['tr-twin']=el=>{
+  const s=trUi().clients,r=s&&s.rows&&!s.busy&&!s.at?s.rows[Number(el.dataset.i)]:null;
+  if(!r) return;
+  if(el.value==='new') r.fresh=true;else delete r.fresh;
+  s.pv=Import.preview('clients',S,s.rows,S.me,new Date());
+  trRefresh();
+};
 
 function trClientsHtml(){
   const s=trUi().clients;
   let body='';
   if(s&&s.problems) body=s.problems.map(p=>`<p class="err">${esc(p)}</p>`).join('');
   else if(s&&s.done) body=`<p class="ok-t m0"><b>Загружено.</b></p><ul class="tr-n">${trNum(s.done.created,'новых клиентов')}${trNum(s.done.merged,'объединено с уже заведёнными')}${trNum(s.done.skipped,'пропущено без имени')}</ul>`;
-  else if(s&&s.rows) body=`<p class="m0">Это файл ${s.kind==='company'?'компаний':'контактов'} Битрикса, строк с именем: <b>${num(s.rows.length)}</b>. Загрузка даст:</p>${trClientNums(s.pv,s.skipped)}
+  else if(s&&s.rows) body=`<p class="m0">Это файл ${s.kind==='company'?'компаний':'контактов'} Битрикса, строк с именем: <b>${num(s.rows.length)}</b>. Загрузка даст:</p>${trClientNums(s.pv,s.skipped)}${trTwinsHtml(s)}
     <p class="${s.unknown.length?'warn-t':'hint'} m0">${s.unknown.length?`Нераспознанные колонки (не переносятся): ${s.unknown.map(esc).join(', ')}.`:'Все колонки файла распознаны.'}</p>
     <form class="tr-go" data-form="tr-clients" novalidate><button type="submit" class="btn pri"${s.busy?' disabled':''}>${s.busy?'Загружаю…':'Загрузить'}</button><span class="hint">Клиенты добавятся к уже заведённым.</span></form>${s.err?`<p class="err">${esc(s.err)}</p>`:''}`;
   return `<section class="card"><div class="card-h"><h3>Клиенты из Битрикса</h3></div><div class="card-b stack-s">
     <p class="m0">Выгрузка контактов или компаний Битрикса в CSV, как она есть (UTF-8 или Windows-1251, разделитель — точка с запятой или запятая). Два файла — по очереди, тем же экраном: тип файла узнаётся по колонке «Название компании».</p>
-    <p class="hint">Клиент с тем же ИНН, телефоном или почтой дополняется, а не дублируется. «Ответственный» становится менеджером клиента, если имя совпало с именем сотрудника. Сам файл на сервер не отправляется и нигде не хранится.</p>
+    <p class="hint">Клиент с тем же ИНН, телефоном или почтой дополняется, а не дублируется; у кого их нет — «Возможно, уже есть» по имени, и вы решаете, тот же это клиент или новый. «Ответственный» становится менеджером клиента, если имя совпало с именем сотрудника. Сам файл на сервер не отправляется и нигде не хранится.</p>
     <div><label class="btn" for="tr-clients-file">${ic('plus')}Выбрать файл CSV</label><input id="tr-clients-file" class="sr" type="file" accept=".csv,.txt,text/csv,text/plain" data-on="tr-clients-file"></div>
     ${body}
   </div></section>`;

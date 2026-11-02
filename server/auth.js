@@ -33,9 +33,21 @@ const BAD_LOGIN = 'Неверный логин или пароль';
 // без похожих друг на друга знаков: 0/O, 1/l/I
 const ALPHABET = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
-const scrypt = (password, salt, { N, r, p }) => new Promise((ok, fail) => {
-  crypto.scrypt(String(password).normalize('NFC'), salt, KEYLEN, { N, r, p, maxmem: MAXMEM }, (e, key) => (e ? fail(e) : ok(key)));
+// Одновременно считается не больше SCRYPT_MAX хешей: каждый берёт 128 МБ, а сервер стоит на машине с 2 ГБ. Остальные ждут
+// очереди (по одному, в порядке прихода) — вход чуть медленнее при наплыве, но память не кончается.
+const SCRYPT_MAX = 2;
+let scryptBusy = 0;
+const scryptQueue = [];
+const scryptDone = () => { scryptBusy--; const next = scryptQueue.shift(); if (next) next(); };
+const scryptRun = (password, salt, { N, r, p }) => new Promise((ok, fail) => {
+  scryptBusy++;
+  try {
+    crypto.scrypt(String(password).normalize('NFC'), salt, KEYLEN, { N, r, p, maxmem: MAXMEM }, (e, key) => { scryptDone(); if (e) fail(e); else ok(key); });
+  } catch (e) { scryptDone(); fail(e); }
 });
+const scrypt = (password, salt, params) => (scryptBusy < SCRYPT_MAX
+  ? scryptRun(password, salt, params)
+  : new Promise((ok, fail) => { scryptQueue.push(() => scryptRun(password, salt, params).then(ok, fail)); }));
 // Строка хеша → { params, hex }. Без приставки — прежний хеш (N=2^14); приставка с чужими или нелепыми параметрами — null.
 function parseHash(text) {
   const t = String(text || '');

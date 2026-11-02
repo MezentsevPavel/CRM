@@ -248,8 +248,9 @@ const Import = (() => {
 
   // Заменить остатки фирмы строками листа. rows — из stockRows (или присланные клиентом: чистятся). Что происходит:
   // товар строки — позиция каталога (точное совпадение названия) или товар «нет в каталоге» с id по нормализованному названию
-  // (повторный перенос попадает в те же товары); stock и aside заменяются целиком; движение «Ввод остатков» пишется только на
-  // клетку склада с остатком больше нуля, которая изменилась против прежнего остатка (тот же файл второй раз журнал не трогает);
+  // (повторный перенос попадает в те же товары); stock и aside заменяются целиком; движение «Ввод остатков» пишется на клетку
+  // склада с остатком больше нуля, которая изменилась против прежнего остатка, и с остатком 0 — на клетку, где остаток был
+  // больше нуля, а стал 0 или пропал из файла (тот же файл второй раз журнал не трогает);
   // резервы прошлого переноса (imported) сверяются с новыми: тот же (товар, клетка, количество, примечание) остаётся как есть,
   // остальные старые снимаются, недостающие ставятся — количество резервом, остальной текст примечанием, без сделки. Резервы из
   // CRM (со сделкой) остаются. st.stockSheet — разобранные строки без текста резервов (в нём имена клиентов, а stockSheet видят все).
@@ -301,6 +302,17 @@ const Import = (() => {
       }
       if (pr.rest) unparsed.push({ name: row.name, column: 'Резерв', text: pr.rest });
     });
+
+    // клетка, где остаток был больше нуля, а стал 0 или пропал из файла (пустая клетка, текст, товара в файле больше нет), —
+    // тоже «Ввод остатков», с остатком 0; клетка, где и было нуль или пусто, журнал не трогает
+    for (const pid of Object.keys(was)) {
+      for (const e of ['ip', 'npp', 'vs']) {
+        const before = wasCell(pid, e), after = (((built.stock[pid] || {})[e]) || {})[Stock.ANY];
+        if (!(isNum(before) && before > 0) || !(after === undefined || after === null || after === 0)) continue;
+        moves++;
+        logMove(st, { at, productId: pid, kind: INPUT, qty: 0, entityId: e, cityId: Stock.ANY, doc, by: who });
+      }
+    }
 
     // резервы прошлого переноса: тот же резерв остаётся как есть, остальные снимаются, недостающие ставятся
     const sameReserve = (r, w) => r.productId === w.productId && r.qty === w.qty && (r.entityId || Stock.ANY) === w.entityId
@@ -385,25 +397,70 @@ const Import = (() => {
     return {
       name, kind: r.kind === 'company' ? 'company' : 'person', phones: list(r.phones), email: str(r.email).slice(0, 200), inn: str(r.inn).slice(0, 30),
       address: str(r.address).slice(0, 500), org: str(r.org).slice(0, 500), bitrixId: str(r.bitrixId).slice(0, 60), managerName: str(r.managerName).slice(0, NAME_MAX),
+      fresh: r.fresh === true,
     };
   }
 
+  // Имя для сравнения: без регистра, без лишних пробелов, ё = е («  Иван   Пётр » и «иван петр» — одно имя)
+  const nameKey = s => str(s).toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ');
+  // Клиент, которого перенос узнаёт сам: тот же ИНН, телефон или почта (Clients.find: ИНН > телефон > почта), а без них —
+  // тот же ID Битрикса того же вида
+  function known(st, r) {
+    const found = Clients.find(st, r)[0];
+    return found || (r.bitrixId ? st.clients.find(c => c.bitrixId === r.bitrixId && c.kind === r.kind) : null) || null;
+  }
+  // Клиенты по имени: из них ищутся возможные двойники (ключ — nameKey)
+  function byName(clients) {
+    const m = new Map();
+    for (const c of clients) { const k = nameKey(c.name); if (k) { if (!m.has(k)) m.set(k, []); m.get(k).push(c); } }
+    return m;
+  }
+  // Возможный двойник строки среди клиентов index: то же имя; если компания (колонка «Компания» контакта) есть у обоих — и она та же;
+  // у разных ID Битрикса (оба заполнены) — не двойник: Битрикс сам знает, что это две записи
+  function twinOf(index, r) {
+    for (const c of index.get(nameKey(r.name)) || []) {
+      if (c.org && r.org && nameKey(c.org) !== nameKey(r.org)) continue;
+      if (c.bitrixId && r.bitrixId && c.bitrixId !== r.bitrixId) continue;
+      return c;
+    }
+    return null;
+  }
+
+  // Строки файла, которые загрузка не узнает по ИНН, телефону, почте и ID Битрикса, но которые совпали по имени с уже заведённым
+  // клиентом: «Возможно, уже есть». → [{ index, name, clientId, clientName }] (index — место строки в rows). Загрузка по умолчанию
+  // считает такую строку тем же клиентом; строка с fresh: true заводится новым клиентом. st не меняется.
+  function twins(st, rows) {
+    const out = [], list = Array.isArray(rows) ? rows : [];
+    if (!list.length) return out;
+    const index = byName(st.clients || []);
+    list.forEach((raw, i) => {
+      const r = cleanClient(raw);
+      if (!r || known({ clients: st.clients || [] }, r)) return;
+      const c = twinOf(index, r);
+      if (c) out.push({ index: i, name: r.name, clientId: c.id, clientName: c.name });
+    });
+    return out;
+  }
+
   // Завести клиентов из строк (clientRows). Тот же ИНН, телефон или почта (Clients.find: ИНН > телефон > почта), а без них —
-  // тот же ID Битрикса того же вида: клиент не создаётся заново, недостающее дописывается. «Ответственный» → менеджер клиента,
-  // если имя совпало с именем сотрудника точно и такой один. → { created, merged, skipped }
+  // тот же ID Битрикса того же вида: клиент не создаётся заново, недостающее дописывается. Строка без всего этого, но с именем
+  // уже заведённого клиента (twins) — тоже тот же клиент, если в строке не стоит fresh: true («новый»). Двойник ищется среди
+  // клиентов, что были до загрузки: два «Ивана Петрова» в одном файле друг с другом не склеиваются. «Ответственный» → менеджер
+  // клиента, если имя совпало с именем сотрудника точно и такой один. → { created, merged, skipped }
   function applyClients(st, rows, by, now) {
     if (!Array.isArray(rows)) throw new Error('Перенос: нужен список клиентов.');
     if (rows.length > ROWS_MAX) throw new Error(`Перенос: в файле больше ${ROWS_MAX} клиентов.`);
     const out = { created: 0, merged: 0, skipped: 0 };
     if (!st.clients) st.clients = [];
     const people = st.people || [];
+    const index = byName(st.clients.slice());
     for (const raw of rows) {
       const r = cleanClient(raw);
       if (!r) { out.skipped++; continue; }
       const same = r.managerName ? people.filter(p => str(p.name) === r.managerName) : [];
       const managerId = same.length === 1 ? same[0].id : '';
-      let found = Clients.find(st, r)[0];
-      if (!found && r.bitrixId) found = st.clients.find(c => c.bitrixId === r.bitrixId && c.kind === r.kind);
+      let found = known(st, r);
+      if (!found && !r.fresh) found = twinOf(index, r);
       if (!found) {
         Clients.make(st, { ...r, managerId: managerId || undefined }, by || null, now);
         out.created++;
@@ -433,5 +490,5 @@ const Import = (() => {
     throw new Error('Перенос: неизвестный вид переноса.');
   }
 
-  return { INPUT, decode, parseCsv, stockRows, parseReserve, applyStock, clientRows, applyClients, preview };
+  return { INPUT, decode, parseCsv, stockRows, parseReserve, applyStock, clientRows, twins, applyClients, preview };
 })();
