@@ -13,6 +13,7 @@
 7. Подводные камни из `AGENTS.md` действуют: `crm-wind-solar.html` — результат сборки, после правки `src/` или `assets/` — `node tools/build.js`; `src/js` склеиваются в одну функцию по имени (повтор `const` верхнего уровня роняет страницу; код верхнего уровня видит только файлы с меньшим номером); в `90-boot.js` логики нет; `10-catalog-data.js`, `11-stock-data.js` целиком не читать; кириллицу не править через PowerShell `Get-Content`/`Set-Content`.
 8. Демо-прототип (страница без серверной метки) ведёт себя как до сборки: 417 тестов прототипа остаются зелёными без ослабления. Тест, который ломается из-за правки, чинится так, чтобы проверять то же самое.
 9. Проверка перед сдачей таска: `node tools/build.js && node --test tests/`.
+10. **Экономия на мелочах** (слово пользователя 2026-11-02: «экономь на мелочах, но записывай в заметки, что надо будет их сделать»). Мелочь — то, что не трогает числа, права, сохранность данных и вход: косметика, редкий крайний случай, удобство. Её не делать, а перечислить в `CONCERNS` строкой «отложено: <что>»; оркестратор переносит в `PROGRESS.md` → «Не доделано». Критерии приёмки таска мелочью не считаются.
 
 ## Стек и команды
 
@@ -162,3 +163,20 @@
 ## Что построили завершённые таски
 
 <!-- дописывает оркестратор после каждого таска: имена, которые реально появились -->
+
+**01 — ядро общей базы.** Сверх границ выше: `Docs.apply`, `Docs.get`, `Docs.same`, `Docs.kind`, `Docs.KEYS.LOCAL_PREFS`; `Stock.HIDDEN_ID` (`'hidden'`); `Ships.nextNumber`; экспорт `Dispatch.nextNumber`, `Clients.canEdit`; `Store.revive`, `Store.plain`; `Visible.HIDDEN_PRICE` («цена скрыта» в текстах ленты). У движений `moves` появились id `mv…`, `Store.REV` = 16. Важно для сервера (02):
+- **Слияние — с базой из `Visible.of` этого человека**: иначе вырезанные `'hidden'` и «цена скрыта» запишутся обратно поверх настоящих значений.
+- Каскад нового названия клиента в невидимые человеку сделки (`Clients.update`) делает сервер — копия браузера их не видит.
+- Отметка «сделано» у дела — по `Acts.done` (кто может писать в ленту карточки), а не «ответственный или автор».
+- `tests/load.js` `bootPage` берёт скрипт жадным выражением — на серверной странице с двумя `<script>` захватит оба.
+- Ремонт 01: `Guard` отвергает движение с `qty` не конечным > 0 (в том числе «Ввод остатков» — **импорт (04) не пишет движений с нулём**); приход по `ОТ-…` — только с парной отгрузкой того же товара, количества и `doc` в пачке, либо как доставка/возврат уже ушедшего груза (`moved`, не `landed`); иначе право `receive`; изменение ключа-массива и `products` с `data.id ≠ id` — отказ.
+- Не скрыт `dispatch.dealId` невидимой сделки — **закрыто в 02** (`Visible.of`).
+
+**02 — сервер.** `createApp({ dataDir, port, host, secureCookie, now, fileMaxMb }) → { url, close(), admin: { createDirector(login, password, name?) → personId, resetPassword(personId) → password }, tick() → число уведомлений, reloadAll() }`; `openCore(opts)`, `adminOf(ctx)` — то же без HTTP (для `admin.js` и копий, таск 04: `server/backup.js` и `admin.restore` ещё не сделаны). Помощник тестов — `tests/server-kit.js`.
+- **`view`** — id вкладки: браузер шлёт его в каждом `/api/sync?view=ID` (или заголовком `X-CRM-View`) и в теле `/api/changes`; на него сервер запоминает, что уже отдал. `GET /api/state → { seq, view, state, ids }`; `/api/sync → { seq, view, docs, gone[, full: true] }`; `POST /api/changes { changes, view }` → 200 как `/api/sync`; 409 `{ error, key, id, by, seq, view, docs, gone }` (`by` — последний правивший документ); 403 `{ error, key, id }`.
+- `/api/me → { person, mustChange, tag }`; `tag = 'k' + base36` у каждого сеанса; свои id сервера — `prefix + 's' + n`. Пока `mustChange`, всё, кроме `me`/`password`/`logout`, — 403 `{ mustChange: true }`.
+- `GET /api/users → { users: [{ personId, login, name, hasPassword, mustChange, disabled, sessions }] }`; `POST …/disable { disabled: false }` — включить обратно.
+- Первые 5 номеров на префикс выдаются при каждой загрузке страницы — пропуски в номерах допустимы.
+- Ремонт 02, порядок разбора записи пачки: записи у сервера нет, а прислана правка или удаление → 403 «Нет прав: править эту запись»; записи нет в `Visible.of` человека → тот же 403; слияние `Docs.merge(base, mine, урезанная версия)`, 409 с `by` — только здесь; итог накладывается на полную запись — вырезанное остаётся настоящим, правка вырезанного места молча не применяется. **Браузер (03): удаление записи, которую уже удалил другой, даёт 403 — показывать как «запись уже удалена или недоступна», не как «нет прав».**
+
+**03 — браузер в серверном режиме.** `serverBoot()`, `serverSave()`, `serverIdle() → Promise`, `srvPending() → bool`, `serverLogout()`, `serverNightDue(openedAt, now)`; `serverLogin(login, password, foreign) → 'ready'|'resumed'|'reload'|'password'|'gate'|'error'`; `serverPassword(old, new, repeat, force)`; **`serverUpload(file, name?) → { id, name, type, size, url } | null`**, `srvBlob(dataUrl) → Blob`. Состояние вкладки — `srv` (`confirmed`, `view`, `seq`, `pools`, `tag`, `users`…). `localStorage['ws-crm-srv:<personId>']` = `{ view, theme, ship, rcv }`; метка `html[data-mode=server]`; `ATT_SERVER_MAX_MB = 20` (`71-attach.js`). Внутренние id — префикс + `tag` + 4 знака вкладки + счётчик. Вкладки настроек «Перенос» и «Копии» (04) регистрируются через `SETTINGS_TABS` с `ok: () => SERVER && can('admin')`, запросы — `fetch` с `X-CRM: 1`, как в `72-server.js`; после восстановления копии сервер шлёт SSE `reload` — `72-server.js` должен на него перезагружать страницу (проверить, иначе добавить). В «Сотрудниках» директор заводит нового сотрудника (имя, отдел, роль, логин) — сверх критериев, без этого пустую базу не заполнить.
