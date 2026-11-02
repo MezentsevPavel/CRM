@@ -32,7 +32,9 @@ test('старт: GET / — собранная страница с window.CRM_SE
   const srv = await start();
   let dir;
   try {
-    const page = await fetch(srv.url + '/');
+    // страница для вошедшего (без входа сервер отдаёт урезанную — tests/server-page.test.js)
+    const boss = await director(srv);
+    const page = await fetch(srv.url + '/', { headers: { cookie: boss.cookie } });
     assert.equal(page.status, 200);
     const html = await page.text();
     assert.ok(!html.includes('<!--CRM-SERVER-->'));
@@ -41,7 +43,6 @@ test('старт: GET / — собранная страница с window.CRM_SE
     const { byId } = bootPage(html);
     assert.ok(byId('view').innerHTML.length > 0, 'страница с двумя <script> запускается');
 
-    const boss = await director(srv);
     const st = await state(srv, boss.cookie);
     // seedBase: 9 ролей, 242 позиции каталога, люди — только заведённый директор, записей нет
     assert.equal(st.roles.length, 9);

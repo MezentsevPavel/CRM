@@ -14,19 +14,22 @@ const { createSync, isEmpty } = require('./sync.js');
 const { createJobs } = require('./jobs.js');
 const { createBackups } = require('./backup.js');
 const { migrate } = require('./migrate.js');
-const { build, ROOT, OUT_NAME } = require('../tools/build.js');
+const { build, stripGated, ROOT, OUT_NAME } = require('../tools/build.js');
 
 const MARK = '<!--CRM-SERVER-->';
 const JSON_MAX = 10 * 1024 * 1024;
 const HEARTBEAT_MS = 25e3;
 
-// Страница: собранный файл (нет — собрать в памяти) с меткой серверного режима перед основным скриптом
-function serverPage() {
+// Страница: собранный файл (нет — собрать в памяти) с меткой серверного режима перед основным скриптом.
+// lite = для того, кто не вошёл: без закрытых кусков сборки (каталог с ценами, остатки, демо-записи) — только форма входа;
+// метка CRM_LITE говорит странице, что после входа её нужно перезагрузить и получить полную.
+function serverPage(lite = false) {
   const file = path.join(ROOT, OUT_NAME);
-  const html = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : build();
+  const built = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : build();
+  const html = lite ? stripGated(built) : built;
   const at = html.indexOf(MARK);
   if (at < 0) throw new Error(`В ${OUT_NAME} нет метки ${MARK} — пересобери страницу: node tools/build.js`);
-  const body = html.slice(0, at) + '<script>window.CRM_SERVER=1</script>' + html.slice(at + MARK.length);
+  const body = html.slice(0, at) + (lite ? '<script>window.CRM_SERVER=1;window.CRM_LITE=1</script>' : '<script>window.CRM_SERVER=1</script>') + html.slice(at + MARK.length);
   return '<!doctype html>\n<html lang="ru">\n<head>\n<meta charset="utf-8">\n'
     + '<meta name="viewport" content="width=device-width, initial-scale=1">\n</head>\n<body>\n'
     + body + '\n</body>\n</html>\n';
@@ -135,7 +138,7 @@ function readJson(req) {
 }
 
 async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCookie = false, now = Date.now, fileMaxMb = 20, backupHour, backupKeep } = {}) {
-  const page = serverPage();
+  const page = serverPage(), pageLite = serverPage(true);
   // Поток событий: сеанс → открытые потоки
   const streams = new Map();
   const write = (res, event, data) => { try { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch { /* поток закрыт */ } };
@@ -301,11 +304,14 @@ async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCooki
     try {
       if (url.pathname.startsWith('/api/')) return await api(req, res, url);
       if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
+        // вошедшему — полная страница, остальным — только форма входа (сеанс проверяется так же, как в API)
+        sync.fresh();
+        const ses = auth.session(req);
         res.writeHead(200, {
           'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
-          'X-Frame-Options': 'DENY', 'Referrer-Policy': 'same-origin',
+          'X-Frame-Options': 'DENY', 'Referrer-Policy': 'same-origin', ...(ses && ses.refresh ? { 'Set-Cookie': ses.refresh } : {}),
         });
-        return res.end(page);
+        return res.end(ses ? page : pageLite);
       }
       res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
       res.end('Нет такой страницы');

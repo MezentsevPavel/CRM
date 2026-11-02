@@ -14,6 +14,9 @@ const SRV_NUMBERED=['Д-','Л-','К-','П-','ОТ-'];  // номера, кото
 const SRV_POOL_LOW=3,SRV_POOL_ADD=5;            // запас номеров пополняется в фоне, когда в нём меньше трёх
 const SRV_LOCAL='ws-crm-srv:';                  // личное в localStorage: раздел, тема, вид поставок, черновик приёмки
 const SRV_PASS_MIN=8;                           // пароль — не короче (как у сервера)
+// Страница, отданная тому, кто не вошёл (сервер ставит CRM_LITE): в ней нет каталога, остатков и демо-записей, только вход.
+// Как только вход состоялся, её надо перезагрузить — сервер отдаст полную.
+const SRV_LITE=typeof CRM_LITE!=='undefined'&&!!CRM_LITE;
 const SRV_OFF_TEXT='Нет связи с сервером — изменения сохранятся, когда связь вернётся';
 const SRV_GONE_TEXT='Запись уже удалена или недоступна';
 // Что в рабочей версии не показывается: почта, сообщения клиентам, пульт имитаций; вкладки «Почта» и «Данные» прототипа
@@ -68,6 +71,7 @@ async function srvStart(){
   try{r=await srvApi('GET','/api/me')}catch(_){srvOffline(srvStart);return 'offline'}
   if(r.status===401){srvGate(false);return 'gate'}
   if(r.status!==200){srvOffline(srvStart);return 'offline'}
+  if(SRV_LITE){srvReload();return 'reload'}
   srv.person=r.body.person;srv.tag=r.body.tag||'k';
   if(r.body.mustChange){srvPassGate(true);return 'password'}
   return srvLoad();

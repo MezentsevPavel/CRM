@@ -10,6 +10,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 
 const ROOT = path.resolve(__dirname, '..');
 const OUT_NAME = 'crm-wind-solar.html';
@@ -39,13 +40,49 @@ function fontsCss(root) {
       (_, file) => 'url(data:font/woff2;base64,' + fs.readFileSync(path.join(dir, file)).toString('base64') + ')');
 }
 
+// ——— Закрытые куски страницы ———
+// Сервер отдаёт страницу тому, кто не вошёл, без данных: снимков каталога с ценами и остатков и демо-записей.
+// Сборка метит такие куски в одном и том же файле страницы, сервер вырезает их (stripGated) — второй копии кода нет.
+//   /*CRM-GATE-OPEN*/ …кусок… /*CRM-GATE-STUB заглушка*/ /*CRM-GATE-CLOSE*/
+// Вырезанный кусок заменяется заглушкой: объявлением с теми же именами, но без данных (или пустотой).
+const GATE_OPEN = '/*CRM-GATE-OPEN*/', GATE_STUB = '/*CRM-GATE-STUB', GATE_END = '*/', GATE_CLOSE = '/*CRM-GATE-CLOSE*/';
+const GATE_RE = /\/\*CRM-GATE-OPEN\*\/[\s\S]*?\/\*CRM-GATE-STUB([\s\S]*?)\*\/\/\*CRM-GATE-CLOSE\*\//g;
+const gate = (text, stub = '') => {
+  if (stub.includes(GATE_END)) throw new Error('В заглушке закрытого куска не может быть */');
+  return GATE_OPEN + text + GATE_STUB + stub + GATE_END + GATE_CLOSE;
+};
+const stripGated = html => html.replace(GATE_RE, (_, stub) => stub);
+
+// Что закрыто: файлы со снимками целиком (с заглушкой на месте), шаги SEEDS (демо-записи) и демо-команда seed().
+const GATED_FILES = {
+  '10-catalog-data.js': 'const CATALOG={source:null,snapshot:null,rows:[]};',
+  '11-stock-data.js': 'const STOCK_SNAPSHOT={source:null,snapshot:null,rows:[]};',
+};
+const SEED_STEP = /^SEEDS\.push\([\s\S]*?^\}\);$/gm;   // шаг начинается и кончается в первой колонке
+const SEED_TEAM = /^ {2}st\.people\.push\([\s\S]*?^ {2}\);$/m;   // демо-команда в seed() (20-model.js)
+function gateFile(name, text) {
+  // файл целиком кончается переводом строки, иначе метка попала бы в его последний комментарий
+  if (name in GATED_FILES) return gate(text.endsWith('\n') ? text : text + '\n', GATED_FILES[name]);
+  const steps = (text.match(/SEEDS\.push\(/g) || []).length;
+  let found = 0;
+  let out = text.replace(SEED_STEP, m => { found++; return gate(m); });
+  if (found !== steps) throw new Error(`${name}: шагов SEEDS ${steps}, а закрыть удалось ${found} — шаг должен начинаться и кончаться в первой колонке (SEEDS.push( … ${'}'});)`);
+  if (name === '20-model.js') {
+    if (!SEED_TEAM.test(out)) throw new Error('20-model.js: не найдена демо-команда seed() (st.people.push( … ))');
+    out = out.replace(SEED_TEAM, m => gate(m));
+  }
+  return out;
+}
+
 function build(root = ROOT) {
   const page = read(path.join(root, 'src', 'page.html'));
   for (const key of ['FONTS', 'CSS', 'JS']) {
     if (!page.includes(`{{${key}}}`)) throw new Error(`В src/page.html нет места {{${key}}}`);
   }
   const css = cssFiles(root).map(read).join('\n');
-  const js = "(()=>{\n'use strict';\n\n" + jsFiles(root).map(read).join('\n') + '})();\n';
+  const js = "(()=>{\n'use strict';\n\n" + jsFiles(root).map(f => gateFile(path.basename(f), read(f))).join('\n') + '})();\n';
+  // страница без закрытых кусков обязана оставаться рабочим кодом
+  new vm.Script(stripGated(js), { filename: 'страница без закрытых кусков' });
   const logo = 'data:image/png;base64,' + fs.readFileSync(path.join(root, LOGO_FILE)).toString('base64');
   let html = fill(page, 'FONTS', fontsCss(root));
   html = fill(html, 'CSS', css);
@@ -56,7 +93,7 @@ function build(root = ROOT) {
   return HEAD + '\n' + html;
 }
 
-module.exports = { build, cssFiles, jsFiles, ROOT, OUT_NAME, HEAD };
+module.exports = { build, cssFiles, jsFiles, stripGated, ROOT, OUT_NAME, HEAD };
 
 if (require.main === module) {
   const html = build();

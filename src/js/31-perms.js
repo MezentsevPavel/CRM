@@ -27,6 +27,11 @@ const Perms = (() => {
     ['sell', 'Списывать при продаже'],
   ];
   const KEYS = LIST.map(p => p[0]);
+  // Права, которых в рабочей версии (SERVER) не видно ни в таблице прав, ни в форме роли: почта и сообщения клиентам в
+  // Telegram и MAX — не этот этап. Сами права остаются в ролях (данные), прячется только их показ.
+  const SERVER_HIDDEN = ['write', 'mail'];
+  // Права для таблиц и форм на экране: в демо все, в рабочей версии — без спрятанных
+  const shown = () => (SERVER ? LIST.filter(p => !SERVER_HIDDEN.includes(p[0])) : LIST);
 
   // Права по умолчанию — «Решения по реализации» спецификации.
   // Менеджер видит лиды и сделки своего типа (scope), dealsAll у него нет. Заводить и править сделки (dealsEdit) — менеджерам,
@@ -116,5 +121,5 @@ const Perms = (() => {
     return { ok: true, reason: '' };
   }
 
-  return { LIST, defaultRoles, roleOf, can, addBlock, addRole, removeBlock, removeRole };
+  return { LIST, shown, defaultRoles, roleOf, can, addBlock, addRole, removeBlock, removeRole };
 })();

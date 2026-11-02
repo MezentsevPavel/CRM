@@ -1312,7 +1312,7 @@ const IC={
 };
 const ic=(n,c='')=>`<svg class="ic ${c}" viewBox="0 0 24 24" aria-hidden="true">${IC[n]}</svg>`;
 
-// Снимок каталога оборудования — Google-таблица «PVCalc — параметры оборудования».
+/*CRM-GATE-OPEN*/// Снимок каталога оборудования — Google-таблица «PVCalc — параметры оборудования».
 // Таблица обновляется с сайта wind-solar.ru каждую ночь; здесь — копия на 31.10.2026, сама по себе не обновляется.
 // Листы: Инверторы, Аккумуляторы, Панели, Защита и соединения, Новые на сайте, Исключено.
 // Взято из таблицы только: ключ, название, бренд, цена сайта, наличие, ссылка. Технические параметры не берём.
@@ -1563,8 +1563,8 @@ const CATALOG = {source:'Google-таблица «PVCalc — параметры �
   {key:'468900668',model:'Складная солнечная панель SILA SP-60 (60Вт)',brand:'SILA',price:10248,avail:'предзаказ',url:null,from:null,cat:'панель',sheet:'Исключено'},
   {key:'1922655185',model:'Солнечная панель (поддон) WINDSOLAR OS-450W N-type Mono-crystalline',brand:'WINDSOLAR',price:425500,avail:'в наличии',url:null,from:null,cat:'панель',sheet:'Исключено'}
 ]};
-
-// Снимок остатков с корса — Google-таблица «Выгрузка с корса общая», лист «Остатки».
+/*CRM-GATE-STUBconst CATALOG={source:null,snapshot:null,rows:[]};*//*CRM-GATE-CLOSE*/
+/*CRM-GATE-OPEN*/// Снимок остатков с корса — Google-таблица «Выгрузка с корса общая», лист «Остатки».
 // Копия на 31.10.2026, сама по себе не обновляется.
 // Колонки: ip — «Склад ИП», npp — «НПП», vs — «ВС», custody — «ответхранение», transit — «В пути», damaged — «Бой».
 // Пустая клетка в таблице — null (не 0); 0 в таблице — 0. Нечисловой текст в числовой клетке — тоже null.
@@ -1780,7 +1780,7 @@ const STOCK_SNAPSHOT = {source:'Google-таблица «Выгрузка с ко
   {name:'Бокс HT8WAY',cat:'Соединительное и защитное оборудование',ip:4,npp:null,vs:null,custody:null,transit:null,damaged:null},
   {name:'LED-9W-E27-DC12-85V',cat:'Соединительное и защитное оборудование',ip:50,npp:null,vs:null,custody:null,transit:null,damaged:null}
 ]};
-
+/*CRM-GATE-STUBconst STOCK_SNAPSHOT={source:null,snapshot:null,rows:[]};*//*CRM-GATE-CLOSE*/
 // Справочники, демо-данные seed() по схеме v3, реестр SEEDS и расчёты над состоянием S.
 // Права — Perms (31), воронки и этапы — Pipes (32), уведомления — Notify (37): здесь их только вызывают.
 // Состояние S объявлено в оболочке (50), поднимает его запуск (90): из браузера или seed().
@@ -1816,7 +1816,7 @@ function seed(){
   const st=seedBase();
   st.me='p1';
   // демо-команда: все семь ролей, по два менеджера B2B и B2C; имена — примеры
-  st.people.push(
+/*CRM-GATE-OPEN*/  st.people.push(
     {id:'p1',name:'Павел М.',role:'director',dept:'mgmt',demo:true},
     {id:'p2',name:'Анна С.',role:'managerB2c',dept:'sales',demo:true},
     {id:'p3',name:'Максим Л.',role:'managerB2b',dept:'sales',demo:true},
@@ -1828,7 +1828,7 @@ function seed(){
     {id:'p9',name:'Ирина П.',role:'managerB2b',dept:'sales',demo:true},
     {id:'p10',name:'Олег Н.',role:'managerB2c',dept:'sales',demo:true},
     {id:'p11',name:'Наталья Р.',role:'engineer',dept:'eng',specialty:'designer',demo:true}
-  );
+  );/*CRM-GATE-STUB*//*CRM-GATE-CLOSE*/
   for(const step of SEEDS) step(st);
   return st;
 }
@@ -1856,7 +1856,7 @@ BASES.push(st=>{
 
 // Шаг 1: демо-записи v2 — товары, поставки, резервы, сделки, задачи, переписка, движения.
 // Этап записи — id этапа её воронки (pipeId/boardId + stageId), не номер.
-SEEDS.push(st=>{
+/*CRM-GATE-OPEN*/SEEDS.push(st=>{
   const T=(id,title,deal,to,from,due,stageId,prio,desc,at)=>({id,title,deal,to,from,due,boardId:'tasksCommon',stageId,prio,desc,at});
   const D=(id,client,contact,kind,object,type,stageId,managerId,channel,amount)=>({id,client,contact,kind,object,type,pipeId:type==='b2b'?'dealsB2b':'dealsB2c',stageId,managerId,channel,amount,demo:true});
   Object.assign(st,{
@@ -1921,11 +1921,11 @@ SEEDS.push(st=>{
       {id:'mv1',at:day(-5,9,30),productId:'PV-550M',kind:'Приход',qty:60,doc:'П-1035',by:'p5'}
     ]
   });
-});
+});/*CRM-GATE-STUB*//*CRM-GATE-CLOSE*/
 
 // Шаг 2: демо-уведомления. Кому — решает Notify (карта RECIPIENTS + адресаты события).
 // От старых к новым: push кладёт новое в начало. Вчерашнее и раньше — уже прочитано всеми адресатами.
-SEEDS.push(st=>{
+/*CRM-GATE-OPEN*/SEEDS.push(st=>{
   st.notes=[];
   // ref — объект, который открывает уведомление: Notify.push требует его у каждого вызова
   const N=(kind,by,at,text,extra,ref)=>{const n=Notify.push(st,kind,by,text,at,extra,ref);if(dd(at)<0) n.read=n.to.slice()};
@@ -1940,7 +1940,7 @@ SEEDS.push(st=>{
   N('ship','p6',day(0,8,15),'П-1044 прибыла в Иркутск, на терминал транспортной компании: кабель, разъёмы MC4, контроллеры, щиты DC. Ждёт приёмки, на склад — сегодня.',[],{t:'ship',id:'П-1044'});
   N('ship','p6',day(0,9,40),`П-1041 (инверторы, АКБ) прошла Читу и идёт в Иркутск. На складе ожидается ${fD(day(3))}.`,[],{t:'ship',id:'П-1041'});
   N('ship','p6',day(0,11,0),'Отгрузка О-207 выехала на объект Д-305 (Волкова Мария). Привезём к 16:00.',[],{t:'ship',id:'О-207'});
-});
+});/*CRM-GATE-STUB*//*CRM-GATE-CLOSE*/
 
 const defaultUi=()=>({taskF:'all',taskDept:'all',cat:'Все',sq:'',deficit:false,logTab:'in',noteK:'all',noteScope:'all',tplCh:'telegram',drawer:null,modal:null,navOpen:false});
 
@@ -2231,6 +2231,11 @@ const Perms = (() => {
     ['sell', 'Списывать при продаже'],
   ];
   const KEYS = LIST.map(p => p[0]);
+  // Права, которых в рабочей версии (SERVER) не видно ни в таблице прав, ни в форме роли: почта и сообщения клиентам в
+  // Telegram и MAX — не этот этап. Сами права остаются в ролях (данные), прячется только их показ.
+  const SERVER_HIDDEN = ['write', 'mail'];
+  // Права для таблиц и форм на экране: в демо все, в рабочей версии — без спрятанных
+  const shown = () => (SERVER ? LIST.filter(p => !SERVER_HIDDEN.includes(p[0])) : LIST);
 
   // Права по умолчанию — «Решения по реализации» спецификации.
   // Менеджер видит лиды и сделки своего типа (scope), dealsAll у него нет. Заводить и править сделки (dealsEdit) — менеджерам,
@@ -2320,7 +2325,7 @@ const Perms = (() => {
     return { ok: true, reason: '' };
   }
 
-  return { LIST, defaultRoles, roleOf, can, addBlock, addRole, removeBlock, removeRole };
+  return { LIST, shown, defaultRoles, roleOf, can, addBlock, addRole, removeBlock, removeRole };
 })();
 
 // Ядро: воронки всех видов — доски задач, сделки B2B и B2C, лиды, поставки.
@@ -3248,7 +3253,7 @@ const Ships = (() => {
 // шаг каталога (38) стоит позже). Пять якорных поставок (П-1038, П-1041…П-1044) и отгрузка О-207 остались от v2:
 // на них ссылаются резервы, задачи и движения; их позиции названы артикулами v2 — на настоящие товары их переводит
 // шаг каталога вместе с резервами, которые на них ссылаются.
-SEEDS.push(st => {
+/*CRM-GATE-OPEN*/SEEDS.push(st => {
   const DEMO = new Date(2026, 9, 31);
   const at = (back, h = 12, m = 0) => new Date(DEMO.getFullYear(), DEMO.getMonth(), DEMO.getDate() - back, h, m);
   // mulberry32: фиксированное зерно — фиксированный набор
@@ -3404,7 +3409,7 @@ SEEDS.push(st => {
   });
 
   st.shipments = shipments;
-});
+});/*CRM-GATE-STUB*//*CRM-GATE-CLOSE*/
 
 // База: правила директора по умолчанию (Настройки → Поставки); третье выключено — пример выключенного. «Прибыло в город»
 // и «На складе» ставит только «принято на складе» (Pipes.ruleMayTo): прибытие отмечает шаг перевозчика, склад — приёмка
@@ -3809,15 +3814,15 @@ BASES.push(st => {
   st.leadWaitMin = 15;
   st.leads = [];
 });
-SEEDS.push(st => {
+/*CRM-GATE-OPEN*/SEEDS.push(st => {
   st.people.push({ id: Store.freeId(st.people, 'p'), name: 'Елена Г.', role: 'rop', dept: 'sales', demo: true });
-});
+});/*CRM-GATE-STUB*//*CRM-GATE-CLOSE*/
 
 // Шаг SEEDS: источник лидов и 24 демо-лида. Всё помечено «пример» (demo:true и слово в имени/компании),
 // телефоны вида +7 900 000-00-NN, почта на example.com — настоящих людей и компаний тут нет.
 // Лиды заводятся теми же функциями, что и в работе (create, contacted, close, toDeal), но без уведомлений:
 // менеджера выбирает route, поэтому «Нераспределённые» — лиды без компании и контакта.
-SEEDS.push(st => {
+/*CRM-GATE-OPEN*/SEEDS.push(st => {
   const pad = (n, w) => String(n).padStart(w, '0');
   const COMPANIES = ['ООО „Пример-Строй“', 'ИП Пример-Агро', 'КФХ „Пример“', 'ООО „Пример-Сервис“', 'АО „Пример-Энерго“', 'ООО „Пример-Склад“', 'ООО „Пример-Дом“', 'ООО „Пример-Транс“'];
   const TEXTS = {
@@ -3854,7 +3859,7 @@ SEEDS.push(st => {
     if (stage === 'deal') Leads.toDeal(st, lead.id, m, later(3));
     if (stage === 'lost') Leads.close(st, lead.id, REASONS[k % REASONS.length], m, later(2));
   });
-});
+});/*CRM-GATE-STUB*//*CRM-GATE-CLOSE*/
 
 // Ядро: почта — ящики, папки поставщиков, правила по адресам. Чистая логика, без DOM.
 // Это имитация: наружу ничего не уходит, ответ только ложится в ветку письма с пометкой.
@@ -3995,7 +4000,7 @@ BASES.push(st => { st.mail = { boxes: [], suppliers: [], letters: [] }; });
 // домене .example, письма с пометкой demo. Адреса самих ящиков — «нет данных» (address:''), подключения нет.
 // Товары в текстах — настоящие позиции каталога. Шаг стоит в файле раньше шага каталога (38), поэтому берёт
 // позиции из тех же снимков сам: Catalog.build — чистая функция, на состояние не влияет.
-SEEDS.push(st => {
+/*CRM-GATE-OPEN*/SEEDS.push(st => {
   const DAY = new Date(2026, 9, 31); // фиксированная дата демо — день снимков каталога и остатков
   const at = (back, h, m) => new Date(DAY.getFullYear(), DAY.getMonth(), DAY.getDate() - back, h, m);
   const products = Catalog.build(CATALOG, STOCK_SNAPSHOT).products;
@@ -4071,7 +4076,7 @@ SEEDS.push(st => {
   const paid = st.mail.letters.find(l => l.boxId === 'clients' && l.subject === 'Оплата заказа');
   const r = Mail.reply(st, paid.id, 'Спасибо, оплату видим. Заказ передан в отгрузку, о сроках напишем отдельно.', 'p2', at(1, 16, 0));
   if (r) r.demo = true;
-});
+});/*CRM-GATE-STUB*//*CRM-GATE-CLOSE*/
 
 // Ядро: уведомления. Адресаты — люди (to:[personId]), прочитанность — у каждого своя (read:[personId]).
 // Кому что приходит — только карта RECIPIENTS; человек может выключить вид у себя:
@@ -4384,7 +4389,7 @@ const DEMO_LINKS = {
 BASES.push(st => {
   Object.assign(st, Stock.defaults(), { products: Catalog.build(CATALOG, { rows: [] }).products, stock: {}, aside: {} });
 });
-SEEDS.push(st => {
+/*CRM-GATE-OPEN*/SEEDS.push(st => {
   const built = Catalog.build(CATALOG, STOCK_SNAPSHOT);
   Object.assign(st, { products: built.products, stock: built.stock, aside: built.aside });
   const pick = ({ cat, name }) => st.products.find(p => p.cat === cat && Catalog.norm(p.name) === Catalog.norm(name))
@@ -4410,7 +4415,7 @@ SEEDS.push(st => {
     const cell = Stock.bestCell(st, m.productId);
     m.entityId = cell.entityId; m.cityId = cell.cityId;
   }
-});
+});/*CRM-GATE-STUB*//*CRM-GATE-CLOSE*/
 
 // Ядро: заявки на отправку. Кому, куда, телефон, когда и что именно — их создаёт любой сотрудник, исполняют логист,
 // кладовщик и водитель (право dispatch). Этап хранится по id этапа воронки отправок (вид dispatch), ход заявки пишется
@@ -4892,7 +4897,7 @@ BASES.push(st => {
   ] });
   st.dispatches = [];
 });
-SEEDS.push(st => {
+/*CRM-GATE-OPEN*/SEEDS.push(st => {
   const driverIds = ['Роман Е.', 'Василий Т.'].map(name => {
     const p = { id: Store.freeId(st.people, 'p'), name, role: 'driver', dept: 'logistics', demo: true };
     st.people.push(p);
@@ -4972,7 +4977,7 @@ SEEDS.push(st => {
     }
     if (stage === 'cancelled') Dispatch.setStage(st, d.id, 'cancelled', purpose === 'transfer' ? 'p6' : author, later(6), { silent: true });
   });
-});
+});/*CRM-GATE-STUB*//*CRM-GATE-CLOSE*/
 
 // Ядро: клиенты. Клиент — отдельная карточка: человек или компания (ИНН), телефоны, почта, адрес, менеджер.
 // Дубли ищет find: тот же ИНН, телефон (по цифрам) или почта. Лиды и сделки ссылаются на клиента (clientId),
@@ -5162,7 +5167,7 @@ const Clients = (() => {
 // клиентов Д-311 и Д-314 — это и есть образец «Похоже, это …».
 // База: клиентов нет.
 BASES.push(st => { st.clients = []; });
-SEEDS.push(st => {
+/*CRM-GATE-OPEN*/SEEDS.push(st => {
   st.clients = st.clients || [];
   const when = day(-12, 9, 0);
   // условные данные для прежних сделок v2 (в самих сделках телефонов нет)
@@ -5198,7 +5203,7 @@ SEEDS.push(st => {
     const c = Clients.find(st, l)[0];
     if (c && !l.clientId) l.clientId = c.id;
   }
-});
+});/*CRM-GATE-STUB*//*CRM-GATE-CLOSE*/
 
 // Ядро и вид: одна лента для всех карточек — сделка, лид, клиент, отправка. Комментарии и события, новые сверху.
 // Лента хранит только свои записи (st.feed); остальное подмешивает of(): историю лида, резервы по сделке,
@@ -5918,7 +5923,7 @@ BASES.push(st => {
   const rop = st.roles.find(r => r.id === 'rop');
   if (rop) rop.perms.dealsEdit = true;
 });
-SEEDS.push(st => {
+/*CRM-GATE-OPEN*/SEEDS.push(st => {
   const DAY = 864e5, STAGES = ['request', 'calc', 'offer', 'contract', 'payment', 'delivery', 'install', 'done'];
   const pad = (n, w) => String(n).padStart(w, '0');
   const mgrs = type => Leads.managers(st, type).map(p => p.id);
@@ -6021,7 +6026,7 @@ SEEDS.push(st => {
     if (k % 2 === 0) say(d, k, new Date(start.getTime() + Math.floor(1.5 * t.step)));
     if (lostWhy) Deals.lose(st, d.id, lostWhy, mgr, new Date(t.end.getTime() + 36e5));
   });
-});
+});/*CRM-GATE-STUB*//*CRM-GATE-CLOSE*/
 
 // Ядро: дела — следующий шаг по лиду, сделке и клиенту. Звонок, встреча, письмо или просто дело со сроком, ответственным
 // и напоминанием; выполняют его с результатом. Лента (Feed.of) подмешивает выполненные дела сама, открытые дела показывает
@@ -6213,7 +6218,7 @@ KIND.act = { l: 'Дела', ic: 'clock', c: 'sun' };
 // Всё помечено «пример». Напоминаний у демо-дел нет: при первом запуске в уведомления ничего не сыплется.
 // База: дел нет.
 BASES.push(st => { st.acts = []; });
-SEEDS.push(st => {
+/*CRM-GATE-OPEN*/SEEDS.push(st => {
   const TITLES = {
     call: ['Перезвонить по расчёту', 'Уточнить сроки по поставке', 'Согласовать время замера'],
     meet: ['Встреча на объекте', 'Показать КП в офисе'],
@@ -6244,7 +6249,7 @@ SEEDS.push(st => {
   };
   st.deals.filter(d => Deals.state(st, d) === 'open').forEach((d, k) => seedFor({ t: 'deal', id: d.id }, d.managerId, d.at || day(-3, 9, 0), k));
   st.leads.filter(l => !Pipes.isFinal(st, l.pipeId, l.stageId)).forEach((l, k) => seedFor({ t: 'lead', id: l.id }, l.managerId, l.at || day(-3, 9, 0), k));
-});
+});/*CRM-GATE-STUB*//*CRM-GATE-CLOSE*/
 
 // Ядро: файлы, приложенные к записи — к задаче, поставке, заявке на отправку. Чистые функции, без DOM.
 // Файл: {id, name, type, size, data|null, by?, at?, unsaved?}. data — data-URL; null — файл не поместился в браузер
@@ -9854,14 +9859,14 @@ function roleMatrix(withDel){
     :withDel
     ?'Галочки работают сразу. У директора права не снимаются. Встроенные роли удалить нельзя; свою роль можно удалить, когда на ней никого нет.'
     :'Галочки работают сразу. Попробуйте: снимите «Видеть цены и суммы» у менеджера B2B, затем вверху выберите менеджера B2B — колонка цен пропадёт. У директора права не снимаются. Свою роль добавляют в «Настройки → Роли и права».';
-  return `<section class="card clip"><div class="card-h"><h3>Что может каждая роль</h3></div><div class="card-b"><p class="hint">${hint}</p></div><div class="xs"><table class="tbl matrix"><thead><tr><th>Право</th>${S.roles.map(head).join('')}</tr></thead><tbody>${Perms.LIST.map(([k,l])=>`<tr><td>${l}</td>${S.roles.map(r=>`<td class="c"><input type="checkbox" id="pm-${esc(r.id)}-${k}" data-on="perm" data-role="${esc(r.id)}" data-perm="${k}" ${r.all||r.perms[k]?'checked':''} ${r.all?'disabled':''} aria-label="${l} — ${esc(r.name)}"></td>`).join('')}</tr>`).join('')}</tbody></table></div></section>`;
+  return `<section class="card clip"><div class="card-h"><h3>Что может каждая роль</h3></div><div class="card-b"><p class="hint">${hint}</p></div><div class="xs"><table class="tbl matrix"><thead><tr><th>Право</th>${S.roles.map(head).join('')}</tr></thead><tbody>${Perms.shown().map(([k,l])=>`<tr><td>${l}</td>${S.roles.map(r=>`<td class="c"><input type="checkbox" id="pm-${esc(r.id)}-${k}" data-on="perm" data-role="${esc(r.id)}" data-perm="${k}" ${r.all||r.perms[k]?'checked':''} ${r.all?'disabled':''} aria-label="${l} — ${esc(r.name)}"></td>`).join('')}</tr>`).join('')}</tbody></table></div></section>`;
 }
 
 // «Настройки → Роли и права» (вкладку добавляет 59-settings.js): матрица и «Добавить роль» — название и галочки.
 function vRoles(){
   const add=`<section class="card"><div class="card-h"><h3>Добавить роль</h3></div><form data-form="role-add" class="card-b stack-s" novalidate>
     <div class="field"><label for="ra-name">Название роли</label><input id="ra-name" class="inp" maxlength="60" placeholder="Например: Бухгалтер" autocomplete="off"></div>
-    <fieldset class="perm-grid"><legend>Что может эта роль</legend>${Perms.LIST.map(([k,l])=>`<label class="perm-opt"><input type="checkbox" id="ra-${k}" data-perm="${k}">${l}</label>`).join('')}</fieldset>
+    <fieldset class="perm-grid"><legend>Что может эта роль</legend>${Perms.shown().map(([k,l])=>`<label class="perm-opt"><input type="checkbox" id="ra-${k}" data-perm="${k}">${l}</label>`).join('')}</fieldset>
     <p class="hint">Права можно поменять потом в таблице выше. Назначить роль сотруднику — в разделе «Сотрудники и права».</p>
     <p class="err" id="ra-err" hidden></p>
     <div class="role-add-f"><button type="submit" class="btn pri">${ic('plus')}Добавить роль</button></div>
@@ -9884,7 +9889,7 @@ ON.change['person-spec']=t=>{const p=person(t.dataset.id);p.specialty=t.value;to
 FORMS['role-add']=()=>{
   const name=byId('ra-name').value,why=Perms.addBlock(S,name);
   if(why){byId('ra-name').focus?.();return showErr('ra-err',why)}
-  const on=Perms.LIST.map(p=>p[0]).filter(k=>byId('ra-'+k).checked);
+  const on=Perms.shown().map(p=>p[0]).filter(k=>byId('ra-'+k).checked);
   const r=Perms.addRole(S,name,on);
   render();
   toast(`Роль «${r.name}» добавлена: ${on.length?on.length+' '+pl(on.length,'право','права','прав'):'пока без прав'}. Она уже в таблице и в выборе роли сотрудника.`);
@@ -10038,7 +10043,7 @@ SETTINGS_TABS.push(
   </div></section>`}
 );
 
-NAV.push({id:'settings',label:'Настройки',icon:'sliders',group:'Настройки',order:10,hint:'Всё, что настраивают один раз: внешний вид, уведомления, воронки, почту, склады и права ролей.',ok:()=>settingsTabs().length>0});
+NAV.push({id:'settings',label:'Настройки',icon:'sliders',group:'Настройки',order:10,hint:SERVER?'Всё, что настраивают один раз: внешний вид, уведомления, воронки, склады и права ролей.':'Всё, что настраивают один раз: внешний вид, уведомления, воронки, почту, склады и права ролей.',ok:()=>settingsTabs().length>0});
 VIEWS.settings=vSettings;
 A['set-tab']=el=>{S.ui.setTab=el.dataset.tab;render()};
 
@@ -10750,6 +10755,9 @@ const NOTIFY_GROUPS=[
     ['dispatchStep','Отправки: ход заявки','Ваша заявка сменила этап или вам назначили отправку.'],
   ]},
 ];
+// В рабочей версии не показываются виды про почту и сообщения клиентам в Telegram и MAX (не этот этап); сами виды остаются в Notify
+const NOTIFY_SERVER_HIDDEN=['msg','mail'];
+const notifyShown=()=>NOTIFY_GROUPS.map(g=>({...g,kinds:g.kinds.filter(k=>!SERVER||!NOTIFY_SERVER_HIDDEN.includes(k[0]))})).filter(g=>g.kinds.length);
 const NOTIFY_KINDS=NOTIFY_GROUPS.flatMap(g=>g.kinds.map(([id,name,what])=>({id,name,what,group:g.title})));
 const soundName=id=>(Notify.SOUNDS.find(s=>s[0]===id)||[])[1]||'нет данных: звук';
 
@@ -10806,7 +10814,7 @@ function chimeCheck(){
 function vNotifySettings(){
   const m=me(),pref=Notify.soundPref(S,S.me);
   const sw=(id,on,attrs,label)=>`<label class="sw"><input type="checkbox" id="${id}" ${attrs} ${on?'checked':''} aria-label="${esc(label)}"><span class="sw-t" aria-hidden="true"></span></label>`;
-  const groups=NOTIFY_GROUPS.map(g=>`<h4 class="nset-g">${esc(g.title)}</h4><ul class="nset-list">${g.kinds.map(([id,name,what])=>`<li class="nset-row">${sw('nk-'+id,Notify.wants(S,S.me,id),`data-on="note-kind" data-kind="${id}"`,name)}<div class="nset-t"><b>${esc(name)}</b><span>${esc(what)}</span></div></li>`).join('')}</ul>`).join('');
+  const groups=notifyShown().map(g=>`<h4 class="nset-g">${esc(g.title)}</h4><ul class="nset-list">${g.kinds.map(([id,name,what])=>`<li class="nset-row">${sw('nk-'+id,Notify.wants(S,S.me,id),`data-on="note-kind" data-kind="${id}"`,name)}<div class="nset-t"><b>${esc(name)}</b><span>${esc(what)}</span></div></li>`).join('')}</ul>`).join('');
   const sounds=`<div class="seg" role="radiogroup" aria-label="Звук уведомления">${Notify.SOUNDS.map(([id,name])=>`<button type="button" role="radio" aria-checked="${id===pref.kind}" class="${id===pref.kind?'on':''}" data-act="sound-pick" data-kind="${id}">${esc(name)}</button>`).join('')}</div>`;
   return `<section class="card"><div class="card-h"><h3>О чём вам сообщать</h3><span class="muted sm">${esc(m.name)}</span></div><div class="card-b">
     <p class="hint">Это ваши личные настройки. Выключенный вид вам не приходит, остальным сотрудникам приходит как раньше. По умолчанию включено всё.</p>${groups}
@@ -12165,6 +12173,9 @@ const SRV_NUMBERED=['Д-','Л-','К-','П-','ОТ-'];  // номера, кото
 const SRV_POOL_LOW=3,SRV_POOL_ADD=5;            // запас номеров пополняется в фоне, когда в нём меньше трёх
 const SRV_LOCAL='ws-crm-srv:';                  // личное в localStorage: раздел, тема, вид поставок, черновик приёмки
 const SRV_PASS_MIN=8;                           // пароль — не короче (как у сервера)
+// Страница, отданная тому, кто не вошёл (сервер ставит CRM_LITE): в ней нет каталога, остатков и демо-записей, только вход.
+// Как только вход состоялся, её надо перезагрузить — сервер отдаст полную.
+const SRV_LITE=typeof CRM_LITE!=='undefined'&&!!CRM_LITE;
 const SRV_OFF_TEXT='Нет связи с сервером — изменения сохранятся, когда связь вернётся';
 const SRV_GONE_TEXT='Запись уже удалена или недоступна';
 // Что в рабочей версии не показывается: почта, сообщения клиентам, пульт имитаций; вкладки «Почта» и «Данные» прототипа
@@ -12219,6 +12230,7 @@ async function srvStart(){
   try{r=await srvApi('GET','/api/me')}catch(_){srvOffline(srvStart);return 'offline'}
   if(r.status===401){srvGate(false);return 'gate'}
   if(r.status!==200){srvOffline(srvStart);return 'offline'}
+  if(SRV_LITE){srvReload();return 'reload'}
   srv.person=r.body.person;srv.tag=r.body.tag||'k';
   if(r.body.mustChange){srvPassGate(true);return 'password'}
   return srvLoad();

@@ -27,6 +27,9 @@ const NOTIFY_GROUPS=[
     ['dispatchStep','Отправки: ход заявки','Ваша заявка сменила этап или вам назначили отправку.'],
   ]},
 ];
+// В рабочей версии не показываются виды про почту и сообщения клиентам в Telegram и MAX (не этот этап); сами виды остаются в Notify
+const NOTIFY_SERVER_HIDDEN=['msg','mail'];
+const notifyShown=()=>NOTIFY_GROUPS.map(g=>({...g,kinds:g.kinds.filter(k=>!SERVER||!NOTIFY_SERVER_HIDDEN.includes(k[0]))})).filter(g=>g.kinds.length);
 const NOTIFY_KINDS=NOTIFY_GROUPS.flatMap(g=>g.kinds.map(([id,name,what])=>({id,name,what,group:g.title})));
 const soundName=id=>(Notify.SOUNDS.find(s=>s[0]===id)||[])[1]||'нет данных: звук';
 
@@ -83,7 +86,7 @@ function chimeCheck(){
 function vNotifySettings(){
   const m=me(),pref=Notify.soundPref(S,S.me);
   const sw=(id,on,attrs,label)=>`<label class="sw"><input type="checkbox" id="${id}" ${attrs} ${on?'checked':''} aria-label="${esc(label)}"><span class="sw-t" aria-hidden="true"></span></label>`;
-  const groups=NOTIFY_GROUPS.map(g=>`<h4 class="nset-g">${esc(g.title)}</h4><ul class="nset-list">${g.kinds.map(([id,name,what])=>`<li class="nset-row">${sw('nk-'+id,Notify.wants(S,S.me,id),`data-on="note-kind" data-kind="${id}"`,name)}<div class="nset-t"><b>${esc(name)}</b><span>${esc(what)}</span></div></li>`).join('')}</ul>`).join('');
+  const groups=notifyShown().map(g=>`<h4 class="nset-g">${esc(g.title)}</h4><ul class="nset-list">${g.kinds.map(([id,name,what])=>`<li class="nset-row">${sw('nk-'+id,Notify.wants(S,S.me,id),`data-on="note-kind" data-kind="${id}"`,name)}<div class="nset-t"><b>${esc(name)}</b><span>${esc(what)}</span></div></li>`).join('')}</ul>`).join('');
   const sounds=`<div class="seg" role="radiogroup" aria-label="Звук уведомления">${Notify.SOUNDS.map(([id,name])=>`<button type="button" role="radio" aria-checked="${id===pref.kind}" class="${id===pref.kind?'on':''}" data-act="sound-pick" data-kind="${id}">${esc(name)}</button>`).join('')}</div>`;
   return `<section class="card"><div class="card-h"><h3>О чём вам сообщать</h3><span class="muted sm">${esc(m.name)}</span></div><div class="card-b">
     <p class="hint">Это ваши личные настройки. Выключенный вид вам не приходит, остальным сотрудникам приходит как раньше. По умолчанию включено всё.</p>${groups}

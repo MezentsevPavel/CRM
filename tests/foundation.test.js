@@ -28,6 +28,8 @@ test('сборка: страница склеена из src/ по порядк�
   for (const key of ['FONTS', 'CSS', 'JS', 'LOGO']) assert.ok(!html.includes(`{{${key}}}`), `осталось место {{${key}}}`);
   assert.ok(html.includes('data:image/png;base64,'), 'нет логотипа data URI');
   assert.match(html, /<script>\n\(\(\)=>\{\n'use strict';/);
+  // метки закрытых кусков (данные и демо, которые сервер не отдаёт без входа) файлы не меняют: убираем их, остальное — как есть
+  const plain = html.replace(/\/\*CRM-GATE-OPEN\*\/|\/\*CRM-GATE-STUB[\s\S]*?\*\/\/\*CRM-GATE-CLOSE\*\//g, '');
   // каждый файл src/ попал в страницу, и порядок — по имени файла (список строим здесь, не берём из сборки)
   for (const [dir, ext] of [['css', '.css'], ['js', '.js']]) {
     const folder = path.join(ROOT, 'src', dir);
@@ -36,7 +38,7 @@ test('сборка: страница склеена из src/ по порядк�
     let at = -1;
     for (const f of files) {
       const body = fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n').trim();
-      const i = html.indexOf(body);
+      const i = plain.indexOf(body);
       assert.ok(i > at, `${path.basename(f)} не на своём месте в сборке`);
       at = i;
     }

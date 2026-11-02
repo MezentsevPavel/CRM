@@ -21,14 +21,14 @@ function roleMatrix(withDel){
     :withDel
     ?'Галочки работают сразу. У директора права не снимаются. Встроенные роли удалить нельзя; свою роль можно удалить, когда на ней никого нет.'
     :'Галочки работают сразу. Попробуйте: снимите «Видеть цены и суммы» у менеджера B2B, затем вверху выберите менеджера B2B — колонка цен пропадёт. У директора права не снимаются. Свою роль добавляют в «Настройки → Роли и права».';
-  return `<section class="card clip"><div class="card-h"><h3>Что может каждая роль</h3></div><div class="card-b"><p class="hint">${hint}</p></div><div class="xs"><table class="tbl matrix"><thead><tr><th>Право</th>${S.roles.map(head).join('')}</tr></thead><tbody>${Perms.LIST.map(([k,l])=>`<tr><td>${l}</td>${S.roles.map(r=>`<td class="c"><input type="checkbox" id="pm-${esc(r.id)}-${k}" data-on="perm" data-role="${esc(r.id)}" data-perm="${k}" ${r.all||r.perms[k]?'checked':''} ${r.all?'disabled':''} aria-label="${l} — ${esc(r.name)}"></td>`).join('')}</tr>`).join('')}</tbody></table></div></section>`;
+  return `<section class="card clip"><div class="card-h"><h3>Что может каждая роль</h3></div><div class="card-b"><p class="hint">${hint}</p></div><div class="xs"><table class="tbl matrix"><thead><tr><th>Право</th>${S.roles.map(head).join('')}</tr></thead><tbody>${Perms.shown().map(([k,l])=>`<tr><td>${l}</td>${S.roles.map(r=>`<td class="c"><input type="checkbox" id="pm-${esc(r.id)}-${k}" data-on="perm" data-role="${esc(r.id)}" data-perm="${k}" ${r.all||r.perms[k]?'checked':''} ${r.all?'disabled':''} aria-label="${l} — ${esc(r.name)}"></td>`).join('')}</tr>`).join('')}</tbody></table></div></section>`;
 }
 
 // «Настройки → Роли и права» (вкладку добавляет 59-settings.js): матрица и «Добавить роль» — название и галочки.
 function vRoles(){
   const add=`<section class="card"><div class="card-h"><h3>Добавить роль</h3></div><form data-form="role-add" class="card-b stack-s" novalidate>
     <div class="field"><label for="ra-name">Название роли</label><input id="ra-name" class="inp" maxlength="60" placeholder="Например: Бухгалтер" autocomplete="off"></div>
-    <fieldset class="perm-grid"><legend>Что может эта роль</legend>${Perms.LIST.map(([k,l])=>`<label class="perm-opt"><input type="checkbox" id="ra-${k}" data-perm="${k}">${l}</label>`).join('')}</fieldset>
+    <fieldset class="perm-grid"><legend>Что может эта роль</legend>${Perms.shown().map(([k,l])=>`<label class="perm-opt"><input type="checkbox" id="ra-${k}" data-perm="${k}">${l}</label>`).join('')}</fieldset>
     <p class="hint">Права можно поменять потом в таблице выше. Назначить роль сотруднику — в разделе «Сотрудники и права».</p>
     <p class="err" id="ra-err" hidden></p>
     <div class="role-add-f"><button type="submit" class="btn pri">${ic('plus')}Добавить роль</button></div>
@@ -51,7 +51,7 @@ ON.change['person-spec']=t=>{const p=person(t.dataset.id);p.specialty=t.value;to
 FORMS['role-add']=()=>{
   const name=byId('ra-name').value,why=Perms.addBlock(S,name);
   if(why){byId('ra-name').focus?.();return showErr('ra-err',why)}
-  const on=Perms.LIST.map(p=>p[0]).filter(k=>byId('ra-'+k).checked);
+  const on=Perms.shown().map(p=>p[0]).filter(k=>byId('ra-'+k).checked);
   const r=Perms.addRole(S,name,on);
   render();
   toast(`Роль «${r.name}» добавлена: ${on.length?on.length+' '+pl(on.length,'право','права','прав'):'пока без прав'}. Она уже в таблице и в выборе роли сотрудника.`);
