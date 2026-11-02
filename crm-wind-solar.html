@@ -1184,7 +1184,11 @@ html[data-mode="server"] .as,html[data-mode="server"] .demo,html[data-mode="serv
 .srv-box{display:flex;flex-direction:column;gap:14px;width:min(400px,100%);padding:28px 26px 26px;border-radius:26px;background:var(--surface);box-shadow:var(--shadow);border:1px solid var(--line)}
 .srv-box h2{margin:0;font-family:var(--f-display);font-size:21px;font-weight:700}
 .srv-box .field{margin:0}
-.srv-box .check small{font-size:12px}
+/* Галочка: подпись и пояснение — один блок рядом с квадратиком (не две колонки); пояснение переносится под подпись и внутри себя */
+.srv-box .check{display:flex;align-items:flex-start;gap:10px;line-height:1.35}
+.srv-box .check input{flex:none;margin-top:1px}
+.srv-box .check-t{min-width:0;overflow-wrap:anywhere}
+.srv-box .check small{display:block;margin-top:2px;font-size:12px}
 .srv-box .bar{justify-content:flex-end}
 .srv-brand{display:flex;align-items:baseline;gap:8px;color:var(--primary-deep)}
 .srv-brand b{font-family:var(--f-display);font-size:15px;font-weight:800;letter-spacing:.01em}
@@ -2599,7 +2603,9 @@ const Stock = (() => {
   // Срок резерва по умолчанию, дней: единственная величина — её берут Deals.reserve, карточка товара и окно резерва строки сделки.
   // Допущение спецификации: 14 дней (так стояло в двух местах из трёх); меняется здесь одной цифрой.
   const RESERVE_DAYS = 14;
-  const KINDS = { receive: 'Приход', ship: 'Отгрузка', reserve: 'Резерв', unreserve: 'Снят резерв', transfer: 'Перемещение', damage: 'Списание в бой' };
+  const KINDS = { receive: 'Приход', ship: 'Отгрузка', reserve: 'Резерв', unreserve: 'Снят резерв', transfer: 'Перемещение', damage: 'Списание в бой', input: 'Ввод остатков' };
+  // input — запись журнала от переноса таблицы остатков (Import.applyStock), в qty — остаток клетки, а не прибавка. Stock.move его не
+  // принимает (список видов, меняющих остаток, ниже явный); сервер пускает такое движение по праву admin (Guard).
   const NO_ENTITY = 'нет данных: юрлицо';
   const NO_CITY = 'нет данных: город';
 
@@ -6715,7 +6721,7 @@ const Guard = (() => {
   const same = (a, b) => Docs.same(a === undefined ? null : a, b === undefined ? null : b);
   const SEP = '\u0001';
   // Движение «Ввод остатков» пишет перенос таблицы остатков (Import.applyStock): остаток товара заменяется целиком
-  const INPUT = 'Ввод остатков';
+  const INPUT = Stock.KINDS.input;
   const STOCK_TEXT = no('остаток склада меняется только движением в журнале склада и ровно на его количество');
 
   // Поля, которые изменились между двумя записями
@@ -7094,8 +7100,8 @@ const Guard = (() => {
 // applyClients) — второй копии разбора нет. Сам CSV никуда не сохраняется: дальше экрана идут только разобранные строки.
 
 const Import = (() => {
-  // Движение «Ввод остатков»: то же слово, что в Guard (47-guard.js), — по нему сервер пускает запись остатка (право admin).
-  const INPUT = 'Ввод остатков';
+  // Движение «Ввод остатков»: слово одно на всех — Stock.KINDS.input; по нему сервер пускает запись остатка (право admin).
+  const INPUT = Stock.KINDS.input;
   const NO_SECTION = 'Без раздела';
   const ROWS_MAX = 50000;
   const str = v => String(v == null ? '' : v).trim();
@@ -7143,9 +7149,19 @@ const Import = (() => {
     return fromCodes(codes);
   }
 
-  // Байты файла → текст: UTF-8 (с BOM и без), иначе Windows-1251. Чистый ASCII читается одинаково в обеих.
+  // UTF-16 («Юникод-текст» Excel): по BOM — FF FE это LE, FE FF это BE. Пары байт — это уже коды знаков (суррогаты склеит сама строка).
+  // Лишний последний байт нечётной длины отбрасывается. Без BOM UTF-16 не угадывается.
+  function utf16(b, le) {
+    const codes = [];
+    for (let i = 2; i + 1 < b.length; i += 2) codes.push(le ? b[i] | (b[i + 1] << 8) : (b[i] << 8) | b[i + 1]);
+    return fromCodes(codes);
+  }
+
+  // Байты файла → текст: UTF-16 по BOM (LE и BE), иначе UTF-8 (с BOM и без), иначе Windows-1251. Чистый ASCII читается одинаково в обеих.
   function decode(bytes) {
     const b = bytes && typeof bytes.length === 'number' ? bytes : new Uint8Array(bytes || 0);
+    if (b.length >= 2 && b[0] === 0xFF && b[1] === 0xFE) return utf16(b, true);
+    if (b.length >= 2 && b[0] === 0xFE && b[1] === 0xFF) return utf16(b, false);
     const from = b.length >= 3 && b[0] === 0xEF && b[1] === 0xBB && b[2] === 0xBF ? 3 : 0;
     const text = utf8(b, from);
     return text !== null ? text : cp1251(b, from);
@@ -8397,7 +8413,8 @@ function stockTable(){
 const refreshStock=()=>{S.ui.page=0;byId('stock-tbl').innerHTML=stockTable()};
 
 // ——— журнал движений: слова и строки общие для вкладки и карточки товара ———
-const moveSign=m=>m.kind===Stock.KINDS.receive?'+':(m.kind===Stock.KINDS.ship||m.kind===Stock.KINDS.damage)?'−':'';
+// «Ввод остатков» — знак «=»: в qty лежит остаток клетки после переноса, а не прибавка («+» был бы неправдой)
+const moveSign=m=>m.kind===Stock.KINDS.receive?'+':(m.kind===Stock.KINDS.ship||m.kind===Stock.KINDS.damage)?'−':m.kind===Stock.KINDS.input?'=':'';
 const movePill=m=>`<span class="pill sm ${m.kind===Stock.KINDS.receive?'ok':m.kind===Stock.KINDS.ship?'info':m.kind===Stock.KINDS.damage?'bad':'sun'}">${esc(m.kind)}</span>`;
 // Откуда и куда: клетка склада — «юрлицо · город»
 function moveWhere(m){
@@ -8409,6 +8426,7 @@ function moveWhere(m){
     case K.transfer: return `${from} → ${cellText(m.toEntityId,m.toCityId)}`;
     case K.reserve: return `резерв: ${from}`;
     case K.unreserve: return `снят резерв: ${from}`;
+    case K.input: return `остаток клетки: ${from}`;
     default: return from;
   }
 }
@@ -12475,7 +12493,7 @@ function srvGate(mid){
     ${mid&&S?'<p class="hint m0">Сеанс закончился — войдите снова. Несохранённые изменения отправятся сразу после входа.</p>':''}
     <div class="field"><label for="srv-login">Логин</label><input id="srv-login" class="inp" autocomplete="username" autocapitalize="none" spellcheck="false"></div>
     <div class="field"><label for="srv-pass">Пароль</label><input id="srv-pass" class="inp" type="password" autocomplete="current-password"></div>
-    <label class="check"><input type="checkbox" id="srv-foreign"> Чужой компьютер<small class="muted"> — вход до закрытия браузера, не дольше 12 часов</small></label>
+    <label class="check"><input type="checkbox" id="srv-foreign"><span class="check-t">Чужой компьютер<small class="muted">Вход до закрытия браузера, не дольше 12 часов</small></span></label>
     <p class="err" id="srv-err" hidden></p>
     <button type="submit" class="btn pri big">Войти</button>
   </form></div>`;

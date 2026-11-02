@@ -824,5 +824,13 @@ test('шрифты: страница не грузит ничего снаруж
     assert.ok(mine.some(f => f.includes('U+0400-045F')), `${family}: нет кириллицы`);
     assert.ok(mine.some(f => f.includes('U+0000-00FF')), `${family}: нет латиницы`);
   }
-  assert.ok(fs.existsSync(path.join(ROOT, 'assets', 'fonts', 'OFL.txt')), 'нет файла лицензии OFL.txt');
+  // лицензии — подлинные тексты из репозиториев шрифтов, по файлу на шрифт; общего OFL.txt «по памяти» больше нет
+  assert.ok(!fs.existsSync(path.join(ROOT, 'assets', 'fonts', 'OFL.txt')), 'остался старый OFL.txt');
+  for (const [file, owner] of [['OFL-Manrope.txt', 'The Manrope Project Authors (https://github.com/googlefonts/manrope)'], ['OFL-JetBrainsMono.txt', 'The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)']]) {
+    const p = path.join(ROOT, 'assets', 'fonts', file);
+    assert.ok(fs.existsSync(p), 'нет файла лицензии ' + file);
+    const text = fs.readFileSync(p, 'utf8');
+    assert.ok(text.startsWith('Copyright ') && text.split(/\r?\n/)[0].includes(owner), file + ': первая строка — копирайт ' + owner);
+    for (const part of ['SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007', 'PERMISSION & CONDITIONS', 'TERMINATION', 'OTHER DEALINGS IN THE FONT SOFTWARE.']) assert.ok(text.includes(part), file + ': в тексте лицензии нет «' + part + '»');
+  }
 });

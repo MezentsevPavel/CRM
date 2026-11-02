@@ -106,6 +106,15 @@ async function firm(srv) {
   return { boss, anna };
 }
 
+test('вход на узком экране: галочка «Чужой компьютер» — flex с подписью одним блоком, пояснение под подписью и переносится', () => {
+  const css = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'src', 'css', '72-server.css'), 'utf8');
+  const rule = sel => (css.match(new RegExp(sel.replace(/[.]/g, '\.') + '\{([^}]*)\}')) || [])[1] || '';
+  assert.match(rule('.srv-box .check'), /display:flex/);
+  assert.match(rule('.srv-box .check input'), /flex:none/);
+  assert.match(rule('.srv-box .check-t'), /min-width:0/);
+  assert.match(rule('.srv-box .check small'), /display:block/);
+});
+
 test('вход: без сеанса — окно входа; неверный пароль — «Неверный логин или пароль»; после входа — данные фирмы без демо, «Кто я», почты и пульта', () => withServer(async (srv, pages) => {
   const { boss } = await firm(srv);
   const p = page(srv); pages.push(p);
@@ -113,6 +122,8 @@ test('вход: без сеанса — окно входа; неверный п
   assert.equal(p.app.S, null, 'до входа данных нет');
   const gate = p.html('srv-root');
   for (const w of ['Вход в CRM', 'Логин', 'Пароль', 'Чужой компьютер', 'data-form="srv-login"']) assert.ok(gate.includes(w), 'в окне входа нет: ' + w);
+  // «Чужой компьютер»: подпись и пояснение — один блок рядом с галочкой (иначе на узком экране две колонки и подпись уезжает)
+  assert.match(gate, /<input type="checkbox" id="srv-foreign"><span class="check-t">Чужой компьютер<small[^>]*>[^<]+<\/small><\/span><\/label>/);
 
   assert.equal(await p.app.serverLogin('boss', 'не тот пароль'), 'error');
   assert.equal(p.app.byId('srv-err').textContent, 'Неверный логин или пароль');

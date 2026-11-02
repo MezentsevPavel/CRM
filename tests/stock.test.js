@@ -768,6 +768,27 @@ test('журнал движений: кто, когда, что, сколько,
   assert.ok(card.includes('Перемещение') && card.includes(app.person('p5').name));
 });
 
+test('журнал движений: «Ввод остатков» есть в фильтре, подписан знаком «=» (остаток клетки, не прибавка); слово одно на Stock, Guard и Import', () => {
+  const app = load();
+  const { Stock, S } = app;
+  assert.equal(Stock.KINDS.input, 'Ввод остатков');
+  assert.equal(app.Import.INPUT, Stock.KINDS.input, 'Import берёт слово из Stock.KINDS');
+  const html = stockView(app, 'moves');
+  assert.ok(html.includes('value="Ввод остатков"'), 'в фильтре нет вида «Ввод остатков»');
+  S.moves.unshift({ id: 'mv-in', at: new Date(2026, 10, 2, 9, 0), productId: 'sheet-004', kind: Stock.KINDS.input, qty: 7, entityId: 'ip', cityId: '_', doc: 'перенос', by: 'p1' });
+  fire(app, 'change', 'mvkind', 'Ввод остатков');
+  const row = plain(region(app, 'mv-tbl'));
+  assert.match(row, /Показано 1 из /);
+  assert.ok(row.includes('Ввод остатков') && row.includes('=7') && row.includes('остаток клетки: ИП'), row);
+  assert.ok(!row.includes('+7'), '«+» у ввода остатков был бы неправдой: qty — остаток клетки');
+  // Stock.move не принимает «Ввод остатков»: остаток меняет только перенос (Import), а не обычное движение
+  const before = JSON.stringify(S.stock['sheet-004']), n = S.moves.length;
+  const r = Stock.move(S, { kind: Stock.KINDS.input, productId: 'sheet-004', qty: 5, entityId: 'ip', cityId: '_', doc: 'х', by: 'p1', at: new Date() });
+  assert.equal(r.ok, false);
+  assert.equal(JSON.stringify(S.stock['sheet-004']), before);
+  assert.equal(S.moves.length, n);
+});
+
 test('«Настройки → Склады и юрлица»: вкладка видна только с правом settings; города и юрлица добавляются и переименовываются; адрес пуст — «нет данных: адрес»', () => {
   const app = load();
   const { S } = app;

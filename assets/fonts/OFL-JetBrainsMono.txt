@@ -1,13 +1,9 @@
-Шрифты в этой папке — Manrope и JetBrains Mono — распространяются по лицензии SIL Open Font License 1.1.
-
-Manrope:
-Copyright 2018 The Manrope Project Authors (https://github.com/sharanda/manrope)
-
-JetBrains Mono:
 Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)
 
-Файлы .woff2 скачаны один раз с fonts.gstatic.com (подмножества cyrillic-ext, cyrillic, latin-ext, latin)
-и не изменялись. Ниже — текст лицензии в оригинале.
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+https://openfontlicense.org
+
 
 -----------------------------------------------------------
 SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
@@ -22,7 +18,7 @@ with others.
 
 The OFL allows the licensed fonts to be used, studied, modified and
 redistributed freely as long as they are not sold by themselves. The
-fonts, including any derivative works, can be bundled, embedded,
+fonts, including any derivative works, can be bundled, embedded, 
 redistributed and/or sold with any software provided that any reserved
 names are not used by derivative works. The fonts and derivatives,
 however, cannot be released under any other type of license. The

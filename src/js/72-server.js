@@ -316,7 +316,7 @@ function srvGate(mid){
     ${mid&&S?'<p class="hint m0">Сеанс закончился — войдите снова. Несохранённые изменения отправятся сразу после входа.</p>':''}
     <div class="field"><label for="srv-login">Логин</label><input id="srv-login" class="inp" autocomplete="username" autocapitalize="none" spellcheck="false"></div>
     <div class="field"><label for="srv-pass">Пароль</label><input id="srv-pass" class="inp" type="password" autocomplete="current-password"></div>
-    <label class="check"><input type="checkbox" id="srv-foreign"> Чужой компьютер<small class="muted"> — вход до закрытия браузера, не дольше 12 часов</small></label>
+    <label class="check"><input type="checkbox" id="srv-foreign"><span class="check-t">Чужой компьютер<small class="muted">Вход до закрытия браузера, не дольше 12 часов</small></span></label>
     <p class="err" id="srv-err" hidden></p>
     <button type="submit" class="btn pri big">Войти</button>
   </form></div>`;

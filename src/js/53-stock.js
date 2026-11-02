@@ -74,7 +74,8 @@ function stockTable(){
 const refreshStock=()=>{S.ui.page=0;byId('stock-tbl').innerHTML=stockTable()};
 
 // ——— журнал движений: слова и строки общие для вкладки и карточки товара ———
-const moveSign=m=>m.kind===Stock.KINDS.receive?'+':(m.kind===Stock.KINDS.ship||m.kind===Stock.KINDS.damage)?'−':'';
+// «Ввод остатков» — знак «=»: в qty лежит остаток клетки после переноса, а не прибавка («+» был бы неправдой)
+const moveSign=m=>m.kind===Stock.KINDS.receive?'+':(m.kind===Stock.KINDS.ship||m.kind===Stock.KINDS.damage)?'−':m.kind===Stock.KINDS.input?'=':'';
 const movePill=m=>`<span class="pill sm ${m.kind===Stock.KINDS.receive?'ok':m.kind===Stock.KINDS.ship?'info':m.kind===Stock.KINDS.damage?'bad':'sun'}">${esc(m.kind)}</span>`;
 // Откуда и куда: клетка склада — «юрлицо · город»
 function moveWhere(m){
@@ -86,6 +87,7 @@ function moveWhere(m){
     case K.transfer: return `${from} → ${cellText(m.toEntityId,m.toCityId)}`;
     case K.reserve: return `резерв: ${from}`;
     case K.unreserve: return `снят резерв: ${from}`;
+    case K.input: return `остаток клетки: ${from}`;
     default: return from;
   }
 }

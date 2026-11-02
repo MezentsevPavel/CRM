@@ -12,7 +12,7 @@ const Guard = (() => {
   const same = (a, b) => Docs.same(a === undefined ? null : a, b === undefined ? null : b);
   const SEP = '\u0001';
   // Движение «Ввод остатков» пишет перенос таблицы остатков (Import.applyStock): остаток товара заменяется целиком
-  const INPUT = 'Ввод остатков';
+  const INPUT = Stock.KINDS.input;
   const STOCK_TEXT = no('остаток склада меняется только движением в журнале склада и ровно на его количество');
 
   // Поля, которые изменились между двумя записями

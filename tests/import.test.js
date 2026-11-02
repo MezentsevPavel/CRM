@@ -52,6 +52,19 @@ test('Import.decode: UTF-8 с BOM и без, Windows-1251; каждый байт
   assert.equal(Import.decode(Uint8Array.of(0xD0, 0x96)), 'Ж');
 });
 
+test('Import.decode: «Юникод-текст» Excel (UTF-16 LE и BE с BOM, табуляция) даёт те же строки, что UTF-8', () => {
+  const { Import } = load();
+  const csv = 'Наименование\tСклад ИП\tРезерв\r\nПанель «Икс» ёлка 😀\t12\t"36шт а, 64 б"\r\nЩит\t\t';
+  const le = Uint8Array.from([0xFF, 0xFE, ...Buffer.from(csv, 'utf16le')]);
+  const be = Uint8Array.from([0xFE, 0xFF, ...Buffer.from(csv, 'utf16le').swap16()]);
+  const want = plain(Import.parseCsv(Import.decode(encUtf8(csv, true))));
+  assert.equal(want.length, 3, 'эталон разобран');
+  assert.deepEqual(plain(Import.parseCsv(Import.decode(le))), want, 'UTF-16 LE');
+  assert.deepEqual(plain(Import.parseCsv(Import.decode(be))), want, 'UTF-16 BE');
+  assert.equal(Import.decode(Uint8Array.of(0xFF, 0xFE, 0x41, 0x00, 0x42)), 'A', 'лишний байт нечётной длины отброшен');
+  assert.equal(Import.decode(Uint8Array.of(0xFF, 0xFE)), '', 'один BOM — пусто');
+});
+
 test('Import.parseCsv: разделитель ; , таб сам, кавычки, кавычка внутри, перевод строки в кавычках, CRLF', () => {
   const { Import } = load();
   assert.deepEqual(plain(Import.parseCsv('a;b;c\n1;2;3')), [['a', 'b', 'c'], ['1', '2', '3']]);

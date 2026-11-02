@@ -7,7 +7,11 @@ html[data-mode="server"] .as,html[data-mode="server"] .demo,html[data-mode="serv
 .srv-box{display:flex;flex-direction:column;gap:14px;width:min(400px,100%);padding:28px 26px 26px;border-radius:26px;background:var(--surface);box-shadow:var(--shadow);border:1px solid var(--line)}
 .srv-box h2{margin:0;font-family:var(--f-display);font-size:21px;font-weight:700}
 .srv-box .field{margin:0}
-.srv-box .check small{font-size:12px}
+/* Галочка: подпись и пояснение — один блок рядом с квадратиком (не две колонки); пояснение переносится под подпись и внутри себя */
+.srv-box .check{display:flex;align-items:flex-start;gap:10px;line-height:1.35}
+.srv-box .check input{flex:none;margin-top:1px}
+.srv-box .check-t{min-width:0;overflow-wrap:anywhere}
+.srv-box .check small{display:block;margin-top:2px;font-size:12px}
 .srv-box .bar{justify-content:flex-end}
 .srv-brand{display:flex;align-items:baseline;gap:8px;color:var(--primary-deep)}
 .srv-brand b{font-family:var(--f-display);font-size:15px;font-weight:800;letter-spacing:.01em}

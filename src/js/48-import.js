@@ -4,8 +4,8 @@
 // applyClients) — второй копии разбора нет. Сам CSV никуда не сохраняется: дальше экрана идут только разобранные строки.
 
 const Import = (() => {
-  // Движение «Ввод остатков»: то же слово, что в Guard (47-guard.js), — по нему сервер пускает запись остатка (право admin).
-  const INPUT = 'Ввод остатков';
+  // Движение «Ввод остатков»: слово одно на всех — Stock.KINDS.input; по нему сервер пускает запись остатка (право admin).
+  const INPUT = Stock.KINDS.input;
   const NO_SECTION = 'Без раздела';
   const ROWS_MAX = 50000;
   const str = v => String(v == null ? '' : v).trim();
@@ -53,9 +53,19 @@ const Import = (() => {
     return fromCodes(codes);
   }
 
-  // Байты файла → текст: UTF-8 (с BOM и без), иначе Windows-1251. Чистый ASCII читается одинаково в обеих.
+  // UTF-16 («Юникод-текст» Excel): по BOM — FF FE это LE, FE FF это BE. Пары байт — это уже коды знаков (суррогаты склеит сама строка).
+  // Лишний последний байт нечётной длины отбрасывается. Без BOM UTF-16 не угадывается.
+  function utf16(b, le) {
+    const codes = [];
+    for (let i = 2; i + 1 < b.length; i += 2) codes.push(le ? b[i] | (b[i + 1] << 8) : (b[i] << 8) | b[i + 1]);
+    return fromCodes(codes);
+  }
+
+  // Байты файла → текст: UTF-16 по BOM (LE и BE), иначе UTF-8 (с BOM и без), иначе Windows-1251. Чистый ASCII читается одинаково в обеих.
   function decode(bytes) {
     const b = bytes && typeof bytes.length === 'number' ? bytes : new Uint8Array(bytes || 0);
+    if (b.length >= 2 && b[0] === 0xFF && b[1] === 0xFE) return utf16(b, true);
+    if (b.length >= 2 && b[0] === 0xFE && b[1] === 0xFF) return utf16(b, false);
     const from = b.length >= 3 && b[0] === 0xEF && b[1] === 0xBB && b[2] === 0xBF ? 3 : 0;
     const text = utf8(b, from);
     return text !== null ? text : cp1251(b, from);
