@@ -5,10 +5,13 @@
 //     при «Доставлена»; пока он в пути, Stock.incomingOf считает его приходом на склад-получатель (Dispatch.transit);
 //   • списание проданного (Dispatch.sell → Stock.sell) — по праву sell, с отметкой на строке заявки.
 // «Продажа» и «Другое» смена этапа склад не меняет.
+// «Продажа» помнит, от какого юрлица продаём (seller), и у каждой строки — клетку, откуда берём товар (items[].from). Строка из
+// клетки чужого юрлица — счёт «владелец → продавец»: его запрашивают явно (requestBill), задача уходит тому, кто выставляет счета.
 // Чистые функции над состоянием st; время приходит параметром now (Date), кто делает — by (id сотрудника). Без DOM и S.
 //
 // Заявка st.dispatches[]: {id, number (оба — 'ОТ-NNN'), at, by, purpose:'sale'|'transfer'|'other', to:{name, phone}, address,
-//   when:{date (Date, начало дня), from?, till? ('ЧЧ:ММ')}, items:[{productId?|text, qty, picked?, sold?:{at, by, entityId, cityId}}],
+//   when:{date (Date, начало дня), from?, till? ('ЧЧ:ММ')}, items:[{productId?|text, qty, picked?, sold?:{at, by, entityId, cityId},
+//   from?:{entityId, cityId} (у «Продажи»: откуда берём)}], seller? (у «Продажи»: id юрлица, от которого продаём),
 //   files:[{id, name, type, size, data|null, unsaved?}], note, driverId?, dealId?, pipeId, stageId, demo?,
 //   у перемещения: from:{entityId, cityId}, toCell:{entityId, cityId}, moved? (списано из «откуда»), landed? (пришло в «куда»)}.
 // Груз перемещения: moved && !landed — «в пути»; landed — лежит в «куда»; иначе лежит в «откуда».
@@ -181,7 +184,8 @@ const Dispatch = (() => {
 
   // Строки списка: товар каталога (productId) или свой текст (text), у каждой целое количество ≥ 1.
   // Пустая строка формы (ни товара, ни текста) пропускается; строка с товаром без количества — ошибка всего списка.
-  function cleanItems(st, list) {
+  // У «Продажи» строка с товаром помнит клетку-источник from (юрлицо и город из справочника или «нет данных»); неизвестная — не берётся.
+  function cleanItems(st, list, purpose) {
     const items = [];
     let bad = false;
     for (const it of Array.isArray(list) ? list : []) {
@@ -190,6 +194,8 @@ const Dispatch = (() => {
       const qty = Number(it.qty);
       if (!Number.isInteger(qty) || qty < 1 || (pid && !productOf(st, pid))) { bad = true; continue; }
       const row = pid ? { productId: pid, qty } : { text, qty };
+      const from = purpose === 'sale' && pid && it.from ? cellOf(st, it.from, true) : null;
+      if (from) row.from = from;
       if (it.picked === true) row.picked = true;
       // отметку «списано» с данными не принимаем: её ставит только sell, а update переносит со старой строки
       items.push(row);
@@ -206,8 +212,11 @@ const Dispatch = (() => {
     if (!name) missing.push('name');
     let address = str(d.address);
     const date = toDate(d.when && d.when.date);
-    const it = cleanItems(st, d.items);
+    const it = cleanItems(st, d.items, purpose);
     let from = null, toCell = null, reason = '';
+    // от какого юрлица продаём: только у «Продажи»; пусто — не выбрано (запроса счёта тогда нет)
+    const seller = purpose === 'sale' ? str(d.seller) : '';
+    if (seller && !entityOk(st, seller)) return { missing: [], reason: 'Юрлица-продавца нет в справочнике.' };
     if (purpose === 'transfer') {
       from = cellOf(st, d.from, true); toCell = cellOf(st, d.toCell, false);
       if (!from) missing.push('from');
@@ -239,6 +248,7 @@ const Dispatch = (() => {
       files: Attach.clean(d.files, current && current.files), note: str(d.note),
     };
     if (purpose === 'transfer') { rec.from = from; rec.toCell = toCell; }
+    if (seller) rec.seller = seller;
     if (dealId) rec.dealId = dealId;
     return { rec };
   }
@@ -258,7 +268,9 @@ const Dispatch = (() => {
   }
 
   // Создать заявку. Любой сотрудник может создать. data: {purpose, to:{name, phone}, address, when:{date, from?, till?},
-  // items:[{productId?|text, qty}], files?, note?, from?, toCell? (перемещение), dealId?, demo?}.
+  // items:[{productId?|text, qty, from?}], files?, note?, from?, toCell? (перемещение), seller? (продажа), dealId?, demo?}.
+  // Продавца и клетки строк create не придумывает: их по умолчанию подставляет форма (defaultSeller, defaultFrom).
+  // Задачу «Выставить счёт» create не ставит: её запрашивают явно (requestBill) — форма спрашивает после сохранения.
   // Нет получателя, адреса, телефона, даты или списка — {ok:false, missing:[name|address|phone|date|items…]} и ничего не сохраняется.
   // opts.silent — без уведомлений (демо-данные). → {ok, id, missing, reason}
   function create(st, data, by, now, opts) {
@@ -281,7 +293,7 @@ const Dispatch = (() => {
   // Заявка → данные в форме create (для правки и для проверки того, что менять нельзя).
   const snapshot = d => ({
     purpose: d.purpose, to: { ...d.to }, address: d.address, when: { ...d.when }, items: d.items.map(i => ({ ...i })),
-    files: d.files.map(f => ({ ...f })), note: d.note, from: d.from, toCell: d.toCell, dealId: d.dealId,
+    files: d.files.map(f => ({ ...f })), note: d.note, from: d.from, toCell: d.toCell, dealId: d.dealId, seller: d.seller,
   });
 
   // Править заявку: data сливается с тем, что уже есть, и проверяется как при создании. Нужно canEdit.
@@ -306,6 +318,8 @@ const Dispatch = (() => {
       if (k < 0) return fail(`Строка «${lineName(st, old)}» уже списана при продаже (${num(old.qty)}): изменить или удалить её нельзя. Нужно больше — добавьте новую строку.`, { missing: [] });
       taken.add(k);
       n.rec.items[k].sold = old.sold;
+      // клетка списанной строки — та, что была (счёт между юрлицами считается по клетке списания)
+      if (old.from) n.rec.items[k].from = old.from; else delete n.rec.items[k].from;
       if (old.picked) n.rec.items[k].picked = true;
     }
     // отметка «собрано» остаётся у тех строк, что не менялись
@@ -316,7 +330,9 @@ const Dispatch = (() => {
     Object.assign(d, n.rec);
     if (d.purpose !== 'transfer') { delete d.from; delete d.toCell; }
     if (!n.rec.dealId) delete d.dealId;
+    if (!n.rec.seller) delete d.seller;
     Feed.add(st, ref(d), { kind: 'field', text: `Заявка изменена: ${personName(st, by)}.`, by, at: now });
+    syncBills(st, d, by, now);
     return { ok: true, missing: [], reason: '' };
   }
 
@@ -345,6 +361,8 @@ const Dispatch = (() => {
       const extra = d.by && d.by !== by ? [d.by] : [];
       if (extra.length) Notify.push(st, STEP_KIND, by, `${d.number} (${d.to.name}): ${personName(st, by)} перевёл заявку на этап «${stageName(st, d, stageId)}».${g.note ? ' ' + g.note : ''}`, now, extra, { t: 'dispatch', id: d.id });
     }
+    // отмена снимает запросы счёта (снова запросить — кнопкой в карточке)
+    syncBills(st, d, by, now);
     return { ok: true, from, to: stageId, note: g.note || '' };
   }
 
@@ -395,8 +413,9 @@ const Dispatch = (() => {
     return entry ? { ok: true, entry, reason: '' } : fail('Не удалось записать комментарий.', { entry: null });
   }
 
-  // Списать при продаже строку заявки «Продажа»: Stock.sell из клетки {entityId, cityId} (или по резерву reserveId),
-  // на строке — отметка «списано: кто, когда, откуда». Нужно право sell. → то же, что Stock.sell
+  // Списать при продаже строку заявки «Продажа»: Stock.sell из клетки {entityId, cityId} (или по резерву reserveId); не названо
+  // ни то ни другое — из клетки строки (items[].from). На строке — отметка «списано: кто, когда, откуда». Нужно право sell.
+  // → то же, что Stock.sell
   function sell(st, id, lineIdx, opt, by, now) {
     const d = byId(st, id);
     if (!d) return fail('Такой заявки нет.');
@@ -406,7 +425,8 @@ const Dispatch = (() => {
     if (!it.productId) return fail('Строка своим текстом склад не трогает: списывать нечего.');
     if (it.sold) return fail('Эта строка уже списана.');
     if (isFinal(st, d)) return fail('Заявка закрыта: списывать товар из неё нельзя.');
-    const o = opt || {};
+    const asked = opt || {};
+    const o = asked.reserveId || asked.entityId || asked.cityId ? asked : Object.assign({}, it.from);
     // по резерву: лента сделки помнит резерв, даже когда списание снимет его целиком
     if (o.reserveId) Deals.keepTrail(st, (st.reserves || []).find(x => x.id === o.reserveId));
     const r = Stock.sell(st, { productId: it.productId, qty: it.qty, entityId: o.entityId, cityId: o.cityId, reserveId: o.reserveId, doc: d.number }, by, now);
@@ -417,6 +437,150 @@ const Dispatch = (() => {
   }
   // «списано: кто, когда, откуда» — одна фраза для карточки и таблицы
   const soldText = (st, it) => (it.sold ? `списано: ${personName(st, it.sold.by)}, ${fWhen(it.sold.at)}, ${cellText(st, it.sold)}` : '');
+
+  // ——— продавец и клетка строки (цель «Продажа») ———
+  const entityOk = (st, id) => (st.entities || []).some(e => e.id === id);
+  const entName = (st, id) => Stock.entityName(st, id) ?? id;
+  // От какого юрлица продаёт человек по умолчанию: роль с типом (scope b2b / b2c) → st.billing.seller[тип] — соответствие директор
+  // правит в «Настройки → Склады и юрлица». Директор и роли без типа — '' (выбирают сами); юрлица нет в справочнике — ''.
+  function defaultSeller(st, personId) {
+    const p = personOf(st, personId), role = p && (st.roles || []).find(r => r.id === p.role);
+    const map = (st.billing && st.billing.seller) || {};
+    const id = role && role.scope ? str(map[role.scope]) : '';
+    return id && entityOk(st, id) ? id : '';
+  }
+  // Откуда взять товар строки по умолчанию: клетка продавца с наибольшим свободным, а нет такой — клетка с наибольшим свободным
+  // вообще. Свободно — Stock.cells (тот же счёт, что Stock.sellMax). Свободного нет нигде — null.
+  function defaultFrom(st, productId, seller) {
+    const cells = Stock.cells(st, productId);
+    const c = (seller && cells.find(x => x.entityId === seller)) || cells[0];
+    return c ? { entityId: c.entityId, cityId: c.cityId } : null;
+  }
+
+  // ——— счёт между юрлицами ———
+  // Строка «Продажи» из клетки чужого юрлица (владелец клетки ≠ продавец): владелец выставляет продавцу счёт. Пары «владелец →
+  // продавец» по заявке — billPlan. Счёт запрашивают явно (requestBill): после сохранения заявки форма спрашивает «Запросить
+  // счёт для ВС от НПП?», а не запрошенный счёт остаётся в карточке с кнопкой. Запрос — задача «Выставить счёт» тому, кто
+  // выставляет счета между юрлицами (st.billing.billerId, не выбран — директор); задача помнит пару: bill = {dispatchId, owner,
+  // seller}. Дальше задачу ведёт сохранение заявки (syncBills): открытой — новый перечень, пропавшей паре — пометка dropped.
+  // Сервер (Guard) пускает такую задачу без права «ставить задачи другим отделам», но только ровно такой, как в billPlan.
+  // Владелец строки — клетка списания, а до него — клетка строки; «нет данных: юрлицо» счёта не требует.
+  const ownerCell = it => it.sold || it.from || null;
+  const ownerOf = it => { const c = ownerCell(it); return it.productId && c && c.entityId && c.entityId !== Stock.ANY ? c.entityId : null; };
+  const BILL_DROP = { cancelled: 'заявка отменена', gone: 'в заявке больше нет этого товара на продажу от этого юрлица' };
+  // Кто выставляет счета между юрлицами: выбранный в настройках сотрудник, а не выбран (или его нет) — директор. Никого — null.
+  function biller(st) {
+    const id = st.billing && st.billing.billerId;
+    if (id && personOf(st, id)) return id;
+    const boss = (st.people || []).find(p => p.role === 'director');
+    return boss ? boss.id : null;
+  }
+  // Запросить счёт по заявке может её автор и тот, кто ведёт отправки
+  const canBill = (st, personId, d) => !!d && d.purpose === 'sale' && !!personOf(st, personId) && (isAuthor(d, personId) || canWork(st, personId));
+  // План по заявке: [{owner, seller, to:{t:'p', id}|null, title, desc}] — по паре на каждое чужое юрлицо. У отменённой
+  // заявки, не «Продажи» и без продавца — пусто.
+  function billPlan(st, d) {
+    if (!d || d.purpose !== 'sale' || !d.seller || d.stageId === ST.cancelled) return [];
+    const groups = new Map();
+    for (const it of d.items || []) {
+      const owner = ownerOf(it);
+      if (!owner || owner === d.seller) continue;
+      if (!groups.has(owner)) groups.set(owner, []);
+      groups.get(owner).push(it);
+    }
+    const to = biller(st);
+    return [...groups].map(([owner, items]) => {
+      const from = entName(st, owner), seller = entName(st, d.seller);
+      const lines = items.map(it => `${lineName(st, it)} — ${num(it.qty)} (склад ${from}, ${Stock.cityName(st, ownerCell(it).cityId) ?? ownerCell(it).cityId})`).join('; ');
+      return {
+        owner, seller: d.seller, to: to ? { t: 'p', id: to } : null,
+        title: `Выставить счёт: ${from} → ${seller}`,
+        desc: `Заявка на отправку ${d.number} (${d.to.name}): продаём от ${seller} товар, который лежит на ${from}. Выставить счёт от ${from} на ${seller}: ${lines}.`,
+      };
+    });
+  }
+  const billTasks = (st, id) => (st.tasks || []).filter(t => t.bill && t.bill.dispatchId === id);
+  const samePair = (t, p) => t.bill.owner === p.owner && t.bill.seller === p.seller;
+  const pairText = (st, b) => `${entName(st, b.owner)} → ${entName(st, b.seller)}`;
+  // Вопрос формы: «Запросить счёт для ВС от НПП?»
+  const askText = (st, p) => `Запросить счёт для ${entName(st, p.seller)} от ${entName(st, p.owner)}?`;
+  // Задача по-прежнему отвечает плану: тот же перечень и исполнитель
+  const asPlan = (t, p) => t.title === p.title && t.desc === p.desc && !!t.to && !!p.to && t.to.t === p.to.t && t.to.id === p.to.id;
+  // Срок задачи «Выставить счёт» — следующий день, 18:00
+  const billDue = now => { const x = new Date(now); x.setDate(x.getDate() + 1); x.setHours(18, 0, 0, 0); return x; };
+
+  // Запросить счёт по паре «owner → продавец заявки»: задача «Выставить счёт» с уведомлением исполнителю и записью в ленте заявки.
+  // Снятая задача той же пары или сделанная по прежнему перечню открывается снова (новый перечень, первый этап) — второй
+  // задачи на пару не бывает. → {ok, task} | {ok:false, reason}
+  function requestBill(st, id, owner, by, now) {
+    const d = byId(st, id);
+    if (!d) return fail('Такой заявки нет.');
+    if (!canBill(st, by, d)) return fail('Запросить счёт по заявке может её автор или тот, кто ведёт отправки.');
+    const p = billPlan(st, d).find(x => x.owner === owner);
+    if (!p) return fail('По этой заявке счёт от этого юрлица не нужен.');
+    if (!p.to) return fail('Некому поручить: в «Настройки → Склады и юрлица» не выбран, кто выставляет счета, и директора нет.');
+    let t = billTasks(st, d.id).find(x => samePair(x, p));
+    if (t && !t.dropped && (!Tasks.isDone(st, t) || asPlan(t, p))) return fail(Tasks.isDone(st, t) ? 'Счёт уже выставлен.' : 'Счёт уже запрошен.');
+    if (t) {
+      t.title = p.title; t.desc = p.desc; t.to = { t: p.to.t, id: p.to.id }; t.due = billDue(now);
+      delete t.dropped;
+      t.stageId = Tasks.startStage(st, t.boardId).id;
+      Notify.push(st, 'task', by, `Счёт снова нужен: «${t.title}», срок ${fD(t.due)}. Заявка на отправку ${d.number}. Запросил: ${personName(st, by)}.`, now, Tasks.people(st, t.to), { t: 'task', id: t.id });
+    } else {
+      t = Tasks.add(st, { title: p.title, desc: p.desc, to: p.to, from: by, due: billDue(now), bill: { dispatchId: d.id, owner: p.owner, seller: p.seller } },
+        now, { tail: ` Заявка на отправку ${d.number}.` });
+      if (!t) return fail('Нет доски задач: её заводят в «Настройки → Воронки».');
+    }
+    Feed.add(st, ref(d), { kind: 'field', text: `Запрошен счёт ${pairText(st, t.bill)}: исполнитель ${personName(st, p.to.id)}.`, by, at: now });
+    return { ok: true, task: t, reason: '' };
+  }
+  // После каждого сохранения заявки: открытой задаче, чей перечень или исполнитель изменились, — новый текст (с уведомлением);
+  // пропавшей паре — пометка dropped и «готово». Новых задач не ставит: счёт запрашивают явно (requestBill).
+  // → {changed, dropped} — задачи
+  function syncBills(st, d, by, now) {
+    const plan = billPlan(st, d), out = { changed: [], dropped: [] };
+    const who = personName(st, by);
+    for (const t of billTasks(st, d.id)) {
+      if (t.dropped) continue;
+      const p = plan.find(x => samePair(t, x));
+      if (p) {
+        if (!p.to || Tasks.isDone(st, t) || asPlan(t, p)) continue;
+        const what = t.title !== p.title || t.desc !== p.desc ? 'изменился список товаров' : 'сменился исполнитель';
+        t.title = p.title; t.desc = p.desc; t.to = { t: p.to.t, id: p.to.id };
+        out.changed.push(t);
+        Notify.push(st, 'task', by, `Задача «${t.title}» обновлена по заявке ${d.number}: ${what}. Изменил: ${who}.`, now, Tasks.people(st, t.to), { t: 'task', id: t.id });
+        Feed.add(st, ref(d), { kind: 'field', text: `Запрос счёта ${pairText(st, t.bill)} обновлён: ${what}.`, by, at: now });
+        continue;
+      }
+      const done = Tasks.isDone(st, t), why = d.stageId === ST.cancelled ? BILL_DROP.cancelled : BILL_DROP.gone;
+      t.dropped = done ? `${why} (счёт к этому времени уже выставлен)` : why;
+      const end = Tasks.endStage(st, t.boardId);
+      if (end && !done) t.stageId = end.id;
+      out.dropped.push(t);
+      Notify.push(st, 'task', by, `Задача «${t.title}» снята: ${t.dropped}. Заявка на отправку ${d.number}, изменил: ${who}.`, now, Tasks.people(st, t.to), { t: 'task', id: t.id });
+      Feed.add(st, ref(d), { kind: 'field', text: `Запрос счёта ${pairText(st, t.bill)} снят: ${t.dropped}.`, by, at: now });
+    }
+    return out;
+  }
+  // Счета по заявке для карточки и вопроса формы: [{pair, owner, state, text, ask, question, taskId?}].
+  // state: 'none' — не запрошен (ask: можно запросить), 'stale' — выставлен по прежнему перечню (ask), 'asked' — запрошен,
+  // 'done' — выставлен (задача сделана), 'noone' — некому поручить, 'dropped' — снят (пары в заявке больше нет).
+  function billView(st, d) {
+    const have = billTasks(st, d.id), plan = billPlan(st, d), out = [];
+    for (const p of plan) {
+      const t = have.find(x => samePair(x, p)), base = { pair: pairText(st, p), owner: p.owner, question: askText(st, p), taskId: t ? t.id : undefined };
+      if (!p.to && (!t || t.dropped)) out.push({ ...base, state: 'noone', ask: false, text: 'некому поручить: не выбран, кто выставляет счета между юрлицами, и директора нет' });
+      else if (!t || t.dropped) out.push({ ...base, state: 'none', ask: true, text: 'не запрошен', taskId: undefined });
+      else if (!Tasks.isDone(st, t)) out.push({ ...base, state: 'asked', ask: false, text: `запрошен (задача на этапе «${(Pipes.stage(st, t.boardId, t.stageId) || {}).name || 'нет данных: этап'}», исполнитель ${personName(st, t.to && t.to.id)})` });
+      else if (p.to && !asPlan(t, p)) out.push({ ...base, state: 'stale', ask: true, text: 'выставлен по прежнему списку, а список изменился' });
+      else out.push({ ...base, state: 'done', ask: false, text: 'выставлен (задача сделана)' });
+    }
+    for (const t of have) {
+      if (!t.dropped || plan.some(p => samePair(t, p))) continue;
+      out.push({ pair: pairText(st, t.bill), owner: t.bill.owner, state: 'dropped', ask: false, text: `снят: ${t.dropped}`, taskId: t.id });
+    }
+    return out;
+  }
 
   // ——— отбор для списка и воронки ———
   // filter: {q (номер, получатель, адрес), stage (id), mine (автор или водитель personId), today (на сегодня по now), driver (id), personId, now}.
@@ -439,6 +603,7 @@ const Dispatch = (() => {
   return {
     PIPE, ST, STEP_KIND, PURPOSE, MISSING, NO_ADDRESS, byId, nextNumber, create, update, canWork, canEdit, canCancel, canComment, canSell,
     setStage, assign, drivers, pick, picked, comment, sell, soldText, query, transit, inTransit, warehouseAddress, lineName,
+    defaultSeller, defaultFrom, billPlan, billTasks, billView, canBill, requestBill, BILL_DROP,
   };
 })();
 
@@ -477,6 +642,9 @@ BASES.push(st => {
     { id: 'onWay', name: 'В пути' }, { id: 'delivered', name: 'Доставлена', flag: 'final' }, { id: 'cancelled', name: 'Отменена', flag: 'final' },
   ] });
   st.dispatches = [];
+  // продажа между юрлицами: от какого юрлица продаёт менеджер по умолчанию (scope роли → id юрлица) и кто выставляет счета
+  // (billerId; нет — директор). Правится в «Настройки → Склады и юрлица».
+  st.billing = { seller: { b2b: 'vs', b2c: 'ip' } };
 });
 SEEDS.push(st => {
   const driverIds = ['Роман Е.', 'Василий Т.'].map(name => {
@@ -484,6 +652,11 @@ SEEDS.push(st => {
     st.people.push(p);
     return p.id;
   });
+  // кто выставляет счета между юрлицами в демо — «Исполнительный директор (пример)»; своей роли у него нет — встроенная «Директор»
+  // (директор меняет роль и человека в «Сотрудниках» и «Складах и юрлицах»)
+  const exec = { id: Store.freeId(st.people, 'p'), name: 'Исполнительный директор (пример)', role: 'director', dept: 'mgmt', demo: true };
+  st.people.push(exec);
+  st.billing = Object.assign({}, st.billing, { billerId: exec.id });
 
   const pad = (n, w) => String(n).padStart(w, '0');
   const catalog = st.products.filter(p => p.inCatalog);

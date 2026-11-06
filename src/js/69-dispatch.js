@@ -32,6 +32,17 @@ function dspFreeText(productId){
   const p=product(productId),k=stockOf(productId);
   return k.known?`свободно ${qtyOf(k.free,p)}`:'остаток: нет данных';
 }
+// Где лежит товар: клетки «юрлицо, город» со свободным (Stock.cells — тот же счёт, что Stock.sellMax): «ВС, Иркутск — свободно 12 ·
+// НПП, Иркутск — свободно 40». Нет числа в таблице остатков — «нет данных: остаток»; числа есть, но свободного нигде нет — так и пишем
+function dspCellsText(productId){
+  const p=product(productId),cells=Stock.cells(S,productId);
+  if(cells.length) return cells.map(c=>`${dspCell(c)} — свободно ${qtyOf(c.free,p)}`).join(' · ');
+  return stockOf(productId).known?'свободного нет ни на одном складе':'нет данных: остаток';
+}
+const dspEnt=id=>Stock.entityName(S,id)??id;
+const dspCellKey=c=>c.entityId+'|'+c.cityId;
+// Строка из клетки чужого юрлица (не продавца): после сохранения CRM предложит запросить счёт «владелец → продавец» (Dispatch.billPlan)
+const dspForeign=(x,c)=>!!c&&!!x.seller&&c.entityId!==Stock.ANY&&c.entityId!==x.seller;
 // Число на пункте меню: открытые заявки, назначенные мне, и — у тех, кто ведёт отправки — открытые на сегодня
 function dspBadge(st=S,personId=S.me,now=new Date()){
   const ids=new Set(Dispatch.query(st,{driver:personId}).filter(d=>dspIsOpen(st,d)).map(d=>d.id));
@@ -133,17 +144,22 @@ function dDispatch(d){
   const lines=d.items.map((it,i)=>{
     const pr=it.productId?product(it.productId):null,sold=Dispatch.soldText(S,it);
     const sellBtn=canSell&&it.productId&&!it.sold?`<button type="button" class="btn sm dsp-sell" data-act="dsp-sell" data-id="${esc(d.id)}" data-i="${i}">Списать при продаже</button>`:'';
-    return `<li><label class="dsp-line"><input type="checkbox"${it.picked?' checked':''}${canPick?'':' disabled'} data-on="dsp-pick" data-id="${esc(d.id)}" data-i="${i}"><span><b>${esc(Dispatch.lineName(S,it))}</b> — ${esc(qtyOf(it.qty,pr))}${it.productId?'':' <small class="muted">своя строка</small>'}${sold?`<small class="dsp-sold">${esc(sold)}</small>`:''}</span></label>${sellBtn}</li>`;
+    const from=d.purpose==='sale'&&it.productId&&!it.sold?`<small class="dsp-sold">${it.from?'откуда: '+esc(dspCell(it.from)):'склад не выбран'}</small>`:'';
+    return `<li><label class="dsp-line"><input type="checkbox"${it.picked?' checked':''}${canPick?'':' disabled'} data-on="dsp-pick" data-id="${esc(d.id)}" data-i="${i}"><span><b>${esc(Dispatch.lineName(S,it))}</b> — ${esc(qtyOf(it.qty,pr))}${it.productId?'':' <small class="muted">своя строка</small>'}${from}${sold?`<small class="dsp-sold">${esc(sold)}</small>`:''}</span></label>${sellBtn}</li>`;
   }).join('');
   const files=d.files.length?`<div class="dsp-files">${d.files.map(f=>dspFileHtml(d,f)).join('')}</div>`:'<p class="muted m0">Файлов нет.</p>';
   const deal=d.dealId?(S.deals||[]).find(x=>x.id===d.dealId):null;
+  // счета между юрлицами: не запрошен (кнопка «Запросить счёт») / запрошен / выставлен / снят — Dispatch.billView
+  const bills=d.purpose==='sale'?Dispatch.billView(S,d):[],mayBill=Dispatch.canBill(S,S.me,d);
+  const billsHtml=bills.length?`<div><h4 class="sh">Счета между юрлицами</h4><ul class="dsp-bills">${bills.map(b=>`<li class="b-${esc(b.state)}"><b>Счёт ${esc(b.pair)}:</b> ${esc(b.text)}${b.taskId?` <button type="button" class="link" data-act="open-task" data-id="${esc(b.taskId)}">открыть задачу</button>`:''}${b.ask&&mayBill?` <button type="button" class="btn sm" data-act="dsp-bill" data-id="${esc(d.id)}" data-owner="${esc(b.owner)}">${b.state==='stale'?'Запросить заново':'Запросить счёт'}</button>`:''}</li>`).join('')}</ul></div>`:'';
   const edit=Dispatch.canEdit(S,S.me,d)?`<div><button type="button" class="btn" data-act="dsp-edit" data-id="${esc(d.id)}">Изменить заявку</button></div>`:'';
   return {kind:'Отправка '+d.number,title:esc(d.to.name),sub:`${esc(Dispatch.PURPOSE[d.purpose])} · ${esc(dspWhen(d))}${d.demo?' · пример':''}`,body:`
     ${steps}<div class="dsp-stages">${moves}</div>${lock}
-    <dl class="kv"><dt>Этап</dt><dd>${dspStagePill(d)}</dd><dt>Получатель</dt><dd>${esc(d.to.name)}</dd><dt>Телефон</dt><dd>${esc(d.to.phone)}</dd><dt>Адрес</dt><dd>${hasAddr?esc(d.address):dspNoData('адрес')}</dd><dt>Когда</dt><dd>${esc(dspWhen(d))}</dd>${deal?`<dt>Сделка</dt><dd><button type="button" class="link" data-act="open-deal" data-id="${esc(deal.id)}">${esc(deal.id)} · ${esc(deal.client)}</button></dd>`:d.dealId?`<dt>Сделка</dt><dd>${esc(d.dealId)}</dd>`:''}<dt>Создал</dt><dd>${esc(dspWho(d.by))}, ${esc(fWhen(d.at))}</dd></dl>
+    <dl class="kv"><dt>Этап</dt><dd>${dspStagePill(d)}</dd><dt>Получатель</dt><dd>${esc(d.to.name)}</dd><dt>Телефон</dt><dd>${esc(d.to.phone)}</dd><dt>Адрес</dt><dd>${hasAddr?esc(d.address):dspNoData('адрес')}</dd><dt>Когда</dt><dd>${esc(dspWhen(d))}</dd>${d.purpose==='sale'?`<dt>Продаём от</dt><dd>${d.seller?esc(dspEnt(d.seller)):'<span class="muted">не выбрано</span>'}</dd>`:''}${deal?`<dt>Сделка</dt><dd><button type="button" class="link" data-act="open-deal" data-id="${esc(deal.id)}">${esc(deal.id)} · ${esc(deal.client)}</button></dd>`:d.dealId?`<dt>Сделка</dt><dd>${esc(d.dealId)}</dd>`:''}<dt>Создал</dt><dd>${esc(dspWho(d.by))}, ${esc(fWhen(d.at))}</dd></dl>
     ${quick}${route}
     <div><h4 class="sh">Водитель</h4>${d.driverId?`<p class="m0"><span class="who">${av(person(d.driverId),'xs')}${esc(dspWho(d.driverId))}</span></p>`:'<p class="muted m0">Не назначен.</p>'}${assign}</div>
     <div><h4 class="sh">Список · ${esc(dspPicked(d))}</h4><ul class="dsp-lines">${lines}</ul>${canPick?'':work?'':'<p class="hint">Отмечают «собрано» кладовщик, логист и водитель.</p>'}</div>
+    ${billsHtml}
     <div><h4 class="sh">Файлы</h4>${files}</div>
     <div><h4 class="sh">Примечание</h4>${d.note?`<p class="prose">${esc(d.note)}</p>`:'<p class="muted m0">Примечания нет.</p>'}</div>
     ${edit}
@@ -153,18 +169,32 @@ function dDispatch(d){
 // ——— форма «Новая отправка» / правка заявки ———
 // Черновик лежит в S.ui.dspDraft: поля пишут в него по мере ввода (data-on="dsp-f"), при отправке значения ещё раз берутся из полей.
 const dspDraft=()=>S.ui.dspDraft||null;
+// Продавец новой заявки — Dispatch.defaultSeller (по типу менеджера); клетка строки новой «Продажи» — Dispatch.defaultFrom
+// (auto: подобрана сама и сменится вместе с продавцом). В правке ничего не подставляется: как сохранено, так и показано.
 function dspDraftFrom(pre,editId){
   const p=pre||{},w=p.when||{},cell=(c,e,k)=>({e:(c&&c.entityId)||e,k:(c&&c.cityId)||k});
+  const seller=editId?(p.seller||''):(p.seller!==undefined?p.seller||'':Dispatch.defaultSeller(S,S.me));
+  const line=i=>{
+    const row=Object.assign(i.productId?{productId:i.productId,qty:i.qty}:{text:i.text,qty:i.qty},i.sold?{locked:true}:{});
+    if(i.from) row.from={entityId:i.from.entityId,cityId:i.from.cityId};
+    else if(!editId&&i.productId&&(p.purpose||'sale')==='sale') dspAutoFrom(row,seller);
+    return row;
+  };
   const f=cell(p.from,(S.entities[0]||{}).id||'',(S.cities[0]||{}).id||''),t=cell(p.toCell,(S.entities[0]||{}).id||'',(S.cities[1]||S.cities[0]||{}).id||'');
   return {editId:editId||'',purpose:p.purpose||'sale',name:(p.to&&p.to.name)||'',phone:(p.to&&p.to.phone)||'',
     address:p.address&&p.address!==Dispatch.NO_ADDRESS&&p.purpose!=='transfer'?p.address:'',
     date:w.date?iso(w.date):'',from:w.from||'',till:w.till||'',note:p.note||'',dealId:p.dealId||'',
-    fromE:f.e,fromC:f.k,toE:t.e,toC:t.k,
+    fromE:f.e,fromC:f.k,toE:t.e,toC:t.k,seller,
     // списанная при продаже строка в форме не меняется и не удаляется (Dispatch.update тоже откажет)
-    items:(p.items||[]).map(i=>Object.assign(i.productId?{productId:i.productId,qty:i.qty}:{text:i.text,qty:i.qty},i.sold?{locked:true}:{})),
+    items:(p.items||[]).map(line),
     files:(p.files||[]).map(x=>({...x}))};
 }
 // Открыть форму новой заявки. pre — те же поля, что у Dispatch.create: purpose, to, address, when, items, files, note, dealId.
+// Клетка строки по умолчанию: подобрать и пометить auto; свободного нет нигде — клетки нет
+function dspAutoFrom(row,seller){
+  const f=Dispatch.defaultFrom(S,row.productId,seller);
+  if(f){row.from=f;row.auto=true}else{delete row.from;delete row.auto}
+}
 function openDispatchNew(pre){S.ui.dspDraft=dspDraftFrom(pre,'');openModal('dispatchForm')}
 function openDispatchEdit(id){
   const d=Dispatch.byId(S,id);if(!d) return;
@@ -184,8 +214,12 @@ function dspAddrHint(x){
   return a===Dispatch.NO_ADDRESS?'Адрес склада-получателя в справочнике городов не заполнен: в заявке будет «'+a+'».':'Адрес склада-получателя подставится сам: '+a+'.';
 }
 // Блок формы под цель: у перемещения — склады и адрес склада-получателя, у остальных — поле «Адрес»
+function dspSellerHtml(x){
+  if(x.purpose!=='sale') return '';
+  return `<div class="field"><label for="dsp-seller">Продаём от</label><select id="dsp-seller" class="inp" data-on="dsp-seller"><option value="">не выбрано</option>${dspOpts(S.entities,x.seller)}</select><small class="hint">По умолчанию — по типу менеджера (Настройки → Склады и юрлица). Есть товар с чужого юрлица — после сохранения CRM спросит, запросить ли счёт.</small></div>`;
+}
 function dspTransferHtml(x){
-  if(x.purpose!=='transfer') return `<div class="field"><label for="dsp-address">Адрес</label><input id="dsp-address" class="inp" value="${esc(x.address)}" data-on="dsp-f" data-k="address" autocomplete="off" placeholder="Город, улица, дом"></div>`;
+  if(x.purpose!=='transfer') return `${dspSellerHtml(x)}<div class="field"><label for="dsp-address">Адрес</label><input id="dsp-address" class="inp" value="${esc(x.address)}" data-on="dsp-f" data-k="address" autocomplete="off" placeholder="Город, улица, дом"></div>`;
   return `${dspCellSel('from','Склад «откуда»',x.fromE,x.fromC,true)}${dspCellSel('to','Склад «куда»',x.toE,x.toC,false)}<p class="hint" id="dsp-ad-hint">${esc(dspAddrHint(x))}</p>`;
 }
 function dspItemsHtml(x){
@@ -193,15 +227,28 @@ function dspItemsHtml(x){
   return `<ul class="dsp-its">${x.items.map((it,i)=>{
     const name=it.productId?(product(it.productId)||{}).name||'нет данных: товар':it.text;
     if(it.locked) return `<li class="dsp-it"><div class="dsp-it-n"><b>${esc(name)}</b><small>списано при продаже — строку не изменить и не удалить</small></div><input class="inp dsp-q" type="number" value="${esc(it.qty)}" disabled aria-label="Количество: ${esc(name)} (списано)"></li>`;
-    return `<li class="dsp-it"><div class="dsp-it-n"><b>${esc(name)}</b><small>${it.productId?esc(dspFreeText(it.productId)):'своя строка — склад не трогает'}</small></div><input class="inp dsp-q" type="number" min="1" step="1" inputmode="numeric" value="${esc(it.qty)}" data-on="dsp-qty" data-i="${i}" aria-label="Количество: ${esc(name)}"><button type="button" class="btn ghost icon" data-act="dsp-line-del" data-i="${i}" aria-label="Убрать строку: ${esc(name)}">${ic('x')}</button></li>`;
+    const sale=x.purpose==='sale'&&it.productId;
+    return `<li class="dsp-it"><div class="dsp-it-n"><b>${esc(name)}</b><small>${it.productId?esc(sale?dspCellsText(it.productId):dspFreeText(it.productId)):'своя строка — склад не трогает'}</small>${sale?dspSrcHtml(x,it,i,name):''}</div><input class="inp dsp-q" type="number" min="1" step="1" inputmode="numeric" value="${esc(it.qty)}" data-on="dsp-qty" data-i="${i}" aria-label="Количество: ${esc(name)}"><button type="button" class="btn ghost icon" data-act="dsp-line-del" data-i="${i}" aria-label="Убрать строку: ${esc(name)}">${ic('x')}</button></li>`;
   }).join('')}</ul>`;
 }
-// Результаты поиска по каталогу: название и «свободно N» из Stock.summary
+// Откуда берём товар строки «Продажи»: клетки со свободным (Stock.cells); сохранённая клетка, где свободного уже нет, остаётся
+// в списке с «свободно 0». Клетка чужого юрлица — пометка о запросе счёта.
+function dspSrcHtml(x,it,i,name){
+  const p=product(it.productId),cells=Stock.cells(S,it.productId),cur=it.from||null;
+  const opts=cells.map(c=>[dspCellKey(c),`${dspCell(c)} — свободно ${qtyOf(c.free,p)}`]);
+  if(cur&&!cells.some(c=>dspCellKey(c)===dspCellKey(cur))) opts.push([dspCellKey(cur),`${dspCell(cur)} — свободно ${qtyOf(0,p)}`]);
+  if(!opts.length) return '';
+  const sel=`<select class="inp sm dsp-src" data-on="dsp-src" data-i="${i}" aria-label="Откуда: ${esc(name)}"><option value="">склад не выбран</option>${opts.map(([v,l])=>`<option value="${esc(v)}"${cur&&v===dspCellKey(cur)?' selected':''}>${esc(l)}</option>`).join('')}</select>`;
+  const note=dspForeign(x,cur)?`<small class="dsp-bill">Чужое юрлицо: после сохранения CRM предложит запросить счёт ${esc(dspEnt(cur.entityId))} → ${esc(dspEnt(x.seller))}</small>`:'';
+  return `<label class="dsp-src-w"><span>Откуда:</span>${sel}</label>${note}`;
+}
+// Результаты поиска по каталогу: название и «свободно N» из Stock.summary; у «Продажи» — по клеткам «юрлицо, город»
 function dspPresHtml(q){
   if(Catalog.norm(q).length<2) return '';
   const hits=Catalog.query(S,{q}).slice(0,6);
   if(!hits.length) return '<p class="hint">В каталоге такого нет — добавьте свою строку.</p>';
-  return `<ul class="dsp-pres">${hits.map(p=>`<li><button type="button" class="dpr" data-act="dsp-add" data-pid="${esc(p.id)}"><span class="dpr-n">${esc(p.name)}</span><small>${esc(dspFreeText(p.id))}</small>${ic('plus')}</button></li>`).join('')}</ul>`;
+  const sale=(dspDraft()||{}).purpose==='sale';
+  return `<ul class="dsp-pres">${hits.map(p=>`<li><button type="button" class="dpr" data-act="dsp-add" data-pid="${esc(p.id)}"><span class="dpr-n">${esc(p.name)}</span><small>${esc(sale?dspCellsText(p.id):dspFreeText(p.id))}</small>${ic('plus')}</button></li>`).join('')}</ul>`;
 }
 function dspFilesEditHtml(x){return attEditHtml(x.files,'dsp-file-del')}
 MODALS.dispatchForm=()=>{
@@ -236,13 +283,25 @@ MODALS.dspSell=o=>{
   if(!p) return `${head}<div class="modal-b"><p class="m0">Такой строки в заявке нет.</p></div>`;
   const src=sellSources({pid:p.id,did:d.dealId});
   if(!src.length) return `${head}<div class="modal-b"><p class="m0">Списать нечего: на складе этого товара нет остатка и резерва со склада.</p></div>`;
-  const dealRs=src.find(x=>x[0][0]==='r'),best=Stock.bestCell(S,p.id);
-  const want=dealRs?dealRs[0]:`c:${best.entityId}|${best.cityId}`,cur=src.some(x=>x[0]===want)?want:src[0][0];
+  // по умолчанию — клетка строки (резерв сделки в этой клетке — он); клетки нет — резерв сделки, иначе клетка с наибольшим свободным
+  const dealRs=src.find(x=>x[0][0]==='r'),best=Stock.bestCell(S,p.id),f=it.from;
+  const inFrom=f&&src.find(x=>{const r=x[0][0]==='r'&&S.reserves.find(y=>'r:'+y.id===x[0]);return r&&(r.entityId||Stock.ANY)===f.entityId&&(r.cityId||Stock.ANY)===f.cityId});
+  const fromKey=f?`c:${f.entityId}|${f.cityId}`:'';
+  const want=inFrom?inFrom[0]:fromKey&&src.some(x=>x[0]===fromKey)?fromKey:dealRs?dealRs[0]:`c:${best.entityId}|${best.cityId}`,cur=src.some(x=>x[0]===want)?want:src[0][0];
   return `<form data-form="dsp-sell" data-id="${esc(d.id)}" data-i="${esc(o.i)}" novalidate>${mHead('Списать при продаже: '+esc(p.name))}<div class="modal-b">
     <p class="m0">Заявка ${esc(d.number)}, ${esc(d.to.name)}. Списывается вся строка: ${esc(qtyOf(it.qty,p))}.${d.dealId?` Сделка ${esc(d.dealId)}.`:''} В журнале движений появится «Отгрузка».</p>
     <div class="field"><label for="ps-src">Откуда</label><select id="ps-src" class="inp" data-on="sellsrc" data-pid="${esc(p.id)}">${optionsHtml(src,cur)}</select></div>
     <p class="hint" id="ps-max">${esc(sellMaxText(p.id,cur))}</p>
     <p class="err" id="ps-err" hidden></p></div>${mFoot('Списать')}</form>`;
+};
+// Вопрос после сохранения заявки: по каждой паре «Запросить счёт для ВС от НПП?» — [Запросить]; [Не сейчас] закрывает окно,
+// незапрошенный счёт остаётся в карточке с кнопкой «Запросить счёт». Пары и тексты — Dispatch.billView.
+const dspBillAsks=id=>{const d=Dispatch.byId(S,id);return d&&Dispatch.canBill(S,S.me,d)?Dispatch.billView(S,d).filter(b=>b.ask):[]};
+function dspBillAsk(id){if(dspBillAsks(id).length) openModal('dspBill',id)}
+MODALS.dspBill=id=>{
+  const d=Dispatch.byId(S,id),asks=dspBillAsks(id);
+  const rows=asks.map(b=>`<div class="dsp-ask"><p class="m0"><b>${esc(b.question)}</b></p><p class="hint">Счёт ${esc(b.pair)}${b.state==='stale'?': выставлен по прежнему списку, а список изменился':''}. Задача «Выставить счёт» уйдёт: ${esc(dspWho(Dispatch.billPlan(S,d).find(p=>p.owner===b.owner)?.to?.id))}.</p><div class="bar"><button type="button" class="btn pri" data-act="dsp-bill" data-id="${esc(id)}" data-owner="${esc(b.owner)}">Запросить</button></div></div>`).join('');
+  return `<div>${mHead('Счёт между юрлицами · '+esc(d?d.number:id))}<div class="modal-b stack-s">${rows}</div><div class="modal-f"><button type="button" class="btn" data-act="close-modal">Не сейчас</button></div></div>`;
 };
 MODALS.dspFile=key=>{
   const [id,fid]=String(key).split('|'),d=Dispatch.byId(S,id),f=d&&d.files.find(x=>x.id===fid);
@@ -280,6 +339,16 @@ A['dsp-stage']=el=>dspMove(el.dataset.id,el.dataset.stage);
 A['dsp-cancel-ask']=el=>openModal('dspCancel',el.dataset.id);
 A['dsp-copy']=el=>{const d=Dispatch.byId(S,el.dataset.id);if(d) dspCopy(d.address,()=>toast(`Адрес скопирован: ${d.address}`))};
 A['dsp-file']=el=>openModal('dspFile',el.dataset.key);
+// «Запросить» / «Запросить счёт»: Dispatch.requestBill — задача, уведомление и запись в ленте одним сохранением
+A['dsp-bill']=el=>{
+  const r=Dispatch.requestBill(S,el.dataset.id,el.dataset.owner,S.me,new Date());
+  if(!r.ok){toast(r.reason,'warn');return}
+  const inModal=S.ui.modal&&S.ui.modal.type==='dspBill';
+  if(inModal&&!dspBillAsks(el.dataset.id).length) closeModal();
+  render();
+  if(inModal&&S.ui.modal) openModal('dspBill',el.dataset.id);
+  toast(`Счёт запрошен: задача «${r.task.title}» — ${dspWho(r.task.to.id)}, ему ушло уведомление.`);
+};
 A['dsp-sell']=el=>{
   if(!Dispatch.canSell(S,S.me)){toast('У вашей роли нет права списывать товар при продаже.','warn');return}
   openModal('dspSell',{id:el.dataset.id,i:+el.dataset.i});
@@ -288,7 +357,8 @@ A['dsp-sell']=el=>{
 A['dsp-add']=el=>{
   const x=dspDraft();if(!x) return;
   const row=x.items.find(i=>i.productId===el.dataset.pid&&!i.locked);
-  if(row) row.qty=(Number(row.qty)||0)+1;else x.items.push({productId:el.dataset.pid,qty:1});
+  if(row) row.qty=(Number(row.qty)||0)+1;
+  else{const n={productId:el.dataset.pid,qty:1};if(x.purpose==='sale') dspAutoFrom(n,x.seller);x.items.push(n)}
   byId('dsp-items').innerHTML=dspItemsHtml(x);
 };
 A['dsp-own-add']=()=>{
@@ -315,8 +385,26 @@ ON.input['dsp-f']=t=>{if(!(t.dataset.k in DSP_DEF)) dspField(t)};
 ON.change['dsp-purpose']=t=>{
   const x=dspDraft();if(!x) return;
   x.purpose=t.value;byId('dsp-tr').innerHTML=dspTransferHtml(x);
+  // у «Продажи» строки показывают клетки и «откуда»: строкам без клетки — клетка по умолчанию
+  if(x.purpose==='sale') x.items.forEach(it=>{if(it.productId&&!it.locked&&!it.from) dspAutoFrom(it,x.seller)});
+  byId('dsp-items').innerHTML=dspItemsHtml(x);
   // у перемещения получатель — склад: подставим, если поле пустое
   if(x.purpose==='transfer'&&!x.name.trim()){x.name=`Склад: ${dspCell({entityId:x.toE,cityId:x.toC})}`;const n=byId('dsp-name');if(n) n.value=x.name}
+};
+// «Продаём от»: строки, чья клетка подобрана сама, подбираются заново под нового продавца
+ON.change['dsp-seller']=t=>{
+  const x=dspDraft();if(!x) return;
+  x.seller=t.value;
+  x.items.forEach(it=>{if(it.productId&&!it.locked&&(it.auto||!it.from)) dspAutoFrom(it,x.seller)});
+  byId('dsp-items').innerHTML=dspItemsHtml(x);
+};
+// «Откуда» у строки: выбор человека, дальше сам не меняется
+ON.change['dsp-src']=t=>{
+  const x=dspDraft(),it=x&&x.items[+t.dataset.i];if(!it||it.locked) return;
+  const [e,c]=String(t.value).split('|');
+  if(t.value) it.from={entityId:e,cityId:c};else delete it.from;
+  it.auto=false;
+  byId('dsp-items').innerHTML=dspItemsHtml(x);
 };
 ON.input['dsp-qty']=t=>{const x=dspDraft();if(x&&x.items[+t.dataset.i]&&!x.items[+t.dataset.i].locked) x.items[+t.dataset.i].qty=t.value};
 ON.input['dsp-pq']=t=>{const box=byId('dsp-pres');if(box) box.innerHTML=dspPresHtml(t.value)};
@@ -351,13 +439,15 @@ FORMS.dispatch=()=>{
   const v=(id,k)=>{const e=byId(id);if(e&&typeof e.value==='string') x[k]=e.value};
   v('dsp-name','name');v('dsp-phone','phone');v('dsp-date','date');v('dsp-from','from');v('dsp-till','till');v('dsp-note','note');
   if(x.purpose!=='transfer') v('dsp-address','address');
-  const data={purpose:x.purpose,to:{name:x.name,phone:x.phone},address:x.purpose==='transfer'?'':x.address,when:{date:x.date,from:x.from,till:x.till},items:x.items,files:x.files,note:x.note,dealId:x.dealId||undefined};
+  const data={purpose:x.purpose,to:{name:x.name,phone:x.phone},address:x.purpose==='transfer'?'':x.address,when:{date:x.date,from:x.from,till:x.till},items:x.items,files:x.files,note:x.note,dealId:x.dealId||undefined,seller:x.purpose==='sale'?x.seller:''};
   if(x.purpose==='transfer'){data.from={entityId:x.fromE,cityId:x.fromC};data.toCell={entityId:x.toE,cityId:x.toC}}
   const now=new Date(),r=x.editId?Dispatch.update(S,x.editId,data,S.me,now):Dispatch.create(S,data,S.me,now);
   if(!r.ok){dspMark(r.missing);showErr('dsp-err',r.reason);return}
-  const id=x.editId||r.id,got=!x.editId&&S.notes[0]&&S.notes[0].kind==='dispatch'?S.notes[0].to.length:0;
+  const id=x.editId||r.id,dn=!x.editId&&S.notes.find(n=>n.kind==='dispatch'&&n.ref&&n.ref.id===id),got=dn?dn.to.length:0;
   S.ui.dspDraft=null;closeModal();render();openDrawer('dispatch',id);
   toast(x.editId?`Заявка ${id} изменена. Запись в ленте есть.`:`Заявка ${id} создана. Уведомление получили: ${got}.`);
+  // есть товар чужого юрлица и счёт не запрошен — вопрос «Запросить счёт для ВС от НПП?»
+  dspBillAsk(id);
 };
 FORMS['dsp-assign']=f=>{
   const id=f.dataset.id,to=byId('dsp-drv').value,r=Dispatch.assign(S,id,to,S.me,new Date());

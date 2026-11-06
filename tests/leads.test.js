@@ -1135,11 +1135,12 @@ test('«ждёт N мин»: метка в списке и воронке; «И�
   assert.ok(card.includes('ждёт 20 мин'), 'в воронке нет метки');
   assert.ok(app.DRAWERS.lead(lead.id).body.includes('lead-waitnote'), 'в карточке нет пояснения');
   // РОП получает уведомление один раз
-  const rop = S.people.find(p => p.role === 'rop').id, boss = S.people.find(p => p.role === 'director').id;
+  // директоров в демо двое: Павел М. и «Исполнительный директор (пример)» — получают все с ролью «Директор»
+  const rop = S.people.find(p => p.role === 'rop').id, bosses = S.people.filter(p => p.role === 'director').map(p => p.id);
   app.render();
   let notes = S.notes.filter(n => n.kind === 'leadWait');
   assert.equal(notes.length, 1);
-  assert.deepEqual(plain(notes[0].to).sort(), [boss, rop].sort(), 'получают РОП и директор');
+  assert.deepEqual(plain(notes[0].to).sort(), [...bosses, rop].sort(), 'получают РОП и директора');
   assert.ok(notes[0].text.includes(lead.id));
   app.render(); app.actsTick();
   assert.equal(S.notes.filter(n => n.kind === 'leadWait').length, 1, 'уведомление ушло повторно');

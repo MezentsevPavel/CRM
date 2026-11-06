@@ -29,8 +29,12 @@ const Visible = (() => {
     const p = personOf(st, pid);
     return (t.to.t === 'p' && t.to.id === pid) || (t.to.t === 'd' && !!p && t.to.id === p.dept);
   }
-  // Задача видна: право «все задачи», моя (мне или моему отделу) или поставлена мной
+  // Задача видна: право «все задачи», моя (мне или моему отделу) или поставлена мной. Это и доска задач, и право двигать задачу.
   const task = (st, t, pid) => !!t && (can(st, pid, 'tasksAll') || taskMine(st, t, pid) || t.from === pid);
+  // Задача приходит человеку в данных и открывается по ссылке: видна (task) или это запрос счёта по заявке (bill), а заявки
+  // видят все — правка заявки обновляет её задачи (Dispatch.syncBills), карточка заявки показывает, запрошен ли счёт и выставлен ли.
+  const taskSeen = (st, t, pid) => task(st, t, pid)
+    || (!!t && !!t.bill && !!personOf(st, pid) && (st.dispatches || []).some(d => d.id === t.bill.dispatchId));
 
   // Видимые карточки, на которые ссылаются лента и дела: {deal, lead, client} — множества id
   function seen(st, pid) {
@@ -57,7 +61,7 @@ const Visible = (() => {
       case 'deals': return !!rec && Leads.dealsVisible(st, pid).some(d => d.id === id);
       case 'leads': return !!rec && Leads.visible(st, pid).some(l => l.id === id);
       case 'clients': return client(st, rec, pid);
-      case 'tasks': return task(st, rec, pid);
+      case 'tasks': return taskSeen(st, rec, pid);
       case 'feed': case 'acts': return !!rec && refSeen(st, pid, rec.ref, seen(st, pid));
       case 'notes': return !!rec && (notesAll(st, pid) || (rec.to || []).includes(pid));
       case 'shipments': return !!rec && shipsSeen(st, pid);
@@ -91,7 +95,7 @@ const Visible = (() => {
         case 'deals': out.deals = (v || []).filter(d => s.deal.has(d.id)).map(copy); break;
         case 'leads': out.leads = (v || []).filter(l => s.lead.has(l.id)).map(copy); break;
         case 'clients': out.clients = (v || []).filter(c => s.client.has(c.id)).map(copy); break;
-        case 'tasks': out.tasks = (v || []).filter(t => task(st, t, pid)).map(copy); break;
+        case 'tasks': out.tasks = (v || []).filter(t => taskSeen(st, t, pid)).map(copy); break;
         case 'feed': case 'acts': out[key] = (v || []).filter(e => refSeen(st, pid, e.ref, s)).map(copy); break;
         case 'notes': out.notes = (v || []).filter(n => notesAll(st, pid) || (n.to || []).includes(pid)).map(copy); break;
         case 'shipments': out.shipments = shipsSeen(st, pid) ? copy(v) : []; break;
@@ -135,5 +139,5 @@ const Visible = (() => {
     return out;
   }
 
-  return { HIDDEN_PRICE, client, task, taskMine, canSee, of };
+  return { HIDDEN_PRICE, client, task, taskSeen, taskMine, canSee, of };
 })();

@@ -1208,7 +1208,9 @@ test('из сделки: «Создать отправку» открывает 
   draft = S.ui.dspDraft;
   assert.equal(draft.address, client.address);
   // товары сделки: каталожные — по productId, своя строка — текстом; количества те же
-  assert.deepEqual(plain(draft.items), plain(deal.items.map(i => (i.productId ? { productId: i.productId, qty: i.qty } : { text: i.text, qty: i.qty }))));
+  // (клетка «откуда» строки — отдельный тест продажи от юрлица в tests/seller.test.js)
+  const bare = ({ productId, text, qty }) => (productId ? { productId, qty } : { text, qty });
+  assert.deepEqual(plain(draft.items.map(bare)), plain(deal.items.map(i => (i.productId ? { productId: i.productId, qty: i.qty } : { text: i.text, qty: i.qty }))));
   // человек вводит дату и сохраняет; в полях — то, что подставила форма
   fill(app, { 'dsp-name': draft.name, 'dsp-phone': draft.phone, 'dsp-address': draft.address, 'dsp-date': '2026-11-05', 'dsp-from': '', 'dsp-till': '', 'dsp-note': '' });
   const n = S.dispatches.length;

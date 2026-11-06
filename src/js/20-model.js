@@ -224,7 +224,7 @@ const taskOverdue=t=>!isDone(t)&&dd(t.due)<0;
 const targetName=t=>t.to.t==='p'?(person(t.to.id)?.name||'нет данных: сотрудник'):`Отдел «${deptName(t.to.id)}»`;
 const tDept=t=>t.to.t==='d'?t.to.id:person(t.to.id)?.dept;
 // Кому адресована задача — люди: исполнитель или весь отдел
-const targetPeople=to=>to.t==='p'?[to.id]:S.people.filter(p=>p.dept===to.id).map(p=>p.id);
+const targetPeople=to=>Tasks.people(S,to);
 
 // ——— уведомления: создаёт только Notify.push ———
 const unread=()=>Notify.unread(S,S.me);

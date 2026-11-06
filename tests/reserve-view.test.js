@@ -251,9 +251,11 @@ test('уведомление о резерве: склад получает те
   assert.ok(/^Резерв: .+ — 1 .*до \d+ [а-я]+\.$/.test(wh), `у текста для склада потерялись товар, количество, место или срок: ${wh}`);
   assert.ok(mgr.includes(`Д-346 (${d.client})`), `менеджеру сделки ушло: ${mgr}`);
   assert.equal(dir, mgr, 'директору и менеджеру сделки — один текст');
-  // получатели прежние: директор, кладовщик, менеджер сделки; ни у кого второго уведомления
-  assert.deepEqual(plain([...new Set(fresh.flatMap(n => n.to))].sort()), ['p1', 'p2', 'p5']);
-  assert.equal(fresh.reduce((n, x) => n + x.to.length, 0), 3);
+  // получатели прежние: директора (в демо их двое: второй — «Исполнительный директор (пример)»), кладовщик, менеджер сделки;
+  // ни у кого второго уведомления
+  const dirs = S.people.filter(p => p.role === 'director').map(p => p.id);
+  assert.deepEqual(plain([...new Set(fresh.flatMap(n => n.to))].sort()), [...dirs, 'p2', 'p5'].sort());
+  assert.equal(fresh.reduce((n, x) => n + x.to.length, 0), 2 + dirs.length);
   // текст склада отличается от текста с клиентом только хвостом «для Д-346 (клиент)»
   assert.equal(mgr.replace(` для Д-346 (${d.client})`, ''), wh);
 });

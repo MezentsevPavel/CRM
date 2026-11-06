@@ -2,9 +2,22 @@
 // Миграции формы записей серверной базы. В браузере смена Store.REV стирает сохранённое; на сервере — никогда:
 // база ревизии N доводится до Store.REV шагами из MIGRATIONS, а если шага нет — сервер не запускается и говорит почему.
 // Шаг: MIGRATIONS[n] = ({ db, docs }) => void — переводит базу ревизии n − 1 в ревизию n внутри одной транзакции.
-// docs — { all(), put(key, id, data, seq), del(key, id) } из server/db.js. Пока реестр пуст.
+// docs — { all(), put(key, id, data, seq), del(key, id) } из server/db.js.
 
-const MIGRATIONS = {};
+const MIGRATIONS = {
+  // 17: продажа между юрлицами — документ billing: от какого юрлица продаёт менеджер по умолчанию (как в seedBase: B2B — ВС,
+  // B2C — ИП); кто выставляет счета — не выбран (значит, директор). Юрлица, которого в базе нет, не ставим: тип остаётся без
+  // продавца, его выбирают в заявке. Документ уже есть — не трогаем.
+  17: ({ db, docs }) => {
+    const rows = docs.all();
+    if (rows.some(r => r.key === 'billing')) return;
+    const have = new Set(rows.filter(r => r.key === 'entities').map(r => r.id));
+    const want = { b2b: 'vs', b2c: 'ip' }, doc = { seller: {} };
+    for (const [scope, id] of Object.entries(want)) if (have.has(id)) doc.seller[scope] = id;
+    const seq = Number((db.prepare("SELECT v FROM meta WHERE k = 'seq'").get() || {}).v) || 0;
+    docs.put('billing', '', JSON.stringify(doc), seq);
+  },
+};
 
 // → null, если всё в порядке; иначе текст отказа запуска. Данные при отказе не меняются.
 function migrate(store, rev, target, registry = MIGRATIONS) {

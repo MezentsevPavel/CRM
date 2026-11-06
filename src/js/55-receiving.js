@@ -138,7 +138,7 @@ function receiveShip(by,now){
   if(P.issues.length||P.dmg.length) notes.push(Notify.push(S,'warn',by,`Приёмка ${s.id} с замечаниями. ${[P.issues.join('; '),P.dmg.length?'Повреждено: '+P.dmg.join(', '):''].filter(Boolean).join('. ')}. Фото в карточке поставки.`,now,[],{t:'ship',id:s.id}));
   P.waits.forEach(({d,items,how})=>{
     const mg=person(d.managerId);let tail;
-    if(how==='call'){const board=taskBoard();const t={id:Store.freeId(S.tasks,'t'),title:`Позвонить клиенту: товар по ${d.id} на складе`,desc:items,to:{t:'p',id:d.managerId},from:by,due:day(0,18),boardId:board.id,stageId:startStage(board.id).id,prio:'high',deal:d.id,at:now};S.tasks.push(t);taskIds.push(t.id);tail='Менеджеру поставлена задача позвонить клиенту.'}
+    if(how==='call'){const t=Tasks.add(S,{title:`Позвонить клиенту: товар по ${d.id} на складе`,desc:items,to:{t:'p',id:d.managerId},from:by,due:day(0,18),prio:'high',deal:d.id},now,{silent:true});if(t) taskIds.push(t.id);tail='Менеджеру поставлена задача позвонить клиенту.'}
     else if(how==='auto'){const x={id:Store.freeId(S.msgs,'m'),at:now,deal:d.id,channel:d.channel,auto:true,sim:true,text:fillTpl(d,items,false)};S.msgs.push(x);msgIds.push(x.id);tail=`Клиенту ушло авто-сообщение в ${CH[d.channel]} (имитация, не отправлено).`}
     else tail='Авто-сообщения выключены — напишите клиенту.';
     // менеджеру сделки — отдельно: уведомите клиента (R15). Клиента, номер сделки и менеджера называем только тому, кому сделка

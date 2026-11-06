@@ -285,8 +285,36 @@ const Guard = (() => {
     const d = t.deal ? recOf(ctx.st, 'deals', t.deal) : null;
     return !!d && to.t === 'p' && d.managerId === to.id && ctx.list.some(x => x.key === 'shipments' && received(ctx, x.id));
   }
+  // Задача «Выставить счёт» по заявке — без права «ставить задачи другим отделам» и даже не видя её на доске, но только ровно
+  // такой, как требует Dispatch.billPlan по заявке после пачки:
+  //   • запрос (Dispatch.requestBill: новая задача или снова открытая на первом этапе) — тот, кто может запросить (Dispatch.canBill);
+  //   • новый перечень открытой задачи и пометка «снята» (Dispatch.syncBills) — тот, кто в этой же пачке сохраняет заявку
+  //     (правка заявки проверяется своим правилом).
+  // Удалить её так нельзя; двигать по доске — по общему правилу, как любую задачу.
+  const BILL_FIELDS = ['title', 'desc', 'to', 'stageId', 'dropped', 'due'];
+  function billOk(ctx, b, a) {
+    if (!a || !a.bill || (b && (!same(b.bill, a.bill) || a.from !== b.from))) return false;
+    const id = a.bill.dispatchId, d = recOf(ctx.after, 'dispatches', id);
+    if (!d) return false;
+    const dc = changeOf(ctx, 'dispatches', id), saved = !!dc && !dc.deleted;
+    const pair = x => x.owner === a.bill.owner && x.seller === a.bill.seller;
+    const p = Dispatch.billPlan(ctx.after, d).find(pair);
+    const start = Tasks.startStage(ctx.after, a.boardId);
+    const asPlan = !!p && !!p.to && !a.dropped && a.title === p.title && a.desc === p.desc && same(a.to, p.to);
+    const asked = asPlan && !!start && a.stageId === start.id && Dispatch.canBill(ctx.st, ctx.pid, recOf(ctx.st, 'dispatches', id) || d);
+    if (!b) {
+      const twin = (ctx.after.tasks || []).some(x => x && String(x.id) !== String(a.id) && x.bill && x.bill.dispatchId === id && pair(x.bill));
+      return asked && !twin && a.from === ctx.pid;
+    }
+    const ch = changedFields(b, a);
+    if (!ch.every(f => BILL_FIELDS.includes(f))) return false;
+    if (p && (b.dropped || ch.includes('stageId'))) return asked;
+    if (p) return saved && asPlan && !ch.includes('due') && !Pipes.isFinal(ctx.st, b.boardId, b.stageId);
+    return saved && !b.dropped && !!a.dropped && Pipes.isFinal(ctx.after, a.boardId, a.stageId) && !ch.some(f => ['title', 'desc', 'to', 'due'].includes(f));
+  }
   function tasksRule(ctx, c) {
     const b = ctx.before(c), a = ctx.data(c);
+    if (billOk(ctx, b, a)) return null;
     const TO_TEXT = needs('ставить задачи другому отделу', 'tasksAssign');
     if (!b) {
       if (!a) return null;
@@ -387,7 +415,7 @@ const Guard = (() => {
     deals: dealsRule, leads: leadsRule, clients: clientsRule, feed: feedRule, acts: actsRule,
     tasks: tasksRule, dispatches: dispatchesRule, notes: notesRule,
     pipelines: SETTINGS, depts: SETTINGS, entities: SETTINGS, cities: SETTINGS, lostReasons: SETTINGS, shipRules: SETTINGS,
-    leadSource: SETTINGS, leadWaitMin: SETTINGS,
+    leadSource: SETTINGS, leadWaitMin: SETTINGS, billing: SETTINGS,
     roles: right('admin', 'управлять ролями и правами'), people: right('admin', 'управлять сотрудниками'),
     prefs: prefsRule,
     mail: ADMIN, msgs: ADMIN, tpl: ADMIN, address: ADMIN, rules: ADMIN, stockSheet: ADMIN,

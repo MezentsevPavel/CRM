@@ -1076,7 +1076,9 @@ test('приёмка: товар ложится на выбранные юрли
     assert.ok(n.to.includes('p2') && n.to.includes('p1'), 'менеджер сделки и директор');
     assert.ok(!n.to.includes('p3'), 'чужой менеджер не получает');
   }
-  assert.equal(r.notified, 6, 'директор, четыре менеджера и логист (замечание)');
+  // директоров в демо двое (второй — «Исполнительный директор (пример)»)
+  const dirs = S.people.filter(p => p.role === 'director').length;
+  assert.equal(r.notified, 5 + dirs, 'директора, четыре менеджера и логист (замечание)');
   // сообщения клиентам по шаблону — в канал сделки, с пометкой «имитация»
   const sent = S.msgs.slice(msgsBefore);
   assert.equal(sent.length, 2);

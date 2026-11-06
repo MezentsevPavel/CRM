@@ -26,7 +26,8 @@ const Docs = (() => {
     // по id товара: документ — строка остатков (stock) или отложенного (aside) одного товара
     MAP: ['stock', 'aside'],
     // целиком одним документом с id ''
-    WHOLE: ['mail', 'leadSource', 'leadWaitMin', 'tpl', 'address', 'prefs', 'stockSheet'],
+    // billing — продажа между юрлицами: {seller: {b2b: id юрлица, b2c: …} (Dispatch.defaultSeller), billerId? (Dispatch.requestBill)}
+    WHOLE: ['mail', 'leadSource', 'leadWaitMin', 'tpl', 'address', 'prefs', 'stockSheet', 'billing'],
     // личное: на сервер не уходит никогда
     LOCAL: ['me', 'view', 'ui', 'rcv', 'v'],
     // личные поля внутри prefs: тема и вид карты поставок

@@ -151,16 +151,10 @@ const Stock = (() => {
     return { ok: true, max, reason: '' };
   }
 
-  // Клетка склада, откуда лучше всего резервировать: где больше всего свободного. Нет остатка → ('_', '_').
+  // Клетка склада, откуда лучше всего резервировать: где больше всего свободного (первая из cells). Нет остатка → ('_', '_').
   function bestCell(st, productId) {
-    const g = grid(st, productId);
-    let best = { entityId: ANY, cityId: ANY }, top = 0;
-    for (const r of g.rows) for (const c of g.cols) {
-      const held = sum((st.reserves || []).filter(x => x.productId === productId && x.src === 'stock' && cellKey(x) === r.id + '|' + c.id), x => x.qty);
-      const free = (g.cell(r.id, c.id) ?? 0) - held;
-      if (free > top) { top = free; best = { entityId: r.id, cityId: c.id }; }
-    }
-    return best;
+    const c = cells(st, productId)[0];
+    return c ? { entityId: c.entityId, cityId: c.cityId } : { entityId: ANY, cityId: ANY };
   }
 
   // ——— журнал движений ———
@@ -261,9 +255,23 @@ const Stock = (() => {
       if (!r || r.productId !== productId || r.src !== 'stock') return 0;
       return Math.max(0, Math.min(r.qty, grid(st, productId).cell(r.entityId || ANY, r.cityId || ANY) ?? 0));
     }
-    const e = entityId || ANY, c = cityId || ANY;
+    return cellFree(st, grid(st, productId), productId, entityId || ANY, cityId || ANY);
+  }
+  // Свободно в клетке без резерва: остаток клетки минус резервы со склада на неё (g — Stock.grid товара). Единственная формула.
+  function cellFree(st, g, productId, e, c) {
     const held = sum((st.reserves || []).filter(r => r.productId === productId && r.src === 'stock' && cellKey(r) === e + '|' + c), r => r.qty);
-    return Math.max(0, (grid(st, productId).cell(e, c) ?? 0) - held);
+    return Math.max(0, (g.cell(e, c) ?? 0) - held);
+  }
+  // Клетки «юрлицо × город», где товар можно взять без чужого резерва: [{entityId, cityId, free}], free = sellMax > 0.
+  // Больше свободного — выше, при равенстве — по порядку таблицы. Клетки с нулём не попадают. Нужна bestCell и форме заявки
+  // (видно, на каком юрлице и в каком городе лежит товар).
+  function cells(st, productId) {
+    const g = grid(st, productId), out = [];
+    for (const r of g.rows) for (const c of g.cols) {
+      const free = cellFree(st, g, productId, r.id, c.id);
+      if (free > 0) out.push({ entityId: r.id, cityId: c.id, free });
+    }
+    return out.map((x, i) => [x, i]).sort((a, b) => b[0].free - a[0].free || a[1] - b[1]).map(x => x[0]);
   }
 
   // Списать проданное: {productId, qty, entityId, cityId, reserveId?, doc} → «Отгрузка» из клетки (через move) и,
@@ -342,5 +350,5 @@ const Stock = (() => {
     return dealRef(st, doc, personId) ? doc : HIDDEN_DEAL;
   }
 
-  return { ANY, RESERVE_DAYS, KINDS, NO_ENTITY, NO_CITY, HIDDEN_DEAL, HIDDEN_ID, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, canReserve, bestCell, move, reserve, unreserve, release, expired, sellMax, sell, cellText, dealRef, reserveView, docView };
+  return { ANY, RESERVE_DAYS, KINDS, NO_ENTITY, NO_CITY, HIDDEN_DEAL, HIDDEN_ID, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, canReserve, bestCell, cells, move, reserve, unreserve, release, expired, sellMax, sell, cellText, dealRef, reserveView, docView };
 })();

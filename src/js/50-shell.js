@@ -509,10 +509,9 @@ const FORMS={
     const title=byId('t-title').value.trim();
     if(!title){showErr('t-err','Напишите, что нужно сделать.');byId('t-title').focus();return}
     const [tt,id]=byId('t-to').value.split(':'),due=byId('t-due').value,m=me(),now=new Date(),board=curBoard();
-    const t={id:Store.freeId(S.tasks,'t'),title,desc:byId('t-desc').value.trim(),to:{t:tt,id},from:m.id,due:due?fromIso(due,18):day(2,18),boardId:board.id,stageId:startStage(board.id).id,prio:byId('t-prio').value,deal:byId('t-deal')?.value||'',at:now};
-    const files=attDraftFiles();if(files) t.files=files;
-    S.tasks.push(t);
-    Notify.push(S,'task',m.id,`Новая задача: «${title}», срок ${fD(t.due)}.${t.deal?' Сделка '+t.deal+'.':''} От: ${m.name}.`,now,targetPeople(t.to),{t:'task',id:t.id});
+    // задача и уведомление исполнителю — Tasks.add (ядро задач, 37-tasks.js)
+    const t=Tasks.add(S,{title,desc:byId('t-desc').value.trim(),to:{t:tt,id},from:m.id,due:due?fromIso(due,18):day(2,18),boardId:board?.id,prio:byId('t-prio').value,deal:byId('t-deal')?.value||'',files:attDraftFiles()||undefined},now);
+    if(!t) return showErr('t-err','Нет доски задач: её заводят в «Настройки → Воронки».');
     closeModal();render();toast(`Задача поставлена. ${targetName(t)} — уведомление отправлено.`);
   },
   ship:f=>shipCreate(f),

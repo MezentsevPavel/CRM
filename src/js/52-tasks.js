@@ -57,14 +57,16 @@ function vTasks(){
 }
 function tCard(t,edit){
   const over=taskOverdue(t),dept=t.to.t==='d';
-  return `<article class="tcard ${isDone(t)?'done':''}" ${edit?'':`draggable="true" data-drag="${t.id}"`} data-act="open-task" data-id="${t.id}" tabindex="0"><div class="tc-top"><span class="tdot ${taskDot(t)}" aria-hidden="true"></span>${dept?'<span class="pill info sm">отделу</span>':''}${t.prio==='high'?'<span class="pill bad sm">Срочно</span>':''}${t.deal?`<span class="chip mono">${t.deal}</span>`:''}</div><p class="tc-t">${esc(t.title)}</p><div class="tc-m"><span class="who">${t.to.t==='p'?av(person(t.to.id),'xs'):`<span class="av xs">${ic('users')}</span>`}${esc(targetName(t))}</span><span class="due ${over?'bad':''}">${over?'просрочена · ':''}${fRel(t.due)}</span></div>${taskTakable(t)&&!edit?`<button type="button" class="btn sm tc-take" data-act="task-take" data-id="${t.id}">Взять</button>`:''}</article>`;
+  return `<article class="tcard ${isDone(t)?'done':''}" ${edit?'':`draggable="true" data-drag="${t.id}"`} data-act="open-task" data-id="${t.id}" tabindex="0"><div class="tc-top"><span class="tdot ${taskDot(t)}" aria-hidden="true"></span>${dept?'<span class="pill info sm">отделу</span>':''}${t.prio==='high'?'<span class="pill bad sm">Срочно</span>':''}${t.deal?`<span class="chip mono">${t.deal}</span>`:''}${t.bill?`<span class="chip mono">${esc(t.bill.dispatchId)}</span>`:''}</div><p class="tc-t">${esc(t.title)}</p><div class="tc-m"><span class="who">${t.to.t==='p'?av(person(t.to.id),'xs'):`<span class="av xs">${ic('users')}</span>`}${esc(targetName(t))}</span><span class="due ${over?'bad':''}">${over?'просрочена · ':''}${fRel(t.due)}</span></div>${taskTakable(t)&&!edit?`<button type="button" class="btn sm tc-take" data-act="task-take" data-id="${t.id}">Взять</button>`:''}</article>`;
 }
+// Задачу двигает тот, кто видит её на доске (taskVisible); запрос счёта по заявке открывают все — без кнопок этапов.
 function dTask(t){
-  const from=person(t.from),d=t.deal?deal(t.deal):null,over=taskOverdue(t),dept=t.to.t==='d';
+  const from=person(t.from),d=t.deal?deal(t.deal):null,over=taskOverdue(t),dept=t.to.t==='d',move=taskVisible(t);
+  const dsp=t.bill?Dispatch.byId(S,t.bill.dispatchId):null;
   return {kind:'Задача',title:esc(t.title),sub:`Поставил(а): ${esc(from?.name||'')} · ${fWhen(t.at)}`,body:`
-    <div class="seg wide">${stagesFor(t).map(st=>`<button class="${t.stageId===st.id?'on':''}" data-act="task-st" data-id="${t.id}" data-st="${esc(st.id)}">${esc(st.name)}</button>`).join('')}</div>
+    ${move?`<div class="seg wide">${stagesFor(t).map(st=>`<button class="${t.stageId===st.id?'on':''}" data-act="task-st" data-id="${t.id}" data-st="${esc(st.id)}">${esc(st.name)}</button>`).join('')}</div>`:`<p class="lock">${ic('lock')}Этап «${esc(stagesFor(t).find(s=>s.id===t.stageId)?.name||'нет данных: этап')}». Двигает задачу исполнитель.</p>`}
     ${taskTakable(t)?`<div class="tk-box"><p class="m0">Задача поставлена отделу. Нажмите «Взять» — вы станете исполнителем, у остальных в отделе она пропадёт из «Моих задач».</p><button type="button" class="btn pri" data-act="task-take" data-id="${t.id}">Взять задачу</button></div>`:''}
-    <dl class="kv"><dt>Кому</dt><dd>${esc(targetName(t))}${dept?' <span class="pill info sm">отделу</span>':''}</dd>${t.took?`<dt>Взял(а)</dt><dd>${esc(person(t.to.id)?.name||'нет данных: сотрудник')} из отдела «${esc(deptName(t.took.dept))}», ${fWhen(t.took.at)}</dd>`:''}<dt>Срок</dt><dd class="${over?'bad-t':''}">${fD(t.due)}, ${WD[new Date(t.due).getDay()]}${over?' · просрочена':''}</dd><dt>Важность</dt><dd>${t.prio==='high'?'Срочно':'Обычная'}</dd>${d?`<dt>Сделка</dt><dd>${can('clients')?`<button class="link" data-act="open-deal" data-id="${d.id}">${d.id} · ${esc(d.client)}</button>`:d.id}</dd>`:''}</dl>
+    <dl class="kv"><dt>Кому</dt><dd>${esc(targetName(t))}${dept?' <span class="pill info sm">отделу</span>':''}</dd>${t.took?`<dt>Взял(а)</dt><dd>${esc(person(t.to.id)?.name||'нет данных: сотрудник')} из отдела «${esc(deptName(t.took.dept))}», ${fWhen(t.took.at)}</dd>`:''}<dt>Срок</dt><dd class="${over?'bad-t':''}">${fD(t.due)}, ${WD[new Date(t.due).getDay()]}${over?' · просрочена':''}</dd><dt>Важность</dt><dd>${t.prio==='high'?'Срочно':'Обычная'}</dd>${t.bill?`<dt>Заявка</dt><dd>${dsp?`<button class="link" data-act="open-dispatch" data-id="${esc(dsp.id)}">${esc(dsp.number)} · ${esc(dsp.to.name)}</button>`:`нет данных: заявка ${esc(t.bill.dispatchId)}`}</dd>`:''}${t.dropped?`<dt>Снята</dt><dd>${esc(t.dropped)}</dd>`:''}${d?`<dt>Сделка</dt><dd>${can('clients')?`<button class="link" data-act="open-deal" data-id="${d.id}">${d.id} · ${esc(d.client)}</button>`:d.id}</dd>`:''}</dl>
     ${t.desc?`<div><h4 class="sh">Подробности</h4><p class="prose">${esc(t.desc)}</p></div>`:''}
     ${attCardHtml('task',t)}`};
 }
@@ -82,7 +84,7 @@ function taskTake(id){
 }
 
 // ——— регистрация в реестрах оболочки ———
-DRAWERS.task=id=>{const t=S.tasks.find(x=>x.id===id);return t&&taskVisible(t)?dTask(t):null};
+DRAWERS.task=id=>{const t=S.tasks.find(x=>x.id===id);return t&&Visible.taskSeen(S,t,me().id)?dTask(t):null};
 regRef('task','задача',id=>S.tasks.some(t=>t.id===id),'open-task');
 SEARCH.push({kind:'task',label:'Задача',order:70,find:q=>S.tasks.filter(t=>taskVisible(t)&&searchHas(q,t.title)).map(t=>({title:t.title,sub:`${targetName(t)} · ${fRel(t.due)}`,open:`data-act="open-task" data-id="${esc(t.id)}"`}))});
 ON.change['task-dept']=t=>{S.ui.taskDept=t.value;render()};

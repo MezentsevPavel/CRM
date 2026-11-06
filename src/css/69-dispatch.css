@@ -58,6 +58,16 @@
 .dsp-it-n b{font-weight:600;overflow-wrap:anywhere}
 .dsp-it-n small{font-size:12px;color:var(--ink-3)}
 .dsp-q{padding:0 6px;text-align:right}
+/* строка «Продажи»: откуда берём товар и пометка о счёте с чужого юрлица */
+.dsp-src-w{display:flex;align-items:center;gap:6px;margin-top:4px;font-size:12px;color:var(--ink-3)}
+.dsp-src-w .inp{flex:1 1 auto;min-width:0;height:32px;font-size:12.5px}
+.dsp-it-n small.dsp-bill{color:var(--warn)}
+/* карточка: счета между юрлицами */
+.dsp-bills{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none;font-size:13.5px}
+.dsp-bills li{padding:8px 10px;border-radius:10px;background:var(--surface-2);overflow-wrap:anywhere}
+.dsp-bills li.b-none,.dsp-bills li.b-stale,.dsp-bills li.b-noone{background:var(--warn-soft)}
+.dsp-ask{padding:10px 12px;border-radius:12px;background:var(--surface-2)}
+.dsp-bills li.b-done{background:var(--ok-soft)}
 .dsp-own{display:flex;gap:8px}
 .dsp-own .inp{flex:1 1 auto;min-width:0}
 

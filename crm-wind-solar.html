@@ -1109,6 +1109,16 @@ td>.lead-wait{margin-top:4px}
 .dsp-it-n b{font-weight:600;overflow-wrap:anywhere}
 .dsp-it-n small{font-size:12px;color:var(--ink-3)}
 .dsp-q{padding:0 6px;text-align:right}
+/* строка «Продажи»: откуда берём товар и пометка о счёте с чужого юрлица */
+.dsp-src-w{display:flex;align-items:center;gap:6px;margin-top:4px;font-size:12px;color:var(--ink-3)}
+.dsp-src-w .inp{flex:1 1 auto;min-width:0;height:32px;font-size:12.5px}
+.dsp-it-n small.dsp-bill{color:var(--warn)}
+/* карточка: счета между юрлицами */
+.dsp-bills{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none;font-size:13.5px}
+.dsp-bills li{padding:8px 10px;border-radius:10px;background:var(--surface-2);overflow-wrap:anywhere}
+.dsp-bills li.b-none,.dsp-bills li.b-stale,.dsp-bills li.b-noone{background:var(--warn-soft)}
+.dsp-ask{padding:10px 12px;border-radius:12px;background:var(--surface-2)}
+.dsp-bills li.b-done{background:var(--ok-soft)}
 .dsp-own{display:flex;gap:8px}
 .dsp-own .inp{flex:1 1 auto;min-width:0}
 
@@ -2016,7 +2026,7 @@ const taskOverdue=t=>!isDone(t)&&dd(t.due)<0;
 const targetName=t=>t.to.t==='p'?(person(t.to.id)?.name||'нет данных: сотрудник'):`Отдел «${deptName(t.to.id)}»`;
 const tDept=t=>t.to.t==='d'?t.to.id:person(t.to.id)?.dept;
 // Кому адресована задача — люди: исполнитель или весь отдел
-const targetPeople=to=>to.t==='p'?[to.id]:S.people.filter(p=>p.dept===to.id).map(p=>p.id);
+const targetPeople=to=>Tasks.people(S,to);
 
 // ——— уведомления: создаёт только Notify.push ———
 const unread=()=>Notify.unread(S,S.me);
@@ -2064,7 +2074,9 @@ const Store = (() => {
   // 14 — уведомления со ссылкой на объект (ref: {t, id}); демо-уведомления проставлены заново; у проваленной сделки lostReleased.
   // 15 — кладовщик по умолчанию видит клиентов и сделки всех типов (права clients и dealsAll).
   // 16 — у движений склада свой id (mv…): запись журнала — документ общей базы (Docs, серверная сборка, таск 01).
-  const REV = 16;
+  // 17 — продажа от юрлица: st.billing {seller: {b2b, b2c}, billerId?} (продавец по умолчанию, кто выставляет счета), у заявки
+  //      «Продажа» seller и items[].from, у задачи bill/dropped (запрос счёта между юрлицами). Рабочая база — шаг MIGRATIONS[17].
+  const REV = 17;
   // Браузер даёт сайту около 5 млн символов на всё; берём с запасом.
   const LIMIT = 4500000;
   const NO_SPACE = 'не сохранено — мало места в браузере';
@@ -2744,16 +2756,10 @@ const Stock = (() => {
     return { ok: true, max, reason: '' };
   }
 
-  // Клетка склада, откуда лучше всего резервировать: где больше всего свободного. Нет остатка → ('_', '_').
+  // Клетка склада, откуда лучше всего резервировать: где больше всего свободного (первая из cells). Нет остатка → ('_', '_').
   function bestCell(st, productId) {
-    const g = grid(st, productId);
-    let best = { entityId: ANY, cityId: ANY }, top = 0;
-    for (const r of g.rows) for (const c of g.cols) {
-      const held = sum((st.reserves || []).filter(x => x.productId === productId && x.src === 'stock' && cellKey(x) === r.id + '|' + c.id), x => x.qty);
-      const free = (g.cell(r.id, c.id) ?? 0) - held;
-      if (free > top) { top = free; best = { entityId: r.id, cityId: c.id }; }
-    }
-    return best;
+    const c = cells(st, productId)[0];
+    return c ? { entityId: c.entityId, cityId: c.cityId } : { entityId: ANY, cityId: ANY };
   }
 
   // ——— журнал движений ———
@@ -2854,9 +2860,23 @@ const Stock = (() => {
       if (!r || r.productId !== productId || r.src !== 'stock') return 0;
       return Math.max(0, Math.min(r.qty, grid(st, productId).cell(r.entityId || ANY, r.cityId || ANY) ?? 0));
     }
-    const e = entityId || ANY, c = cityId || ANY;
+    return cellFree(st, grid(st, productId), productId, entityId || ANY, cityId || ANY);
+  }
+  // Свободно в клетке без резерва: остаток клетки минус резервы со склада на неё (g — Stock.grid товара). Единственная формула.
+  function cellFree(st, g, productId, e, c) {
     const held = sum((st.reserves || []).filter(r => r.productId === productId && r.src === 'stock' && cellKey(r) === e + '|' + c), r => r.qty);
-    return Math.max(0, (grid(st, productId).cell(e, c) ?? 0) - held);
+    return Math.max(0, (g.cell(e, c) ?? 0) - held);
+  }
+  // Клетки «юрлицо × город», где товар можно взять без чужого резерва: [{entityId, cityId, free}], free = sellMax > 0.
+  // Больше свободного — выше, при равенстве — по порядку таблицы. Клетки с нулём не попадают. Нужна bestCell и форме заявки
+  // (видно, на каком юрлице и в каком городе лежит товар).
+  function cells(st, productId) {
+    const g = grid(st, productId), out = [];
+    for (const r of g.rows) for (const c of g.cols) {
+      const free = cellFree(st, g, productId, r.id, c.id);
+      if (free > 0) out.push({ entityId: r.id, cityId: c.id, free });
+    }
+    return out.map((x, i) => [x, i]).sort((a, b) => b[0].free - a[0].free || a[1] - b[1]).map(x => x[0]);
   }
 
   // Списать проданное: {productId, qty, entityId, cityId, reserveId?, doc} → «Отгрузка» из клетки (через move) и,
@@ -2935,7 +2955,7 @@ const Stock = (() => {
     return dealRef(st, doc, personId) ? doc : HIDDEN_DEAL;
   }
 
-  return { ANY, RESERVE_DAYS, KINDS, NO_ENTITY, NO_CITY, HIDDEN_DEAL, HIDDEN_ID, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, canReserve, bestCell, move, reserve, unreserve, release, expired, sellMax, sell, cellText, dealRef, reserveView, docView };
+  return { ANY, RESERVE_DAYS, KINDS, NO_ENTITY, NO_CITY, HIDDEN_DEAL, HIDDEN_ID, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, canReserve, bestCell, cells, move, reserve, unreserve, release, expired, sellMax, sell, cellText, dealRef, reserveView, docView };
 })();
 
 // Ядро: поставки и маршрут. Чистые функции, без DOM; текущее время приходит аргументом now.
@@ -4227,6 +4247,49 @@ const Notify = (() => {
   return { RECIPIENTS, REF_KINDS, SOUNDS, wants, setWanted, soundPref, setSound, soundFor, recipients, push, pushFor, unread, unreadIds, markRead };
 })();
 
+// Ядро: задачи — поручение человеку или отделу на доске задач. Единственное место, где задача заводится: форма «Поставить
+// задачу» (50-shell.js), приёмка — «позвонить клиенту» (55-receiving.js), счёт между юрлицами по заявке (39-dispatch.js).
+// Без DOM и S: состояние st первым аргументом, время now — аргументом.
+//
+// Задача st.tasks[]: {id, title, desc, to:{t:'p'|'d', id}, from, due, boardId, stageId, prio:'normal'|'high', deal, at,
+//   files?, took?:{dept, at}, bill?:{dispatchId, owner, seller}, dropped?}. Этап — id этапа доски (Pipes, вид tasks):
+//   «готово» — этап с флагом final. bill — запрос счёта по заявке (Dispatch.requestBill), dropped — почему запрос снят.
+
+const Tasks = (() => {
+  const boards = st => Pipes.of(st, 'tasks');
+  const board = (st, boardId) => boards(st).find(b => b.id === boardId) || boards(st)[0] || null;
+  // С чего задача начинает: первый этап доски без флага. Чем кончается: этап с флагом final.
+  const startStage = (st, boardId) => { const b = board(st, boardId); return b ? b.stages.find(s => !s.flag) || b.stages[0] || null : null; };
+  const endStage = (st, boardId) => { const b = board(st, boardId); return b ? b.stages.find(s => s.flag === 'final') || null : null; };
+  const isDone = (st, t) => !!t && Pipes.isFinal(st, t.boardId, t.stageId);
+  // Кому адресована задача — люди: исполнитель или весь отдел
+  const people = (st, to) => (to && to.t === 'p' ? [to.id] : (st.people || []).filter(p => to && p.dept === to.id).map(p => p.id));
+  const personName = (st, id) => ((st.people || []).find(p => p.id === id) || {}).name || 'нет данных: сотрудник';
+
+  // Поставить задачу: data = {title, desc?, to:{t, id}, from, due, boardId? (нет — первая доска), prio?, deal?, files?, bill?}.
+  // Встаёт на первый этап доски. Исполнителю (или отделу) — уведомление «Новая задача…»; opts.silent — без него,
+  // opts.tail — добавка к тексту уведомления. → задача | null (нет доски задач)
+  function add(st, data, now, opts) {
+    const o = opts || {}, b = board(st, data.boardId), s = startStage(st, b && b.id);
+    if (!b || !s) return null;
+    st.tasks = st.tasks || [];
+    const t = {
+      id: Store.freeId(st.tasks, 't'), title: data.title, desc: data.desc || '', to: { t: data.to.t, id: data.to.id }, from: data.from,
+      due: data.due, boardId: b.id, stageId: s.id, prio: data.prio || 'normal', deal: data.deal || '', at: now,
+    };
+    if (data.files) t.files = data.files;
+    if (data.bill) t.bill = { dispatchId: data.bill.dispatchId, owner: data.bill.owner, seller: data.bill.seller };
+    st.tasks.push(t);
+    if (!o.silent) {
+      Notify.push(st, 'task', t.from, `Новая задача: «${t.title}», срок ${fD(t.due)}.${t.deal ? ' Сделка ' + t.deal + '.' : ''}${o.tail || ''} От: ${personName(st, t.from)}.`,
+        now, people(st, t.to), { t: 'task', id: t.id });
+    }
+    return t;
+  }
+
+  return { board, startStage, endStage, isDone, people, add };
+})();
+
 // Ядро: каталог товаров и склейка снимка остатков с каталогом. Чистая логика, без DOM.
 // Источники — снимки CATALOG (10-catalog-data.js, таблица PVCalc) и STOCK_SNAPSHOT (11-stock-data.js, таблица менеджеров).
 // Здесь же шаг SEEDS: настоящие товары и остатки вместо выдуманных товаров прототипа v2.
@@ -4435,10 +4498,13 @@ BASES.push(st => {
 //     при «Доставлена»; пока он в пути, Stock.incomingOf считает его приходом на склад-получатель (Dispatch.transit);
 //   • списание проданного (Dispatch.sell → Stock.sell) — по праву sell, с отметкой на строке заявки.
 // «Продажа» и «Другое» смена этапа склад не меняет.
+// «Продажа» помнит, от какого юрлица продаём (seller), и у каждой строки — клетку, откуда берём товар (items[].from). Строка из
+// клетки чужого юрлица — счёт «владелец → продавец»: его запрашивают явно (requestBill), задача уходит тому, кто выставляет счета.
 // Чистые функции над состоянием st; время приходит параметром now (Date), кто делает — by (id сотрудника). Без DOM и S.
 //
 // Заявка st.dispatches[]: {id, number (оба — 'ОТ-NNN'), at, by, purpose:'sale'|'transfer'|'other', to:{name, phone}, address,
-//   when:{date (Date, начало дня), from?, till? ('ЧЧ:ММ')}, items:[{productId?|text, qty, picked?, sold?:{at, by, entityId, cityId}}],
+//   when:{date (Date, начало дня), from?, till? ('ЧЧ:ММ')}, items:[{productId?|text, qty, picked?, sold?:{at, by, entityId, cityId},
+//   from?:{entityId, cityId} (у «Продажи»: откуда берём)}], seller? (у «Продажи»: id юрлица, от которого продаём),
 //   files:[{id, name, type, size, data|null, unsaved?}], note, driverId?, dealId?, pipeId, stageId, demo?,
 //   у перемещения: from:{entityId, cityId}, toCell:{entityId, cityId}, moved? (списано из «откуда»), landed? (пришло в «куда»)}.
 // Груз перемещения: moved && !landed — «в пути»; landed — лежит в «куда»; иначе лежит в «откуда».
@@ -4611,7 +4677,8 @@ const Dispatch = (() => {
 
   // Строки списка: товар каталога (productId) или свой текст (text), у каждой целое количество ≥ 1.
   // Пустая строка формы (ни товара, ни текста) пропускается; строка с товаром без количества — ошибка всего списка.
-  function cleanItems(st, list) {
+  // У «Продажи» строка с товаром помнит клетку-источник from (юрлицо и город из справочника или «нет данных»); неизвестная — не берётся.
+  function cleanItems(st, list, purpose) {
     const items = [];
     let bad = false;
     for (const it of Array.isArray(list) ? list : []) {
@@ -4620,6 +4687,8 @@ const Dispatch = (() => {
       const qty = Number(it.qty);
       if (!Number.isInteger(qty) || qty < 1 || (pid && !productOf(st, pid))) { bad = true; continue; }
       const row = pid ? { productId: pid, qty } : { text, qty };
+      const from = purpose === 'sale' && pid && it.from ? cellOf(st, it.from, true) : null;
+      if (from) row.from = from;
       if (it.picked === true) row.picked = true;
       // отметку «списано» с данными не принимаем: её ставит только sell, а update переносит со старой строки
       items.push(row);
@@ -4636,8 +4705,11 @@ const Dispatch = (() => {
     if (!name) missing.push('name');
     let address = str(d.address);
     const date = toDate(d.when && d.when.date);
-    const it = cleanItems(st, d.items);
+    const it = cleanItems(st, d.items, purpose);
     let from = null, toCell = null, reason = '';
+    // от какого юрлица продаём: только у «Продажи»; пусто — не выбрано (запроса счёта тогда нет)
+    const seller = purpose === 'sale' ? str(d.seller) : '';
+    if (seller && !entityOk(st, seller)) return { missing: [], reason: 'Юрлица-продавца нет в справочнике.' };
     if (purpose === 'transfer') {
       from = cellOf(st, d.from, true); toCell = cellOf(st, d.toCell, false);
       if (!from) missing.push('from');
@@ -4669,6 +4741,7 @@ const Dispatch = (() => {
       files: Attach.clean(d.files, current && current.files), note: str(d.note),
     };
     if (purpose === 'transfer') { rec.from = from; rec.toCell = toCell; }
+    if (seller) rec.seller = seller;
     if (dealId) rec.dealId = dealId;
     return { rec };
   }
@@ -4688,7 +4761,9 @@ const Dispatch = (() => {
   }
 
   // Создать заявку. Любой сотрудник может создать. data: {purpose, to:{name, phone}, address, when:{date, from?, till?},
-  // items:[{productId?|text, qty}], files?, note?, from?, toCell? (перемещение), dealId?, demo?}.
+  // items:[{productId?|text, qty, from?}], files?, note?, from?, toCell? (перемещение), seller? (продажа), dealId?, demo?}.
+  // Продавца и клетки строк create не придумывает: их по умолчанию подставляет форма (defaultSeller, defaultFrom).
+  // Задачу «Выставить счёт» create не ставит: её запрашивают явно (requestBill) — форма спрашивает после сохранения.
   // Нет получателя, адреса, телефона, даты или списка — {ok:false, missing:[name|address|phone|date|items…]} и ничего не сохраняется.
   // opts.silent — без уведомлений (демо-данные). → {ok, id, missing, reason}
   function create(st, data, by, now, opts) {
@@ -4711,7 +4786,7 @@ const Dispatch = (() => {
   // Заявка → данные в форме create (для правки и для проверки того, что менять нельзя).
   const snapshot = d => ({
     purpose: d.purpose, to: { ...d.to }, address: d.address, when: { ...d.when }, items: d.items.map(i => ({ ...i })),
-    files: d.files.map(f => ({ ...f })), note: d.note, from: d.from, toCell: d.toCell, dealId: d.dealId,
+    files: d.files.map(f => ({ ...f })), note: d.note, from: d.from, toCell: d.toCell, dealId: d.dealId, seller: d.seller,
   });
 
   // Править заявку: data сливается с тем, что уже есть, и проверяется как при создании. Нужно canEdit.
@@ -4736,6 +4811,8 @@ const Dispatch = (() => {
       if (k < 0) return fail(`Строка «${lineName(st, old)}» уже списана при продаже (${num(old.qty)}): изменить или удалить её нельзя. Нужно больше — добавьте новую строку.`, { missing: [] });
       taken.add(k);
       n.rec.items[k].sold = old.sold;
+      // клетка списанной строки — та, что была (счёт между юрлицами считается по клетке списания)
+      if (old.from) n.rec.items[k].from = old.from; else delete n.rec.items[k].from;
       if (old.picked) n.rec.items[k].picked = true;
     }
     // отметка «собрано» остаётся у тех строк, что не менялись
@@ -4746,7 +4823,9 @@ const Dispatch = (() => {
     Object.assign(d, n.rec);
     if (d.purpose !== 'transfer') { delete d.from; delete d.toCell; }
     if (!n.rec.dealId) delete d.dealId;
+    if (!n.rec.seller) delete d.seller;
     Feed.add(st, ref(d), { kind: 'field', text: `Заявка изменена: ${personName(st, by)}.`, by, at: now });
+    syncBills(st, d, by, now);
     return { ok: true, missing: [], reason: '' };
   }
 
@@ -4775,6 +4854,8 @@ const Dispatch = (() => {
       const extra = d.by && d.by !== by ? [d.by] : [];
       if (extra.length) Notify.push(st, STEP_KIND, by, `${d.number} (${d.to.name}): ${personName(st, by)} перевёл заявку на этап «${stageName(st, d, stageId)}».${g.note ? ' ' + g.note : ''}`, now, extra, { t: 'dispatch', id: d.id });
     }
+    // отмена снимает запросы счёта (снова запросить — кнопкой в карточке)
+    syncBills(st, d, by, now);
     return { ok: true, from, to: stageId, note: g.note || '' };
   }
 
@@ -4825,8 +4906,9 @@ const Dispatch = (() => {
     return entry ? { ok: true, entry, reason: '' } : fail('Не удалось записать комментарий.', { entry: null });
   }
 
-  // Списать при продаже строку заявки «Продажа»: Stock.sell из клетки {entityId, cityId} (или по резерву reserveId),
-  // на строке — отметка «списано: кто, когда, откуда». Нужно право sell. → то же, что Stock.sell
+  // Списать при продаже строку заявки «Продажа»: Stock.sell из клетки {entityId, cityId} (или по резерву reserveId); не названо
+  // ни то ни другое — из клетки строки (items[].from). На строке — отметка «списано: кто, когда, откуда». Нужно право sell.
+  // → то же, что Stock.sell
   function sell(st, id, lineIdx, opt, by, now) {
     const d = byId(st, id);
     if (!d) return fail('Такой заявки нет.');
@@ -4836,7 +4918,8 @@ const Dispatch = (() => {
     if (!it.productId) return fail('Строка своим текстом склад не трогает: списывать нечего.');
     if (it.sold) return fail('Эта строка уже списана.');
     if (isFinal(st, d)) return fail('Заявка закрыта: списывать товар из неё нельзя.');
-    const o = opt || {};
+    const asked = opt || {};
+    const o = asked.reserveId || asked.entityId || asked.cityId ? asked : Object.assign({}, it.from);
     // по резерву: лента сделки помнит резерв, даже когда списание снимет его целиком
     if (o.reserveId) Deals.keepTrail(st, (st.reserves || []).find(x => x.id === o.reserveId));
     const r = Stock.sell(st, { productId: it.productId, qty: it.qty, entityId: o.entityId, cityId: o.cityId, reserveId: o.reserveId, doc: d.number }, by, now);
@@ -4847,6 +4930,150 @@ const Dispatch = (() => {
   }
   // «списано: кто, когда, откуда» — одна фраза для карточки и таблицы
   const soldText = (st, it) => (it.sold ? `списано: ${personName(st, it.sold.by)}, ${fWhen(it.sold.at)}, ${cellText(st, it.sold)}` : '');
+
+  // ——— продавец и клетка строки (цель «Продажа») ———
+  const entityOk = (st, id) => (st.entities || []).some(e => e.id === id);
+  const entName = (st, id) => Stock.entityName(st, id) ?? id;
+  // От какого юрлица продаёт человек по умолчанию: роль с типом (scope b2b / b2c) → st.billing.seller[тип] — соответствие директор
+  // правит в «Настройки → Склады и юрлица». Директор и роли без типа — '' (выбирают сами); юрлица нет в справочнике — ''.
+  function defaultSeller(st, personId) {
+    const p = personOf(st, personId), role = p && (st.roles || []).find(r => r.id === p.role);
+    const map = (st.billing && st.billing.seller) || {};
+    const id = role && role.scope ? str(map[role.scope]) : '';
+    return id && entityOk(st, id) ? id : '';
+  }
+  // Откуда взять товар строки по умолчанию: клетка продавца с наибольшим свободным, а нет такой — клетка с наибольшим свободным
+  // вообще. Свободно — Stock.cells (тот же счёт, что Stock.sellMax). Свободного нет нигде — null.
+  function defaultFrom(st, productId, seller) {
+    const cells = Stock.cells(st, productId);
+    const c = (seller && cells.find(x => x.entityId === seller)) || cells[0];
+    return c ? { entityId: c.entityId, cityId: c.cityId } : null;
+  }
+
+  // ——— счёт между юрлицами ———
+  // Строка «Продажи» из клетки чужого юрлица (владелец клетки ≠ продавец): владелец выставляет продавцу счёт. Пары «владелец →
+  // продавец» по заявке — billPlan. Счёт запрашивают явно (requestBill): после сохранения заявки форма спрашивает «Запросить
+  // счёт для ВС от НПП?», а не запрошенный счёт остаётся в карточке с кнопкой. Запрос — задача «Выставить счёт» тому, кто
+  // выставляет счета между юрлицами (st.billing.billerId, не выбран — директор); задача помнит пару: bill = {dispatchId, owner,
+  // seller}. Дальше задачу ведёт сохранение заявки (syncBills): открытой — новый перечень, пропавшей паре — пометка dropped.
+  // Сервер (Guard) пускает такую задачу без права «ставить задачи другим отделам», но только ровно такой, как в billPlan.
+  // Владелец строки — клетка списания, а до него — клетка строки; «нет данных: юрлицо» счёта не требует.
+  const ownerCell = it => it.sold || it.from || null;
+  const ownerOf = it => { const c = ownerCell(it); return it.productId && c && c.entityId && c.entityId !== Stock.ANY ? c.entityId : null; };
+  const BILL_DROP = { cancelled: 'заявка отменена', gone: 'в заявке больше нет этого товара на продажу от этого юрлица' };
+  // Кто выставляет счета между юрлицами: выбранный в настройках сотрудник, а не выбран (или его нет) — директор. Никого — null.
+  function biller(st) {
+    const id = st.billing && st.billing.billerId;
+    if (id && personOf(st, id)) return id;
+    const boss = (st.people || []).find(p => p.role === 'director');
+    return boss ? boss.id : null;
+  }
+  // Запросить счёт по заявке может её автор и тот, кто ведёт отправки
+  const canBill = (st, personId, d) => !!d && d.purpose === 'sale' && !!personOf(st, personId) && (isAuthor(d, personId) || canWork(st, personId));
+  // План по заявке: [{owner, seller, to:{t:'p', id}|null, title, desc}] — по паре на каждое чужое юрлицо. У отменённой
+  // заявки, не «Продажи» и без продавца — пусто.
+  function billPlan(st, d) {
+    if (!d || d.purpose !== 'sale' || !d.seller || d.stageId === ST.cancelled) return [];
+    const groups = new Map();
+    for (const it of d.items || []) {
+      const owner = ownerOf(it);
+      if (!owner || owner === d.seller) continue;
+      if (!groups.has(owner)) groups.set(owner, []);
+      groups.get(owner).push(it);
+    }
+    const to = biller(st);
+    return [...groups].map(([owner, items]) => {
+      const from = entName(st, owner), seller = entName(st, d.seller);
+      const lines = items.map(it => `${lineName(st, it)} — ${num(it.qty)} (склад ${from}, ${Stock.cityName(st, ownerCell(it).cityId) ?? ownerCell(it).cityId})`).join('; ');
+      return {
+        owner, seller: d.seller, to: to ? { t: 'p', id: to } : null,
+        title: `Выставить счёт: ${from} → ${seller}`,
+        desc: `Заявка на отправку ${d.number} (${d.to.name}): продаём от ${seller} товар, который лежит на ${from}. Выставить счёт от ${from} на ${seller}: ${lines}.`,
+      };
+    });
+  }
+  const billTasks = (st, id) => (st.tasks || []).filter(t => t.bill && t.bill.dispatchId === id);
+  const samePair = (t, p) => t.bill.owner === p.owner && t.bill.seller === p.seller;
+  const pairText = (st, b) => `${entName(st, b.owner)} → ${entName(st, b.seller)}`;
+  // Вопрос формы: «Запросить счёт для ВС от НПП?»
+  const askText = (st, p) => `Запросить счёт для ${entName(st, p.seller)} от ${entName(st, p.owner)}?`;
+  // Задача по-прежнему отвечает плану: тот же перечень и исполнитель
+  const asPlan = (t, p) => t.title === p.title && t.desc === p.desc && !!t.to && !!p.to && t.to.t === p.to.t && t.to.id === p.to.id;
+  // Срок задачи «Выставить счёт» — следующий день, 18:00
+  const billDue = now => { const x = new Date(now); x.setDate(x.getDate() + 1); x.setHours(18, 0, 0, 0); return x; };
+
+  // Запросить счёт по паре «owner → продавец заявки»: задача «Выставить счёт» с уведомлением исполнителю и записью в ленте заявки.
+  // Снятая задача той же пары или сделанная по прежнему перечню открывается снова (новый перечень, первый этап) — второй
+  // задачи на пару не бывает. → {ok, task} | {ok:false, reason}
+  function requestBill(st, id, owner, by, now) {
+    const d = byId(st, id);
+    if (!d) return fail('Такой заявки нет.');
+    if (!canBill(st, by, d)) return fail('Запросить счёт по заявке может её автор или тот, кто ведёт отправки.');
+    const p = billPlan(st, d).find(x => x.owner === owner);
+    if (!p) return fail('По этой заявке счёт от этого юрлица не нужен.');
+    if (!p.to) return fail('Некому поручить: в «Настройки → Склады и юрлица» не выбран, кто выставляет счета, и директора нет.');
+    let t = billTasks(st, d.id).find(x => samePair(x, p));
+    if (t && !t.dropped && (!Tasks.isDone(st, t) || asPlan(t, p))) return fail(Tasks.isDone(st, t) ? 'Счёт уже выставлен.' : 'Счёт уже запрошен.');
+    if (t) {
+      t.title = p.title; t.desc = p.desc; t.to = { t: p.to.t, id: p.to.id }; t.due = billDue(now);
+      delete t.dropped;
+      t.stageId = Tasks.startStage(st, t.boardId).id;
+      Notify.push(st, 'task', by, `Счёт снова нужен: «${t.title}», срок ${fD(t.due)}. Заявка на отправку ${d.number}. Запросил: ${personName(st, by)}.`, now, Tasks.people(st, t.to), { t: 'task', id: t.id });
+    } else {
+      t = Tasks.add(st, { title: p.title, desc: p.desc, to: p.to, from: by, due: billDue(now), bill: { dispatchId: d.id, owner: p.owner, seller: p.seller } },
+        now, { tail: ` Заявка на отправку ${d.number}.` });
+      if (!t) return fail('Нет доски задач: её заводят в «Настройки → Воронки».');
+    }
+    Feed.add(st, ref(d), { kind: 'field', text: `Запрошен счёт ${pairText(st, t.bill)}: исполнитель ${personName(st, p.to.id)}.`, by, at: now });
+    return { ok: true, task: t, reason: '' };
+  }
+  // После каждого сохранения заявки: открытой задаче, чей перечень или исполнитель изменились, — новый текст (с уведомлением);
+  // пропавшей паре — пометка dropped и «готово». Новых задач не ставит: счёт запрашивают явно (requestBill).
+  // → {changed, dropped} — задачи
+  function syncBills(st, d, by, now) {
+    const plan = billPlan(st, d), out = { changed: [], dropped: [] };
+    const who = personName(st, by);
+    for (const t of billTasks(st, d.id)) {
+      if (t.dropped) continue;
+      const p = plan.find(x => samePair(t, x));
+      if (p) {
+        if (!p.to || Tasks.isDone(st, t) || asPlan(t, p)) continue;
+        const what = t.title !== p.title || t.desc !== p.desc ? 'изменился список товаров' : 'сменился исполнитель';
+        t.title = p.title; t.desc = p.desc; t.to = { t: p.to.t, id: p.to.id };
+        out.changed.push(t);
+        Notify.push(st, 'task', by, `Задача «${t.title}» обновлена по заявке ${d.number}: ${what}. Изменил: ${who}.`, now, Tasks.people(st, t.to), { t: 'task', id: t.id });
+        Feed.add(st, ref(d), { kind: 'field', text: `Запрос счёта ${pairText(st, t.bill)} обновлён: ${what}.`, by, at: now });
+        continue;
+      }
+      const done = Tasks.isDone(st, t), why = d.stageId === ST.cancelled ? BILL_DROP.cancelled : BILL_DROP.gone;
+      t.dropped = done ? `${why} (счёт к этому времени уже выставлен)` : why;
+      const end = Tasks.endStage(st, t.boardId);
+      if (end && !done) t.stageId = end.id;
+      out.dropped.push(t);
+      Notify.push(st, 'task', by, `Задача «${t.title}» снята: ${t.dropped}. Заявка на отправку ${d.number}, изменил: ${who}.`, now, Tasks.people(st, t.to), { t: 'task', id: t.id });
+      Feed.add(st, ref(d), { kind: 'field', text: `Запрос счёта ${pairText(st, t.bill)} снят: ${t.dropped}.`, by, at: now });
+    }
+    return out;
+  }
+  // Счета по заявке для карточки и вопроса формы: [{pair, owner, state, text, ask, question, taskId?}].
+  // state: 'none' — не запрошен (ask: можно запросить), 'stale' — выставлен по прежнему перечню (ask), 'asked' — запрошен,
+  // 'done' — выставлен (задача сделана), 'noone' — некому поручить, 'dropped' — снят (пары в заявке больше нет).
+  function billView(st, d) {
+    const have = billTasks(st, d.id), plan = billPlan(st, d), out = [];
+    for (const p of plan) {
+      const t = have.find(x => samePair(x, p)), base = { pair: pairText(st, p), owner: p.owner, question: askText(st, p), taskId: t ? t.id : undefined };
+      if (!p.to && (!t || t.dropped)) out.push({ ...base, state: 'noone', ask: false, text: 'некому поручить: не выбран, кто выставляет счета между юрлицами, и директора нет' });
+      else if (!t || t.dropped) out.push({ ...base, state: 'none', ask: true, text: 'не запрошен', taskId: undefined });
+      else if (!Tasks.isDone(st, t)) out.push({ ...base, state: 'asked', ask: false, text: `запрошен (задача на этапе «${(Pipes.stage(st, t.boardId, t.stageId) || {}).name || 'нет данных: этап'}», исполнитель ${personName(st, t.to && t.to.id)})` });
+      else if (p.to && !asPlan(t, p)) out.push({ ...base, state: 'stale', ask: true, text: 'выставлен по прежнему списку, а список изменился' });
+      else out.push({ ...base, state: 'done', ask: false, text: 'выставлен (задача сделана)' });
+    }
+    for (const t of have) {
+      if (!t.dropped || plan.some(p => samePair(t, p))) continue;
+      out.push({ pair: pairText(st, t.bill), owner: t.bill.owner, state: 'dropped', ask: false, text: `снят: ${t.dropped}`, taskId: t.id });
+    }
+    return out;
+  }
 
   // ——— отбор для списка и воронки ———
   // filter: {q (номер, получатель, адрес), stage (id), mine (автор или водитель personId), today (на сегодня по now), driver (id), personId, now}.
@@ -4869,6 +5096,7 @@ const Dispatch = (() => {
   return {
     PIPE, ST, STEP_KIND, PURPOSE, MISSING, NO_ADDRESS, byId, nextNumber, create, update, canWork, canEdit, canCancel, canComment, canSell,
     setStage, assign, drivers, pick, picked, comment, sell, soldText, query, transit, inTransit, warehouseAddress, lineName,
+    defaultSeller, defaultFrom, billPlan, billTasks, billView, canBill, requestBill, BILL_DROP,
   };
 })();
 
@@ -4907,6 +5135,9 @@ BASES.push(st => {
     { id: 'onWay', name: 'В пути' }, { id: 'delivered', name: 'Доставлена', flag: 'final' }, { id: 'cancelled', name: 'Отменена', flag: 'final' },
   ] });
   st.dispatches = [];
+  // продажа между юрлицами: от какого юрлица продаёт менеджер по умолчанию (scope роли → id юрлица) и кто выставляет счета
+  // (billerId; нет — директор). Правится в «Настройки → Склады и юрлица».
+  st.billing = { seller: { b2b: 'vs', b2c: 'ip' } };
 });
 /*CRM-GATE-OPEN*/SEEDS.push(st => {
   const driverIds = ['Роман Е.', 'Василий Т.'].map(name => {
@@ -4914,6 +5145,11 @@ BASES.push(st => {
     st.people.push(p);
     return p.id;
   });
+  // кто выставляет счета между юрлицами в демо — «Исполнительный директор (пример)»; своей роли у него нет — встроенная «Директор»
+  // (директор меняет роль и человека в «Сотрудниках» и «Складах и юрлицах»)
+  const exec = { id: Store.freeId(st.people, 'p'), name: 'Исполнительный директор (пример)', role: 'director', dept: 'mgmt', demo: true };
+  st.people.push(exec);
+  st.billing = Object.assign({}, st.billing, { billerId: exec.id });
 
   const pad = (n, w) => String(n).padStart(w, '0');
   const catalog = st.products.filter(p => p.inCatalog);
@@ -6415,7 +6651,8 @@ const Docs = (() => {
     // по id товара: документ — строка остатков (stock) или отложенного (aside) одного товара
     MAP: ['stock', 'aside'],
     // целиком одним документом с id ''
-    WHOLE: ['mail', 'leadSource', 'leadWaitMin', 'tpl', 'address', 'prefs', 'stockSheet'],
+    // billing — продажа между юрлицами: {seller: {b2b: id юрлица, b2c: …} (Dispatch.defaultSeller), billerId? (Dispatch.requestBill)}
+    WHOLE: ['mail', 'leadSource', 'leadWaitMin', 'tpl', 'address', 'prefs', 'stockSheet', 'billing'],
     // личное: на сервер не уходит никогда
     LOCAL: ['me', 'view', 'ui', 'rcv', 'v'],
     // личные поля внутри prefs: тема и вид карты поставок
@@ -6664,8 +6901,12 @@ const Visible = (() => {
     const p = personOf(st, pid);
     return (t.to.t === 'p' && t.to.id === pid) || (t.to.t === 'd' && !!p && t.to.id === p.dept);
   }
-  // Задача видна: право «все задачи», моя (мне или моему отделу) или поставлена мной
+  // Задача видна: право «все задачи», моя (мне или моему отделу) или поставлена мной. Это и доска задач, и право двигать задачу.
   const task = (st, t, pid) => !!t && (can(st, pid, 'tasksAll') || taskMine(st, t, pid) || t.from === pid);
+  // Задача приходит человеку в данных и открывается по ссылке: видна (task) или это запрос счёта по заявке (bill), а заявки
+  // видят все — правка заявки обновляет её задачи (Dispatch.syncBills), карточка заявки показывает, запрошен ли счёт и выставлен ли.
+  const taskSeen = (st, t, pid) => task(st, t, pid)
+    || (!!t && !!t.bill && !!personOf(st, pid) && (st.dispatches || []).some(d => d.id === t.bill.dispatchId));
 
   // Видимые карточки, на которые ссылаются лента и дела: {deal, lead, client} — множества id
   function seen(st, pid) {
@@ -6692,7 +6933,7 @@ const Visible = (() => {
       case 'deals': return !!rec && Leads.dealsVisible(st, pid).some(d => d.id === id);
       case 'leads': return !!rec && Leads.visible(st, pid).some(l => l.id === id);
       case 'clients': return client(st, rec, pid);
-      case 'tasks': return task(st, rec, pid);
+      case 'tasks': return taskSeen(st, rec, pid);
       case 'feed': case 'acts': return !!rec && refSeen(st, pid, rec.ref, seen(st, pid));
       case 'notes': return !!rec && (notesAll(st, pid) || (rec.to || []).includes(pid));
       case 'shipments': return !!rec && shipsSeen(st, pid);
@@ -6726,7 +6967,7 @@ const Visible = (() => {
         case 'deals': out.deals = (v || []).filter(d => s.deal.has(d.id)).map(copy); break;
         case 'leads': out.leads = (v || []).filter(l => s.lead.has(l.id)).map(copy); break;
         case 'clients': out.clients = (v || []).filter(c => s.client.has(c.id)).map(copy); break;
-        case 'tasks': out.tasks = (v || []).filter(t => task(st, t, pid)).map(copy); break;
+        case 'tasks': out.tasks = (v || []).filter(t => taskSeen(st, t, pid)).map(copy); break;
         case 'feed': case 'acts': out[key] = (v || []).filter(e => refSeen(st, pid, e.ref, s)).map(copy); break;
         case 'notes': out.notes = (v || []).filter(n => notesAll(st, pid) || (n.to || []).includes(pid)).map(copy); break;
         case 'shipments': out.shipments = shipsSeen(st, pid) ? copy(v) : []; break;
@@ -6770,7 +7011,7 @@ const Visible = (() => {
     return out;
   }
 
-  return { HIDDEN_PRICE, client, task, taskMine, canSee, of };
+  return { HIDDEN_PRICE, client, task, taskSeen, taskMine, canSee, of };
 })();
 
 // Ядро: может ли человек провести пачку изменений (права на запись). Без DOM; st первым аргументом, время now аргументом.
@@ -7060,8 +7301,36 @@ const Guard = (() => {
     const d = t.deal ? recOf(ctx.st, 'deals', t.deal) : null;
     return !!d && to.t === 'p' && d.managerId === to.id && ctx.list.some(x => x.key === 'shipments' && received(ctx, x.id));
   }
+  // Задача «Выставить счёт» по заявке — без права «ставить задачи другим отделам» и даже не видя её на доске, но только ровно
+  // такой, как требует Dispatch.billPlan по заявке после пачки:
+  //   • запрос (Dispatch.requestBill: новая задача или снова открытая на первом этапе) — тот, кто может запросить (Dispatch.canBill);
+  //   • новый перечень открытой задачи и пометка «снята» (Dispatch.syncBills) — тот, кто в этой же пачке сохраняет заявку
+  //     (правка заявки проверяется своим правилом).
+  // Удалить её так нельзя; двигать по доске — по общему правилу, как любую задачу.
+  const BILL_FIELDS = ['title', 'desc', 'to', 'stageId', 'dropped', 'due'];
+  function billOk(ctx, b, a) {
+    if (!a || !a.bill || (b && (!same(b.bill, a.bill) || a.from !== b.from))) return false;
+    const id = a.bill.dispatchId, d = recOf(ctx.after, 'dispatches', id);
+    if (!d) return false;
+    const dc = changeOf(ctx, 'dispatches', id), saved = !!dc && !dc.deleted;
+    const pair = x => x.owner === a.bill.owner && x.seller === a.bill.seller;
+    const p = Dispatch.billPlan(ctx.after, d).find(pair);
+    const start = Tasks.startStage(ctx.after, a.boardId);
+    const asPlan = !!p && !!p.to && !a.dropped && a.title === p.title && a.desc === p.desc && same(a.to, p.to);
+    const asked = asPlan && !!start && a.stageId === start.id && Dispatch.canBill(ctx.st, ctx.pid, recOf(ctx.st, 'dispatches', id) || d);
+    if (!b) {
+      const twin = (ctx.after.tasks || []).some(x => x && String(x.id) !== String(a.id) && x.bill && x.bill.dispatchId === id && pair(x.bill));
+      return asked && !twin && a.from === ctx.pid;
+    }
+    const ch = changedFields(b, a);
+    if (!ch.every(f => BILL_FIELDS.includes(f))) return false;
+    if (p && (b.dropped || ch.includes('stageId'))) return asked;
+    if (p) return saved && asPlan && !ch.includes('due') && !Pipes.isFinal(ctx.st, b.boardId, b.stageId);
+    return saved && !b.dropped && !!a.dropped && Pipes.isFinal(ctx.after, a.boardId, a.stageId) && !ch.some(f => ['title', 'desc', 'to', 'due'].includes(f));
+  }
   function tasksRule(ctx, c) {
     const b = ctx.before(c), a = ctx.data(c);
+    if (billOk(ctx, b, a)) return null;
     const TO_TEXT = needs('ставить задачи другому отделу', 'tasksAssign');
     if (!b) {
       if (!a) return null;
@@ -7162,7 +7431,7 @@ const Guard = (() => {
     deals: dealsRule, leads: leadsRule, clients: clientsRule, feed: feedRule, acts: actsRule,
     tasks: tasksRule, dispatches: dispatchesRule, notes: notesRule,
     pipelines: SETTINGS, depts: SETTINGS, entities: SETTINGS, cities: SETTINGS, lostReasons: SETTINGS, shipRules: SETTINGS,
-    leadSource: SETTINGS, leadWaitMin: SETTINGS,
+    leadSource: SETTINGS, leadWaitMin: SETTINGS, billing: SETTINGS,
     roles: right('admin', 'управлять ролями и правами'), people: right('admin', 'управлять сотрудниками'),
     prefs: prefsRule,
     mail: ADMIN, msgs: ADMIN, tpl: ADMIN, address: ADMIN, rules: ADMIN, stockSheet: ADMIN,
@@ -8244,10 +8513,9 @@ const FORMS={
     const title=byId('t-title').value.trim();
     if(!title){showErr('t-err','Напишите, что нужно сделать.');byId('t-title').focus();return}
     const [tt,id]=byId('t-to').value.split(':'),due=byId('t-due').value,m=me(),now=new Date(),board=curBoard();
-    const t={id:Store.freeId(S.tasks,'t'),title,desc:byId('t-desc').value.trim(),to:{t:tt,id},from:m.id,due:due?fromIso(due,18):day(2,18),boardId:board.id,stageId:startStage(board.id).id,prio:byId('t-prio').value,deal:byId('t-deal')?.value||'',at:now};
-    const files=attDraftFiles();if(files) t.files=files;
-    S.tasks.push(t);
-    Notify.push(S,'task',m.id,`Новая задача: «${title}», срок ${fD(t.due)}.${t.deal?' Сделка '+t.deal+'.':''} От: ${m.name}.`,now,targetPeople(t.to),{t:'task',id:t.id});
+    // задача и уведомление исполнителю — Tasks.add (ядро задач, 37-tasks.js)
+    const t=Tasks.add(S,{title,desc:byId('t-desc').value.trim(),to:{t:tt,id},from:m.id,due:due?fromIso(due,18):day(2,18),boardId:board?.id,prio:byId('t-prio').value,deal:byId('t-deal')?.value||'',files:attDraftFiles()||undefined},now);
+    if(!t) return showErr('t-err','Нет доски задач: её заводят в «Настройки → Воронки».');
     closeModal();render();toast(`Задача поставлена. ${targetName(t)} — уведомление отправлено.`);
   },
   ship:f=>shipCreate(f),
@@ -8534,14 +8802,16 @@ function vTasks(){
 }
 function tCard(t,edit){
   const over=taskOverdue(t),dept=t.to.t==='d';
-  return `<article class="tcard ${isDone(t)?'done':''}" ${edit?'':`draggable="true" data-drag="${t.id}"`} data-act="open-task" data-id="${t.id}" tabindex="0"><div class="tc-top"><span class="tdot ${taskDot(t)}" aria-hidden="true"></span>${dept?'<span class="pill info sm">отделу</span>':''}${t.prio==='high'?'<span class="pill bad sm">Срочно</span>':''}${t.deal?`<span class="chip mono">${t.deal}</span>`:''}</div><p class="tc-t">${esc(t.title)}</p><div class="tc-m"><span class="who">${t.to.t==='p'?av(person(t.to.id),'xs'):`<span class="av xs">${ic('users')}</span>`}${esc(targetName(t))}</span><span class="due ${over?'bad':''}">${over?'просрочена · ':''}${fRel(t.due)}</span></div>${taskTakable(t)&&!edit?`<button type="button" class="btn sm tc-take" data-act="task-take" data-id="${t.id}">Взять</button>`:''}</article>`;
+  return `<article class="tcard ${isDone(t)?'done':''}" ${edit?'':`draggable="true" data-drag="${t.id}"`} data-act="open-task" data-id="${t.id}" tabindex="0"><div class="tc-top"><span class="tdot ${taskDot(t)}" aria-hidden="true"></span>${dept?'<span class="pill info sm">отделу</span>':''}${t.prio==='high'?'<span class="pill bad sm">Срочно</span>':''}${t.deal?`<span class="chip mono">${t.deal}</span>`:''}${t.bill?`<span class="chip mono">${esc(t.bill.dispatchId)}</span>`:''}</div><p class="tc-t">${esc(t.title)}</p><div class="tc-m"><span class="who">${t.to.t==='p'?av(person(t.to.id),'xs'):`<span class="av xs">${ic('users')}</span>`}${esc(targetName(t))}</span><span class="due ${over?'bad':''}">${over?'просрочена · ':''}${fRel(t.due)}</span></div>${taskTakable(t)&&!edit?`<button type="button" class="btn sm tc-take" data-act="task-take" data-id="${t.id}">Взять</button>`:''}</article>`;
 }
+// Задачу двигает тот, кто видит её на доске (taskVisible); запрос счёта по заявке открывают все — без кнопок этапов.
 function dTask(t){
-  const from=person(t.from),d=t.deal?deal(t.deal):null,over=taskOverdue(t),dept=t.to.t==='d';
+  const from=person(t.from),d=t.deal?deal(t.deal):null,over=taskOverdue(t),dept=t.to.t==='d',move=taskVisible(t);
+  const dsp=t.bill?Dispatch.byId(S,t.bill.dispatchId):null;
   return {kind:'Задача',title:esc(t.title),sub:`Поставил(а): ${esc(from?.name||'')} · ${fWhen(t.at)}`,body:`
-    <div class="seg wide">${stagesFor(t).map(st=>`<button class="${t.stageId===st.id?'on':''}" data-act="task-st" data-id="${t.id}" data-st="${esc(st.id)}">${esc(st.name)}</button>`).join('')}</div>
+    ${move?`<div class="seg wide">${stagesFor(t).map(st=>`<button class="${t.stageId===st.id?'on':''}" data-act="task-st" data-id="${t.id}" data-st="${esc(st.id)}">${esc(st.name)}</button>`).join('')}</div>`:`<p class="lock">${ic('lock')}Этап «${esc(stagesFor(t).find(s=>s.id===t.stageId)?.name||'нет данных: этап')}». Двигает задачу исполнитель.</p>`}
     ${taskTakable(t)?`<div class="tk-box"><p class="m0">Задача поставлена отделу. Нажмите «Взять» — вы станете исполнителем, у остальных в отделе она пропадёт из «Моих задач».</p><button type="button" class="btn pri" data-act="task-take" data-id="${t.id}">Взять задачу</button></div>`:''}
-    <dl class="kv"><dt>Кому</dt><dd>${esc(targetName(t))}${dept?' <span class="pill info sm">отделу</span>':''}</dd>${t.took?`<dt>Взял(а)</dt><dd>${esc(person(t.to.id)?.name||'нет данных: сотрудник')} из отдела «${esc(deptName(t.took.dept))}», ${fWhen(t.took.at)}</dd>`:''}<dt>Срок</dt><dd class="${over?'bad-t':''}">${fD(t.due)}, ${WD[new Date(t.due).getDay()]}${over?' · просрочена':''}</dd><dt>Важность</dt><dd>${t.prio==='high'?'Срочно':'Обычная'}</dd>${d?`<dt>Сделка</dt><dd>${can('clients')?`<button class="link" data-act="open-deal" data-id="${d.id}">${d.id} · ${esc(d.client)}</button>`:d.id}</dd>`:''}</dl>
+    <dl class="kv"><dt>Кому</dt><dd>${esc(targetName(t))}${dept?' <span class="pill info sm">отделу</span>':''}</dd>${t.took?`<dt>Взял(а)</dt><dd>${esc(person(t.to.id)?.name||'нет данных: сотрудник')} из отдела «${esc(deptName(t.took.dept))}», ${fWhen(t.took.at)}</dd>`:''}<dt>Срок</dt><dd class="${over?'bad-t':''}">${fD(t.due)}, ${WD[new Date(t.due).getDay()]}${over?' · просрочена':''}</dd><dt>Важность</dt><dd>${t.prio==='high'?'Срочно':'Обычная'}</dd>${t.bill?`<dt>Заявка</dt><dd>${dsp?`<button class="link" data-act="open-dispatch" data-id="${esc(dsp.id)}">${esc(dsp.number)} · ${esc(dsp.to.name)}</button>`:`нет данных: заявка ${esc(t.bill.dispatchId)}`}</dd>`:''}${t.dropped?`<dt>Снята</dt><dd>${esc(t.dropped)}</dd>`:''}${d?`<dt>Сделка</dt><dd>${can('clients')?`<button class="link" data-act="open-deal" data-id="${d.id}">${d.id} · ${esc(d.client)}</button>`:d.id}</dd>`:''}</dl>
     ${t.desc?`<div><h4 class="sh">Подробности</h4><p class="prose">${esc(t.desc)}</p></div>`:''}
     ${attCardHtml('task',t)}`};
 }
@@ -8559,7 +8829,7 @@ function taskTake(id){
 }
 
 // ——— регистрация в реестрах оболочки ———
-DRAWERS.task=id=>{const t=S.tasks.find(x=>x.id===id);return t&&taskVisible(t)?dTask(t):null};
+DRAWERS.task=id=>{const t=S.tasks.find(x=>x.id===id);return t&&Visible.taskSeen(S,t,me().id)?dTask(t):null};
 regRef('task','задача',id=>S.tasks.some(t=>t.id===id),'open-task');
 SEARCH.push({kind:'task',label:'Задача',order:70,find:q=>S.tasks.filter(t=>taskVisible(t)&&searchHas(q,t.title)).map(t=>({title:t.title,sub:`${targetName(t)} · ${fRel(t.due)}`,open:`data-act="open-task" data-id="${esc(t.id)}"`}))});
 ON.change['task-dept']=t=>{S.ui.taskDept=t.value;render()};
@@ -9501,7 +9771,7 @@ function receiveShip(by,now){
   if(P.issues.length||P.dmg.length) notes.push(Notify.push(S,'warn',by,`Приёмка ${s.id} с замечаниями. ${[P.issues.join('; '),P.dmg.length?'Повреждено: '+P.dmg.join(', '):''].filter(Boolean).join('. ')}. Фото в карточке поставки.`,now,[],{t:'ship',id:s.id}));
   P.waits.forEach(({d,items,how})=>{
     const mg=person(d.managerId);let tail;
-    if(how==='call'){const board=taskBoard();const t={id:Store.freeId(S.tasks,'t'),title:`Позвонить клиенту: товар по ${d.id} на складе`,desc:items,to:{t:'p',id:d.managerId},from:by,due:day(0,18),boardId:board.id,stageId:startStage(board.id).id,prio:'high',deal:d.id,at:now};S.tasks.push(t);taskIds.push(t.id);tail='Менеджеру поставлена задача позвонить клиенту.'}
+    if(how==='call'){const t=Tasks.add(S,{title:`Позвонить клиенту: товар по ${d.id} на складе`,desc:items,to:{t:'p',id:d.managerId},from:by,due:day(0,18),prio:'high',deal:d.id},now,{silent:true});if(t) taskIds.push(t.id);tail='Менеджеру поставлена задача позвонить клиенту.'}
     else if(how==='auto'){const x={id:Store.freeId(S.msgs,'m'),at:now,deal:d.id,channel:d.channel,auto:true,sim:true,text:fillTpl(d,items,false)};S.msgs.push(x);msgIds.push(x.id);tail=`Клиенту ушло авто-сообщение в ${CH[d.channel]} (имитация, не отправлено).`}
     else tail='Авто-сообщения выключены — напишите клиенту.';
     // менеджеру сделки — отдельно: уведомите клиента (R15). Клиента, номер сделки и менеджера называем только тому, кому сделка
@@ -11178,6 +11448,8 @@ VIEWS.sims=vSims;
 // Настройки → «Склады и юрлица»: справочники юрлиц и городов (добавить, переименовать, адрес склада)
 // и откуда взят каталог. Справочники лежат в S.entities и S.cities: сетка остатков, форма резерва и журнал
 // берут названия оттуда же, поэтому переименование видно везде сразу.
+// Здесь же продажа между юрлицами (S.billing): кто выставляет счета между юрлицами (billerId, не выбран — директор) и от какого
+// юрлица продаёт менеджер по типу (seller) — их берут Dispatch.billPlan и Dispatch.defaultSeller.
 
 // Название уже занято другим элементом справочника (сравнение как у товаров: регистр и пробелы не в счёт)
 const nameTaken=(list,name,exceptId)=>list.some(x=>x.id!==exceptId&&Catalog.norm(x.name)===Catalog.norm(name));
@@ -11197,6 +11469,22 @@ function renameInDict(list,t,what){
 }
 ON.change['ent-name']=t=>renameInDict(S.entities,t,'Юрлицо');
 ON.change['city-name']=t=>renameInDict(S.cities,t,'Город');
+// Новая копия S.billing (документ общей базы меняется целиком)
+const billingCopy=()=>{const b=S.billing||{};return Object.assign({},b,{seller:Object.assign({},b.seller)})};
+// «Счета между юрлицами выставляет»: кому уходит задача «Выставить счёт»; не выбран — директору
+ON.change['biller']=t=>{
+  const p=person(t.value),b=billingCopy();
+  if(p) b.billerId=p.id;else delete b.billerId;
+  S.billing=b;render();
+  toast(`Счета между юрлицами выставляет: ${p?p.name:'не выбран — запросы уходят директору'}. Новые запросы счёта пойдут ${p?'ему':'директору'}.`);
+};
+// «Менеджер B2B продаёт от»: продавец по умолчанию в новой заявке на продажу; пусто — менеджер выбирает сам
+ON.change['seller-by']=t=>{
+  const k=t.dataset.scope,e=S.entities.find(x=>x.id===t.value),b=billingCopy();
+  if(e) b.seller[k]=e.id;else delete b.seller[k];
+  S.billing=b;
+  toast(`Менеджер ${k.toUpperCase()} по умолчанию продаёт от: ${e?e.name:'не задано — выбирает в заявке'}.`);
+};
 ON.change['city-addr']=t=>{
   const c=S.cities.find(x=>x.id===t.dataset.id);if(!c) return;
   c.address=String(t.value).trim();
@@ -11234,13 +11522,24 @@ function stockSources(){
   return `<p class="m0"><b>Остатки:</b> последний перенос листа «Остатки» — ${snapRu(iso(sh.at))}, ${esc(who)}; строк в листе: ${(sh.rows||[]).length}. Дальше остатки меняются движениями в CRM.</p>`;
 }
 function vWarehouses(){
+  const popt=(cur,none)=>`<option value="">${esc(none)}</option>`+S.people.map(p=>`<option value="${esc(p.id)}"${p.id===cur?' selected':''}>${esc(p.name)}</option>`).join('');
+  const eopt=(cur,none)=>`<option value="">${esc(none)}</option>`+S.entities.map(e=>`<option value="${esc(e.id)}"${e.id===cur?' selected':''}>${esc(e.name)}</option>`).join('');
   const ents=S.entities.map(e=>`<div class="wh-row"><div class="field"><label for="ent-name-${esc(e.id)}">Название юрлица</label><input id="ent-name-${esc(e.id)}" class="inp" value="${esc(e.name)}" data-on="ent-name" data-id="${esc(e.id)}" autocomplete="off"></div></div>`).join('');
+  const bl=S.billing||{},billerSet=!!(bl.billerId&&person(bl.billerId));
+  // типы менеджеров — роли со scope (b2b, b2c)
+  const scopes=[...new Set(S.roles.filter(r=>r.scope).map(r=>r.scope))];
+  const sellers=scopes.map(k=>`<div class="field"><label for="seller-by-${esc(k)}">Менеджер ${esc(k.toUpperCase())} продаёт от</label><select id="seller-by-${esc(k)}" class="inp" data-on="seller-by" data-scope="${esc(k)}">${eopt((bl.seller||{})[k],'не задано — выбирает в заявке')}</select></div>`).join('');
   const cities=S.cities.map(c=>`<div class="wh-row city"><div class="field"><label for="city-name-${esc(c.id)}">Город</label><input id="city-name-${esc(c.id)}" class="inp" value="${esc(c.name)}" data-on="city-name" data-id="${esc(c.id)}" autocomplete="off"></div><div class="field"><label for="city-addr-${esc(c.id)}">Адрес склада</label><input id="city-addr-${esc(c.id)}" class="inp" value="${esc(c.address||'')}"${c.address?'':' placeholder="нет данных: адрес"'} data-on="city-addr" data-id="${esc(c.id)}" autocomplete="off"></div></div>`).join('');
   return `<section class="card"><div class="card-h"><h3>Юрлица</h3></div><div class="card-b stack-s">
     <p class="hint">Юрлицо — строка в таблице остатков (ИП, НПП, ВС). Переименование меняет название везде, остатки остаются на месте.</p>
     ${ents}
     <form class="wh-add" data-form="entity-add" novalidate><div class="field"><label for="ent-new">Новое юрлицо</label><input id="ent-new" class="inp" placeholder="Название" autocomplete="off"></div><button class="btn" type="submit">${ic('plus')}Добавить</button></form>
     <p class="err" id="ent-err" hidden></p>
+  </div></section>
+  <section class="card"><div class="card-h"><h3>Продажа между юрлицами</h3></div><div class="card-b stack-s">
+    <p class="hint">В заявке на продажу менеджер видит, на каком юрлице лежит товар, и выбирает, от какого юрлица продаёт. Есть товар чужого юрлица — после сохранения CRM спрашивает «Запросить счёт?», и по «Запросить» ставит задачу «Выставить счёт» сотруднику ниже.</p>
+    <div class="field"><label for="biller">Счета между юрлицами выставляет</label><select id="biller" class="inp" data-on="biller">${popt(billerSet?bl.billerId:'','не выбран')}</select>${billerSet?'':'<small class="hint">нет данных: кто выставляет счета (сейчас — директор)</small>'}</div>
+    <div class="grid2">${sellers||'<p class="muted m0">Ролей с типом B2B или B2C нет.</p>'}</div>
   </div></section>
   <section class="card"><div class="card-h"><h3>Города и склады</h3></div><div class="card-b stack-s">
     <p class="hint">Город — где физически лежит товар (Иркутск, Москва, Краснодар). В таблице менеджеров города нет, поэтому остатки из неё стоят в колонке «нет данных: город».</p>
@@ -11711,6 +12010,17 @@ function dspFreeText(productId){
   const p=product(productId),k=stockOf(productId);
   return k.known?`свободно ${qtyOf(k.free,p)}`:'остаток: нет данных';
 }
+// Где лежит товар: клетки «юрлицо, город» со свободным (Stock.cells — тот же счёт, что Stock.sellMax): «ВС, Иркутск — свободно 12 ·
+// НПП, Иркутск — свободно 40». Нет числа в таблице остатков — «нет данных: остаток»; числа есть, но свободного нигде нет — так и пишем
+function dspCellsText(productId){
+  const p=product(productId),cells=Stock.cells(S,productId);
+  if(cells.length) return cells.map(c=>`${dspCell(c)} — свободно ${qtyOf(c.free,p)}`).join(' · ');
+  return stockOf(productId).known?'свободного нет ни на одном складе':'нет данных: остаток';
+}
+const dspEnt=id=>Stock.entityName(S,id)??id;
+const dspCellKey=c=>c.entityId+'|'+c.cityId;
+// Строка из клетки чужого юрлица (не продавца): после сохранения CRM предложит запросить счёт «владелец → продавец» (Dispatch.billPlan)
+const dspForeign=(x,c)=>!!c&&!!x.seller&&c.entityId!==Stock.ANY&&c.entityId!==x.seller;
 // Число на пункте меню: открытые заявки, назначенные мне, и — у тех, кто ведёт отправки — открытые на сегодня
 function dspBadge(st=S,personId=S.me,now=new Date()){
   const ids=new Set(Dispatch.query(st,{driver:personId}).filter(d=>dspIsOpen(st,d)).map(d=>d.id));
@@ -11812,17 +12122,22 @@ function dDispatch(d){
   const lines=d.items.map((it,i)=>{
     const pr=it.productId?product(it.productId):null,sold=Dispatch.soldText(S,it);
     const sellBtn=canSell&&it.productId&&!it.sold?`<button type="button" class="btn sm dsp-sell" data-act="dsp-sell" data-id="${esc(d.id)}" data-i="${i}">Списать при продаже</button>`:'';
-    return `<li><label class="dsp-line"><input type="checkbox"${it.picked?' checked':''}${canPick?'':' disabled'} data-on="dsp-pick" data-id="${esc(d.id)}" data-i="${i}"><span><b>${esc(Dispatch.lineName(S,it))}</b> — ${esc(qtyOf(it.qty,pr))}${it.productId?'':' <small class="muted">своя строка</small>'}${sold?`<small class="dsp-sold">${esc(sold)}</small>`:''}</span></label>${sellBtn}</li>`;
+    const from=d.purpose==='sale'&&it.productId&&!it.sold?`<small class="dsp-sold">${it.from?'откуда: '+esc(dspCell(it.from)):'склад не выбран'}</small>`:'';
+    return `<li><label class="dsp-line"><input type="checkbox"${it.picked?' checked':''}${canPick?'':' disabled'} data-on="dsp-pick" data-id="${esc(d.id)}" data-i="${i}"><span><b>${esc(Dispatch.lineName(S,it))}</b> — ${esc(qtyOf(it.qty,pr))}${it.productId?'':' <small class="muted">своя строка</small>'}${from}${sold?`<small class="dsp-sold">${esc(sold)}</small>`:''}</span></label>${sellBtn}</li>`;
   }).join('');
   const files=d.files.length?`<div class="dsp-files">${d.files.map(f=>dspFileHtml(d,f)).join('')}</div>`:'<p class="muted m0">Файлов нет.</p>';
   const deal=d.dealId?(S.deals||[]).find(x=>x.id===d.dealId):null;
+  // счета между юрлицами: не запрошен (кнопка «Запросить счёт») / запрошен / выставлен / снят — Dispatch.billView
+  const bills=d.purpose==='sale'?Dispatch.billView(S,d):[],mayBill=Dispatch.canBill(S,S.me,d);
+  const billsHtml=bills.length?`<div><h4 class="sh">Счета между юрлицами</h4><ul class="dsp-bills">${bills.map(b=>`<li class="b-${esc(b.state)}"><b>Счёт ${esc(b.pair)}:</b> ${esc(b.text)}${b.taskId?` <button type="button" class="link" data-act="open-task" data-id="${esc(b.taskId)}">открыть задачу</button>`:''}${b.ask&&mayBill?` <button type="button" class="btn sm" data-act="dsp-bill" data-id="${esc(d.id)}" data-owner="${esc(b.owner)}">${b.state==='stale'?'Запросить заново':'Запросить счёт'}</button>`:''}</li>`).join('')}</ul></div>`:'';
   const edit=Dispatch.canEdit(S,S.me,d)?`<div><button type="button" class="btn" data-act="dsp-edit" data-id="${esc(d.id)}">Изменить заявку</button></div>`:'';
   return {kind:'Отправка '+d.number,title:esc(d.to.name),sub:`${esc(Dispatch.PURPOSE[d.purpose])} · ${esc(dspWhen(d))}${d.demo?' · пример':''}`,body:`
     ${steps}<div class="dsp-stages">${moves}</div>${lock}
-    <dl class="kv"><dt>Этап</dt><dd>${dspStagePill(d)}</dd><dt>Получатель</dt><dd>${esc(d.to.name)}</dd><dt>Телефон</dt><dd>${esc(d.to.phone)}</dd><dt>Адрес</dt><dd>${hasAddr?esc(d.address):dspNoData('адрес')}</dd><dt>Когда</dt><dd>${esc(dspWhen(d))}</dd>${deal?`<dt>Сделка</dt><dd><button type="button" class="link" data-act="open-deal" data-id="${esc(deal.id)}">${esc(deal.id)} · ${esc(deal.client)}</button></dd>`:d.dealId?`<dt>Сделка</dt><dd>${esc(d.dealId)}</dd>`:''}<dt>Создал</dt><dd>${esc(dspWho(d.by))}, ${esc(fWhen(d.at))}</dd></dl>
+    <dl class="kv"><dt>Этап</dt><dd>${dspStagePill(d)}</dd><dt>Получатель</dt><dd>${esc(d.to.name)}</dd><dt>Телефон</dt><dd>${esc(d.to.phone)}</dd><dt>Адрес</dt><dd>${hasAddr?esc(d.address):dspNoData('адрес')}</dd><dt>Когда</dt><dd>${esc(dspWhen(d))}</dd>${d.purpose==='sale'?`<dt>Продаём от</dt><dd>${d.seller?esc(dspEnt(d.seller)):'<span class="muted">не выбрано</span>'}</dd>`:''}${deal?`<dt>Сделка</dt><dd><button type="button" class="link" data-act="open-deal" data-id="${esc(deal.id)}">${esc(deal.id)} · ${esc(deal.client)}</button></dd>`:d.dealId?`<dt>Сделка</dt><dd>${esc(d.dealId)}</dd>`:''}<dt>Создал</dt><dd>${esc(dspWho(d.by))}, ${esc(fWhen(d.at))}</dd></dl>
     ${quick}${route}
     <div><h4 class="sh">Водитель</h4>${d.driverId?`<p class="m0"><span class="who">${av(person(d.driverId),'xs')}${esc(dspWho(d.driverId))}</span></p>`:'<p class="muted m0">Не назначен.</p>'}${assign}</div>
     <div><h4 class="sh">Список · ${esc(dspPicked(d))}</h4><ul class="dsp-lines">${lines}</ul>${canPick?'':work?'':'<p class="hint">Отмечают «собрано» кладовщик, логист и водитель.</p>'}</div>
+    ${billsHtml}
     <div><h4 class="sh">Файлы</h4>${files}</div>
     <div><h4 class="sh">Примечание</h4>${d.note?`<p class="prose">${esc(d.note)}</p>`:'<p class="muted m0">Примечания нет.</p>'}</div>
     ${edit}
@@ -11832,18 +12147,32 @@ function dDispatch(d){
 // ——— форма «Новая отправка» / правка заявки ———
 // Черновик лежит в S.ui.dspDraft: поля пишут в него по мере ввода (data-on="dsp-f"), при отправке значения ещё раз берутся из полей.
 const dspDraft=()=>S.ui.dspDraft||null;
+// Продавец новой заявки — Dispatch.defaultSeller (по типу менеджера); клетка строки новой «Продажи» — Dispatch.defaultFrom
+// (auto: подобрана сама и сменится вместе с продавцом). В правке ничего не подставляется: как сохранено, так и показано.
 function dspDraftFrom(pre,editId){
   const p=pre||{},w=p.when||{},cell=(c,e,k)=>({e:(c&&c.entityId)||e,k:(c&&c.cityId)||k});
+  const seller=editId?(p.seller||''):(p.seller!==undefined?p.seller||'':Dispatch.defaultSeller(S,S.me));
+  const line=i=>{
+    const row=Object.assign(i.productId?{productId:i.productId,qty:i.qty}:{text:i.text,qty:i.qty},i.sold?{locked:true}:{});
+    if(i.from) row.from={entityId:i.from.entityId,cityId:i.from.cityId};
+    else if(!editId&&i.productId&&(p.purpose||'sale')==='sale') dspAutoFrom(row,seller);
+    return row;
+  };
   const f=cell(p.from,(S.entities[0]||{}).id||'',(S.cities[0]||{}).id||''),t=cell(p.toCell,(S.entities[0]||{}).id||'',(S.cities[1]||S.cities[0]||{}).id||'');
   return {editId:editId||'',purpose:p.purpose||'sale',name:(p.to&&p.to.name)||'',phone:(p.to&&p.to.phone)||'',
     address:p.address&&p.address!==Dispatch.NO_ADDRESS&&p.purpose!=='transfer'?p.address:'',
     date:w.date?iso(w.date):'',from:w.from||'',till:w.till||'',note:p.note||'',dealId:p.dealId||'',
-    fromE:f.e,fromC:f.k,toE:t.e,toC:t.k,
+    fromE:f.e,fromC:f.k,toE:t.e,toC:t.k,seller,
     // списанная при продаже строка в форме не меняется и не удаляется (Dispatch.update тоже откажет)
-    items:(p.items||[]).map(i=>Object.assign(i.productId?{productId:i.productId,qty:i.qty}:{text:i.text,qty:i.qty},i.sold?{locked:true}:{})),
+    items:(p.items||[]).map(line),
     files:(p.files||[]).map(x=>({...x}))};
 }
 // Открыть форму новой заявки. pre — те же поля, что у Dispatch.create: purpose, to, address, when, items, files, note, dealId.
+// Клетка строки по умолчанию: подобрать и пометить auto; свободного нет нигде — клетки нет
+function dspAutoFrom(row,seller){
+  const f=Dispatch.defaultFrom(S,row.productId,seller);
+  if(f){row.from=f;row.auto=true}else{delete row.from;delete row.auto}
+}
 function openDispatchNew(pre){S.ui.dspDraft=dspDraftFrom(pre,'');openModal('dispatchForm')}
 function openDispatchEdit(id){
   const d=Dispatch.byId(S,id);if(!d) return;
@@ -11863,8 +12192,12 @@ function dspAddrHint(x){
   return a===Dispatch.NO_ADDRESS?'Адрес склада-получателя в справочнике городов не заполнен: в заявке будет «'+a+'».':'Адрес склада-получателя подставится сам: '+a+'.';
 }
 // Блок формы под цель: у перемещения — склады и адрес склада-получателя, у остальных — поле «Адрес»
+function dspSellerHtml(x){
+  if(x.purpose!=='sale') return '';
+  return `<div class="field"><label for="dsp-seller">Продаём от</label><select id="dsp-seller" class="inp" data-on="dsp-seller"><option value="">не выбрано</option>${dspOpts(S.entities,x.seller)}</select><small class="hint">По умолчанию — по типу менеджера (Настройки → Склады и юрлица). Есть товар с чужого юрлица — после сохранения CRM спросит, запросить ли счёт.</small></div>`;
+}
 function dspTransferHtml(x){
-  if(x.purpose!=='transfer') return `<div class="field"><label for="dsp-address">Адрес</label><input id="dsp-address" class="inp" value="${esc(x.address)}" data-on="dsp-f" data-k="address" autocomplete="off" placeholder="Город, улица, дом"></div>`;
+  if(x.purpose!=='transfer') return `${dspSellerHtml(x)}<div class="field"><label for="dsp-address">Адрес</label><input id="dsp-address" class="inp" value="${esc(x.address)}" data-on="dsp-f" data-k="address" autocomplete="off" placeholder="Город, улица, дом"></div>`;
   return `${dspCellSel('from','Склад «откуда»',x.fromE,x.fromC,true)}${dspCellSel('to','Склад «куда»',x.toE,x.toC,false)}<p class="hint" id="dsp-ad-hint">${esc(dspAddrHint(x))}</p>`;
 }
 function dspItemsHtml(x){
@@ -11872,15 +12205,28 @@ function dspItemsHtml(x){
   return `<ul class="dsp-its">${x.items.map((it,i)=>{
     const name=it.productId?(product(it.productId)||{}).name||'нет данных: товар':it.text;
     if(it.locked) return `<li class="dsp-it"><div class="dsp-it-n"><b>${esc(name)}</b><small>списано при продаже — строку не изменить и не удалить</small></div><input class="inp dsp-q" type="number" value="${esc(it.qty)}" disabled aria-label="Количество: ${esc(name)} (списано)"></li>`;
-    return `<li class="dsp-it"><div class="dsp-it-n"><b>${esc(name)}</b><small>${it.productId?esc(dspFreeText(it.productId)):'своя строка — склад не трогает'}</small></div><input class="inp dsp-q" type="number" min="1" step="1" inputmode="numeric" value="${esc(it.qty)}" data-on="dsp-qty" data-i="${i}" aria-label="Количество: ${esc(name)}"><button type="button" class="btn ghost icon" data-act="dsp-line-del" data-i="${i}" aria-label="Убрать строку: ${esc(name)}">${ic('x')}</button></li>`;
+    const sale=x.purpose==='sale'&&it.productId;
+    return `<li class="dsp-it"><div class="dsp-it-n"><b>${esc(name)}</b><small>${it.productId?esc(sale?dspCellsText(it.productId):dspFreeText(it.productId)):'своя строка — склад не трогает'}</small>${sale?dspSrcHtml(x,it,i,name):''}</div><input class="inp dsp-q" type="number" min="1" step="1" inputmode="numeric" value="${esc(it.qty)}" data-on="dsp-qty" data-i="${i}" aria-label="Количество: ${esc(name)}"><button type="button" class="btn ghost icon" data-act="dsp-line-del" data-i="${i}" aria-label="Убрать строку: ${esc(name)}">${ic('x')}</button></li>`;
   }).join('')}</ul>`;
 }
-// Результаты поиска по каталогу: название и «свободно N» из Stock.summary
+// Откуда берём товар строки «Продажи»: клетки со свободным (Stock.cells); сохранённая клетка, где свободного уже нет, остаётся
+// в списке с «свободно 0». Клетка чужого юрлица — пометка о запросе счёта.
+function dspSrcHtml(x,it,i,name){
+  const p=product(it.productId),cells=Stock.cells(S,it.productId),cur=it.from||null;
+  const opts=cells.map(c=>[dspCellKey(c),`${dspCell(c)} — свободно ${qtyOf(c.free,p)}`]);
+  if(cur&&!cells.some(c=>dspCellKey(c)===dspCellKey(cur))) opts.push([dspCellKey(cur),`${dspCell(cur)} — свободно ${qtyOf(0,p)}`]);
+  if(!opts.length) return '';
+  const sel=`<select class="inp sm dsp-src" data-on="dsp-src" data-i="${i}" aria-label="Откуда: ${esc(name)}"><option value="">склад не выбран</option>${opts.map(([v,l])=>`<option value="${esc(v)}"${cur&&v===dspCellKey(cur)?' selected':''}>${esc(l)}</option>`).join('')}</select>`;
+  const note=dspForeign(x,cur)?`<small class="dsp-bill">Чужое юрлицо: после сохранения CRM предложит запросить счёт ${esc(dspEnt(cur.entityId))} → ${esc(dspEnt(x.seller))}</small>`:'';
+  return `<label class="dsp-src-w"><span>Откуда:</span>${sel}</label>${note}`;
+}
+// Результаты поиска по каталогу: название и «свободно N» из Stock.summary; у «Продажи» — по клеткам «юрлицо, город»
 function dspPresHtml(q){
   if(Catalog.norm(q).length<2) return '';
   const hits=Catalog.query(S,{q}).slice(0,6);
   if(!hits.length) return '<p class="hint">В каталоге такого нет — добавьте свою строку.</p>';
-  return `<ul class="dsp-pres">${hits.map(p=>`<li><button type="button" class="dpr" data-act="dsp-add" data-pid="${esc(p.id)}"><span class="dpr-n">${esc(p.name)}</span><small>${esc(dspFreeText(p.id))}</small>${ic('plus')}</button></li>`).join('')}</ul>`;
+  const sale=(dspDraft()||{}).purpose==='sale';
+  return `<ul class="dsp-pres">${hits.map(p=>`<li><button type="button" class="dpr" data-act="dsp-add" data-pid="${esc(p.id)}"><span class="dpr-n">${esc(p.name)}</span><small>${esc(sale?dspCellsText(p.id):dspFreeText(p.id))}</small>${ic('plus')}</button></li>`).join('')}</ul>`;
 }
 function dspFilesEditHtml(x){return attEditHtml(x.files,'dsp-file-del')}
 MODALS.dispatchForm=()=>{
@@ -11915,13 +12261,25 @@ MODALS.dspSell=o=>{
   if(!p) return `${head}<div class="modal-b"><p class="m0">Такой строки в заявке нет.</p></div>`;
   const src=sellSources({pid:p.id,did:d.dealId});
   if(!src.length) return `${head}<div class="modal-b"><p class="m0">Списать нечего: на складе этого товара нет остатка и резерва со склада.</p></div>`;
-  const dealRs=src.find(x=>x[0][0]==='r'),best=Stock.bestCell(S,p.id);
-  const want=dealRs?dealRs[0]:`c:${best.entityId}|${best.cityId}`,cur=src.some(x=>x[0]===want)?want:src[0][0];
+  // по умолчанию — клетка строки (резерв сделки в этой клетке — он); клетки нет — резерв сделки, иначе клетка с наибольшим свободным
+  const dealRs=src.find(x=>x[0][0]==='r'),best=Stock.bestCell(S,p.id),f=it.from;
+  const inFrom=f&&src.find(x=>{const r=x[0][0]==='r'&&S.reserves.find(y=>'r:'+y.id===x[0]);return r&&(r.entityId||Stock.ANY)===f.entityId&&(r.cityId||Stock.ANY)===f.cityId});
+  const fromKey=f?`c:${f.entityId}|${f.cityId}`:'';
+  const want=inFrom?inFrom[0]:fromKey&&src.some(x=>x[0]===fromKey)?fromKey:dealRs?dealRs[0]:`c:${best.entityId}|${best.cityId}`,cur=src.some(x=>x[0]===want)?want:src[0][0];
   return `<form data-form="dsp-sell" data-id="${esc(d.id)}" data-i="${esc(o.i)}" novalidate>${mHead('Списать при продаже: '+esc(p.name))}<div class="modal-b">
     <p class="m0">Заявка ${esc(d.number)}, ${esc(d.to.name)}. Списывается вся строка: ${esc(qtyOf(it.qty,p))}.${d.dealId?` Сделка ${esc(d.dealId)}.`:''} В журнале движений появится «Отгрузка».</p>
     <div class="field"><label for="ps-src">Откуда</label><select id="ps-src" class="inp" data-on="sellsrc" data-pid="${esc(p.id)}">${optionsHtml(src,cur)}</select></div>
     <p class="hint" id="ps-max">${esc(sellMaxText(p.id,cur))}</p>
     <p class="err" id="ps-err" hidden></p></div>${mFoot('Списать')}</form>`;
+};
+// Вопрос после сохранения заявки: по каждой паре «Запросить счёт для ВС от НПП?» — [Запросить]; [Не сейчас] закрывает окно,
+// незапрошенный счёт остаётся в карточке с кнопкой «Запросить счёт». Пары и тексты — Dispatch.billView.
+const dspBillAsks=id=>{const d=Dispatch.byId(S,id);return d&&Dispatch.canBill(S,S.me,d)?Dispatch.billView(S,d).filter(b=>b.ask):[]};
+function dspBillAsk(id){if(dspBillAsks(id).length) openModal('dspBill',id)}
+MODALS.dspBill=id=>{
+  const d=Dispatch.byId(S,id),asks=dspBillAsks(id);
+  const rows=asks.map(b=>`<div class="dsp-ask"><p class="m0"><b>${esc(b.question)}</b></p><p class="hint">Счёт ${esc(b.pair)}${b.state==='stale'?': выставлен по прежнему списку, а список изменился':''}. Задача «Выставить счёт» уйдёт: ${esc(dspWho(Dispatch.billPlan(S,d).find(p=>p.owner===b.owner)?.to?.id))}.</p><div class="bar"><button type="button" class="btn pri" data-act="dsp-bill" data-id="${esc(id)}" data-owner="${esc(b.owner)}">Запросить</button></div></div>`).join('');
+  return `<div>${mHead('Счёт между юрлицами · '+esc(d?d.number:id))}<div class="modal-b stack-s">${rows}</div><div class="modal-f"><button type="button" class="btn" data-act="close-modal">Не сейчас</button></div></div>`;
 };
 MODALS.dspFile=key=>{
   const [id,fid]=String(key).split('|'),d=Dispatch.byId(S,id),f=d&&d.files.find(x=>x.id===fid);
@@ -11959,6 +12317,16 @@ A['dsp-stage']=el=>dspMove(el.dataset.id,el.dataset.stage);
 A['dsp-cancel-ask']=el=>openModal('dspCancel',el.dataset.id);
 A['dsp-copy']=el=>{const d=Dispatch.byId(S,el.dataset.id);if(d) dspCopy(d.address,()=>toast(`Адрес скопирован: ${d.address}`))};
 A['dsp-file']=el=>openModal('dspFile',el.dataset.key);
+// «Запросить» / «Запросить счёт»: Dispatch.requestBill — задача, уведомление и запись в ленте одним сохранением
+A['dsp-bill']=el=>{
+  const r=Dispatch.requestBill(S,el.dataset.id,el.dataset.owner,S.me,new Date());
+  if(!r.ok){toast(r.reason,'warn');return}
+  const inModal=S.ui.modal&&S.ui.modal.type==='dspBill';
+  if(inModal&&!dspBillAsks(el.dataset.id).length) closeModal();
+  render();
+  if(inModal&&S.ui.modal) openModal('dspBill',el.dataset.id);
+  toast(`Счёт запрошен: задача «${r.task.title}» — ${dspWho(r.task.to.id)}, ему ушло уведомление.`);
+};
 A['dsp-sell']=el=>{
   if(!Dispatch.canSell(S,S.me)){toast('У вашей роли нет права списывать товар при продаже.','warn');return}
   openModal('dspSell',{id:el.dataset.id,i:+el.dataset.i});
@@ -11967,7 +12335,8 @@ A['dsp-sell']=el=>{
 A['dsp-add']=el=>{
   const x=dspDraft();if(!x) return;
   const row=x.items.find(i=>i.productId===el.dataset.pid&&!i.locked);
-  if(row) row.qty=(Number(row.qty)||0)+1;else x.items.push({productId:el.dataset.pid,qty:1});
+  if(row) row.qty=(Number(row.qty)||0)+1;
+  else{const n={productId:el.dataset.pid,qty:1};if(x.purpose==='sale') dspAutoFrom(n,x.seller);x.items.push(n)}
   byId('dsp-items').innerHTML=dspItemsHtml(x);
 };
 A['dsp-own-add']=()=>{
@@ -11994,8 +12363,26 @@ ON.input['dsp-f']=t=>{if(!(t.dataset.k in DSP_DEF)) dspField(t)};
 ON.change['dsp-purpose']=t=>{
   const x=dspDraft();if(!x) return;
   x.purpose=t.value;byId('dsp-tr').innerHTML=dspTransferHtml(x);
+  // у «Продажи» строки показывают клетки и «откуда»: строкам без клетки — клетка по умолчанию
+  if(x.purpose==='sale') x.items.forEach(it=>{if(it.productId&&!it.locked&&!it.from) dspAutoFrom(it,x.seller)});
+  byId('dsp-items').innerHTML=dspItemsHtml(x);
   // у перемещения получатель — склад: подставим, если поле пустое
   if(x.purpose==='transfer'&&!x.name.trim()){x.name=`Склад: ${dspCell({entityId:x.toE,cityId:x.toC})}`;const n=byId('dsp-name');if(n) n.value=x.name}
+};
+// «Продаём от»: строки, чья клетка подобрана сама, подбираются заново под нового продавца
+ON.change['dsp-seller']=t=>{
+  const x=dspDraft();if(!x) return;
+  x.seller=t.value;
+  x.items.forEach(it=>{if(it.productId&&!it.locked&&(it.auto||!it.from)) dspAutoFrom(it,x.seller)});
+  byId('dsp-items').innerHTML=dspItemsHtml(x);
+};
+// «Откуда» у строки: выбор человека, дальше сам не меняется
+ON.change['dsp-src']=t=>{
+  const x=dspDraft(),it=x&&x.items[+t.dataset.i];if(!it||it.locked) return;
+  const [e,c]=String(t.value).split('|');
+  if(t.value) it.from={entityId:e,cityId:c};else delete it.from;
+  it.auto=false;
+  byId('dsp-items').innerHTML=dspItemsHtml(x);
 };
 ON.input['dsp-qty']=t=>{const x=dspDraft();if(x&&x.items[+t.dataset.i]&&!x.items[+t.dataset.i].locked) x.items[+t.dataset.i].qty=t.value};
 ON.input['dsp-pq']=t=>{const box=byId('dsp-pres');if(box) box.innerHTML=dspPresHtml(t.value)};
@@ -12030,13 +12417,15 @@ FORMS.dispatch=()=>{
   const v=(id,k)=>{const e=byId(id);if(e&&typeof e.value==='string') x[k]=e.value};
   v('dsp-name','name');v('dsp-phone','phone');v('dsp-date','date');v('dsp-from','from');v('dsp-till','till');v('dsp-note','note');
   if(x.purpose!=='transfer') v('dsp-address','address');
-  const data={purpose:x.purpose,to:{name:x.name,phone:x.phone},address:x.purpose==='transfer'?'':x.address,when:{date:x.date,from:x.from,till:x.till},items:x.items,files:x.files,note:x.note,dealId:x.dealId||undefined};
+  const data={purpose:x.purpose,to:{name:x.name,phone:x.phone},address:x.purpose==='transfer'?'':x.address,when:{date:x.date,from:x.from,till:x.till},items:x.items,files:x.files,note:x.note,dealId:x.dealId||undefined,seller:x.purpose==='sale'?x.seller:''};
   if(x.purpose==='transfer'){data.from={entityId:x.fromE,cityId:x.fromC};data.toCell={entityId:x.toE,cityId:x.toC}}
   const now=new Date(),r=x.editId?Dispatch.update(S,x.editId,data,S.me,now):Dispatch.create(S,data,S.me,now);
   if(!r.ok){dspMark(r.missing);showErr('dsp-err',r.reason);return}
-  const id=x.editId||r.id,got=!x.editId&&S.notes[0]&&S.notes[0].kind==='dispatch'?S.notes[0].to.length:0;
+  const id=x.editId||r.id,dn=!x.editId&&S.notes.find(n=>n.kind==='dispatch'&&n.ref&&n.ref.id===id),got=dn?dn.to.length:0;
   S.ui.dspDraft=null;closeModal();render();openDrawer('dispatch',id);
   toast(x.editId?`Заявка ${id} изменена. Запись в ленте есть.`:`Заявка ${id} создана. Уведомление получили: ${got}.`);
+  // есть товар чужого юрлица и счёт не запрошен — вопрос «Запросить счёт для ВС от НПП?»
+  dspBillAsk(id);
 };
 FORMS['dsp-assign']=f=>{
   const id=f.dataset.id,to=byId('dsp-drv').value,r=Dispatch.assign(S,id,to,S.me,new Date());
