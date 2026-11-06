@@ -320,7 +320,7 @@ test('Stock.reserveView: сколько, где, до какого числа; �
   const wh = Stock.reserveView(S, r1, 'p5');
   assert.deepEqual(plain({ qty: wh.qty, where: wh.where, deal: wh.deal, inTransit: wh.inTransit }), { qty: 22, where: 'ИП · нет данных: город', deal: null, inTransit: false });
   assert.equal(wh.until, r1.until);
-  assert.equal(Stock.reserveView(S, r3, 'p5').where, 'в пути: П-1043');
+  assert.equal(Stock.reserveView(S, r3, 'p5').where, 'в пути: П-1043, ИП', 'в пути — номер поставки и её юрлицо');
   assert.deepEqual(plain(Stock.reserveView(S, r1, 'p2').deal), { id: 'Д-311', client: 'Иванов Сергей' });
   assert.equal(Stock.reserveView(S, r1, 'p3').deal, null);
   assert.equal(Stock.reserveView(S, r1, 'p1').deal.id, 'Д-311');

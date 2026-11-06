@@ -269,8 +269,11 @@ test('ревизия: meta.rev меньше Store.REV и нет миграции
   const setRev = v => { const d = new DatabaseSync(file); d.prepare("UPDATE meta SET v = ? WHERE k = 'rev'").run(String(v)); d.close(); };
   const docs = () => { const d = new DatabaseSync(file, { readOnly: true }); const n = d.prepare('SELECT COUNT(*) AS n FROM docs').get().n; d.close(); return n; };
   const n0 = docs();
-  // шаг до REV есть (MIGRATIONS[17]), а до REV − 1 — нет: база ревизии REV − 2 не стартует
-  setRev(REV - 2);
+  // ближайший к REV номер без шага миграции (шаги 17 и 18 есть, 16 — нет): база ревизии на единицу ниже него не стартует
+  const { MIGRATIONS } = require('../server/migrate.js');
+  let gap = REV;
+  while (typeof MIGRATIONS[gap] === 'function') gap--;
+  setRev(gap - 1);
   await assert.rejects(start({ dataDir: dir }), /нет шага миграции до ревизии .*Данные не тронуты/s);
   assert.equal(docs(), n0);
   setRev(REV + 1);

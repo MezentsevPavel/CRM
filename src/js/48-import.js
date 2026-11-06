@@ -326,12 +326,12 @@ const Import = (() => {
       if (k >= 0) { toAdd.splice(k, 1); continue; }
       st.reserves.splice(i, 1);
       removed++;
-      logMove(st, { at, productId: r.productId, kind: Stock.KINDS.unreserve, qty: r.qty, entityId: r.entityId || Stock.ANY, cityId: r.cityId || Stock.ANY, doc: 'перенос заменён', by: who });
+      logMove(st, { at, productId: r.productId, kind: Stock.KINDS.unreserve, qty: r.qty, entityId: r.entityId || Stock.ANY, cityId: r.cityId || Stock.ANY, doc: 'перенос заменён', by: who, rid: r.id });
     }
     for (const w of toAdd) {
       const r = { id: Store.freeId(st.reserves, 'r'), productId: w.productId, qty: w.qty, entityId: w.entityId, cityId: w.cityId, src: 'stock', note: w.note, imported: true, at, by: who };
       st.reserves.push(r);
-      logMove(st, { at, productId: r.productId, kind: Stock.KINDS.reserve, qty: r.qty, entityId: r.entityId, cityId: r.cityId, doc: w.note ? `перенос: ${w.note}` : 'перенос', by: who });
+      logMove(st, { at, productId: r.productId, kind: Stock.KINDS.reserve, qty: r.qty, entityId: r.entityId, cityId: r.cityId, doc: w.note ? `перенос: ${w.note}` : 'перенос', by: who, rid: r.id });
     }
     st.stockSheet = { at, by: who, rows: list.map(({ name, cat, ip, npp, vs, custody, transit, damaged }) => ({ name, cat, ip, npp, vs, custody, transit, damaged })) };
     return { products: list.length, matched: list.length - built.unmatched.length, created, cells, changed, withStock, reserves: wanted.length, reservesChanged: removed + toAdd.length, moves, unparsed };

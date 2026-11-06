@@ -413,7 +413,8 @@ function render(){
   try{const h=hashView();if(h&&h!==S.view) history.replaceState(null,'','#'+S.view)}catch(_){}
   // открыл раздел «Уведомления» — свои прочитаны (подсвечены один раз, при этой отрисовке)
   if(ok&&S.view==='notifications') Notify.markRead(S,S.me);
-  // напоминания о делах и «лид ждёт» в серверном режиме создаёт только сервер
+  // напоминания о делах и «лид ждёт» в серверном режиме создаёт только сервер; срок резерва и «товар появился» в демо —
+  // раз в минуту (actsTick), чтобы перерисовка не рассылала их сама
   if(!SERVER){Acts.notify(S,new Date());Leads.notifyWaiting(S,new Date())}
   renderSide();
   byId('ttl').textContent=n.label;
@@ -495,11 +496,18 @@ const FORMS={
   reset:()=>resetData(),
   // Резерв из карточки товара — тот же Deals.reserve, что из строки сделки: право reserve и право править сделку, только
   // видимая сделка, не больше «в строках сделки − уже в резерве», запись в ленте сделки, уведомление складу, директору и менеджеру.
+  // «Без сделки — для кого» — Stock.reserveFor: тот же источник, срок и проверка свободного, вместо сделки — текст.
   reserve:f=>{
     const p=product(f.dataset.pid),did=byId('rs-deal').value,qty=parseInt(byId('rs-qty').value,10),src=byId('rs-src').value,until=byId('rs-until').value;
-    if(!did) return showErr('rs-err','Нет ваших открытых сделок с этим товаром в строках: добавьте товар в сделку — тогда здесь можно поставить резерв.');
+    const free=byId('rs-kind')?.value==='free';
+    if(!free&&!did) return showErr('rs-err','Нет ваших открытых сделок с этим товаром в строках: добавьте товар в сделку или выберите «Без сделки — для кого».');
     if(!until||dd(fromIso(until))<0) return showErr('rs-err','Дата окончания резерва не может быть в прошлом.');
     const u=fromIso(until),now=new Date();
+    if(free){
+      const res=Stock.reserveFor(S,{productId:p.id,qty,src,entityId:byId('rs-ent').value,cityId:byId('rs-city').value,until:u,forWho:byId('rs-for').value},S.me,now);
+      if(!res.ok) return showErr('rs-err',res.reason);
+      render();return toast(`Резерв без сделки поставлен: ${qtyOf(res.reserve.qty,p)} для «${res.reserve.forWho}». Склад и директор получили уведомление.`);
+    }
     const res=Deals.reserve(S,did,{productId:p.id,qty,src,entityId:byId('rs-ent').value,cityId:byId('rs-city').value,until:u},S.me,now);
     if(!res.ok) return showErr('rs-err',res.reason);
     render();toast(`Резерв поставлен: ${qtyOf(res.reserve.qty,p)} для ${did}. Склад, директор и менеджер сделки получили уведомление.`);

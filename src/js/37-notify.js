@@ -93,6 +93,15 @@ const Notify = (() => {
     return add(st, kind, by, text, now, recipients(st, kind, extraPersons), ref);
   }
 
+  // Уведомление вида kind только этим людям (без карты RECIPIENTS): автору резерва, подписавшемуся на товар. Кого нет
+  // среди сотрудников и кто выключил вид — не получает; некому — null.
+  function to(st, kind, by, text, now, persons, ref) {
+    if (!Object.hasOwn(RECIPIENTS, kind)) throw new Error(`Неизвестный вид уведомления: ${kind}`);
+    const known = new Set((st.people || []).map(p => p.id));
+    const list = [...new Set(persons || [])].filter(id => known.has(id) && wants(st, id, kind));
+    return list.length ? add(st, kind, by, text, now, list, ref) : null;
+  }
+
   // Уведомление, текст которого зависит от читателя: textFor(personId) → текст. Адресаты — те же, что у push; кому выходит
   // одинаковый текст, получают одно уведомление, так что разных текстов — столько уведомлений. Первым в списке — то, что
   // получает первый адресат. Возвращает уведомления в том же порядке.
@@ -133,5 +142,5 @@ const Notify = (() => {
     return (after || []).some(id => !had.has(id)) ? pref.kind : null;
   }
 
-  return { RECIPIENTS, REF_KINDS, SOUNDS, wants, setWanted, soundPref, setSound, soundFor, recipients, push, pushFor, unread, unreadIds, markRead };
+  return { RECIPIENTS, REF_KINDS, SOUNDS, wants, setWanted, soundPref, setSound, soundFor, recipients, push, pushFor, to, unread, unreadIds, markRead };
 })();

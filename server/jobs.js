@@ -1,5 +1,6 @@
 'use strict';
-// Задачи сервера раз в минуту. Напоминания о делах (Acts.notify) и «лид ждёт» (Leads.notifyWaiting) в рабочей версии
+// Задачи сервера раз в минуту. Напоминания о делах (Acts.notify), «лид ждёт» (Leads.notifyWaiting), срок резерва завтра и
+// «товар появился» (Stock.tick) в рабочей версии
 // делает только сервер — по одному, сколько бы вкладок ни было открыто; браузер их не запускает. Здесь же обслуживание:
 // истёкшие сеансы, забытые вкладки, старые попытки входа, брошенные и давно удалённые файлы.
 
@@ -8,7 +9,7 @@ const MINUTE = 60e3;
 function createJobs({ sync, core, auth, files, now, onClosed }) {
   // Есть ли что разослать — дёшево, без копии состояния
   function due(st, at) {
-    if (core.Acts.due(st, at).length) return true;
+    if (core.Acts.due(st, at).length || core.Stock.due(st, at)) return true;
     return (st.leads || []).some(l => !l.waitNoted && core.Leads.waiting(st, l, at) !== null);
   }
 
@@ -16,7 +17,7 @@ function createJobs({ sync, core, auth, files, now, onClosed }) {
     sync.fresh();
     const at = new Date(now());
     if (!due(sync.state, at)) return 0;
-    return sync.system(work => [...core.Acts.notify(work, at), ...core.Leads.notifyWaiting(work, at)].length);
+    return sync.system(work => [...core.Acts.notify(work, at), ...core.Leads.notifyWaiting(work, at), ...core.Stock.tick(work, at)].length);
   }
 
   function tick() {

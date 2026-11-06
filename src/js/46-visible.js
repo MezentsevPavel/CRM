@@ -67,6 +67,8 @@ const Visible = (() => {
       case 'shipments': return !!rec && shipsSeen(st, pid);
       case 'reserves': return !!rec && (can(st, pid, 'stock') || Leads.dealsVisible(st, pid).some(d => d.id === rec.dealId));
       case 'dispatches': return !!rec;
+      // «Сообщить, когда появится» — каждый видит только свои подписки
+      case 'watches': return !!rec && rec.personId === pid;
       case 'mail': case 'msgs': return false;
       default: {
         const k = Docs.kind(key);
@@ -120,6 +122,7 @@ const Visible = (() => {
         case 'dispatches':
           out.dispatches = (v || []).map(d => { const c = copy(d); if (c.dealId) c.dealId = hideDeal(c.dealId); return c; });
           break;
+        case 'watches': out.watches = (v || []).filter(w => w && w.personId === pid).map(copy); break;
         case 'mail': out.mail = { boxes: [], suppliers: [], letters: [] }; break;
         case 'msgs': out.msgs = []; break;
         case 'prefs': {

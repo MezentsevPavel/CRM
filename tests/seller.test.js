@@ -302,7 +302,7 @@ test('сервер: менеджер B2B без права ставить зад
   } finally { await srv.stop(); }
 });
 
-test('сервер: база ревизии 16 доводится до 17 — появляется продавец по умолчанию (B2B — ВС, B2C — ИП), кто выставляет счета — не выбран', async () => {
+test('сервер: база ревизии 16 доводится до текущей (шаг 17) — появляется продавец по умолчанию (B2B — ВС, B2C — ИП), кто выставляет счета — не выбран', async () => {
   const srv = await kit.start();
   const dir = srv.dir;
   await kit.director(srv);
@@ -316,7 +316,7 @@ test('сервер: база ревизии 16 доводится до 17 — п
   try {
     const db = new DatabaseSync(file, { readOnly: true });
     try {
-      assert.equal(db.prepare("SELECT v FROM meta WHERE k = 'rev'").get().v, '17');
+      assert.equal(db.prepare("SELECT v FROM meta WHERE k = 'rev'").get().v, String(load().Store.REV));
       assert.deepEqual(JSON.parse(db.prepare("SELECT data FROM docs WHERE key = 'billing'").get().data), { seller: { b2b: 'vs', b2c: 'ip' } });
     } finally { db.close(); }
   } finally { await again.stop(); }

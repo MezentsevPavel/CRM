@@ -134,9 +134,28 @@ const Guard = (() => {
     return !!c && !c.deleted && !!c.data && !!c.data.received && !(b && b.received);
   }
   const shrinks = (b, a) => !a || (changedFields(b, a).every(f => f === 'qty') && a.qty < b.qty);
+  // Резерв без сделки (Stock.reserveFor): новый — от своего имени (by), с текстом «для кого» и не больше свободного — Stock.canReserve
+  // по состоянию после пачки без этого резерва; автора не меняют; больше, другой товар или другое место — снова не больше свободного.
+  // Резерв переноса остатков (imported) — только с правом admin, свободное не проверяется: таблица менеджеров как есть.
+  function looseRule(ctx, b, a) {
+    if (!a || a.dealId) return null;
+    const admin = ctx.can('admin');
+    if (a.imported && !(b && b.imported) && !admin) return needs('резерв переноса остатков', 'admin');
+    if (!b) {
+      if (!a.imported && a.by !== ctx.pid) return no('резерв — только от своего имени');
+      if (!a.imported && !String(a.forWho || '').trim()) return no('резерв без сделки — напишите, для кого он');
+    } else if (!same(a.by, b.by)) return no('автора резерва не меняют');
+    const grows = !b || ['productId', 'src', 'entityId', 'cityId'].some(f => !same(a[f], b[f])) || !(Number(a.qty) <= Number(b.qty));
+    if (!grows || (a.imported && admin)) return null;
+    const rest = Object.assign({}, ctx.after, { reserves: (ctx.after.reserves || []).filter(r => r && String(r.id) !== String(a.id)) });
+    const chk = Stock.canReserve(rest, { productId: a.productId, qty: a.qty, entityId: a.entityId, cityId: a.cityId, src: a.src });
+    return chk.ok ? null : no('резерв больше свободного. ' + chk.reason);
+  }
   function reservesRule(ctx, c) {
     const b = ctx.before(c), a = ctx.data(c);
-    if (ctx.can('reserve') && [b && b.dealId, a && a.dealId].every(id => dealEditable(ctx, id))) return null;
+    const allowed = ctx.can('reserve') && [b && b.dealId, a && a.dealId].every(id => dealEditable(ctx, id));
+    const loose = allowed ? looseRule(ctx, b, a) : null;
+    if (allowed && !loose) return null;
     if (b) {
       // провал своей видимой сделки снимает её резервы
       if (b.dealId && dealLost(ctx, b.dealId) && dealEditable(ctx, b.dealId) && shrinks(b, a)) return null;
@@ -146,7 +165,14 @@ const Guard = (() => {
       if (ctx.can('receive') && b.src && b.src !== 'stock' && received(ctx, b.src)
         && (!a || (a.src === 'stock' && a.qty <= b.qty && changedFields(b, a).every(f => ['src', 'entityId', 'cityId', 'qty'].includes(f))))) return null;
     }
-    return no('ставить и снимать резервы — нужно право «Ставить и снимать резервы» и право править сделку резерва');
+    return loose || no('ставить и снимать резервы — нужно право «Ставить и снимать резервы» и право править сделку резерва');
+  }
+  // «Сообщить, когда появится»: подписка — только своя (personId) и с правом «остатки»; снять свою можно всегда.
+  // Сработавшие подписки снимает сам сервер (Stock.notifyAppeared в задачах по времени), не через пачку.
+  function watchesRule(ctx, c) {
+    const b = ctx.before(c), a = ctx.data(c);
+    if ((a && a.personId !== ctx.pid) || (b && b.personId !== ctx.pid)) return no('«Сообщить, когда появится» — только за себя');
+    return !a || ctx.can('stock') ? null : needs('подписаться на товар', 'stock');
   }
 
   // ——— поставки ———
@@ -411,7 +437,7 @@ const Guard = (() => {
   const ADMIN = right('admin', 'менять эти данные');
   const RULES = {
     products: right('catalog', 'менять товары и каталог'),
-    stock: stockRule, aside: asideRule, moves: movesRule, reserves: reservesRule, shipments: shipmentsRule,
+    stock: stockRule, aside: asideRule, moves: movesRule, reserves: reservesRule, shipments: shipmentsRule, watches: watchesRule,
     deals: dealsRule, leads: leadsRule, clients: clientsRule, feed: feedRule, acts: actsRule,
     tasks: tasksRule, dispatches: dispatchesRule, notes: notesRule,
     pipelines: SETTINGS, depts: SETTINGS, entities: SETTINGS, cities: SETTINGS, lostReasons: SETTINGS, shipRules: SETTINGS,

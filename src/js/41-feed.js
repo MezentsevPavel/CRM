@@ -238,7 +238,7 @@ function feedWire() {
 // (РОП). Перерисовывает только колокол и меню, чтобы не сбить ввод в открытой форме.
 function actsTick() {
   if (!S) return;
-  const now = new Date(), made = [...Acts.notify(S, now), ...Leads.notifyWaiting(S, now)];
+  const now = new Date(), made = [...Acts.notify(S, now), ...Leads.notifyWaiting(S, now), ...Stock.tick(S, now)];
   if (!made.length) return;
   updBell(); renderSide(); save();
   const mine = made.filter(n => n.to.includes(S.me));

@@ -4,8 +4,14 @@
 // Данные состояния (схема v3):
 //   stock[productId][entityId|'_'][cityId|'_'] = количество; '_' — «нет данных» (в таблице менеджеров города нет);
 //   aside[productId] = {damaged, custody, transitNoShip} — «Бой», ответхранение, «В пути» без поставки;
-//   reserves[{id, productId, qty, entityId, cityId, src:'stock'|shipId, dealId, until}];
-//   moves[{at, productId, kind, qty, entityId, cityId, doc, by}] — новые записи сверху.
+//   reserves[{id, productId, qty, entityId, cityId, src:'stock'|shipId, dealId, until, by, at, forWho?, note?, imported?, hist?, warned?}]:
+//     by/at — кто и когда поставил (у старых резервов их может не быть — «нет данных»); forWho — «для кого» у резерва без сделки
+//     (reserveFor); note — примечание переноса остатков; hist — смены срока [{at, by, until, was}] (extend); warned — срок «до»
+//     (число, мс), о котором автору уже напомнили (remindExpiring);
+//   moves[{at, productId, kind, qty, entityId, cityId, doc, by, rid?, src?, sold?}] — новые записи сверху. У «Резерв» и «Снят резерв»
+//     rid — id резерва (по нему собираются история резерва и «Снятые резервы»), src — поставка резерва «под приход»,
+//     sold — снят продажей (sell), а не руками;
+//   watches[{id, productId, personId, at}] — «Сообщить, когда появится» (watch, notifyAppeared).
 // Пустая клетка — null или нет ключа, не ноль: «0» в таблице и «не заполнено» — разные вещи.
 
 const Stock = (() => {
@@ -75,7 +81,7 @@ const Stock = (() => {
   function incomingOf(st, productId) {
     const ships = (st.shipments || [])
       .filter(s => s.dir === 'in' && !Pipes.isFinal(st, s.pipeId, s.stageId))
-      .flatMap(s => (s.items || []).filter(i => i.productId === productId).map(i => ({ shipId: s.id, qty: i.qty, eta: s.eta })));
+      .flatMap(s => (s.items || []).filter(i => i.productId === productId).map(i => ({ shipId: s.id, qty: i.qty, eta: s.eta, entityId: s.entityId || ANY })));
     const moves = Dispatch.transit(st, productId)
       .map(t => ({ shipId: t.number, dispatchId: t.dispatchId, qty: t.qty, eta: t.eta, entityId: t.entityId, cityId: t.cityId }));
     return [...ships, ...moves].sort((a, b) => a.eta - b.eta);
@@ -201,30 +207,146 @@ const Stock = (() => {
     return { ok: true, move: log(st, rec) };
   }
 
-  // Поставить резерв {productId, qty, entityId, cityId, src, dealId, until, by, at}. Сначала canReserve.
-  // → {ok, reserve, max} или {ok:false, max, reason}. Запись в журнале — «Резерв».
+  // Поставить резерв {productId, qty, entityId, cityId, src, dealId, forWho?, until, by, at}. Сначала canReserve.
+  // Кто и когда поставил — в самом резерве (by, at) и в журнале («Резерв» с rid). → {ok, reserve, max} или {ok:false, max, reason}.
   function reserve(st, p = {}) {
     const chk = canReserve(st, p);
     if (!chk.ok) return { ok: false, max: chk.max, reason: chk.reason };
     const src = p.src || 'stock';
     const ship = src === 'stock' ? null : st.shipments.find(x => x.id === src);
+    if (!st.reserves) st.reserves = [];
     const r = {
       id: Store.freeId(st.reserves, 'r'), productId: p.productId, qty: Number(p.qty),
       entityId: ship ? (ship.entityId || ANY) : (p.entityId || ANY), cityId: ship ? (ship.cityId || ANY) : (p.cityId || ANY),
-      src, dealId: p.dealId, until: p.until,
+      src, dealId: p.dealId, until: p.until, by: p.by || null, at: p.at,
     };
+    if (!p.dealId && p.forWho) r.forWho = p.forWho;
     st.reserves.push(r);
-    log(st, { at: p.at, productId: r.productId, kind: KINDS.reserve, qty: r.qty, entityId: r.entityId, cityId: r.cityId, doc: r.dealId, by: p.by });
+    log(st, moveOf(r, KINDS.reserve, r.qty, p.by, p.at));
     return { ok: true, reserve: r, max: chk.max - r.qty };
   }
+  // Документ записи журнала о резерве: номер сделки, «для: …» у резерва без сделки, иначе пусто
+  const forDoc = r => r.dealId || (r.forWho ? 'для: ' + r.forWho : undefined);
+  // Запись журнала «Резерв» / «Снят резерв» по резерву r: с его id (rid) и поставкой (src), если он «под приход»
+  function moveOf(r, kind, qty, by, at, sold) {
+    const m = { at, productId: r.productId, kind, qty, entityId: r.entityId || ANY, cityId: r.cityId || ANY, doc: forDoc(r), by, rid: r.id };
+    if (r.src && r.src !== 'stock') m.src = r.src;
+    if (sold) m.sold = true;
+    return m;
+  }
 
-  // Снять резерв: товар возвращается в свободный остаток, в журнале — «Снят резерв». → {ok, reserve} | {ok:false, reason}
-  function unreserve(st, reserveId, by, at) {
+  // Для кого резерв — глазами человека personId: «Д-311, Иванов» (сделка ему видна), «сделка скрыта», текст «для кого»,
+  // примечание переноса или «нет данных: для кого». Одна фраза на уведомления и экран.
+  function forText(st, r, personId) {
+    if (r.dealId) {
+      const d = dealRef(st, r.dealId, personId);
+      if (d) return `${d.id}, ${d.client}`;
+      if (r.dealId === HIDDEN_ID || (st.deals || []).some(x => x.id === r.dealId)) return HIDDEN_DEAL;
+    }
+    return r.forWho || r.note || 'нет данных: для кого';
+  }
+  // Куда ведёт уведомление о резерве человеку personId: сделка, если она ему видна, иначе карточка товара
+  const refFor = (st, r, personId) => (r.dealId && dealRef(st, r.dealId, personId) ? { t: 'deal', id: r.dealId } : { t: 'product', id: r.productId });
+  const prodName = (st, id) => low(((st.products || []).find(p => p.id === id) || {}).name || 'нет данных: товар');
+  const personName = (st, id) => ((st.people || []).find(p => p.id === id) || {}).name || 'нет данных: кто';
+  // Автор резерва: кто поставил (by); у старых — по журналу (Feed.reserveWhen); нет — менеджер сделки
+  function authorOf(st, r) {
+    if (r.by) return r.by;
+    const w = Feed.reserveWhen(st, r);
+    if (w.by) return w.by;
+    const d = r.dealId && (st.deals || []).find(x => x.id === r.dealId);
+    return (d && d.managerId) || null;
+  }
+
+  // Снять резерв: товар возвращается в свободный остаток, в журнале — «Снят резерв» (rid, sold — снят продажей).
+  // Снял не автор — автору уведомление «Ваш резерв … снял …». → {ok, reserve} | {ok:false, reason}
+  function unreserve(st, reserveId, by, at, sold) {
     const i = (st.reserves || []).findIndex(r => r.id === reserveId);
     if (i < 0) return { ok: false, reason: 'Такого резерва нет.' };
     const r = st.reserves.splice(i, 1)[0];
-    log(st, { at, productId: r.productId, kind: KINDS.unreserve, qty: r.qty, entityId: r.entityId || ANY, cityId: r.cityId || ANY, doc: r.dealId, by });
+    log(st, moveOf(r, KINDS.unreserve, r.qty, by, at, sold));
+    const author = authorOf(st, r);
+    if (by && author && author !== by) {
+      const what = `Ваш резерв ${prodName(st, r.productId)} × ${num(r.qty)} (${forText(st, r, author)})`;
+      const who = personName(st, by).replace(/\.$/, '');   // имя с инициалом уже кончается точкой — вторую не ставим
+      Notify.to(st, 'reserve', by, sold ? `${what} списан при продаже: ${who}.` : `${what} снял ${who}.`, at, [author], refFor(st, r, author));
+    }
     return { ok: true, reserve: r };
+  }
+
+  // Резерв без сделки: «для кого» текстом (обязательно), источник — клетка склада или поставка в пути, срок «до», право reserve.
+  // Те же проверки свободного, что у резерва сделки (canReserve). o: {productId, qty, src?, entityId?, cityId?, until?, forWho}.
+  // Уведомление — складу и директору (Notify.RECIPIENTS.reserve). → {ok, reserve, max} | {ok:false, reason, max}
+  function reserveFor(st, o = {}, by, now) {
+    const fail = (reason, max = 0) => ({ ok: false, reason, max });
+    if (!Perms.can(st, by, 'reserve')) return fail('У вашей роли нет права ставить резервы.');
+    const forWho = String(o.forWho || '').trim().slice(0, 200);
+    if (!forWho) return fail('Напишите, для кого резерв: например, «под Иванова, монтаж в Шелехове».');
+    if (!(st.products || []).some(p => p.id === o.productId)) return fail('Такого товара нет в каталоге.');
+    const until = o.until || new Date(new Date(now).getTime() + RESERVE_DAYS * 864e5);
+    if (sod(until) < sod(now)) return fail('Дата окончания резерва не может быть в прошлом.');
+    const src = o.src || 'stock';
+    const res = reserve(st, { productId: o.productId, qty: o.qty, src, entityId: o.entityId, cityId: o.cityId, until, forWho, by, at: now });
+    if (!res.ok) return fail(res.reason, res.max);
+    const r = res.reserve, where = src === 'stock' ? `со склада ${cellText(st, r.entityId, r.cityId)}` : `в пути: ${src}`;
+    Notify.push(st, 'reserve', by, `Резерв без сделки: ${prodName(st, r.productId)} — ${num(r.qty)} ${where} для «${forWho}» до ${fD(until)}.`, now, [], { t: 'product', id: r.productId });
+    return res;
+  }
+
+  // Сменить срок резерва: право reserve, у резерва сделки — ещё и право править сделку. Смена пишется в историю резерва (hist),
+  // напоминание о сроке взводится заново. → {ok, reserve} | {ok:false, reason}
+  function extend(st, reserveId, until, by, now) {
+    const r = (st.reserves || []).find(x => x.id === reserveId);
+    if (!r) return { ok: false, reason: 'Такого резерва нет.' };
+    if (!Perms.can(st, by, 'reserve')) return { ok: false, reason: 'У вашей роли нет права менять резервы.' };
+    const d = r.dealId && (st.deals || []).find(x => x.id === r.dealId);
+    if (r.dealId && (!d || !Deals.canEdit(st, d, by))) return { ok: false, reason: 'Срок резерва сделки меняет тот, кто может править сделку.' };
+    if (!until || isNaN(new Date(until).getTime())) return { ok: false, reason: 'Укажите дату.' };
+    if (sod(until) < sod(now)) return { ok: false, reason: 'Дата окончания резерва не может быть в прошлом.' };
+    if (r.until && +sod(r.until) === +sod(until)) return { ok: false, reason: 'Срок не изменился.' };
+    r.hist = [...(r.hist || []), { at: now, by, until, was: r.until || null }];
+    r.until = until;
+    delete r.warned;
+    return { ok: true, reserve: r };
+  }
+
+  // Когда и кем поставлен резерв: своя отметка, иначе по журналу. → {at, by} (null — нет данных)
+  function placed(st, r) {
+    if (r.at) return { at: r.at, by: r.by || null };
+    const m = (st.moves || []).find(x => x.rid === r.id && x.kind === KINDS.reserve);
+    return m ? { at: m.at, by: m.by || null } : Feed.reserveWhen(st, r);
+  }
+
+  // История резерва r по времени: [{at, by, text}] — поставлен, срок изменён, снято / списано при продаже, срок вышел.
+  // Источник — журнал движений (rid) и смены срока в резерве (hist); «срок вышел» — по until и now, без кого.
+  function history(st, r, now) {
+    const out = [], p = placed(st, r), mine = (st.moves || []).filter(m => m.rid === r.id);
+    const first = mine.filter(m => m.kind === KINDS.reserve).pop();
+    out.push({ at: p.at || null, by: p.by || null, text: `Поставлен: ${num(first ? first.qty : r.qty)}` });
+    for (const h of r.hist || []) out.push({ at: h.at, by: h.by || null, text: `Срок: ${h.was ? 'до ' + fD(h.was) : 'не был задан'} → до ${fD(h.until)}` });
+    for (const m of mine.filter(x => x.kind === KINDS.unreserve)) out.push({ at: m.at, by: m.by || null, text: `${m.sold ? 'Списано при продаже' : 'Снято'}: ${num(m.qty)}` });
+    if (r.until && now && sod(r.until) < sod(now)) out.push({ at: new Date(+sod(r.until) + 864e5), by: null, text: `Срок вышел (был до ${fD(r.until)})` });
+    const t = x => (x.at ? new Date(x.at).getTime() : 0);
+    return out.sort((a, b) => t(a) - t(b));
+  }
+
+  // Снятые резервы товара — по журналу: резерв, у которого есть «Резерв» с rid, а самого резерва уже нет. Последние limit
+  // по времени снятия: [{rid, qty, doc, entityId, cityId, src, at, by, removedAt, removedBy, sold}]. Старые записи журнала
+  // без rid сюда не попадают.
+  function removed(st, productId, limit = 20) {
+    const live = new Set((st.reserves || []).map(r => r.id)), by = new Map();
+    for (const m of st.moves || []) {
+      if (m.productId !== productId || !m.rid || live.has(m.rid)) continue;
+      const x = by.get(m.rid) || { rid: m.rid, put: null, off: null };
+      if (m.kind === KINDS.reserve && !x.put) x.put = m;
+      if (m.kind === KINDS.unreserve && !x.off) x.off = m;   // журнал — новые сверху: первое снятие и есть последнее
+      by.set(m.rid, x);
+    }
+    const t = v => (v ? new Date(v).getTime() : 0);
+    return [...by.values()].filter(x => x.put && x.off)
+      .map(x => ({ rid: x.rid, qty: x.put.qty, doc: x.put.doc, entityId: x.put.entityId, cityId: x.put.cityId, src: x.put.src || 'stock',
+        at: x.put.at, by: x.put.by || null, removedAt: x.off.at, removedBy: x.off.by || null, sold: !!x.off.sold }))
+      .sort((a, b) => t(b.removedAt) - t(a.removedAt)).slice(0, limit);
   }
 
   // Резервы с истёкшим сроком: день «до» раньше дня now. В последний день срока резерв ещё действует. Единственное определение
@@ -236,13 +358,13 @@ const Stock = (() => {
 
   // Снять с резерва q штук: весь резерв — unreserve(), часть — резерв уменьшается, в журнале «Снят резерв» на q.
   // r — запись резерва или его id. → {ok, reserve} | {ok:false, reason}
-  function release(st, r, q, by, at) {
+  function release(st, r, q, by, at, sold) {
     if (typeof r === 'string') r = (st.reserves || []).find(x => x.id === r);
     if (!r) return { ok: false, reason: 'Такого резерва нет.' };
     if (!Number.isInteger(Number(q)) || q < 1) return { ok: false, reason: 'Укажите количество — целое число больше нуля.' };
-    if (q >= r.qty) return unreserve(st, r.id, by, at);
+    if (q >= r.qty) return unreserve(st, r.id, by, at, sold);
     r.qty -= q;
-    log(st, { at, productId: r.productId, kind: KINDS.unreserve, qty: q, entityId: r.entityId || ANY, cityId: r.cityId || ANY, doc: r.dealId, by });
+    log(st, moveOf(r, KINDS.unreserve, q, by, at, sold));
     return { ok: true, reserve: r };
   }
 
@@ -304,7 +426,7 @@ const Stock = (() => {
     }
     const m = move(st, { kind: KINDS.ship, productId, qty: q, entityId: e, cityId: c, doc, by, at: now });
     if (!m.ok) return { ok: false, reason: m.reason + ' Списать больше, чем лежит в клетке, нельзя.' };
-    if (r) release(st, r, q, by, now);
+    if (r) release(st, r, q, by, now, true);
     return { ok: true, move: m.move, reserve: r };
   }
 
@@ -330,18 +452,105 @@ const Stock = (() => {
   // (перенос остатков кладёт в него текст ячейки «Резерв» с именем клиента; у резерва из сделки его нет).
   // where — «ИП · Иркутск» или «в пути: П-1043»; deal — {id, client} или null (скрыта); hasDeal — резерв вообще привязан к
   // сделке из состояния (нет — на экране «нет данных: сделка», а не «скрыта»). Нет права stock → null: резерва человек не видит.
+  // forWho — «для кого» резерва без сделки; by, at — кто и когда поставил (placed; null — нет данных).
   function reserveView(st, r, personId) {
     if (!r || !Perms.can(st, personId, 'stock')) return null;
     const src = r.src || 'stock', inTransit = src !== 'stock';
+    const ship = inTransit ? (st.shipments || []).find(s => s.id === src) : null;
+    const p = placed(st, r);
     return {
       id: r.id, productId: r.productId, qty: r.qty, src, inTransit,
-      where: inTransit ? `в пути: ${src}` : cellText(st, r.entityId, r.cityId),
+      where: inTransit ? `в пути: ${src}, ${entityName(st, (ship && ship.entityId) || r.entityId || ANY) ?? r.entityId}` : cellText(st, r.entityId, r.cityId),
       until: r.until || null,
       note: r.note || null,
+      forWho: r.dealId ? null : (r.forWho || null),
+      by: p.by || null, at: p.at || null,
       deal: dealRef(st, r.dealId, personId),
       hasDeal: r.dealId === HIDDEN_ID || (st.deals || []).some(d => d.id === r.dealId),
     };
   }
+
+  // ——— в пути по юрлицам ———
+  // Что едет к нам (incomingOf), по юрлицу поставки (у перемещения — юрлицо склада-получателя): [{entityId, name, qty, sold}],
+  // sold — резервы под эти поставки («продано» из того, что в пути). Порядок — справочник юрлиц, затем прочие.
+  function transitBy(st, productId) {
+    const acc = new Map();
+    for (const x of incomingOf(st, productId)) {
+      const e = x.entityId || ANY, a = acc.get(e) || { entityId: e, qty: 0, sold: 0, ships: new Set() };
+      a.qty += x.qty;
+      if (!x.dispatchId) a.ships.add(x.shipId);
+      acc.set(e, a);
+    }
+    for (const r of st.reserves || []) {
+      if (r.productId !== productId || !r.src || r.src === 'stock') continue;
+      for (const a of acc.values()) if (a.ships.has(r.src)) a.sold += r.qty;
+    }
+    const order = (st.entities || []).map(x => x.id);
+    const rank = id => { const i = order.indexOf(id); return i < 0 ? order.length + (id === ANY ? 1 : 0) : i; };
+    return [...acc.values()].sort((a, b) => rank(a.entityId) - rank(b.entityId))
+      .map(a => ({ entityId: a.entityId, name: entityName(st, a.entityId) ?? a.entityId, qty: a.qty, sold: a.sold }));
+  }
+  // «ВС 20 (продано 15) · НПП 5» — одна подпись на таблицу номенклатуры и карточку товара; ничего не едет — ''
+  const transitText = (st, productId) => transitBy(st, productId).map(a => `${a.name} ${num(a.qty)}${a.sold ? ` (продано ${num(a.sold)})` : ''}`).join(' · ');
+
+  // ——— «Сообщить, когда появится» ———
+  const watchOf = (st, productId, personId) => (st.watches || []).find(w => w.productId === productId && w.personId === personId) || null;
+  // Подписаться: право stock. Уже подписан — та же подписка. → {ok, watch} | {ok:false, reason}
+  function watch(st, productId, personId, now) {
+    if (!Perms.can(st, personId, 'stock')) return { ok: false, reason: 'У вашей роли нет права смотреть остатки.' };
+    if (!(st.products || []).some(p => p.id === productId)) return { ok: false, reason: 'Такого товара нет в каталоге.' };
+    const had = watchOf(st, productId, personId);
+    if (had) return { ok: true, watch: had };
+    if (!st.watches) st.watches = [];
+    const w = { id: Store.freeId(st.watches, 'w'), productId, personId, at: now };
+    st.watches.push(w);
+    return { ok: true, watch: w };
+  }
+  function unwatch(st, productId, personId) {
+    const w = watchOf(st, productId, personId);
+    if (!w) return false;
+    st.watches.splice(st.watches.indexOf(w), 1);
+    return true;
+  }
+  // Подписки, которым пора: свободный остаток товара больше нуля. Подписавшимся — уведомление «… появился: свободно N (где)»,
+  // подписка снимается — уведомление приходит один раз. → [уведомление…]
+  function notifyAppeared(st, now) {
+    const out = [], ready = new Map();
+    for (const w of st.watches || []) {
+      const k = summary(st, w.productId);
+      if (k.free !== null && k.free > 0) ready.set(w.productId, [...(ready.get(w.productId) || []), w]);
+    }
+    for (const [pid, ws] of ready) {
+      const k = summary(st, pid), cs = cells(st, pid);
+      const where = cs.length === 1 ? cellText(st, cs[0].entityId, cs[0].cityId) : cs.map(c => `${cellText(st, c.entityId, c.cityId)} ${num(c.free)}`).join(', ');
+      const name = ((st.products || []).find(p => p.id === pid) || {}).name || 'нет данных: товар';
+      const n = Notify.to(st, 'arrive', null, `${name} появился: свободно ${num(k.free)}${where ? ` (${where})` : ''}.`, now, ws.map(w => w.personId), { t: 'product', id: pid });
+      if (n) out.push(n);
+      st.watches = st.watches.filter(w => !ws.includes(w));
+    }
+    return out;
+  }
+  // Резервы, срок которых кончается завтра (последний день «до» — завтра), о которых автору ещё не напоминали
+  function expiring(st, now) {
+    const tomorrow = +sod(new Date(+sod(now) + 36 * 3600e3));
+    return (st.reserves || []).filter(r => r.until && +sod(r.until) === tomorrow && r.warned !== +sod(r.until));
+  }
+  // Напомнить автору резерва (authorOf) — со сделкой и без: «Резерв … истекает завтра». Один раз на срок (warned). → [уведомление…]
+  function remindExpiring(st, now) {
+    const out = [];
+    for (const r of expiring(st, now)) {
+      r.warned = +sod(r.until);
+      const author = authorOf(st, r);
+      if (!author) continue;
+      const n = Notify.to(st, 'reserve', null, `Резерв ${prodName(st, r.productId)} × ${num(r.qty)} (${forText(st, r, author)}) истекает завтра, ${fD(r.until)}: продлите или снимите.`, now, [author], refFor(st, r, author));
+      if (n) out.push(n);
+    }
+    return out;
+  }
+  // Есть ли что разослать по времени — дёшево, для задач сервера
+  const due = (st, now) => expiring(st, now).length > 0 || (st.watches || []).some(w => { const k = summary(st, w.productId); return k.free !== null && k.free > 0; });
+  // Уведомления склада по времени (сервер — раз в минуту, демо — при отрисовке): срок резерва завтра, товар появился
+  const tick = (st, now) => [...remindExpiring(st, now), ...notifyAppeared(st, now)];
 
   // Документ движения глазами человека: номер своей сделки как есть, чужой — HIDDEN_DEAL; поставка, накладная — как есть.
   function docView(st, doc, personId) {
@@ -350,5 +559,10 @@ const Stock = (() => {
     return dealRef(st, doc, personId) ? doc : HIDDEN_DEAL;
   }
 
-  return { ANY, RESERVE_DAYS, KINDS, NO_ENTITY, NO_CITY, HIDDEN_DEAL, HIDDEN_ID, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, canReserve, bestCell, cells, move, reserve, unreserve, release, expired, sellMax, sell, cellText, dealRef, reserveView, docView };
+  return {
+    ANY, RESERVE_DAYS, KINDS, NO_ENTITY, NO_CITY, HIDDEN_DEAL, HIDDEN_ID, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, canReserve, bestCell, cells, move, reserve, unreserve, release, expired, sellMax, sell, cellText, dealRef, reserveView, docView,
+    reserveFor, extend, forText, placed, history, removed, transitBy, transitText, watchOf, watch, unwatch, notifyAppeared, remindExpiring, due, tick };
 })();
+
+// Пустая база: подписок «Сообщить, когда появится» нет
+BASES.push(st => { st.watches = []; });
