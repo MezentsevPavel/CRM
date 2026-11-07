@@ -42,20 +42,20 @@ function attBigHtml(f){
 // Выбранные на диске файлы читаются в data-URL; каждый готовый уходит в onAdd({name, type, size, data}).
 // Файл больше Store.FILE_MAX (2 МБ) не читается: сразу отказ, те же слова, что у ядра.
 // Серверный режим: файл не читается, а загружается на сервер (serverUpload, больше 20 МБ — отказ до загрузки);
-// в onAdd уходит {id, name, type, size, url, data: null}.
-function attReadFiles(files,onAdd){
+// в onAdd уходит {id, name, type, size, url, data: null}. kind 'photo' — сервер проверяет, что это картинка (фото товара).
+// Возвращает обещание: оно выполнено, когда все файлы прочитаны или отклонены (onAdd при этом уже вызван).
+function attReadFiles(files,onAdd,kind){
   if(SERVER){
-    [...files].forEach(f=>serverUpload(f).then(u=>{if(u) onAdd({id:u.id,name:u.name,type:u.type||'',size:u.size,url:u.url,data:null})}));
-    return;
+    return Promise.all([...files].map(f=>serverUpload(f,undefined,kind).then(u=>{if(u) onAdd({id:u.id,name:u.name,type:u.type||'',size:u.size,url:u.url,data:null})})));
   }
-  if(typeof FileReader==='undefined') return;
-  [...files].forEach(f=>{
-    const big=Store.fileTooBig(f);if(big){toast(big,'warn');return}
+  if(typeof FileReader==='undefined') return Promise.resolve();
+  return Promise.all([...files].map(f=>new Promise(done=>{
+    const big=Store.fileTooBig(f);if(big){toast(big,'warn');return done()}
     const fr=new FileReader();
-    fr.onload=()=>onAdd({name:f.name,type:f.type||'',size:f.size,data:String(fr.result)});
-    fr.onerror=()=>toast(`Файл «${f.name}» не прочитался.`,'warn');
+    fr.onload=()=>{onAdd({name:f.name,type:f.type||'',size:f.size,data:String(fr.result)});done()};
+    fr.onerror=()=>{toast(`Файл «${f.name}» не прочитался.`,'warn');done()};
     fr.readAsDataURL(f);
-  });
+  })));
 }
 
 // ——— форма новой записи: поле «Файлы» ———

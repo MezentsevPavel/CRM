@@ -461,13 +461,14 @@ function srvPopups(before){
 const srvNotifyState=()=>typeof Notification==='undefined'?'none':Notification.permission;
 
 // ——— файлы на сервере ———
-// Загрузить файл (File или Blob) в /api/files. → {id, name, type, size, url} или null (отказ уже показан)
-async function serverUpload(file,name){
+// Загрузить файл (File или Blob) в /api/files. kind 'photo' — фото товара: сервер принимает только JPEG, PNG, WebP, GIF по содержимому.
+// → {id, name, type, size, url} или null (отказ уже показан)
+async function serverUpload(file,name,kind){
   const nm=String(name||file.name||'файл');
   if((Number(file.size)||0)>ATT_SERVER_MAX_MB*1048576){toast(`Файл больше ${ATT_SERVER_MAX_MB} МБ — не загружен: «${nm}».`,'warn');return null}
   let r;
   try{
-    const res=await fetch('/api/files',{method:'POST',headers:{'X-CRM':'1','X-File-Name':encodeURIComponent(nm),'Content-Type':file.type||'application/octet-stream'},body:file,credentials:'same-origin'});
+    const res=await fetch('/api/files',{method:'POST',headers:{'X-CRM':'1','X-File-Name':encodeURIComponent(nm),'Content-Type':file.type||'application/octet-stream',...(kind==='photo'?{'X-File-Kind':'photo'}:{})},body:file,credentials:'same-origin'});
     let b={};try{b=await res.json()}catch(_){}
     r={status:res.status,body:b||{}};
   }catch(_){toast(`Файл «${nm}» не загружен — нет связи с сервером. Повторите, когда связь вернётся.`,'warn');return null}

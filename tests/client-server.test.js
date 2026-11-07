@@ -628,3 +628,49 @@ test('удаление клиента без объединения — 403 дл
   assert.equal(E.app.Clients.merge(E.app.S, keep, drop, 'p4', new Date()).ok, false, 'и ядро отказывает');
   void keep;
 }));
+
+// ——— фото товара в серверном режиме ———
+test('фото товара: файлы уходят на сервер с меткой «фото», в товаре — адреса; не картинка под видом PNG — отказ сервера, фото не добавлено; замена и удаление доходят до сервера', () => withServer(async (srv, pages) => {
+  const { boss } = await firm(srv);
+  const A = await open(srv, 'boss', boss.password); pages.push(A);
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d, 0x49, 0x48, 0x44, 0x52, 1]);
+  const jpg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46, 0x49, 0x46, 0, 1]);
+  const p = A.app.Catalog.add(A.app.S, { name: 'Тест фото на сервере', cat: 'Тест' }).product;
+  A.app.save(); await A.app.serverIdle();
+  const pick = (on, dataset, files) => A.app.document.dispatchEvent({ type: 'change', target: { dataset: { on, ...dataset }, files, value: 'x', tagName: 'INPUT' } });
+  const serverPhotos = async () => ((await kit.state(srv, boss.cookie)).products.find(x => x.id === p.id) || {}).photos || [];
+  const finish = async () => { await A.app.photoIdle(); await A.app.serverIdle(); };
+
+  pick('photo-add', { pid: p.id }, [new File([png], 'вид спереди.png', { type: 'image/png' }), new File([jpg], 'вид сбоку.jpg', { type: 'image/jpeg' })]);
+  await finish();
+  let list = await serverPhotos();
+  assert.deepEqual(list.map(f => f.name), ['вид спереди.png', 'вид сбоку.jpg']);
+  assert.ok(list.every(f => /^\/api\/files\/fl[0-9a-f]{24}$/.test(f.url) && f.data === null && f.by === 'p1'), JSON.stringify(list));
+  assert.deepEqual(list.map(f => f.type), ['image/png', 'image/jpeg']);
+  const shown = A.app.dProduct(A.app.S.products.find(x => x.id === p.id)).body;
+  assert.ok(shown.includes(`src="${list[0].url}"`), 'в карточке не адрес файла сервера');
+  assert.equal((await kit.call(srv, 'GET', list[1].url, { cookie: boss.cookie })).headers.get('content-type'), 'image/jpeg');
+  assert.equal(A.b.calls.filter(c => c.url === '/api/files').length, 2);
+
+  // страница считает файл картинкой по заявленному типу; настоящий ответ даёт сервер по содержимому
+  pick('photo-add', { pid: p.id }, [new File(['<script>alert(1)</script>'], 'подмена.png', { type: 'image/png' })]);
+  await finish();
+  assert.ok(A.toasts().some(t => /Фото товара — только JPEG, PNG, WebP или GIF/.test(t)), A.toasts().join(' | '));
+  assert.equal((await serverPhotos()).length, 2, 'не картинка добавлена как фото');
+  assert.equal(A.app.S.products.find(x => x.id === p.id).photos.length, 2);
+
+  // замена на том же месте, «Сделать главным», удаление
+  pick('photo-repl', { pid: p.id, fid: list[0].id }, [new File([png], 'новое.png', { type: 'image/png' })]);
+  await finish();
+  list = await serverPhotos();
+  assert.deepEqual(list.map(f => f.name), ['новое.png', 'вид сбоку.jpg']);
+  A.app.A['photo-main']({ dataset: { pid: p.id, fid: list[1].id } });
+  await A.app.serverIdle();
+  list = await serverPhotos();
+  assert.deepEqual(list.map(f => f.name), ['вид сбоку.jpg', 'новое.png']);
+  A.app.FORMS['photo-del']({ dataset: { key: p.id + '|' + list[1].id } });
+  await A.app.serverIdle();
+  list = await serverPhotos();
+  assert.deepEqual(list.map(f => f.name), ['вид сбоку.jpg']);
+  void list;
+}));

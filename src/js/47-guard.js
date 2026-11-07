@@ -444,6 +444,24 @@ const Guard = (() => {
   }
 
   // ——— товары и категории ———
+  // Фото товара (product.photos) — необязательный список файлов сервера: не больше Attach.PHOTO_MAX, у каждого свой id, название, тип из
+  // Attach.PHOTO_TYPES и адрес /api/files/fl…, данных (data) нет. Что файл — настоящая картинка и он существует, проверяет сервер при записи
+  // (server/files.js, checkRefs). → причина отказа или null
+  const PHOTO_URL = /^\/api\/files\/fl[0-9a-f]{24}$/;
+  function photosProblem(photos) {
+    if (photos === undefined || photos === null) return null;
+    const head = 'фото товара — ';
+    if (!Array.isArray(photos) || photos.length > Attach.PHOTO_MAX) return `${head}список не больше ${Attach.PHOTO_MAX} файлов`;
+    const seen = new Set();
+    for (const f of photos) {
+      if (!f || typeof f !== 'object' || typeof f.id !== 'string' || !f.id || seen.has(f.id)) return `${head}у каждого фото свой номер`;
+      seen.add(f.id);
+      if (typeof f.name !== 'string' || !f.name.trim()) return `${head}у фото должно быть название`;
+      if (!Attach.PHOTO_TYPES.includes(f.type)) return `${head}${Attach.PHOTO_ONLY}`;
+      if (typeof f.url !== 'string' || !PHOTO_URL.test(f.url) || (f.data !== undefined && f.data !== null)) return `${head}файл должен быть загружен на сервер CRM`;
+    }
+    return null;
+  }
   // Товар правит и заводит право catalog. Категория товара — только из дерева (st.categories) или «Без раздела»: товара «вне дерева» не
   // бывает. Проверяется то, что пачка меняет (новый товар, смена категории): старые товары с чужой категорией правкой цены не блокируются.
   function productsRule(ctx, c) {
@@ -451,6 +469,8 @@ const Guard = (() => {
     if (c.deleted || !c.data) return null;
     // артикул — строка не длиннее Catalog.SKU_MAX (или поля нет): право на него то же, catalog
     if (c.data.sku != null && (typeof c.data.sku !== 'string' || c.data.sku.length > Catalog.SKU_MAX)) return no(`артикул — строка не длиннее ${Catalog.SKU_MAX} знаков`);
+    const bad = photosProblem(c.data.photos);
+    if (bad) return no(bad);
     const was = ctx.before(c);
     if (was && was.cat === c.data.cat) return null;
     return Catalog.hasPath(ctx.after, c.data.cat) ? null : no(`категории «${c.data.cat}» нет в списке категорий — сначала заведите её`);

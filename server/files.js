@@ -1,6 +1,8 @@
 'use strict';
 // Файлы на диске сервера: data/files/<id>. В базе — только описание (таблица files) и ссылки записей на файл (file_refs).
 // В записи файл — { id, name, type, size, url: '/api/files/<id>', by, at }; фото приёмки — строка url.
+// Фото товара (product.photos) — те же файлы: загрузка с заголовком X-File-Kind: photo и привязка к товару проверяют содержимое
+// (JPEG, PNG, WebP, GIF по первым байтам), тип в базе — по содержимому, а не по заявленному.
 // Скачать может загрузивший и тот, кто видит запись со ссылкой на файл. Удалённый из всех записей файл лежит 30 дней
 // (восстановленная копия базы не потеряет его), брошенный — ни разу не прикреплённый — 7 дней.
 
@@ -16,6 +18,26 @@ const DELETED_MS = 30 * DAY;
 // Показываются в браузере прямо (фото приёмки, PDF); остальное только скачивается
 const INLINE = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf']);
 
+// Фото: по первым байтам (не по заявленному типу и не по расширению). SVG, HTML и всё прочее — null.
+const PHOTO_ONLY = 'Фото товара — только JPEG, PNG, WebP или GIF; этот файл — не такая картинка';
+function sniffImage(head) {
+  const h = Buffer.from(head);
+  if (h.length >= 3 && h[0] === 0xff && h[1] === 0xd8 && h[2] === 0xff) return 'image/jpeg';
+  if (h.length >= 8 && h.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
+  const a = h.subarray(0, 6).toString('latin1');
+  if (a === 'GIF87a' || a === 'GIF89a') return 'image/gif';
+  if (h.length >= 12 && h.subarray(0, 4).toString('latin1') === 'RIFF' && h.subarray(8, 12).toString('latin1') === 'WEBP') return 'image/webp';
+  return null;
+}
+function sniffFile(file) {
+  let fd;
+  try {
+    fd = fs.openSync(file, 'r');
+    const buf = Buffer.alloc(12);
+    const n = fs.readSync(fd, buf, 0, 12, 0);
+    return sniffImage(buf.subarray(0, n));
+  } catch { return null; } finally { if (fd !== undefined) fs.closeSync(fd); }
+}
 const cleanName = s => String(s || '').replace(/[\u0000-\u001f\u007f/\\]/g, '_').trim().slice(0, 200) || 'файл';
 const cleanType = s => { const t = String(s || '').split(';')[0].trim().toLowerCase(); return /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/.test(t) ? t : 'application/octet-stream'; };
 // Адрес файла сервера целиком: иначе строка с javascript: или кавычкой стала бы ссылкой или src картинки в браузере
@@ -70,7 +92,8 @@ function createFiles({ store, dataDir, maxBytes, now }) {
       if (declared > maxBytes) { req.resume(); return resolve({ status: 413, body: { error: TOO_BIG } }); }
       let name;
       try { name = cleanName(decodeURIComponent(String(req.headers['x-file-name'] || ''))); } catch { name = cleanName(req.headers['x-file-name']); }
-      const type = cleanType(req.headers['content-type']);
+      const photo = String(req.headers['x-file-kind'] || '') === 'photo';
+      let type = cleanType(req.headers['content-type']);
       const id = 'fl' + crypto.randomBytes(12).toString('hex');
       const part = fileOf(id) + '.part';
       const out = fs.createWriteStream(part, { flags: 'wx' });
@@ -89,6 +112,11 @@ function createFiles({ store, dataDir, maxBytes, now }) {
       out.on('finish', () => {
         if (failed) return;
         try {
+          if (photo) {
+            const real = sniffFile(part);
+            if (!real) { fs.rmSync(part, { force: true }); return resolve({ status: 415, body: { error: PHOTO_ONLY } }); }
+            type = real;
+          }
           fs.renameSync(part, fileOf(id));
           const at = now();
           S.add.run(id, name, type, size, personId, at, null);
@@ -138,9 +166,11 @@ function createFiles({ store, dataDir, maxBytes, now }) {
       if (c.deleted) continue;
       if (!urlsOk(c.data)) return { key: c.key, id: c.id, text: 'Нет прав: адрес файла в записи — только адрес файла, загруженного на сервер CRM' };
       const had = new Set(S.refsOfDoc.all(c.key, String(c.id)).map(r => r.fileId));
+      const photos = c.key === 'products' && c.data && Array.isArray(c.data.photos) ? idsIn(c.data.photos) : new Set();
       for (const id of idsIn(c.data)) {
         if (had.has(id)) continue;
         if (!canRead(S.get.get(id), personId, canSee)) return { key: c.key, id: c.id, text: 'Нет прав: прикрепить чужой или несуществующий файл' };
+        if (photos.has(id) && !sniffFile(fileOf(id))) return { key: c.key, id: c.id, text: 'Нет прав: ' + PHOTO_ONLY.charAt(0).toLowerCase() + PHOTO_ONLY.slice(1) };
       }
     }
     return null;

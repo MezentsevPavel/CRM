@@ -67,6 +67,8 @@ const Visible = (() => {
       case 'shipments': return !!rec && shipsSeen(st, pid);
       case 'reserves': return !!rec && (can(st, pid, 'stock') || Leads.dealsVisible(st, pid).some(d => d.id === rec.dealId));
       case 'dispatches': return !!rec;
+      // фото товара (файлы по ссылке из product.photos) видит тот, кто видит остатки — как карточку товара
+      case 'products': return (st.products || []).some(p => p && String(p.id) === String(id)) && can(st, pid, 'stock');
       // «Сообщить, когда появится» — каждый видит только свои подписки
       case 'watches': return !!rec && rec.personId === pid;
       case 'mail': case 'msgs': return false;
@@ -83,7 +85,7 @@ const Visible = (() => {
   // клиенты — client, задачи — task, лента и дела — по видимости карточки; резерв и движение невидимой сделки остаются,
   // но вместо номера сделки — Stock.HIDDEN_ID; уведомления — свои (с правом «вся фирма» — все); без права «цены» — без цен
   // (товары, суммы и строки сделок, цены в тексте ленты); почта и переписка — пустые; prefs — только свои строки;
-  // поставки — с правом остатков, перевозок или приёмки; в заявке на отправку номер невидимой сделки — Stock.HIDDEN_ID.
+  // поставки — с правом остатков, перевозок или приёмки; фото товаров (product.photos) — с правом остатков; в заявке на отправку номер невидимой сделки — Stock.HIDDEN_ID.
   // Исходное состояние не меняется.
   function of(st, pid) {
     const s = seen(st, pid), out = {};
@@ -134,6 +136,8 @@ const Visible = (() => {
         default: out[key] = copy(v);
       }
     }
+    // фото товара — только с правом «остатки» (карточка товара открывается с ним же)
+    if (!stockRight) for (const p of out.products || []) delete p.photos;
     if (!prices) {
       for (const p of out.products || []) delete p.price;
       for (const d of out.deals || []) { delete d.amount; for (const it of d.items || []) delete it.price; }

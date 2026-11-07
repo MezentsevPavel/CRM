@@ -1321,6 +1321,35 @@ html[data-mode="server"] .as,html[data-mode="server"] .demo,html[data-mode="serv
 
 /* «Настройки → Копии» (74-backups.js): имя файла под датой копии */
 .bk-name{display:block;font-family:var(--f-mono);font-size:11.5px}
+
+/* Фото товара: блок в карточке, маленькое главное фото в списке, просмотр крупно */
+.pp{display:flex;flex-direction:column;gap:10px;min-width:0}
+.pp .sh{margin:0}
+.pp-it{display:flex;flex-direction:column;gap:6px;min-width:0;margin:0}
+.pp-img{position:relative;display:flex;align-items:center;justify-content:center;width:100%;margin:0;padding:0;border:0;border-radius:14px;overflow:hidden;background:var(--sunken);cursor:zoom-in}
+.pp-img img{display:block;width:100%;height:100%;object-fit:contain}
+.pp-it.big .pp-img{height:min(320px,56vw)}
+.pp-row .pp-img{aspect-ratio:1;border-radius:10px}
+.pp-row .pp-img img{object-fit:cover}
+.pp-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:10px}
+.pp-main{position:absolute;top:8px;left:8px}
+.pp-lost{flex-direction:column;gap:4px;min-height:90px;padding:10px;text-align:center;cursor:default;color:var(--ink-3)}
+.pp-lost .ic{width:26px;height:26px}
+.pp-btns{display:flex;flex-wrap:wrap;gap:4px}
+.pp-btns .btn{cursor:pointer}
+.pp-add{display:inline-flex;flex-wrap:wrap;gap:8px}
+.pp-add .btn{cursor:pointer}
+.pp-cam{display:none}
+@media (pointer:coarse){.pp-cam{display:inline-flex}}
+.pp-empty{display:flex;flex-direction:column;align-items:center;gap:8px;padding:22px 14px;border:1.5px dashed var(--line-2);border-radius:14px;color:var(--ink-3);text-align:center}
+.pp-empty .ic{width:30px;height:30px}
+.pp-empty b{color:var(--ink)}
+.pp-view{align-items:stretch}
+.pp-zoom{display:block;margin:0;padding:0;border:0;background:transparent;cursor:zoom-out}
+.pp-nav{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.pp-nav small{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pcell{display:flex;align-items:center;gap:10px;min-width:0}
+.pthumb{flex:none;width:40px;height:40px;border-radius:8px;object-fit:cover;background:var(--sunken)}
 </style>
 
 <div class="app" id="app">
@@ -2272,8 +2301,9 @@ const Store = (() => {
   const atOf = v => (v && v.at && v.at.$date && Date.parse(v.at.$date)) || 0;
   const GONE = Symbol('выкинуто');
 
-  // Что можно выкинуть из копии: фото приёмки (строки data:image/… вне файлов) и данные файлов заявок на отправку, задач и поставок.
-  // Картинка, приложенная к записи, — её файл (поле files), а не фото приёмки.
+  // Что можно выкинуть из копии: фото приёмки (строки data:image/… вне файлов), данные файлов заявок на отправку, задач и поставок
+  // и фото товаров (product.photos — те же файлы; у товара снимка каталога они лежат в его правках productEdits).
+  // Картинка, приложенная к записи, — её файл (поле files или photos), а не фото приёмки.
   function heavy(copy) {
     const out = [];
     const walk = (v, at) => {
@@ -2281,7 +2311,7 @@ const Store = (() => {
       if (!v || typeof v !== 'object') return;
       const here = atOf(v) || at;
       for (const k of Object.keys(v)) {
-        if (v === copy && k === 'dispatches') continue;
+        if (v === copy && (k === 'dispatches' || k === 'products' || k === 'productEdits')) continue;
         if (k === 'files') continue;
         const x = v[k];
         if (isPhoto(x)) out.push({ photo: true, holder: v, key: k, size: x.length, at: here });
@@ -2295,6 +2325,11 @@ const Store = (() => {
         for (const f of (d && d.files) || []) {
           if (f && typeof f.data === 'string' && f.data) out.push({ file: f, size: f.data.length, at: atOf(f) || atOf(d) || NEWEST });
         }
+      }
+    }
+    for (const p of [...(copy.products || []), ...Object.values(copy.productEdits || {})]) {
+      for (const f of (p && Array.isArray(p.photos) && p.photos) || []) {
+        if (f && typeof f.data === 'string' && f.data) out.push({ file: f, size: f.data.length, at: atOf(f) || NEWEST });
       }
     }
     return out;
@@ -7432,6 +7467,8 @@ BASES.push(st => { st.acts = []; });
 // (тогда unsaved:true, это ставит Store.dump). Запись держит файлы в поле files. Предел одного файла — Store.FILE_MAX;
 // сколько файлов влезет в браузер всего, решает Store.dump: выкидывает новые и крупные, остальное остаётся.
 // Серверный режим: файл лежит на сервере — {id, name, type, size, url, by, at}, data: null; id — номер файла сервера.
+// Фото товара — те же файлы, но в поле photos (не files): первое в списке — главное; только JPEG, PNG, WebP, GIF; не больше PHOTO_MAX.
+// add и remove берут имя поля (field), фото — обёртки addPhotos, replacePhoto, removePhoto, mainPhoto.
 
 const Attach = (() => {
   const str = v => (v == null ? '' : String(v).trim());
@@ -7462,12 +7499,30 @@ const Attach = (() => {
     return (Array.isArray(list) ? list : []).filter(f => f && !had.has(f.id) && typeof f.data === 'string' && f.data).map(Store.fileTooBig).find(Boolean) || null;
   }
 
+  // ——— фото товара ———
+  const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+  const PHOTO_MAX = 20;
+  const PHOTO_ONLY = 'можно только фото: JPEG, PNG, WebP или GIF';
+  // Тип файла: заявленный (type) и, у файла из браузера, записанный в начале data-URL (после «data:» до «;»).
+  // Фото — когда все названные из списка и хоть один назван; SVG и всё прочее — нет.
+  function photoProblem(f) {
+    const declared = str(f && f.type).toLowerCase();
+    const m = f && typeof f.data === 'string' ? /^data:([^;,]*)/i.exec(f.data) : null;
+    const seen = [declared, m ? m[1].trim().toLowerCase() : ''].filter(Boolean);
+    return seen.length && seen.every(t => PHOTO_TYPES.includes(t)) ? null : `Файл «${str(f && f.name) || 'без названия'}» не принят: ${PHOTO_ONLY}.`;
+  }
+
   // Приложить файлы к готовой записи. → {ok:true, added:[файл…]} | {ok:false, reason}. Либо все, либо ни одного.
-  function add(rec, list, by, now) {
+  // opt: {field — поле записи со списком (по умолчанию files), accept — файл → причина отказа или null, max — сколько файлов в списке всего}.
+  function add(rec, list, by, now, opt = {}) {
+    const field = opt.field || 'files';
     const has = f => (typeof f.data === 'string' && f.data) || (typeof f.url === 'string' && f.url);
     const fresh = (Array.isArray(list) ? list : []).filter(f => f && str(f.name) && has(f));
-    if (!fresh.length) return { ok: false, reason: 'Нет файла, который можно приложить.' };
-    const files = Array.isArray(rec.files) ? rec.files : (rec.files = []);
+    if (!fresh.length) return { ok: false, reason: field === 'files' ? 'Нет файла, который можно приложить.' : 'Нет файла, который можно добавить.' };
+    const files = Array.isArray(rec[field]) ? rec[field] : (rec[field] = []);
+    const refused = opt.accept && fresh.map(opt.accept).find(Boolean);
+    if (refused) return { ok: false, reason: refused };
+    if (opt.max && files.length + fresh.length > opt.max) return { ok: false, reason: `Не больше ${opt.max} в списке: сейчас ${files.length}, добавляете ${fresh.length}.` };
     const big = tooBig(fresh, files);
     if (big) return { ok: false, reason: big };
     // файл на сервере сохраняет свой номер; файл из браузера получает новый
@@ -7480,15 +7535,40 @@ const Attach = (() => {
   const canRemove = (f, by, any) => !!f && (!!any || (!!f.by && f.by === by));
 
   // Убрать файл из записи. → {ok:true, file} | {ok:false, reason}
-  function remove(rec, fileId, by, any) {
-    const files = (rec && rec.files) || [];
+  function remove(rec, fileId, by, any, field = 'files') {
+    const files = (rec && rec[field]) || [];
     const i = files.findIndex(f => f.id === fileId);
     if (i < 0) return { ok: false, reason: 'Такого файла нет.' };
     if (!canRemove(files[i], by, any)) return { ok: false, reason: 'Убрать файл может тот, кто его приложил.' };
     return { ok: true, file: files.splice(i, 1)[0] };
   }
 
-  return { clean, tooBig, add, canRemove, remove };
+  // Фото товара: список rec.photos; менять и убирать может любой, кому разрешено править товар (право catalog проверяет вызывающий).
+  const PHOTOS = { field: 'photos', accept: photoProblem, max: PHOTO_MAX };
+  const addPhotos = (rec, list, by, now) => add(rec, list, by, now, PHOTOS);
+  const removePhoto = (rec, id) => remove(rec, id, '', true, 'photos');
+  // Заменить фото другим файлом на том же месте списка (главное остаётся главным). Не вышло — список как был.
+  // → {ok:true, file, old} | {ok:false, reason}
+  function replacePhoto(rec, id, file, by, now) {
+    const list = (rec && rec.photos) || [];
+    const i = list.findIndex(f => f.id === id);
+    if (i < 0) return { ok: false, reason: 'Такого фото нет.' };
+    const old = list.splice(i, 1)[0];
+    const r = add(rec, [file], by, now, { field: 'photos', accept: photoProblem });   // новое встало в конец
+    if (!r.ok) { list.splice(i, 0, old); return r; }
+    list.splice(i, 0, list.pop());
+    return { ok: true, file: list[i], old };
+  }
+  // Сделать фото главным: оно встаёт первым, порядок остальных не меняется.
+  function mainPhoto(rec, id) {
+    const list = (rec && rec.photos) || [];
+    const i = list.findIndex(f => f.id === id);
+    if (i < 0) return { ok: false, reason: 'Такого фото нет.' };
+    list.unshift(...list.splice(i, 1));
+    return { ok: true, file: list[0] };
+  }
+
+  return { clean, tooBig, add, canRemove, remove, PHOTO_TYPES, PHOTO_MAX, PHOTO_ONLY, photoProblem, addPhotos, removePhoto, replacePhoto, mainPhoto };
 })();
 
 // Ядро общей базы: состояние режется на документы и собирается обратно (Docs), номера записей берутся у поставщика (Ids).
@@ -7807,6 +7887,8 @@ const Visible = (() => {
       case 'shipments': return !!rec && shipsSeen(st, pid);
       case 'reserves': return !!rec && (can(st, pid, 'stock') || Leads.dealsVisible(st, pid).some(d => d.id === rec.dealId));
       case 'dispatches': return !!rec;
+      // фото товара (файлы по ссылке из product.photos) видит тот, кто видит остатки — как карточку товара
+      case 'products': return (st.products || []).some(p => p && String(p.id) === String(id)) && can(st, pid, 'stock');
       // «Сообщить, когда появится» — каждый видит только свои подписки
       case 'watches': return !!rec && rec.personId === pid;
       case 'mail': case 'msgs': return false;
@@ -7823,7 +7905,7 @@ const Visible = (() => {
   // клиенты — client, задачи — task, лента и дела — по видимости карточки; резерв и движение невидимой сделки остаются,
   // но вместо номера сделки — Stock.HIDDEN_ID; уведомления — свои (с правом «вся фирма» — все); без права «цены» — без цен
   // (товары, суммы и строки сделок, цены в тексте ленты); почта и переписка — пустые; prefs — только свои строки;
-  // поставки — с правом остатков, перевозок или приёмки; в заявке на отправку номер невидимой сделки — Stock.HIDDEN_ID.
+  // поставки — с правом остатков, перевозок или приёмки; фото товаров (product.photos) — с правом остатков; в заявке на отправку номер невидимой сделки — Stock.HIDDEN_ID.
   // Исходное состояние не меняется.
   function of(st, pid) {
     const s = seen(st, pid), out = {};
@@ -7874,6 +7956,8 @@ const Visible = (() => {
         default: out[key] = copy(v);
       }
     }
+    // фото товара — только с правом «остатки» (карточка товара открывается с ним же)
+    if (!stockRight) for (const p of out.products || []) delete p.photos;
     if (!prices) {
       for (const p of out.products || []) delete p.price;
       for (const d of out.deals || []) { delete d.amount; for (const it of d.items || []) delete it.price; }
@@ -8331,6 +8415,24 @@ const Guard = (() => {
   }
 
   // ——— товары и категории ———
+  // Фото товара (product.photos) — необязательный список файлов сервера: не больше Attach.PHOTO_MAX, у каждого свой id, название, тип из
+  // Attach.PHOTO_TYPES и адрес /api/files/fl…, данных (data) нет. Что файл — настоящая картинка и он существует, проверяет сервер при записи
+  // (server/files.js, checkRefs). → причина отказа или null
+  const PHOTO_URL = /^\/api\/files\/fl[0-9a-f]{24}$/;
+  function photosProblem(photos) {
+    if (photos === undefined || photos === null) return null;
+    const head = 'фото товара — ';
+    if (!Array.isArray(photos) || photos.length > Attach.PHOTO_MAX) return `${head}список не больше ${Attach.PHOTO_MAX} файлов`;
+    const seen = new Set();
+    for (const f of photos) {
+      if (!f || typeof f !== 'object' || typeof f.id !== 'string' || !f.id || seen.has(f.id)) return `${head}у каждого фото свой номер`;
+      seen.add(f.id);
+      if (typeof f.name !== 'string' || !f.name.trim()) return `${head}у фото должно быть название`;
+      if (!Attach.PHOTO_TYPES.includes(f.type)) return `${head}${Attach.PHOTO_ONLY}`;
+      if (typeof f.url !== 'string' || !PHOTO_URL.test(f.url) || (f.data !== undefined && f.data !== null)) return `${head}файл должен быть загружен на сервер CRM`;
+    }
+    return null;
+  }
   // Товар правит и заводит право catalog. Категория товара — только из дерева (st.categories) или «Без раздела»: товара «вне дерева» не
   // бывает. Проверяется то, что пачка меняет (новый товар, смена категории): старые товары с чужой категорией правкой цены не блокируются.
   function productsRule(ctx, c) {
@@ -8338,6 +8440,8 @@ const Guard = (() => {
     if (c.deleted || !c.data) return null;
     // артикул — строка не длиннее Catalog.SKU_MAX (или поля нет): право на него то же, catalog
     if (c.data.sku != null && (typeof c.data.sku !== 'string' || c.data.sku.length > Catalog.SKU_MAX)) return no(`артикул — строка не длиннее ${Catalog.SKU_MAX} знаков`);
+    const bad = photosProblem(c.data.photos);
+    if (bad) return no(bad);
     const was = ctx.before(c);
     if (was && was.cat === c.data.cat) return null;
     return Catalog.hasPath(ctx.after, c.data.cat) ? null : no(`категории «${c.data.cat}» нет в списке категорий — сначала заведите её`);
@@ -10138,7 +10242,7 @@ function stockRow(p,pr){
   // ключ каталога на экране не показывается (слово директора: «это же не нужно здесь»); помечается только товар, которого в каталоге нет
   const key=p.inCatalog?'':'<span class="pill sun sm">нет в каталоге</span>';
   const meta=[key,...[p.brand,p.cat].filter(Boolean).map(esc)].filter(Boolean).join(' · ');
-  return `<tr class="click" data-act="open-product" data-pid="${esc(p.id)}" tabindex="0"><td><div class="pname"><span>${esc(p.name)}</span>${skuTag(p)}<small>${meta}</small></div></td><td class="num">${k.known?qtyOf(k.onHand,p):nd}</td><td class="num">${num(ra)}${k.reservedIncoming?`<small class="muted">${num(k.reservedIncoming)} под поставку</small>`:''}${resBadge(p)}</td><td class="num free">${unk?nd:`<b class="${k.free<=0?'bad-t':''}">${num(k.free)}</b>`}</td><td>${k.incoming?`<span class="in-t">${qtyOf(k.incoming,p)}</span><small class="muted">${esc(transitLine(p.id))}</small><small class="muted">ближайшая ${fD(k.nextEta)}${inc.length>1?` · ${inc.length} поставки`:''}</small>`:'<span class="muted">не ждём</span>'}</td><td class="num">${unk?nd:fa<0?`<span class="pill bad sm">не хватает ${num(-fa)}</span>`:num(fa)}</td>${pr?`<td class="num">${priceTxt(p)}</td>`:''}<td>${sbar(p)}</td></tr>`;
+  return `<tr class="click" data-act="open-product" data-pid="${esc(p.id)}" tabindex="0"><td>${photoCell(p,`<div class="pname"><span>${esc(p.name)}</span>${skuTag(p)}<small>${meta}</small></div>`)}</td><td class="num">${k.known?qtyOf(k.onHand,p):nd}</td><td class="num">${num(ra)}${k.reservedIncoming?`<small class="muted">${num(k.reservedIncoming)} под поставку</small>`:''}${resBadge(p)}</td><td class="num free">${unk?nd:`<b class="${k.free<=0?'bad-t':''}">${num(k.free)}</b>`}</td><td>${k.incoming?`<span class="in-t">${qtyOf(k.incoming,p)}</span><small class="muted">${esc(transitLine(p.id))}</small><small class="muted">ближайшая ${fD(k.nextEta)}${inc.length>1?` · ${inc.length} поставки`:''}</small>`:'<span class="muted">не ждём</span>'}</td><td class="num">${unk?nd:fa<0?`<span class="pill bad sm">не хватает ${num(-fa)}</span>`:num(fa)}</td>${pr?`<td class="num">${priceTxt(p)}</td>`:''}<td>${sbar(p)}</td></tr>`;
 }
 // Содержимое #stock-tbl: «показано N из M», страница таблицы, переключатель страниц
 function stockTable(){
@@ -10310,6 +10414,7 @@ function dProduct(p){
   const iList=inc.length?`<ul class="mv">${inc.map(x=>iRow(x,p)).join('')}</ul>`:'<p class="muted m0">Поставок с этим товаром нет.</p>';
   const mList=mv.length?`<ul class="mv">${mv.map(m=>`<li>${movePill(m)}<b>${moveSign(m)}${qtyOf(m.qty,p)}</b><span>${esc(moveWhere(m))}</span><span class="mono muted">${esc(moveDoc(m))}</span><small>${fWhen(m.at)} · ${esc(whoName(m.by)||'нет данных: кто')}</small></li>`).join('')}</ul><p class="m0"><button type="button" class="btn sm" data-act="stock-journal" data-pid="${esc(p.id)}">Весь журнал по товару${all.length>mv.length?` (${all.length})`:''}</button></p>`:'<p class="muted m0">Движений пока нет.</p>';
   return {kind:p.cat,title:esc(p.name),sub:[p.inCatalog?'':'нет в каталоге',p.brand?esc(p.brand):''].filter(Boolean).join(' · '),body:`
+    ${photoBlock(p)}
     <div><h4 class="sh">Карточка каталога</h4><dl class="kv">${info}</dl></div>
     <div class="pst">${st('На складе',k.known?qtyOf(k.onHand,p):'нет данных')}${st('В резерве',num(k.reservedStock+k.reservedIncoming),'',k.reservedIncoming?`со склада ${num(k.reservedStock)}, под поставки ${num(k.reservedIncoming)}`:'')}${st('Свободно сейчас',unk?'нет данных':num(k.free),unk?'':k.free<=0?'bad-t':'ok-t')}${st('Свободно после прихода',unk?'нет данных':num(k.freeAfter),k.freeAfter<0?'bad-t':'',k.incoming?`едет ${num(k.incoming)}`:'')}</div>
     ${sbar(p,true)}
@@ -14500,20 +14605,20 @@ function attBigHtml(f){
 // Выбранные на диске файлы читаются в data-URL; каждый готовый уходит в onAdd({name, type, size, data}).
 // Файл больше Store.FILE_MAX (2 МБ) не читается: сразу отказ, те же слова, что у ядра.
 // Серверный режим: файл не читается, а загружается на сервер (serverUpload, больше 20 МБ — отказ до загрузки);
-// в onAdd уходит {id, name, type, size, url, data: null}.
-function attReadFiles(files,onAdd){
+// в onAdd уходит {id, name, type, size, url, data: null}. kind 'photo' — сервер проверяет, что это картинка (фото товара).
+// Возвращает обещание: оно выполнено, когда все файлы прочитаны или отклонены (onAdd при этом уже вызван).
+function attReadFiles(files,onAdd,kind){
   if(SERVER){
-    [...files].forEach(f=>serverUpload(f).then(u=>{if(u) onAdd({id:u.id,name:u.name,type:u.type||'',size:u.size,url:u.url,data:null})}));
-    return;
+    return Promise.all([...files].map(f=>serverUpload(f,undefined,kind).then(u=>{if(u) onAdd({id:u.id,name:u.name,type:u.type||'',size:u.size,url:u.url,data:null})})));
   }
-  if(typeof FileReader==='undefined') return;
-  [...files].forEach(f=>{
-    const big=Store.fileTooBig(f);if(big){toast(big,'warn');return}
+  if(typeof FileReader==='undefined') return Promise.resolve();
+  return Promise.all([...files].map(f=>new Promise(done=>{
+    const big=Store.fileTooBig(f);if(big){toast(big,'warn');return done()}
     const fr=new FileReader();
-    fr.onload=()=>onAdd({name:f.name,type:f.type||'',size:f.size,data:String(fr.result)});
-    fr.onerror=()=>toast(`Файл «${f.name}» не прочитался.`,'warn');
+    fr.onload=()=>{onAdd({name:f.name,type:f.type||'',size:f.size,data:String(fr.result)});done()};
+    fr.onerror=()=>{toast(`Файл «${f.name}» не прочитался.`,'warn');done()};
     fr.readAsDataURL(f);
-  });
+  })));
 }
 
 // ——— форма новой записи: поле «Файлы» ———
@@ -15037,13 +15142,14 @@ function srvPopups(before){
 const srvNotifyState=()=>typeof Notification==='undefined'?'none':Notification.permission;
 
 // ——— файлы на сервере ———
-// Загрузить файл (File или Blob) в /api/files. → {id, name, type, size, url} или null (отказ уже показан)
-async function serverUpload(file,name){
+// Загрузить файл (File или Blob) в /api/files. kind 'photo' — фото товара: сервер принимает только JPEG, PNG, WebP, GIF по содержимому.
+// → {id, name, type, size, url} или null (отказ уже показан)
+async function serverUpload(file,name,kind){
   const nm=String(name||file.name||'файл');
   if((Number(file.size)||0)>ATT_SERVER_MAX_MB*1048576){toast(`Файл больше ${ATT_SERVER_MAX_MB} МБ — не загружен: «${nm}».`,'warn');return null}
   let r;
   try{
-    const res=await fetch('/api/files',{method:'POST',headers:{'X-CRM':'1','X-File-Name':encodeURIComponent(nm),'Content-Type':file.type||'application/octet-stream'},body:file,credentials:'same-origin'});
+    const res=await fetch('/api/files',{method:'POST',headers:{'X-CRM':'1','X-File-Name':encodeURIComponent(nm),'Content-Type':file.type||'application/octet-stream',...(kind==='photo'?{'X-File-Kind':'photo'}:{})},body:file,credentials:'same-origin'});
     let b={};try{b=await res.json()}catch(_){}
     r={status:res.status,body:b||{}};
   }catch(_){toast(`Файл «${nm}» не загружен — нет связи с сервером. Повторите, когда связь вернётся.`,'warn');return null}
@@ -15315,6 +15421,202 @@ FORMS['bk-restore']=async f=>{
 };
 
 if(SERVER) SETTINGS_TABS.push({id:'backups',label:'Копии',order:88,ok:()=>SERVER&&can('admin'),render:vBackups});
+
+// Фото товара: блок «Фото» в карточке товара (53-stock.js), маленькое главное фото в списке «Товары и остатки», просмотр крупно,
+// подготовка файла перед загрузкой. Данные — product.photos (ядро Attach, 44-attach.js): те же файлы, что у задач и поставок;
+// первое в списке — главное. Демо: файл лежит в браузере (data-URL, Store.dump выкидывает его, когда мало места); сервер: файл на
+// диске сервера, в записи адрес /api/files/fl…. Менять фото может тот, у кого есть право «Добавлять товары» (catalog), видеть — «остатки».
+
+// Крупные фото перед загрузкой уменьшаются: длинная сторона не больше PHOTO_SIDE, JPEG с качеством PHOTO_QUALITY.
+const PHOTO_SIDE=1600,PHOTO_QUALITY=0.85;
+const PHOTO_ACCEPT=Attach.PHOTO_TYPES.join(',');
+const PHOTO_NO_SPACE='фото не поместилось в браузер';
+
+// Откуда брать картинку на экран: адрес файла сервера или data-URL картинки; всё остальное — '' (в src чужой адрес не ставим)
+const PHOTO_URL=/^\/api\/files\/fl[0-9a-f]{24}$/,PHOTO_DATA=/^data:image\/(?:jpeg|png|webp|gif);base64,/;
+function photoSrc(f){
+  if(!f) return '';
+  if(typeof f.url==='string'&&PHOTO_URL.test(f.url)) return f.url;
+  return typeof f.data==='string'&&PHOTO_DATA.test(f.data)?f.data:'';
+}
+const photoList=p=>Array.isArray(p&&p.photos)?p.photos.filter(f=>f&&typeof f==='object'):[];
+
+// ——— список: маленькое главное фото рядом с названием ———
+// Нет фото — ничего не рисуется (без заглушек). Картинка грузится лениво: список в сотни строк не тянет их все сразу.
+function photoThumb(p){
+  const f=photoList(p)[0],src=photoSrc(f);
+  return src?`<img class="pthumb" src="${esc(src)}" alt="Фото: ${esc(p.name)}" width="40" height="40" loading="lazy" decoding="async">`:'';
+}
+const photoCell=(p,inner)=>{const t=photoThumb(p);return t?`<div class="pcell">${t}${inner}</div>`:inner};
+
+// ——— карточка товара: блок «Фото» ———
+const photoOf=(pid,fid)=>{const p=product(pid);return {p,f:p?photoList(p).find(x=>x.id===fid):undefined}};
+function photoAddHtml(p){
+  if(!can('catalog')) return '';
+  if(photoList(p).length>=Attach.PHOTO_MAX) return `<small class="hint">Фото уже ${Attach.PHOTO_MAX} — больше не добавить.</small>`;
+  const id=esc(p.id);
+  return `<span class="pp-add"><label class="btn pp-pick" for="pp-add-in">${ic('plus')}Добавить фото<input id="pp-add-in" class="sr" type="file" multiple accept="${PHOTO_ACCEPT}" data-on="photo-add" data-pid="${id}"></label>`
+    +`<label class="btn pp-cam" for="pp-cam-in">${ic('camera')}Снять на камеру<input id="pp-cam-in" class="sr" type="file" accept="image/*" capture="environment" data-on="photo-add" data-pid="${id}"></label></span>`;
+}
+function photoItem(p,f,i){
+  const src=photoSrc(f),edit=can('catalog'),big=i===0,pid=esc(p.id),fid=esc(f.id);
+  const img=src
+    ?`<button type="button" class="pp-img" data-act="photo-view" data-pid="${pid}" data-fid="${fid}" aria-label="Открыть крупно: ${esc(f.name)}"><img src="${esc(src)}" alt="Фото ${i+1}: ${esc(p.name)}" loading="lazy" decoding="async">${big?'<span class="pill ok sm pp-main">Главное</span>':''}</button>`
+    :`<div class="pp-img pp-lost">${ic('photo')}<small class="warn-t">${f.unsaved?PHOTO_NO_SPACE:'нет данных: файл'}</small>${big?'<span class="pill ok sm pp-main">Главное</span>':''}</div>`;
+  const btns=edit?`<div class="pp-btns">${big?'':`<button type="button" class="btn sm ghost" data-act="photo-main" data-pid="${pid}" data-fid="${fid}">Сделать главным</button>`}`
+    +`<label class="btn sm ghost" for="pp-r-${fid}">Заменить<input id="pp-r-${fid}" class="sr" type="file" accept="${PHOTO_ACCEPT}" data-on="photo-repl" data-pid="${pid}" data-fid="${fid}"></label>`
+    +`<button type="button" class="btn sm ghost" data-act="photo-del" data-pid="${pid}" data-fid="${fid}" aria-label="Удалить фото ${i+1}">Удалить</button></div>`:'';
+  return `<figure class="pp-it${big?' big':''}">${img}<figcaption class="sr">${esc(f.name)}</figcaption>${btns}</figure>`;
+}
+// Блок «Фото»: большое главное фото и ряд маленьких; без фото — рамка «Фото нет»
+function photoBlock(p){
+  const list=photoList(p),add=photoAddHtml(p);
+  if(!list.length) return `<div class="pp"><h4 class="sh">Фото</h4><div class="pp-empty">${ic('photo')}<b>Фото нет</b>${add}</div></div>`;
+  const rest=list.slice(1);
+  return `<div class="pp"><h4 class="sh">Фото · ${list.length}</h4>${photoItem(p,list[0],0)}${rest.length?`<div class="pp-row">${rest.map((f,i)=>photoItem(p,f,i+1)).join('')}</div>`:''}${add?`<div class="pp-foot">${add}</div>`:''}</div>`;
+}
+
+// ——— просмотр крупно ———
+// Слой поверх карточки: картинка закрывает окно нажатием, Esc закрывает (оболочка), стрелки — к соседнему фото.
+MODALS.photoView=key=>{
+  const [pid,fid]=String(key).split('|'),{p,f}=photoOf(pid,fid),src=photoSrc(f);
+  if(!p||!f||!src||!can('stock')) return `<div>${mHead('Фото')}<div class="modal-b"><p class="m0">Фото нет.</p></div></div>`;
+  const list=photoList(p),i=list.indexOf(f);
+  const go=(to,sym,lbl)=>to?`<button type="button" class="btn icon ghost" data-act="photo-view" data-pid="${esc(pid)}" data-fid="${esc(to.id)}" aria-label="${lbl}">${sym}</button>`:'<span></span>';
+  return `<div>${mHead(esc(p.name))}<div class="modal-b pp-view"><button type="button" class="pp-zoom" data-act="close-modal" aria-label="Закрыть просмотр"><img class="dsp-big" src="${esc(src)}" alt="Фото ${i+1} из ${list.length}: ${esc(p.name)}"></button>`
+    +`<div class="pp-nav">${go(list[i-1]&&photoSrc(list[i-1])?list[i-1]:null,'←','Предыдущее фото')}<small class="muted">${i+1} из ${list.length} · ${esc(f.name)}</small>${go(list[i+1]&&photoSrc(list[i+1])?list[i+1]:null,'→','Следующее фото')}</div></div></div>`;
+};
+A['photo-view']=el=>{const {f}=photoOf(el.dataset.pid,el.dataset.fid);if(f&&photoSrc(f)) openModal('photoView',el.dataset.pid+'|'+el.dataset.fid)};
+
+// ——— подготовка файла: уменьшение ———
+// Размер после уменьшения: длинная сторона не больше side, пропорции сохраняются; меньше — без изменений (k = 1).
+function photoFit(w,h,side=PHOTO_SIDE){
+  const k=Math.min(1,side/Math.max(w,h,1));
+  return {k,w:Math.max(1,Math.round(w*k)),h:Math.max(1,Math.round(h*k))};
+}
+// Что нужно подготовке от браузера: декодер картинки и холст. Нет холста (или не вышло) — файл уходит как есть.
+function photoIO(){
+  if(typeof document==='undefined'||typeof document.createElement!=='function') return null;
+  return {
+    async decode(file){
+      if(typeof createImageBitmap==='function'){const b=await createImageBitmap(file);return {w:b.width,h:b.height,src:b,done:()=>{if(b.close) b.close()}}}
+      if(typeof Image!=='function'||typeof URL==='undefined'||!URL.createObjectURL) throw new Error('нет декодера');
+      const url=URL.createObjectURL(file),img=new Image();
+      await new Promise((ok,bad)=>{img.onload=ok;img.onerror=bad;img.src=url});
+      return {w:img.naturalWidth,h:img.naturalHeight,src:img,done:()=>URL.revokeObjectURL(url)};
+    },
+    canvas(w,h){
+      const c=document.createElement('canvas');c.width=w;c.height=h;
+      const ctx=c.getContext&&c.getContext('2d');
+      if(!ctx||typeof c.toBlob!=='function') return null;
+      return {
+        draw:src=>ctx.drawImage(src,0,0,w,h),
+        alpha:()=>{const d=ctx.getImageData(0,0,w,h).data;for(let i=3;i<d.length;i+=4) if(d[i]<255) return true;return false},
+        blob:(type,q)=>new Promise(ok=>c.toBlob(ok,type,q))
+      };
+    }
+  };
+}
+const photoFile=(blob,name,type)=>typeof File==='function'?new File([blob],name,{type}):Object.assign(blob,{name,type});
+// Файл → файл для загрузки. GIF (может быть анимацией) и фото не больше PHOTO_SIDE уходят как есть; крупное уменьшается до PHOTO_SIDE
+// по длинной стороне и сохраняется JPEG с качеством PHOTO_QUALITY; PNG и WebP с прозрачностью остаются PNG. Ошибка или нет холста — как есть.
+async function photoPrepare(file,io){
+  io=io===undefined?photoIO():io;
+  if(!io||file.type==='image/gif') return file;
+  let img=null;
+  try{
+    img=await io.decode(file);
+    const fit=photoFit(img.w,img.h);
+    if(fit.k>=1) return file;
+    const cv=io.canvas(fit.w,fit.h);
+    if(!cv) return file;
+    cv.draw(img.src);
+    const png=file.type!=='image/jpeg'&&cv.alpha(),type=png?'image/png':'image/jpeg';
+    const blob=await cv.blob(type,png?undefined:PHOTO_QUALITY);
+    if(!blob||!(blob.size<file.size)) return file;
+    return photoFile(blob,String(file.name||'фото').replace(/\.[^.]*$/,'')+(png?'.png':'.jpg'),type);
+  }catch(_){return file}
+  finally{if(img&&img.done) img.done()}
+}
+
+// ——— действия ———
+// Не фото — отказ с понятным текстом до чтения; остальные подготавливаются (уменьшаются) и читаются/загружаются по порядку выбора.
+// → список файлов для Attach.addPhotos
+async function photoIntake(files){
+  const got=[];
+  for(const f of files){
+    const bad=Attach.photoProblem({name:f.name,type:f.type});
+    if(bad){toast(bad,'warn');continue}
+    await attReadFiles([await photoPrepare(f)],x=>got.push(x),'photo');
+  }
+  return got;
+}
+// Работы с фото идут в фоне (чтение, загрузка); photoIdle() ждёт, пока все закончатся
+const PHOTO_JOBS=[];
+const photoIdle=()=>Promise.all(PHOTO_JOBS.splice(0));
+function photoJob(run){
+  const job=run().catch(()=>toast('Фото не добавлено — что-то пошло не так, повторите.','warn'));
+  PHOTO_JOBS.push(job);
+  // выбор файла — поле data-on: оболочка после обработчика ставит отложенное сохранение, а настоящее идёт из render() по готовности
+  Promise.resolve().then(()=>clearTimeout(_saveT));
+  return job;
+}
+// Одно действие — одна запись: все выбранные фото добавляются вместе и одним render() (он и сохраняет)
+ON.change['photo-add']=t=>{
+  const files=[...t.files],pid=t.dataset.pid;
+  t.value='';
+  if(!files.length) return;
+  if(!can('catalog')){toast('У вашей роли нет права менять фото товара.','warn');return}
+  photoJob(async()=>{
+    const got=await photoIntake(files),p=product(pid);
+    if(!got.length||!p||!can('catalog')) return;
+    const r=Attach.addPhotos(p,got,S.me,new Date());
+    if(!r.ok){toast(r.reason,'warn');return}
+    render();toast(r.added.length===1?`Фото «${r.added[0].name}» добавлено.`:`Добавлено фото: ${r.added.length}.`);
+  });
+};
+ON.change['photo-repl']=t=>{
+  const files=[...t.files].slice(0,1),{pid,fid}=t.dataset;
+  t.value='';
+  if(!files.length) return;
+  if(!can('catalog')){toast('У вашей роли нет права менять фото товара.','warn');return}
+  photoJob(async()=>{
+    const got=await photoIntake(files),p=product(pid);
+    if(!got.length||!p||!can('catalog')) return;
+    const r=Attach.replacePhoto(p,fid,got[0],S.me,new Date());
+    if(!r.ok){toast(r.reason,'warn');return}
+    render();toast(`Фото заменено на «${r.file.name}».`);
+  });
+};
+A['photo-main']=el=>{
+  const {p}=photoOf(el.dataset.pid,el.dataset.fid);
+  if(!p) return;
+  if(!can('catalog')) return toast('У вашей роли нет права менять фото товара.','warn');
+  const r=Attach.mainPhoto(p,el.dataset.fid);
+  if(!r.ok) return toast(r.reason,'warn');
+  render();toast('Это фото теперь главное.');
+};
+A['photo-del']=el=>{
+  if(!can('catalog')) return toast('У вашей роли нет права менять фото товара.','warn');
+  if(photoOf(el.dataset.pid,el.dataset.fid).f) openModal('photoDel',el.dataset.pid+'|'+el.dataset.fid);
+};
+// Удалить — после подтверждения: фото из списка убирается, на сервере файл помечается к уборке (через 30 дней)
+MODALS.photoDel=key=>{
+  const [pid,fid]=String(key).split('|'),{p,f}=photoOf(pid,fid);
+  if(!p||!f) return `<div>${mHead('Удалить фото?')}<div class="modal-b"><p class="m0">Такого фото уже нет.</p></div></div>`;
+  const src=photoSrc(f);
+  return `<form data-form="photo-del" data-key="${esc(key)}" novalidate>${mHead('Удалить фото?')}<div class="modal-b">${src?`<img class="dsp-big" src="${esc(src)}" alt="${esc(f.name)}">`:''}`
+    +`<p class="m0">Фото «${esc(f.name)}» пропадёт из карточки «${esc(p.name)}». Вернуть его нельзя — придётся загрузить заново.</p></div>${mFoot('Удалить')}</form>`;
+};
+FORMS['photo-del']=f=>{
+  const [pid,fid]=String(f.dataset.key).split('|'),{p,f:ph}=photoOf(pid,fid);
+  if(!can('catalog')){closeModal();return toast('У вашей роли нет права менять фото товара.','warn')}
+  if(!p||!ph){closeModal();return}
+  const r=Attach.removePhoto(p,fid);
+  closeModal();
+  if(!r.ok) return toast(r.reason,'warn');
+  render();toast(`Фото «${r.file.name}» удалено.`);
+};
 
 // Запуск. Демо: состояние из браузера (localStorage[Store.KEY]); нет или битое — демо seed(), затем первая отрисовка.
 // Серверный режим: вход и состояние с сервера — serverBoot() (72-server.js).

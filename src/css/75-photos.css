@@ -1,0 +1,28 @@
+/* Фото товара: блок в карточке, маленькое главное фото в списке, просмотр крупно */
+.pp{display:flex;flex-direction:column;gap:10px;min-width:0}
+.pp .sh{margin:0}
+.pp-it{display:flex;flex-direction:column;gap:6px;min-width:0;margin:0}
+.pp-img{position:relative;display:flex;align-items:center;justify-content:center;width:100%;margin:0;padding:0;border:0;border-radius:14px;overflow:hidden;background:var(--sunken);cursor:zoom-in}
+.pp-img img{display:block;width:100%;height:100%;object-fit:contain}
+.pp-it.big .pp-img{height:min(320px,56vw)}
+.pp-row .pp-img{aspect-ratio:1;border-radius:10px}
+.pp-row .pp-img img{object-fit:cover}
+.pp-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:10px}
+.pp-main{position:absolute;top:8px;left:8px}
+.pp-lost{flex-direction:column;gap:4px;min-height:90px;padding:10px;text-align:center;cursor:default;color:var(--ink-3)}
+.pp-lost .ic{width:26px;height:26px}
+.pp-btns{display:flex;flex-wrap:wrap;gap:4px}
+.pp-btns .btn{cursor:pointer}
+.pp-add{display:inline-flex;flex-wrap:wrap;gap:8px}
+.pp-add .btn{cursor:pointer}
+.pp-cam{display:none}
+@media (pointer:coarse){.pp-cam{display:inline-flex}}
+.pp-empty{display:flex;flex-direction:column;align-items:center;gap:8px;padding:22px 14px;border:1.5px dashed var(--line-2);border-radius:14px;color:var(--ink-3);text-align:center}
+.pp-empty .ic{width:30px;height:30px}
+.pp-empty b{color:var(--ink)}
+.pp-view{align-items:stretch}
+.pp-zoom{display:block;margin:0;padding:0;border:0;background:transparent;cursor:zoom-out}
+.pp-nav{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.pp-nav small{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pcell{display:flex;align-items:center;gap:10px;min-width:0}
+.pthumb{flex:none;width:40px;height:40px;border-radius:8px;object-fit:cover;background:var(--sunken)}
