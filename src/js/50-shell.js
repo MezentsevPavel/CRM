@@ -203,17 +203,36 @@ const showErr=(id,t)=>{const e=byId(id);e.textContent=t;e.hidden=false};
 // Реестр карточек: DRAWERS.<type> = id => ({kind, title, sub, body}) или null (нет записи или нет права —
 // карточка не открывается). Раздел кладёт свою карточку в своём файле: DRAWERS.product = id => …
 const DRAWERS={};
-function openDrawer(type,id){S.ui.drawer={type,id};renderDrawer()}
+// Шаг назад: S.ui.drawerBack — стек карточек, открытых до текущей [{type,id,sc}], sc — где была прокрутка. Карточка, открытая
+// поверх другой (пока одна открыта, список под ней закрыт), кладёт её в стек; с пустого экрана стек начинается заново.
+// Стек живёт в S.ui и не сохраняется. «← Назад» достаёт предыдущую; крестик и Esc закрывают всё, и renderDrawer стек очищает.
+function openDrawer(type,id){
+  const u=S.ui,cur=u.drawer;
+  if(!cur) u.drawerBack=[];
+  else if(cur.type!==type||cur.id!==id) (u.drawerBack||(u.drawerBack=[])).push({type:cur.type,id:cur.id,sc:byId('drawer-root')?.querySelector('.drawer-b')?.scrollTop||0});
+  u.drawer={type,id};renderDrawer();
+}
 function closeDrawer(){S.ui.drawer=null;renderDrawer()}
-function renderDrawer(){
+const drawerOk=(type,id)=>{const f=Object.hasOwn(DRAWERS,type)?DRAWERS[type]:null;return !!(f&&f(id))};
+function backDrawer(){
+  const u=S.ui,st=u.drawerBack||[];
+  while(st.length){
+    const p=st.pop();
+    // запись пропала или нет права — карточку пропускаем и идём к той, что глубже
+    if(drawerOk(p.type,p.id)){u.drawer={type:p.type,id:p.id};renderDrawer(p.sc);return}
+  }
+  renderDrawer();
+}
+function renderDrawer(scroll){
   const root=byId('drawer-root'),d=S.ui.drawer;
-  if(!d){root.innerHTML='';root.dataset.k='';return}
+  if(!d){S.ui.drawerBack=[];root.innerHTML='';root.dataset.k='';return}
   const f=Object.hasOwn(DRAWERS,d.type)?DRAWERS[d.type]:null,c=f?f(d.id):null;
-  if(!c){S.ui.drawer=null;root.innerHTML='';root.dataset.k='';return}
-  const k=d.type+':'+d.id,same=root.dataset.k===k,sc=same?(root.querySelector('.drawer-b')?.scrollTop||0):0;
+  if(!c){S.ui.drawer=null;S.ui.drawerBack=[];root.innerHTML='';root.dataset.k='';return}
+  const k=d.type+':'+d.id,same=root.dataset.k===k,sc=typeof scroll==='number'?scroll:same?(root.querySelector('.drawer-b')?.scrollTop||0):0;
+  const back=(S.ui.drawerBack||[]).length?`<button type="button" class="btn ghost sm dh-back" data-act="drawer-back">← Назад</button>`:'';
   root.classList.toggle('still',same);
-  root.innerHTML=`<div class="scrim" data-act="close-drawer"></div><aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="dr-t"><div class="drawer-h"><div class="dh-t"><small>${esc(c.kind)}</small><h2 id="dr-t">${c.title}</h2>${c.sub?`<p>${c.sub}</p>`:''}</div><button class="btn ghost icon" data-act="close-drawer" aria-label="Закрыть">${ic('x')}</button></div><div class="drawer-b">${c.body}</div></aside>`;
-  if(same){const b=root.querySelector('.drawer-b');if(b) b.scrollTop=sc}
+  root.innerHTML=`<div class="scrim" data-act="close-drawer"></div><aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="dr-t"><div class="drawer-h"><div class="dh-t">${back}<small>${esc(c.kind)}</small><h2 id="dr-t">${c.title}</h2>${c.sub?`<p>${c.sub}</p>`:''}</div><button class="btn ghost icon" data-act="close-drawer" aria-label="Закрыть">${ic('x')}</button></div><div class="drawer-b">${c.body}</div></aside>`;
+  if(sc){const b=root.querySelector('.drawer-b');if(b) b.scrollTop=sc}
   root.dataset.k=k;
 }
 
@@ -454,6 +473,7 @@ const A={
   'open-deal':el=>openDrawer('deal',el.dataset.id),
   'open-task':el=>openDrawer('task',el.dataset.id),
   'close-drawer':()=>closeDrawer(),
+  'drawer-back':()=>backDrawer(),
   'close-modal':()=>closeModal(),
   'new-task':()=>openModal('task'),
   'new-ship':()=>openModal('ship'),

@@ -125,12 +125,14 @@ function srcPill(r){
   const s=ship(r.src),bad=stockOf(r.productId).freeAfter<0;
   return `<span class="pill ${bad?'bad':'info'} sm">едет: ${s?.id||r.src}${s?' · '+fD(s.eta):''}${bad?' · не хватает':''}</span>`;
 }
-// Сетка «юрлицо × город» с итогами; пустая клетка — пустая, не 0
+// Таблица «юрлицо × склад» (Stock.table) — в каждой карточке товара, всегда. Клетка: остаток крупно, под ним «резерв N» и
+// «свободно M»; пусто — 0 (слово директора). Справа и снизу «Итого» по тем же трём числам, в правом нижнем углу — «Свободно всего».
+// Всё считает Stock.table; здесь только показ.
 function gridHtml(p){
-  const g=Stock.grid(S,p.id);
-  if(g.totals.all===null) return `<p class="m0">${noData('остаток по юрлицам и городам')}</p>`;
-  const n=v=>v===null?'':num(v),cell=v=>v===null?'<td class="num e"></td>':`<td class="num">${num(v)}</td>`;
-  return `<div class="xs"><table class="tbl mx"><thead><tr><th>Юрлицо / город</th>${g.cols.map(c=>`<th class="num">${esc(c.name)}</th>`).join('')}<th class="num">Итого</th></tr></thead><tbody>${g.rows.map(r=>`<tr><th scope="row">${esc(r.name)}</th>${g.cols.map(c=>cell(g.cell(r.id,c.id))).join('')}<td class="num tot">${n(g.totals.rows[r.id])}</td></tr>`).join('')}</tbody><tfoot><tr><th scope="row">Итого</th>${g.cols.map(c=>`<td class="num tot">${n(g.totals.cols[c.id])}</td>`).join('')}<td class="num tot">${n(g.totals.all)}</td></tr></tfoot></table></div>`;
+  const t=Stock.table(S,p.id);
+  const cell=(v,cls='')=>`<td class="num${cls}"><b>${num(v.have)}</b><small>резерв ${num(v.held)}</small><small class="${v.free<0?'bad-t':''}">свободно ${num(v.free)}</small></td>`;
+  const all=t.all;
+  return `<div class="xs"><table class="tbl mx"><thead><tr><th>Юрлицо / склад</th>${t.cols.map(c=>`<th class="num">${esc(c.name)}</th>`).join('')}<th class="num">Итого</th></tr></thead><tbody>${t.rows.map(r=>`<tr><th scope="row">${esc(r.name)}</th>${t.cols.map(c=>cell(t.cell(r.id,c.id))).join('')}${cell(t.row(r.id),' tot')}</tr>`).join('')}</tbody><tfoot><tr><th scope="row">Итого</th>${t.cols.map(c=>cell(t.col(c.id),' tot')).join('')}<td class="num tot all"><span>Свободно всего</span><b class="${all.free<0?'bad-t':''}">${num(all.free)}</b><small>по факту на складах ${num(all.have)}</small><small>в резерве ${num(all.held)}</small></td></tr></tfoot></table></div>`;
 }
 // Блок «Списать при продаже»: каждая клетка «юрлицо × город» с остатком — строка с кнопкой (право sell). Сколько можно списать
 // без резерва — Stock.sellMax; зарезервированное списывают по резерву (кнопка в таблице «Резервы»).
@@ -209,7 +211,7 @@ function dProduct(p){
     <div class="pst">${st('На складе',k.known?qtyOf(k.onHand,p):'нет данных')}${st('В резерве',num(k.reservedStock+k.reservedIncoming),'',k.reservedIncoming?`со склада ${num(k.reservedStock)}, под поставки ${num(k.reservedIncoming)}`:'')}${st('Свободно сейчас',unk?'нет данных':num(k.free),unk?'':k.free<=0?'bad-t':'ok-t')}${st('Свободно после прихода',unk?'нет данных':num(k.freeAfter),k.freeAfter<0?'bad-t':'',k.incoming?`едет ${num(k.incoming)}`:'')}</div>
     ${sbar(p,true)}
     ${watchHtml(p,k)}
-    <div><h4 class="sh">Склады: юрлицо × город</h4>${gridHtml(p)}<p class="hint">Источник: ${stockNote()}. Движения в CRM после снимка — в журнале ниже.</p></div>
+    <div><h4 class="sh">Склады: юрлицо × город</h4>${gridHtml(p)}${k.known?'':'<p class="hint">По этому товару в таблице остатков чисел нет: в клетках стоят нули вместо «нет данных».</p>'}<p class="hint">Источник: ${stockNote()}. Резерв под поставку сюда не входит: товара на складе ещё нет. Движения в CRM после снимка — в журнале ниже.</p></div>
     <div><h4 class="sh">Не входит в свободный остаток</h4><div class="pst">${st('Ответхранение',aside(k.custody),'','считать ли в свободном — нет данных')}${st('В пути (из таблицы)',aside(k.transitNoShip),'','без поставки в CRM')}${st('Бой',aside(k.damaged))}</div></div>
     ${reserveForm(p,k,inc)}
     <div id="p-reserves"><h4 class="sh">Резервы</h4>${rTbl}</div>

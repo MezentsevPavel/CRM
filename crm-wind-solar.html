@@ -280,6 +280,7 @@ button.chip:disabled{opacity:.5;cursor:not-allowed}
 .still .scrim,.still .drawer{animation:none}
 .drawer-h{display:flex;align-items:flex-start;gap:12px;padding:18px 20px 14px;border-bottom:1px solid var(--line)}
 .dh-t{flex:1;min-width:0}
+.dh-t .dh-back{margin:-4px 0 8px -8px}
 .dh-t small{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
 .dh-t h2{margin:4px 0 0;font:800 18px/1.25 var(--f-display);letter-spacing:-.015em;text-wrap:balance}
 .dh-t p{margin:6px 0 0;font-size:13px;color:var(--ink-3)}
@@ -472,11 +473,22 @@ td.free b{font-weight:700}
 .kv dt{color:var(--ink-3)}
 .kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
 .kv dd small{display:block;font-size:12px;color:var(--ink-3)}
-.mx th{white-space:normal;min-width:72px}
-.mx th[scope=row]{background:transparent;color:var(--ink);font-size:13.5px;font-weight:500;white-space:nowrap;text-align:left}
-.mx td.e{background:var(--surface-2)}
-.mx td.tot{font-weight:700}
-.mx tfoot th,.mx tfoot td{border-top:1px solid var(--line-2);border-bottom:0}
+.mx{border:1px solid var(--line-2)}
+.mx th,.mx td{padding:6px 7px;border:1px solid var(--line-2)}
+.mx th{white-space:normal;min-width:0}
+.mx thead th{background:var(--sunken);color:var(--ink-2)}
+.mx th[scope=row]{background:var(--surface-2);color:var(--ink);font-size:13.5px;font-weight:600;white-space:nowrap;text-align:left}
+.mx td{vertical-align:top;line-height:1.25}
+.mx td b{display:block;font:700 16px/1.2 var(--f-display)}
+.mx td small{display:block;font-size:11px;color:var(--ink-3)}
+.mx td small.bad-t{color:var(--bad);font-weight:600}
+.mx td.tot{background:var(--surface-2)}
+.mx tbody tr:last-child td{border-bottom:1px solid var(--line-2)}
+.mx tfoot th,.mx tfoot td{border-top:2px solid var(--line-2)}
+.mx td.all{background:var(--primary-soft)}
+.mx td.all span{display:block;font-size:11.5px;font-weight:600;color:var(--ink-2)}
+.mx td.all b{font-size:20px}
+.mx td.all{white-space:normal}
 .mv .pill{align-self:center}
 .rbtns{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}
 .sell-l li>span{flex:1 1 140px;min-width:0}
@@ -3007,8 +3019,33 @@ const Stock = (() => {
   }
   // Свободно в клетке без резерва: остаток клетки минус резервы со склада на неё (g — Stock.grid товара). Единственная формула.
   function cellFree(st, g, productId, e, c) {
-    const held = sum((st.reserves || []).filter(r => r.productId === productId && r.src === 'stock' && cellKey(r) === e + '|' + c), r => r.qty);
-    return Math.max(0, (g.cell(e, c) ?? 0) - held);
+    return Math.max(0, (g.cell(e, c) ?? 0) - cellHeld(st, productId, e, c));
+  }
+  // Резервы со склада на клетку «юрлицо × город»: единственная выборка — её берут cellFree и таблица карточки товара.
+  function cellHeld(st, productId, e, c) {
+    return sum((st.reserves || []).filter(r => r.productId === productId && r.src === 'stock' && cellKey(r) === e + '|' + c), r => r.qty);
+  }
+  // Таблица карточки товара «юрлицо × склад»: в каждой клетке {have, held, free} — остаток, резервы со склада на клетку и
+  // свободно (have − held, без обрезки: отрицательное видно). Пусто — 0 (слово директора), не «нет данных»; строки и столбцы —
+  // как в grid, плюс юрлица и города, где стоит резерв без остатка, чтобы итоги сходились с summary: all.free = summary().free.
+  // Резерв под поставку (src ≠ 'stock') в таблицу не входит: на складе его ещё нет. → {rows, cols, cell(e,c), row(e), col(c), all}
+  function table(st, productId) {
+    const g = grid(st, productId);
+    const rs = (st.reserves || []).filter(r => r.productId === productId && r.src === 'stock');
+    const widen = (list, ids, nameOf) => [...list, ...[...new Set(ids)].filter(id => !list.some(x => x.id === id)).map(id => ({ id, name: nameOf(st, id) ?? id }))];
+    const rows = widen(g.rows, rs.map(r => r.entityId || ANY), entityName);
+    const cols = widen(g.cols, rs.map(r => r.cityId || ANY), cityName);
+    const mk = (have, held) => ({ have, held, free: have - held });
+    const sumOf = cells => mk(sum(cells, x => x.have), sum(cells, x => x.held));
+    const m = {};
+    for (const r of rows) for (const c of cols) m[r.id + '|' + c.id] = mk(g.cell(r.id, c.id) ?? 0, cellHeld(st, productId, r.id, c.id));
+    const cell = (e, c) => m[e + '|' + c] ?? mk(0, 0);
+    return {
+      rows, cols, cell,
+      row: e => sumOf(cols.map(c => cell(e, c.id))),
+      col: c => sumOf(rows.map(r => cell(r.id, c))),
+      all: sumOf(rows.flatMap(r => cols.map(c => cell(r.id, c.id)))),
+    };
   }
   // Клетки «юрлицо × город», где товар можно взять без чужого резерва: [{entityId, cityId, free}], free = sellMax > 0.
   // Больше свободного — выше, при равенстве — по порядку таблицы. Клетки с нулём не попадают. Нужна bestCell и форме заявки
@@ -3186,7 +3223,7 @@ const Stock = (() => {
   }
 
   return {
-    ANY, RESERVE_DAYS, KINDS, NO_ENTITY, NO_CITY, HIDDEN_DEAL, HIDDEN_ID, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, canReserve, bestCell, cells, move, reserve, unreserve, release, expired, sellMax, sell, cellText, dealRef, reserveView, docView,
+    ANY, RESERVE_DAYS, KINDS, NO_ENTITY, NO_CITY, HIDDEN_DEAL, HIDDEN_ID, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, table, canReserve, bestCell, cells, move, reserve, unreserve, release, expired, sellMax, sell, cellText, dealRef, reserveView, docView,
     reserveFor, extend, forText, placed, history, removed, transitBy, transitText, watchOf, watch, unwatch, notifyAppeared, remindExpiring, due, tick };
 })();
 
@@ -8480,17 +8517,36 @@ const showErr=(id,t)=>{const e=byId(id);e.textContent=t;e.hidden=false};
 // Реестр карточек: DRAWERS.<type> = id => ({kind, title, sub, body}) или null (нет записи или нет права —
 // карточка не открывается). Раздел кладёт свою карточку в своём файле: DRAWERS.product = id => …
 const DRAWERS={};
-function openDrawer(type,id){S.ui.drawer={type,id};renderDrawer()}
+// Шаг назад: S.ui.drawerBack — стек карточек, открытых до текущей [{type,id,sc}], sc — где была прокрутка. Карточка, открытая
+// поверх другой (пока одна открыта, список под ней закрыт), кладёт её в стек; с пустого экрана стек начинается заново.
+// Стек живёт в S.ui и не сохраняется. «← Назад» достаёт предыдущую; крестик и Esc закрывают всё, и renderDrawer стек очищает.
+function openDrawer(type,id){
+  const u=S.ui,cur=u.drawer;
+  if(!cur) u.drawerBack=[];
+  else if(cur.type!==type||cur.id!==id) (u.drawerBack||(u.drawerBack=[])).push({type:cur.type,id:cur.id,sc:byId('drawer-root')?.querySelector('.drawer-b')?.scrollTop||0});
+  u.drawer={type,id};renderDrawer();
+}
 function closeDrawer(){S.ui.drawer=null;renderDrawer()}
-function renderDrawer(){
+const drawerOk=(type,id)=>{const f=Object.hasOwn(DRAWERS,type)?DRAWERS[type]:null;return !!(f&&f(id))};
+function backDrawer(){
+  const u=S.ui,st=u.drawerBack||[];
+  while(st.length){
+    const p=st.pop();
+    // запись пропала или нет права — карточку пропускаем и идём к той, что глубже
+    if(drawerOk(p.type,p.id)){u.drawer={type:p.type,id:p.id};renderDrawer(p.sc);return}
+  }
+  renderDrawer();
+}
+function renderDrawer(scroll){
   const root=byId('drawer-root'),d=S.ui.drawer;
-  if(!d){root.innerHTML='';root.dataset.k='';return}
+  if(!d){S.ui.drawerBack=[];root.innerHTML='';root.dataset.k='';return}
   const f=Object.hasOwn(DRAWERS,d.type)?DRAWERS[d.type]:null,c=f?f(d.id):null;
-  if(!c){S.ui.drawer=null;root.innerHTML='';root.dataset.k='';return}
-  const k=d.type+':'+d.id,same=root.dataset.k===k,sc=same?(root.querySelector('.drawer-b')?.scrollTop||0):0;
+  if(!c){S.ui.drawer=null;S.ui.drawerBack=[];root.innerHTML='';root.dataset.k='';return}
+  const k=d.type+':'+d.id,same=root.dataset.k===k,sc=typeof scroll==='number'?scroll:same?(root.querySelector('.drawer-b')?.scrollTop||0):0;
+  const back=(S.ui.drawerBack||[]).length?`<button type="button" class="btn ghost sm dh-back" data-act="drawer-back">← Назад</button>`:'';
   root.classList.toggle('still',same);
-  root.innerHTML=`<div class="scrim" data-act="close-drawer"></div><aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="dr-t"><div class="drawer-h"><div class="dh-t"><small>${esc(c.kind)}</small><h2 id="dr-t">${c.title}</h2>${c.sub?`<p>${c.sub}</p>`:''}</div><button class="btn ghost icon" data-act="close-drawer" aria-label="Закрыть">${ic('x')}</button></div><div class="drawer-b">${c.body}</div></aside>`;
-  if(same){const b=root.querySelector('.drawer-b');if(b) b.scrollTop=sc}
+  root.innerHTML=`<div class="scrim" data-act="close-drawer"></div><aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="dr-t"><div class="drawer-h"><div class="dh-t">${back}<small>${esc(c.kind)}</small><h2 id="dr-t">${c.title}</h2>${c.sub?`<p>${c.sub}</p>`:''}</div><button class="btn ghost icon" data-act="close-drawer" aria-label="Закрыть">${ic('x')}</button></div><div class="drawer-b">${c.body}</div></aside>`;
+  if(sc){const b=root.querySelector('.drawer-b');if(b) b.scrollTop=sc}
   root.dataset.k=k;
 }
 
@@ -8731,6 +8787,7 @@ const A={
   'open-deal':el=>openDrawer('deal',el.dataset.id),
   'open-task':el=>openDrawer('task',el.dataset.id),
   'close-drawer':()=>closeDrawer(),
+  'drawer-back':()=>backDrawer(),
   'close-modal':()=>closeModal(),
   'new-task':()=>openModal('task'),
   'new-ship':()=>openModal('ship'),
@@ -9245,12 +9302,14 @@ function srcPill(r){
   const s=ship(r.src),bad=stockOf(r.productId).freeAfter<0;
   return `<span class="pill ${bad?'bad':'info'} sm">едет: ${s?.id||r.src}${s?' · '+fD(s.eta):''}${bad?' · не хватает':''}</span>`;
 }
-// Сетка «юрлицо × город» с итогами; пустая клетка — пустая, не 0
+// Таблица «юрлицо × склад» (Stock.table) — в каждой карточке товара, всегда. Клетка: остаток крупно, под ним «резерв N» и
+// «свободно M»; пусто — 0 (слово директора). Справа и снизу «Итого» по тем же трём числам, в правом нижнем углу — «Свободно всего».
+// Всё считает Stock.table; здесь только показ.
 function gridHtml(p){
-  const g=Stock.grid(S,p.id);
-  if(g.totals.all===null) return `<p class="m0">${noData('остаток по юрлицам и городам')}</p>`;
-  const n=v=>v===null?'':num(v),cell=v=>v===null?'<td class="num e"></td>':`<td class="num">${num(v)}</td>`;
-  return `<div class="xs"><table class="tbl mx"><thead><tr><th>Юрлицо / город</th>${g.cols.map(c=>`<th class="num">${esc(c.name)}</th>`).join('')}<th class="num">Итого</th></tr></thead><tbody>${g.rows.map(r=>`<tr><th scope="row">${esc(r.name)}</th>${g.cols.map(c=>cell(g.cell(r.id,c.id))).join('')}<td class="num tot">${n(g.totals.rows[r.id])}</td></tr>`).join('')}</tbody><tfoot><tr><th scope="row">Итого</th>${g.cols.map(c=>`<td class="num tot">${n(g.totals.cols[c.id])}</td>`).join('')}<td class="num tot">${n(g.totals.all)}</td></tr></tfoot></table></div>`;
+  const t=Stock.table(S,p.id);
+  const cell=(v,cls='')=>`<td class="num${cls}"><b>${num(v.have)}</b><small>резерв ${num(v.held)}</small><small class="${v.free<0?'bad-t':''}">свободно ${num(v.free)}</small></td>`;
+  const all=t.all;
+  return `<div class="xs"><table class="tbl mx"><thead><tr><th>Юрлицо / склад</th>${t.cols.map(c=>`<th class="num">${esc(c.name)}</th>`).join('')}<th class="num">Итого</th></tr></thead><tbody>${t.rows.map(r=>`<tr><th scope="row">${esc(r.name)}</th>${t.cols.map(c=>cell(t.cell(r.id,c.id))).join('')}${cell(t.row(r.id),' tot')}</tr>`).join('')}</tbody><tfoot><tr><th scope="row">Итого</th>${t.cols.map(c=>cell(t.col(c.id),' tot')).join('')}<td class="num tot all"><span>Свободно всего</span><b class="${all.free<0?'bad-t':''}">${num(all.free)}</b><small>по факту на складах ${num(all.have)}</small><small>в резерве ${num(all.held)}</small></td></tr></tfoot></table></div>`;
 }
 // Блок «Списать при продаже»: каждая клетка «юрлицо × город» с остатком — строка с кнопкой (право sell). Сколько можно списать
 // без резерва — Stock.sellMax; зарезервированное списывают по резерву (кнопка в таблице «Резервы»).
@@ -9329,7 +9388,7 @@ function dProduct(p){
     <div class="pst">${st('На складе',k.known?qtyOf(k.onHand,p):'нет данных')}${st('В резерве',num(k.reservedStock+k.reservedIncoming),'',k.reservedIncoming?`со склада ${num(k.reservedStock)}, под поставки ${num(k.reservedIncoming)}`:'')}${st('Свободно сейчас',unk?'нет данных':num(k.free),unk?'':k.free<=0?'bad-t':'ok-t')}${st('Свободно после прихода',unk?'нет данных':num(k.freeAfter),k.freeAfter<0?'bad-t':'',k.incoming?`едет ${num(k.incoming)}`:'')}</div>
     ${sbar(p,true)}
     ${watchHtml(p,k)}
-    <div><h4 class="sh">Склады: юрлицо × город</h4>${gridHtml(p)}<p class="hint">Источник: ${stockNote()}. Движения в CRM после снимка — в журнале ниже.</p></div>
+    <div><h4 class="sh">Склады: юрлицо × город</h4>${gridHtml(p)}${k.known?'':'<p class="hint">По этому товару в таблице остатков чисел нет: в клетках стоят нули вместо «нет данных».</p>'}<p class="hint">Источник: ${stockNote()}. Резерв под поставку сюда не входит: товара на складе ещё нет. Движения в CRM после снимка — в журнале ниже.</p></div>
     <div><h4 class="sh">Не входит в свободный остаток</h4><div class="pst">${st('Ответхранение',aside(k.custody),'','считать ли в свободном — нет данных')}${st('В пути (из таблицы)',aside(k.transitNoShip),'','без поставки в CRM')}${st('Бой',aside(k.damaged))}</div></div>
     ${reserveForm(p,k,inc)}
     <div id="p-reserves"><h4 class="sh">Резервы</h4>${rTbl}</div>

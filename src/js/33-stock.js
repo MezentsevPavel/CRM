@@ -390,8 +390,33 @@ const Stock = (() => {
   }
   // Свободно в клетке без резерва: остаток клетки минус резервы со склада на неё (g — Stock.grid товара). Единственная формула.
   function cellFree(st, g, productId, e, c) {
-    const held = sum((st.reserves || []).filter(r => r.productId === productId && r.src === 'stock' && cellKey(r) === e + '|' + c), r => r.qty);
-    return Math.max(0, (g.cell(e, c) ?? 0) - held);
+    return Math.max(0, (g.cell(e, c) ?? 0) - cellHeld(st, productId, e, c));
+  }
+  // Резервы со склада на клетку «юрлицо × город»: единственная выборка — её берут cellFree и таблица карточки товара.
+  function cellHeld(st, productId, e, c) {
+    return sum((st.reserves || []).filter(r => r.productId === productId && r.src === 'stock' && cellKey(r) === e + '|' + c), r => r.qty);
+  }
+  // Таблица карточки товара «юрлицо × склад»: в каждой клетке {have, held, free} — остаток, резервы со склада на клетку и
+  // свободно (have − held, без обрезки: отрицательное видно). Пусто — 0 (слово директора), не «нет данных»; строки и столбцы —
+  // как в grid, плюс юрлица и города, где стоит резерв без остатка, чтобы итоги сходились с summary: all.free = summary().free.
+  // Резерв под поставку (src ≠ 'stock') в таблицу не входит: на складе его ещё нет. → {rows, cols, cell(e,c), row(e), col(c), all}
+  function table(st, productId) {
+    const g = grid(st, productId);
+    const rs = (st.reserves || []).filter(r => r.productId === productId && r.src === 'stock');
+    const widen = (list, ids, nameOf) => [...list, ...[...new Set(ids)].filter(id => !list.some(x => x.id === id)).map(id => ({ id, name: nameOf(st, id) ?? id }))];
+    const rows = widen(g.rows, rs.map(r => r.entityId || ANY), entityName);
+    const cols = widen(g.cols, rs.map(r => r.cityId || ANY), cityName);
+    const mk = (have, held) => ({ have, held, free: have - held });
+    const sumOf = cells => mk(sum(cells, x => x.have), sum(cells, x => x.held));
+    const m = {};
+    for (const r of rows) for (const c of cols) m[r.id + '|' + c.id] = mk(g.cell(r.id, c.id) ?? 0, cellHeld(st, productId, r.id, c.id));
+    const cell = (e, c) => m[e + '|' + c] ?? mk(0, 0);
+    return {
+      rows, cols, cell,
+      row: e => sumOf(cols.map(c => cell(e, c.id))),
+      col: c => sumOf(rows.map(r => cell(r.id, c))),
+      all: sumOf(rows.flatMap(r => cols.map(c => cell(r.id, c.id)))),
+    };
   }
   // Клетки «юрлицо × город», где товар можно взять без чужого резерва: [{entityId, cityId, free}], free = sellMax > 0.
   // Больше свободного — выше, при равенстве — по порядку таблицы. Клетки с нулём не попадают. Нужна bestCell и форме заявки
@@ -569,7 +594,7 @@ const Stock = (() => {
   }
 
   return {
-    ANY, RESERVE_DAYS, KINDS, NO_ENTITY, NO_CITY, HIDDEN_DEAL, HIDDEN_ID, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, canReserve, bestCell, cells, move, reserve, unreserve, release, expired, sellMax, sell, cellText, dealRef, reserveView, docView,
+    ANY, RESERVE_DAYS, KINDS, NO_ENTITY, NO_CITY, HIDDEN_DEAL, HIDDEN_ID, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, table, canReserve, bestCell, cells, move, reserve, unreserve, release, expired, sellMax, sell, cellText, dealRef, reserveView, docView,
     reserveFor, extend, forText, placed, history, removed, transitBy, transitText, watchOf, watch, unwatch, notifyAppeared, remindExpiring, due, tick };
 })();
 

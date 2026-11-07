@@ -158,6 +158,7 @@ button.chip:disabled{opacity:.5;cursor:not-allowed}
 .still .scrim,.still .drawer{animation:none}
 .drawer-h{display:flex;align-items:flex-start;gap:12px;padding:18px 20px 14px;border-bottom:1px solid var(--line)}
 .dh-t{flex:1;min-width:0}
+.dh-t .dh-back{margin:-4px 0 8px -8px}
 .dh-t small{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
 .dh-t h2{margin:4px 0 0;font:800 18px/1.25 var(--f-display);letter-spacing:-.015em;text-wrap:balance}
 .dh-t p{margin:6px 0 0;font-size:13px;color:var(--ink-3)}

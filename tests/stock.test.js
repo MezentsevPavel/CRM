@@ -656,7 +656,7 @@ test('карточка товара: ключ, модель, бренд, кат�
   assert.ok(ds.includes('нет в каталоге') && ds.includes('нет данных: бренд') && ds.includes('нет данных: цена'));
 });
 
-test('карточка товара: сетка «юрлицо × город» с итогами; где остатка нет — клетка пустая, не 0; колонка без города подписана', () => {
+test('карточка товара: сетка «юрлицо × город» с итогами; где остатка нет — в клетке 0 (слово директора); колонка без города подписана', () => {
   const app = load();
   const rows = app.STOCK_SNAPSHOT.rows;
   const uniq = r => rows.filter(x => x.name === r.name).length === 1;
@@ -667,13 +667,13 @@ test('карточка товара: сетка «юрлицо × город» �
   const cells = title => {
     const tr = body.match(new RegExp(`<tr><th scope="row">${title}</th>(.*?)</tr>`));
     assert.ok(tr, `в сетке нет строки «${title}»`);
-    return [...tr[1].matchAll(/<td[^>]*>(.*?)<\/td>/g)].map(m => m[1]);
+    return [...tr[1].matchAll(/<td[^>]*>(.*?)<\/td>/g)].map(m => m[1].match(/<b[^>]*>(.*?)<\/b>/)[1]); // крупное число клетки — остаток
   };
-  // столбцы: Иркутск, Москва, Краснодар, «нет данных: город», Итого
-  assert.deepEqual(cells('ИП'), ['', '', '', String(row.ip), String(row.ip)]);
-  assert.deepEqual(cells('НПП'), ['', '', '', '', ''], 'пустые клетки показаны нулём или чем-то ещё');
-  assert.deepEqual(cells('ВС'), ['', '', '', '', '']);
-  assert.deepEqual(cells('Итого'), ['', '', '', String(row.ip), String(row.ip)]);
+  // столбцы: Иркутск, Москва, Краснодар, «нет данных: город», Итого; пустая клетка — 0, не пусто
+  assert.deepEqual(cells('ИП'), ['0', '0', '0', String(row.ip), String(row.ip)]);
+  assert.deepEqual(cells('НПП'), ['0', '0', '0', '0', '0'], 'пустые клетки не показаны нулём');
+  assert.deepEqual(cells('ВС'), ['0', '0', '0', '0', '0']);
+  assert.deepEqual(cells('Итого'), ['0', '0', '0', String(row.ip), String(row.ip)]);
   assert.ok(plain(body).includes('нет данных: город'), 'колонка без города не подписана');
   assert.ok(plain(body).includes('таблица менеджеров, снимок 31.10.2026'), 'нет подписи источника остатков');
   // юрлицо переименовали в справочнике — сетка говорит новым названием
