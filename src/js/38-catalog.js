@@ -40,11 +40,20 @@ const Catalog = (() => {
   // opts.named (перенос из CSV, Import.applyStock): id товара без пары — 'sheet:' + нормализованное название (у второй строки
   //   с тем же названием — «#2»), а не по номеру строки: повторный перенос попадает в те же товары.
   function build(catalog, snapshot, opts = {}) {
-    const products = catalog.rows.map(r => ({
-      id: String(r.key), name: r.model, brand: r.brand ?? null, cat: KIND_CAT[r.cat] || r.cat,
-      price: isNum(r.price) ? r.price : null, avail: r.avail ?? null, url: r.url ?? null,
-      src: 'catalog', inCatalog: true, sheet: r.sheet,
-    }));
+    const products = catalog.rows.map(r => {
+      const p = {
+        id: String(r.key), name: r.model, brand: r.brand ?? null, cat: KIND_CAT[r.cat] || r.cat,
+        price: isNum(r.price) ? r.price : null, avail: r.avail ?? null, url: r.url ?? null,
+        src: 'catalog', inCatalog: true, sheet: r.sheet,
+      };
+      // артикул, единица и «цена поставщика» (лист «Электрика»): поле есть, только когда в таблице оно заполнено — иначе «нет данных»
+      if (r.sku) p.sku = r.sku;
+      if (r.unit) p.unit = r.unit;
+      if (r.supplier) p.supplier = r.supplier;
+      if (isNum(r.supplierPrice)) p.supplierPrice = r.supplierPrice;
+      if (r.priceDate) p.priceDate = r.priceDate;
+      return p;
+    });
     const byName = new Map();
     for (const p of products) { const k = norm(p.name); byName.set(k, [...(byName.get(k) || []), p.id]); }
     const rowsPerName = new Map();
@@ -92,6 +101,43 @@ const Catalog = (() => {
     if (skuClean(o.sku)) product.sku = skuClean(o.sku);
     st.products.push(product);
     return { ok: true, product };
+  }
+
+  const blank = v => v === undefined || v === null || v === '';
+  // Товар поставщика (лист «Электрика»): у него есть цена поставщика, а цена продажи может быть пуста
+  const isSupplier = p => !!p && (p.sheet === 'Электрика' || !blank(p.supplier) || !blank(p.supplierPrice));
+
+  // Довести номенклатуру до снимка, ничего не стирая (шаг MIGRATIONS[21] рабочей базы и кнопка «Обновить каталог из снимка»):
+  // товара снимка с таким id нет — добавляется; есть — в него ставятся sku, supplier, supplierPrice, priceDate, url только там, где у товара
+  // они пусты. Введённое вручную, название, цена продажи и категория не меняются. Путь товара снимка, которого нет в дереве категорий,
+  // заводится в дерево. Товары снимка и так приходят в каждую базу из кода (Docs.join), документом лежит только правленый товар, поэтому
+  // «добавлено» бывает редко, а «допишет» — у правленых; дерево — документы базы, само не растёт.
+  // skip — id, которые не возвращать (снятые из списка). → {added: [id], filled: [id], skuSet, categories: [id новых узлов дерева]};
+  // st меняется на месте, записать надо перечисленное.
+  function merge(st, snapshot, skip = []) {
+    if (!Array.isArray(st.products)) st.products = [];
+    const had = new Set(nodes(st).map(c => c.id)), byId = new Map(st.products.map(p => [p.id, p]));
+    const out = { added: [], filled: [], skuSet: 0, categories: [] };
+    for (const b of build(snapshot, { rows: [] }).products) {
+      let p = byId.get(b.id);
+      if (!p && skip.includes(b.id)) continue;
+      if (!p) {
+        p = { ...b, cat: ensure(st, b.cat) };
+        st.products.push(p); byId.set(p.id, p); out.added.push(p.id);
+        continue;
+      }
+      let got = false;
+      for (const f of ['sku', 'supplier', 'supplierPrice', 'priceDate', 'url']) {
+        if ((f === 'sku' ? skuOf(p) === '' : blank(p[f])) && !blank(b[f])) {
+          p[f] = b[f]; got = true;
+          if (f === 'sku') out.skuSet++;
+        }
+      }
+      if (got) out.filled.push(p.id);
+      if (!hasPath(st, p.cat)) ensure(st, p.cat);
+    }
+    out.categories = nodes(st).filter(c => !had.has(c.id)).map(c => c.id);
+    return out;
   }
 
   // ——— категории деревом ———
@@ -273,12 +319,16 @@ const Catalog = (() => {
     const have = new Set(st.products.map(p => p.cat));
     return [...CATS.filter(c => have.has(c)), ...[...have].filter(c => !CATS.includes(c)).sort((a, b) => a.localeCompare(b, 'ru'))];
   }
-  function brands(st) {
-    return [...new Set(st.products.map(p => p.brand).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ru'));
+  // Бренды товаров категории cat вместе с подкатегориями (слова директора: выбрал инверторы — в брендах бренды инверторов, не панелей);
+  // cat пусто или «Все» — все бренды; NO_CAT — бренды товаров без категории.
+  function brands(st, cat) {
+    const all = !cat || cat === 'Все';
+    const list = all ? st.products : st.products.filter(p => (cat === NO_CAT ? isNoCat(p.cat) : under(p.cat, cat)));
+    return [...new Set(list.map(p => p.brand).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ru'));
   }
 
   // ——— артикул ———
-  // Артикул (product.sku) — строка, необязательная: у товара без артикула поля нет или оно пусто («нет данных: артикул»). Не ключ каталога
+  // Артикул (product.sku) — строка, необязательная: у товара без артикула поля нет или оно пусто («Артикул: нет данных»). Не ключ каталога
   // (product.id) и из него не берётся. Правит право catalog. Один и тот же артикул у двух товаров не запрещён — на экране предупреждение.
   const SKU_MAX = 60;
   const skuClean = s => String(s ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, SKU_MAX).trim();
@@ -371,7 +421,7 @@ const Catalog = (() => {
     return st;
   }
 
-  return { norm, CATS, NO_CAT, SEP, build, add, cats, brands, query, sectionCat, base, pack, unpack,
+  return { norm, CATS, NO_CAT, SEP, build, merge, isSupplier, add, cats, brands, query, sectionCat, base, pack, unpack,
     SKU_MAX, skuClean, skuOf, skuKey, bySku, label, setSku, pathOf, nodeOf, hasPath, ensure, treeFrom, syncTree, busy, catAdd, catEdit, catDelete, setCat, rows, nameProblem };
 })();
 

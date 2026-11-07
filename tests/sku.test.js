@@ -7,7 +7,10 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { load } = require('./load.js');
+const { load: loadRaw } = require('./load.js');
+// Тесты про артикул, который вводит человек, держат в демо товары без артикула; у товаров снимка каталога артикулы с сайта теперь есть
+// (tests/catalog-sync.test.js), а товары «Электрики» поставщиков находятся по словам «автомат», «32А», поэтому здесь и то и другое убрано — проверяется только поле, которое ставят руками.
+const load = opts => { const a = loadRaw(opts); if (a.S) { a.S.products = a.S.products.filter(p => p.sheet !== 'Электрика'); for (const p of a.S.products) if (p.src === 'catalog') delete p.sku; } return a; };
 
 const plain = v => JSON.parse(JSON.stringify(v === undefined ? null : v));
 const deq = (actual, expected, msg) => assert.deepEqual(plain(actual), plain(expected), msg);
@@ -37,8 +40,8 @@ test('Catalog: артикул — необязательная строка то
   assert.equal(Catalog.label(p1), 'Тест Автомат трёхполюсный (арт. АВТ-3П-32A)');
   assert.equal(Catalog.label(p4), 'Тест Кабель без артикула', 'нет артикула — одно название, без выдуманного');
   assert.equal(Catalog.label(undefined), 'нет данных: товар');
-  assert.equal(a.skuText(p4), 'нет данных: артикул');
-  assert.equal(a.skuText(p1), 'арт. АВТ-3П-32A');
+  assert.equal(a.skuText(p4), 'Артикул: нет данных');
+  assert.equal(a.skuText(p1), 'АВТ-3П-32A', 'в списках — просто артикул, без слов «арт.»');
   // управляющие знаки и пробелы чистятся, длина ограничена
   assert.equal(Catalog.skuClean('  A\u0000 B\n C  '), 'A B C');
   assert.equal(Catalog.add(a.S, { name: 'Тест длинный', sku: 'x'.repeat(200) }).product.sku.length, Catalog.SKU_MAX);
@@ -188,25 +191,25 @@ function page(me = 'p1') {
 }
 const withSku = (a, n = 3) => a.S.products.slice(0, n).map((p, i) => { p.sku = `ТЕСТ-ЭКР-${i + 1}`; return p; });
 
-test('экран: артикул в списке номенклатуры (под названием, а нет — «нет данных: артикул»), в карточке первой строкой с «Изменить», в журнале движений, в глобальном поиске', () => {
+test('экран: артикул в списке номенклатуры (под названием, а нет — «Артикул: нет данных»), в карточке первой строкой с «Изменить», в журнале движений, в глобальном поиске', () => {
   const { a } = page();
   const [p1] = withSku(a, 1), bare = a.S.products[5];
   assert.equal(bare.sku, undefined);
   const row = a.stockRow(p1, true), rowBare = a.stockRow(bare, true);
-  assert.match(row, /<small class="sku">арт\. ТЕСТ-ЭКР-1<\/small>/);
-  assert.match(rowBare, /<small class="sku muted">нет данных: артикул<\/small>/);
+  assert.match(row, /<small class="sku">ТЕСТ-ЭКР-1<\/small>/);
+  assert.match(rowBare, /<small class="sku muted">Артикул: нет данных<\/small>/);
   const card = a.dProduct(p1);
-  assert.ok(card.body.indexOf('Артикул') >= 0 && card.body.indexOf('Артикул') < card.body.indexOf('Ключ каталога'), 'в карточке «Артикул» — выше «Ключа каталога»');
+  assert.ok(card.body.indexOf('Артикул') >= 0 && card.body.indexOf('Артикул') < card.body.indexOf('Модель'), 'в карточке «Артикул» — первой строкой, выше «Модели»');
   assert.match(card.body, /<b class="mono">ТЕСТ-ЭКР-1<\/b> <button[^>]*data-act="product-sku"[^>]*>Изменить<\/button>/);
-  assert.match(a.dProduct(bare).body, /нет данных: артикул<\/span> <button[^>]*data-act="product-sku"[^>]*>Указать/);
+  assert.match(a.dProduct(bare).body, /Артикул: нет данных<\/span> <button[^>]*data-act="product-sku"[^>]*>Указать/);
   // журнал: строка и фильтр по товару
   a.Stock.move(a.S, { kind: 'Приход', productId: p1.id, qty: 3, entityId: 'ip', cityId: 'irk', doc: 'Тест', by: 'p1', at: NOW });
-  assert.match(a.movesTable(), /арт\. ТЕСТ-ЭКР-1/);
+  assert.match(a.movesTable(), /ТЕСТ-ЭКР-1/);
   assert.match(a.movesPane(''), /ТЕСТ-ЭКР-1\)/, 'в списке «Товар» фильтра — название с артикулом');
   // глобальный поиск
   const hit = a.SEARCH.find(s => s.kind === 'product').find('тест-экр-1');
   assert.equal(hit.length >= 1 && hit[0].title, p1.name);
-  assert.match(hit[0].sub, /арт\. ТЕСТ-ЭКР-1/, 'артикул виден в результате');
+  assert.match(hit[0].sub, /ТЕСТ-ЭКР-1/, 'артикул виден в результате');
   // поиск номенклатуры: строка поиска и таблица
   a.S.ui.sq = 'тест эк р1'.replace(' р', 'р'); // «тест экр1» — без дефиса
   assert.match(a.stockTable(), /ТЕСТ-ЭКР-1/);
@@ -244,7 +247,7 @@ test('экран: «Новый товар» — поле «Артикул» (н�
   const { a } = page();
   const [p1] = withSku(a, 1);
   assert.match(a.mProduct(), /id="np-sku"/);
-  assert.match(a.mProduct(), /Необязательно\. Пусто — «нет данных: артикул»/);
+  assert.match(a.mProduct(), /Необязательно\. Пусто — «Артикул: нет данных»/);
   const field = { 'np-name': 'Тест Новинка', 'np-unit': 'шт', 'np-cat': a.Catalog.NO_CAT, 'np-sku': 'тест-экр-1', 'np-price': null };
   for (const [id, v] of Object.entries(field)) { const e = a.byId(id); if (v !== null) e.value = v; }
   a.byId('np-price').value = '';
@@ -260,14 +263,14 @@ test('экран: артикул в строке сделки и в поиске
   const d = a.S.deals.find(x => (x.items || []).some(i => i.productId));
   const it = d.items.find(i => i.productId), p = a.product(it.productId);
   p.sku = 'СДЕЛКА-1';
-  assert.match(a.dealLine(d, it, d.items.indexOf(it), true, true), /<small class="sku">арт\. СДЕЛКА-1<\/small>/, 'строка сделки');
+  assert.match(a.dealLine(d, it, d.items.indexOf(it), true, true), /<small class="sku">СДЕЛКА-1<\/small>/, 'строка сделки');
   assert.equal(a.Deals.itemLabel(a.S, it), `${p.name} (арт. СДЕЛКА-1)`);
   assert.equal(a.Deals.itemName(a.S, it), p.name, 'название для экрана — прежнее, артикул рядом отдельно');
   const found = a.dealFound(d, 'сделка1');
-  assert.ok(found.includes(`data-pid="${p.id}"`) && found.includes('арт. СДЕЛКА-1'), 'поиск в сделке по артикулу без дефиса, артикул виден в ответе');
-  // строка без артикула в сделке — «нет данных: артикул»
+  assert.ok(found.includes(`data-pid="${p.id}"`) && found.includes('СДЕЛКА-1'), 'поиск в сделке по артикулу без дефиса, артикул виден в ответе');
+  // строка без артикула в сделке — «Артикул: нет данных»
   p.sku = '';
-  assert.match(a.dealLine(d, it, d.items.indexOf(it), true, true), /нет данных: артикул/);
+  assert.match(a.dealLine(d, it, d.items.indexOf(it), true, true), /Артикул: нет данных/);
   // лента сделки: добавили строку — в записи название с артикулом
   p.sku = 'СДЕЛКА-1';
   const n = a.S.feed.length;
@@ -281,8 +284,8 @@ test('экран: артикул в позициях поставки (стро�
   const s = a.S.shipments.find(x => (x.items || []).length);
   const sp = a.product(s.items[0].productId);
   sp.sku = 'ПОСТ-1';
-  assert.match(a.shipItems(s), /<small class="sku">арт\. ПОСТ-1<\/small>/);
-  assert.match(a.shipItemsList(s, ''), /арт\. ПОСТ-1/);
+  assert.match(a.shipItems(s), /<small class="sku">ПОСТ-1<\/small>/);
+  assert.match(a.shipItemsList(s, ''), /ПОСТ-1/);
   assert.ok(a.shipItemsList(s, 'пост1').includes(sp.name), 'поиск по позициям поставки — по артикулу без дефиса');
   assert.ok(!a.shipItemsList(s, 'нет-такого-артикула-zz').includes(sp.name));
   // поиск по поставкам в списке (Ships.query) — по артикулу товара в поставке
@@ -290,15 +293,15 @@ test('экран: артикул в позициях поставки (стро�
   assert.ok(hits.rows.some(x => x.id === s.id), 'поставка находится по артикулу своего товара');
   // заявка на отправку: поиск товара и строка
   a.S.ui.dspDraft = a.dspDraftFrom({}, '');
-  assert.match(a.dspPresHtml('ПОСТ-1'), /арт\. ПОСТ-1/);
+  assert.match(a.dspPresHtml('ПОСТ-1'), /ПОСТ-1/);
   a.S.ui.dspDraft.items.push({ productId: sp.id, qty: 2 });
-  assert.match(a.dspItemsHtml(a.S.ui.dspDraft), /<small class="sku">арт\. ПОСТ-1<\/small>/);
+  assert.match(a.dspItemsHtml(a.S.ui.dspDraft), /<small class="sku">ПОСТ-1<\/small>/);
   // приёмка: экран пересчёта (телефон) и итог перед подтверждением; недобор — в тексте
   const ship = a.S.shipments.find(x => x.dir === 'in' && (x.items || []).length > 0 && x.stageId !== 'inStock');
   ship.items.forEach((it, i) => { a.product(it.productId).sku = 'ПРИЁМ-' + (i + 1); });
   a.S.rcv = { shipId: ship.id, qty: {}, dmg: {}, note: '', photos: [], done: null };
-  assert.match(a.rcvPhoneHtml(a.S.rcv, [ship]), /<small class="sku">арт\. ПРИЁМ-1<\/small>/, 'пересчёт товара');
-  assert.match(a.rcvPreview(), /<small class="sku">арт\. ПРИЁМ-1<\/small>/, 'итог перед подтверждением');
+  assert.match(a.rcvPhoneHtml(a.S.rcv, [ship]), /<small class="sku">ПРИЁМ-1<\/small>/, 'пересчёт товара');
+  assert.match(a.rcvPreview(), /<small class="sku">ПРИЁМ-1<\/small>/, 'итог перед подтверждением');
   a.S.rcv.qty[ship.items[0].productId] = '0';
   assert.ok(a.rcvPlan().issues.some(x => /\(арт\. ПРИЁМ-1\)/.test(x)), 'в тексте недобора — с артикулом');
 });

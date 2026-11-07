@@ -220,9 +220,10 @@ function dealFound(d,q){
   const query=String(q||'').trim();
   if(query.length<2) return '<p class="hint">Введите хотя бы две буквы названия, бренда или артикула.</p>';
   const list=Catalog.query(S,{q:query}).sort((a,b)=>(b.inCatalog?1:0)-(a.inCatalog?1:0)).slice(0,8);
-  if(!list.length) return '<p class="hint">В каталоге такого нет. Можно добавить свою строку ниже.</p>';
+  const make=pqLink('deal',`Создать «${query}» в каталоге и добавить в сделку`,{id:d.id,name:query});
+  if(!list.length) return `<p class="hint">В каталоге такого нет. Можно создать товар или добавить свою строку ниже.</p>${make}`;
   const pr=can('prices');
-  return list.map(p=>{const k=stockOf(p.id);return `<button type="button" class="dpr" data-act="deal-add-p" data-id="${esc(d.id)}" data-pid="${esc(p.id)}"><span class="dpr-n">${esc(p.name)}</span><small>${esc(skuText(p))} · ${pr?(typeof p.price==='number'?rub(p.price):'нет данных: цена')+' · ':''}${k.known?'свободно '+qtyOf(Math.max(0,k.free),p):'остаток: нет данных'}${p.inCatalog?'':' · нет в каталоге'}</small>${ic('plus')}</button>`}).join('');
+  return list.map(p=>{const k=stockOf(p.id);return `<button type="button" class="dpr" data-act="deal-add-p" data-id="${esc(d.id)}" data-pid="${esc(p.id)}"><span class="dpr-n">${esc(p.name)}</span><small>${esc(skuText(p))} · ${pr?(typeof p.price==='number'?rub(p.price):'нет данных: цена')+' · ':''}${k.known?'свободно '+qtyOf(Math.max(0,k.free),p):'остаток: нет данных'}${p.inCatalog?'':' · нет в каталоге'}</small>${ic('plus')}</button>`}).join('')+make;
 }
 function dealItems(d,edit){
   const pr=can('prices'),items=d.items||[],id=esc(d.id);

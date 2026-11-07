@@ -104,13 +104,13 @@ test('ручной ввод: поиск товара по названию и п
   // строка 1: ищем по артикулу «пан 550» (без дефиса и в другом регистре)
   a.ON.input['rcm-q']({ dataset: { i: '0' }, value: 'пан 550' });
   assert.match(a.byId('rcm-res-0').innerHTML, new RegExp(`data-pid="${PANEL.id}"`), 'найден по артикулу');
-  assert.match(a.byId('rcm-res-0').innerHTML, /арт\. ПАН-550/, 'артикул виден в результате');
+  assert.match(a.byId('rcm-res-0').innerHTML, /ПАН-550/, 'артикул виден в результате');
   a.ON.input['rcm-q']({ dataset: { i: '0' }, value: 'ё' });
   assert.equal(a.byId('rcm-res-0').innerHTML, '', 'меньше двух знаков — результатов нет');
   a.ON.input['rcm-q']({ dataset: { i: '0' }, value: 'инвертор бета' });
   assert.match(a.byId('rcm-res-0').innerHTML, new RegExp(`data-pid="${INV.id}"`), 'и по названию');
   a.A['rcm-pick']({ dataset: { i: '0', pid: INV.id } });
-  assert.match(a.byId('rcm-body').innerHTML, /<b>Тестовый инвертор Бета 5 кВт<\/b> <small class="sku">арт\. ИНВ-5000<\/small>/, 'выбранный товар — с артикулом');
+  assert.match(a.byId('rcm-body').innerHTML, /<b>Тестовый инвертор Бета 5 кВт<\/b> <small class="sku">ИНВ-5000<\/small>/, 'выбранный товар — с артикулом');
   a.ON.input['rcm-f']({ dataset: { i: '0', f: 'qty' }, value: '4' });
   // строка 2: товар без артикула; строка 3 — пустая и пропадёт
   a.A['rcm-add']();
@@ -118,7 +118,7 @@ test('ручной ввод: поиск товара по названию и п
   assert.equal(a.RCPT.manual.length, 3);
   a.ON.input['rcm-q']({ dataset: { i: '1' }, value: 'кабель гамма' });
   a.A['rcm-pick']({ dataset: { i: '1', pid: CABLE.id } });
-  assert.match(a.byId('rcm-body').innerHTML, /нет данных: артикул/, 'у товара без артикула — «нет данных: артикул»');
+  assert.match(a.byId('rcm-body').innerHTML, /Артикул: нет данных/, 'у товара без артикула — «Артикул: нет данных»');
   a.ON.change['rcm-f']({ dataset: { i: '1', f: 'qty' }, value: '20' });
   a.ON.change['rcm-f']({ dataset: { i: '1', f: 'city' }, value: cityId(a, 1) });
   a.ON.change['rcm-f']({ dataset: { i: '1', f: 'entity' }, value: entId(a, 1) });

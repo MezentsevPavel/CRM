@@ -40,9 +40,9 @@ function stateA(app) {
 const at = new Date(2026, 9, 31, 10, 30);
 
 // ——— снимки таблиц ———
-const SHEETS = ['Инверторы', 'Аккумуляторы', 'Панели', 'Защита и соединения', 'Новые на сайте', 'Исключено'];
+const SHEETS = ['Инверторы', 'Аккумуляторы', 'Панели', 'Защита и соединения', 'Новые на сайте', 'Исключено', 'Электрика'];
 
-test('снимок каталога: все шесть листов PVCalc, у каждой позиции ключ и модель, цена — число или пусто', () => {
+test('снимок каталога: все листы PVCalc (и «Электрика» поставщиков), у каждой позиции ключ и модель, цена — число или пусто', () => {
   const { CATALOG } = load();
   assert.equal(CATALOG.snapshot, '2026-10-31');
   assert.ok(CATALOG.source.includes('PVCalc'));
@@ -355,7 +355,7 @@ test('seed(): ни одна запись не ссылается на несущ
   const st = app.seed();
   const pids = new Set(st.products.map(p => p.id));
   assert.equal(pids.size, st.products.length, 'id товаров повторяются');
-  assert.ok(st.products.length > 242, 'товаров меньше, чем позиций каталога');
+  assert.ok(st.products.length > 279, 'товаров меньше, чем позиций каталога');
   const place = new Set([...st.entities.map(e => e.id), '_']), towns = new Set([...st.cities.map(c => c.id), '_']);
   const need = (id, what) => assert.ok(pids.has(id), `${what}: товара «${id}» нет`);
   for (const r of st.reserves) { need(r.productId, `резерв ${r.id}`); assert.ok(place.has(r.entityId) && towns.has(r.cityId), `резерв ${r.id}: юрлицо или город не из справочника`); }
@@ -420,8 +420,8 @@ test('Store.REV: dump пишет ревизию, load принимает сво�
     reserves: [{ id: 'r1', productId: 'PV-550M', dealId: 'Д-311', qty: 22, src: 'stock' }], moves: [], shipments: [], deals: [], tasks: [], notes: [],
   };
   const fresh = load({ storage: { [Store.KEY]: JSON.stringify(old) } });
-  assert.ok(fresh.S.products.length > 242, 'вместо демо осталось старое сохранение');
-  assert.ok(fresh.S.products.every(p => typeof p.id === 'string' && !('sku' in p)));
+  assert.ok(fresh.S.products.length > 279, 'вместо демо осталось старое сохранение');
+  assert.ok(fresh.S.products.every(p => typeof p.id === 'string' && p.sku !== 'PV-550M'), 'товар из старого сохранения не должен остаться');
   assert.equal(fresh.S.me, 'p1', 'человек из старого сохранения не должен остаться');
   assert.doesNotThrow(() => { fresh.render(); fresh.VIEWS.stock(); });
 });
@@ -518,7 +518,7 @@ test('сохранение без снимка: товаров снимка в �
   const text = Store.dump(S).text;
   // суть: в записи нет ни одного товара снимка каталога (ищем по их id), а не «запись короче N символов»
   const snapIds = new Set(S.products.filter(p => p.src === 'catalog' || p.src === 'sheet').map(p => p.id));
-  assert.equal(snapIds.size, 434, 'в демо-состоянии 434 товара снимка');
+  assert.equal(snapIds.size, 471, 'в демо-состоянии 471 товара снимка');
   const leaked = JSON.parse(text).products.filter(p => snapIds.has(p.id));
   assert.equal(leaked.length, 0, `в сохранение попали товары снимка каталога: ${leaked.length}`);
   // запасной предел: запись не разрастается. Демо-поставки (126 штук, у шести по 50–150 позиций) весят в ней около 150 тысяч
@@ -535,15 +535,15 @@ test('сохранение без снимка: товаров снимка в �
   assert.equal(JSON.stringify(back.products), JSON.stringify(S.products), 'после dump → load товары не те');
   assert.equal(back.products.find(p => p.id === havel.id).price, 12345, 'правка товара из снимка потеряна');
   assert.ok(!back.products.some(p => p.id === goneId), 'удалённый товар вернулся из снимка');
-  assert.equal(back.products.length, 434, 'число товаров после загрузки: 434 из снимка − 1 удалённый + 1 свой');
+  assert.equal(back.products.length, 471, 'число товаров после загрузки: 471 из снимка − 1 удалённый + 1 свой');
   // запуск страницы с таким сохранением поднимает те же товары
   const again = load({ storage: { [Store.KEY]: Store.dump(S).text } });
-  assert.equal(again.S.products.length, 434);
+  assert.equal(again.S.products.length, 471);
   assert.equal(again.S.products.find(p => p.id === havel.id).price, 12345);
 });
 
 // ——— экраны: список «Товары», карточка, резерв, журнал, настройки ———
-// Ожидаемые числа — из условий таска и самих снимков: в базе 434 позиции (242 из каталога PVCalc + 192 строки
+// Ожидаемые числа — из условий таска и самих снимков: в базе 471 позиции (279 из каталога PVCalc и электрики поставщиков + 192 строки
 // таблицы менеджеров «нет в каталоге»); из 208 строк таблицы менеджеров по названию склеились 16.
 const plain = html => html.replace(/<[^>]+>/g, ' ').replace(/ | /g, ' ').replace(/\s+/g, ' ').trim();
 const rowsIn = html => (html.match(/data-pid="/g) || []).length;
@@ -559,40 +559,40 @@ const freeCell = (app, pid) => plain(app.stockTable().split('<tr ').find(r => r.
 test('«Товары»: число позиций видно, список идёт по страницам; поиск и фильтры сужают его и пересчитывают «показано N из M»', () => {
   const app = load();
   const view = pageTxt(stockView(app));
-  assert.match(view, /Показано 434 из 434 /, 'число позиций не видно');
-  assert.match(view, /Страница 1 из 9/, 'список не разбит на страницы');
-  assert.ok(rowsIn(region(app, 'view')) <= 50, 'на странице больше 50 строк — 434 строки сразу');
+  assert.match(view, /Показано 471 из 471 /, 'число позиций не видно');
+  assert.match(view, /Страница 1 из 10/, 'список не разбит на страницы');
+  assert.ok(rowsIn(region(app, 'view')) <= 50, 'на странице больше 50 строк — 471 строки сразу');
   // вторая страница — другие строки
   const first = html => html.match(/data-pid="([^"]+)"/)[1];
   const p1 = first(app.stockTable());
   app.A['stock-page']({ dataset: { page: '1' } });
-  assert.match(pageTxt(app.stockTable()), /Страница 2 из 9/);
+  assert.match(pageTxt(app.stockTable()), /Страница 2 из 10/);
   assert.notEqual(first(app.stockTable()), p1);
-  // «Показать ещё» дописывает следующую страницу под видимыми, «Показать всё» — все 434 строки, кнопки пропадают
+  // «Показать ещё» дописывает следующую страницу под видимыми, «Показать всё» — все 471 строки, кнопки пропадают
   app.A['stock-more']();
-  assert.match(pageTxt(app.stockTable()), /Страница 2 из 9 \(раскрыто до 3\)/);
+  assert.match(pageTxt(app.stockTable()), /Страница 2 из 10 \(раскрыто до 3\)/);
   assert.equal(rowsIn(app.stockTable()), 100, '«Показать ещё» не добавил страницу');
   assert.match(app.stockTable(), /data-page="3"\s*>Вперёд/, '«Вперёд» после «ещё» не ведёт за раскрытые страницы');
   // номер страницы вводится руками; за краем — ближайшая крайняя
   app.ON.change['stock-goto']({ value: '5' });
-  assert.match(pageTxt(app.stockTable()), /Страница 5 из 9/, 'ввод номера страницы не сработал');
+  assert.match(pageTxt(app.stockTable()), /Страница 5 из 10/, 'ввод номера страницы не сработал');
   app.ON.change['stock-goto']({ value: '99' });
-  assert.match(pageTxt(app.stockTable()), /Страница 9 из 9/, 'номер за краем не прижат к последней странице');
+  assert.match(pageTxt(app.stockTable()), /Страница 10 из 10/, 'номер за краем не прижат к последней странице');
   app.ON.change['stock-goto']({ value: '0' });
-  assert.match(pageTxt(app.stockTable()), /Страница 1 из 9/, 'нулевой номер не прижат к первой странице');
+  assert.match(pageTxt(app.stockTable()), /Страница 1 из 10/, 'нулевой номер не прижат к первой странице');
   app.A['stock-more']();
   app.A['stock-all']();
-  assert.equal(rowsIn(app.stockTable()), 434, '«Показать всё» показал не все строки');
-  assert.match(pageTxt(app.stockTable()), /Страница 1 из 9 \(раскрыто до 9\)/);
+  assert.equal(rowsIn(app.stockTable()), 471, '«Показать всё» показал не все строки');
+  assert.match(pageTxt(app.stockTable()), /Страница 1 из 10 \(раскрыто до 10\)/);
   assert.ok(!app.stockTable().includes('stock-more'), 'после «Показать всё» осталась кнопка «Показать ещё»');
   app.A['stock-page']({ dataset: { page: '1' } });
   const shown = () => plain(region(app, 'stock-tbl'));
-  const count = () => Number(shown().match(/Показано (\d+) из 434/)[1]);
+  const count = () => Number(shown().match(/Показано (\d+) из 471/)[1]);
   // категория
   app.A['stock-cat']({ dataset: { cat: 'Панели' } });
   const panels = app.S.products.filter(p => p.cat === 'Панели').length;
-  assert.ok(panels > 0 && panels < 434);
-  assert.match(plain(app.stockTable()), new RegExp(`Показано ${panels} из 434`));
+  assert.ok(panels > 0 && panels < 471);
+  assert.match(plain(app.stockTable()), new RegExp(`Показано ${panels} из 471`));
   assert.ok(!app.stockTable().includes('GD6248SMH'), 'в категории «Панели» остался инвертор');
   assert.match(pageTxt(app.stockTable()), /Страница 1 из/, 'смена фильтра не вернула на первую страницу');
   app.A['stock-cat']({ dataset: { cat: 'Все' } });
@@ -610,7 +610,7 @@ test('«Товары»: число позиций видно, список ид�
   assert.equal(count(), 192, '«нет в каталоге» — 192 строки таблицы менеджеров');
   assert.ok(shown().includes('нет в каталоге'));
   fire(app, 'change', 'catf', 'in');
-  assert.equal(count(), 242, '«в каталоге» — 242 позиции PVCalc');
+  assert.equal(count(), 279, '«в каталоге» — 279 позиций (242 PVCalc и 37 электрики поставщиков)');
   assert.ok(!shown().includes('нет в каталоге'), 'среди позиций каталога осталась «нет в каталоге»');
   fire(app, 'change', 'catf', '');
   // поиск
@@ -618,7 +618,7 @@ test('«Товары»: число позиций видно, список ид�
   assert.ok(count() >= 1 && count() < 10);
   assert.ok(region(app, 'stock-tbl').includes('HAVEL 340'));
   fire(app, 'input', 'sq', 'такого-товара-нет-нигде');
-  assert.match(shown(), /Показано 0 из 434/);
+  assert.match(shown(), /Показано 0 из 471/);
   assert.ok(shown().includes('Ничего не нашлось'));
 });
 
@@ -639,14 +639,15 @@ test('«Товары»: в строке модель, бренд, категор
   assert.ok(plain(app.stockTable()).includes('нет в каталоге'));
 });
 
-test('карточка товара: ключ, модель, бренд, категория, цена с подписью снимка, наличие и ссылка; без цены — «нет данных: цена»', () => {
+test('карточка товара: модель, бренд, категория, цена с подписью снимка, наличие и ссылка; без цены — «нет данных: цена»', () => {
   const app = load();
   const row = app.CATALOG.rows.find(r => r.sheet === 'Панели' && r.price > 0 && r.url && r.brand && r.avail);
   const d = app.DRAWERS.product(row.key);
   const t = plain(d.body);
-  for (const part of [row.key, row.model, row.brand, 'Панели', row.avail, money(row.price), 'цена сайта, снимок 31.10.2026']) {
+  for (const part of [row.model, row.brand, 'Панели', row.avail, money(row.price), 'цена сайта, снимок 31.10.2026']) {
     assert.ok(t.includes(part), `в карточке нет «${part}»`);
   }
+  assert.ok(!t.includes(row.key) && !plain(d.sub).includes(row.key), 'ключ каталога на экране не показывается (слово директора)');
   assert.ok(d.body.includes(`href="${row.url}"`), 'нет ссылки на сайт');
   const bare = app.CATALOG.rows.find(r => r.price === null);
   const db = plain(app.DRAWERS.product(bare.key).body);
@@ -654,7 +655,7 @@ test('карточка товара: ключ, модель, бренд, кат�
   assert.ok(!db.includes('₽'), 'у пустой цены появилась сумма');
   // позиция из таблицы менеджеров, которой нет в каталоге
   const sheet = app.S.products.find(p => p.src === 'sheet');
-  const ds = plain(app.DRAWERS.product(sheet.id).body);
+  const dsd = app.DRAWERS.product(sheet.id), ds = plain(dsd.body + ' ' + dsd.sub);
   assert.ok(ds.includes('нет в каталоге') && ds.includes('нет данных: бренд') && ds.includes('нет данных: цена'));
 });
 

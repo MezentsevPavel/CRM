@@ -54,6 +54,23 @@ const MIGRATIONS = {
     const st = core.Docs.join(all);
     for (const node of core.Catalog.treeFrom(st.products)) docs.put('categories', node.id, JSON.stringify(node), seq);
   },
+  // 21: каталог из таблицы PVCalc: артикулы у товаров сайта и лист «Электрика» (товары поставщиков, цена продажи у них пуста). Нетронутые
+  // товары снимка приходят в базу из кода сами (Docs.join), поэтому шаг доводит то, что само не приходит: у товаров, правленых раньше
+  // (их документы — полные записи), заполняется только пустое (артикул, данные поставщика), в дерево категорий заводятся пути «Электрика ›
+  // Автоматы» и другие новые. Считает Catalog.merge тем же снимком, что у новой базы; введённое вручную, названия и цены продажи не меняются,
+  // снятые из списка товары не возвращаются. Это же делает кнопка «Обновить каталог из снимка».
+  21: ({ db, docs, core }) => {
+    const seq = Number((db.prepare("SELECT v FROM meta WHERE k = 'seq'").get() || {}).v) || 0;
+    const all = {}, removed = [];
+    for (const r of docs.all()) {
+      all[core.Docs.docId(r.key, r.id)] = JSON.parse(r.data);
+      if (r.key === 'products' && all[core.Docs.docId(r.key, r.id)] === null) removed.push(r.id);
+    }
+    const st = core.Docs.join(all);
+    const done = core.Catalog.merge(st, core.api.CATALOG, removed);
+    for (const id of [...done.added, ...done.filled]) docs.put('products', id, JSON.stringify(st.products.find(p => p.id === id)), seq);
+    for (const id of done.categories) docs.put('categories', id, JSON.stringify(st.categories.find(c => c.id === id)), seq);
+  },
 };
 
 // → null, если всё в порядке; иначе текст отказа запуска. Данные при отказе не меняются.

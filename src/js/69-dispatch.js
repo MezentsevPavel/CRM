@@ -245,10 +245,10 @@ function dspSrcHtml(x,it,i,name){
 // Результаты поиска по каталогу: название и «свободно N» из Stock.summary; у «Продажи» — по клеткам «юрлицо, город»
 function dspPresHtml(q){
   if(Catalog.norm(q).length<2) return '';
-  const hits=Catalog.query(S,{q}).slice(0,6);
-  if(!hits.length) return '<p class="hint">В каталоге такого нет — добавьте свою строку.</p>';
+  const hits=Catalog.query(S,{q}).slice(0,6),make=pqLink('dsp',`Создать «${String(q).trim()}» в каталоге и добавить в заявку`,{name:String(q).trim()});
+  if(!hits.length) return `<p class="hint">В каталоге такого нет — создайте товар или добавьте свою строку.</p>${make}`;
   const sale=(dspDraft()||{}).purpose==='sale';
-  return `<ul class="dsp-pres">${hits.map(p=>`<li><button type="button" class="dpr" data-act="dsp-add" data-pid="${esc(p.id)}"><span class="dpr-n">${esc(p.name)}</span><small>${esc(skuText(p))} · ${esc(sale?dspCellsText(p.id):dspFreeText(p.id))}</small>${ic('plus')}</button></li>`).join('')}</ul>`;
+  return `<ul class="dsp-pres">${hits.map(p=>`<li><button type="button" class="dpr" data-act="dsp-add" data-pid="${esc(p.id)}"><span class="dpr-n">${esc(p.name)}</span><small>${esc(skuText(p))} · ${esc(sale?dspCellsText(p.id):dspFreeText(p.id))}</small>${ic('plus')}</button></li>`).join('')}</ul>${make}`;
 }
 function dspFilesEditHtml(x){return attEditHtml(x.files,'dsp-file-del')}
 MODALS.dispatchForm=()=>{

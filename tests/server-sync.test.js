@@ -44,9 +44,9 @@ test('старт: GET / — собранная страница с window.CRM_SE
     assert.ok(byId('view').innerHTML.length > 0, 'страница с двумя <script> запускается');
 
     const st = await state(srv, boss.cookie);
-    // seedBase: 9 ролей, 242 позиции каталога, люди — только заведённый директор, записей нет
+    // seedBase: 9 ролей, 279 позиций каталога, люди — только заведённый директор, записей нет
     assert.equal(st.roles.length, 9);
-    assert.equal(st.products.length, 242);
+    assert.equal(st.products.length, 279);
     assert.deepEqual(st.people, [{ id: 'p1', name: 'Директор (тест)', role: 'director', dept: 'mgmt' }]);
     for (const key of ['deals', 'leads', 'clients', 'tasks', 'shipments', 'dispatches', 'notes', 'feed', 'acts', 'moves', 'reserves']) assert.deepEqual(st[key], [], key);
     assert.ok(!JSON.stringify(st).includes('"demo":true'), 'демо-записей нет');

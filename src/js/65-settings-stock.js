@@ -44,6 +44,13 @@ ON.change['city-addr']=t=>{
   toast(c.address?`Адрес склада «${c.name}» сохранён.`:`Адрес склада «${c.name}» очищен: нет данных.`);
 };
 
+// «Обновить каталог из снимка»: Catalog.merge (то же, что делает шаг MIGRATIONS[21] у рабочей базы) — одно действие, один save() в render()
+A['catalog-merge']=()=>{
+  if(!can('catalog')){toast('У вашей роли нет права менять каталог.','warn');return}
+  const r=Catalog.merge(S,CATALOG),n=r.added.length;
+  render();
+  toast(`Каталог обновлён: добавлено ${n} ${pl(n,'товар','товара','товаров')}, артикулов проставлено ${r.skuSet}.`);
+};
 FORMS['entity-add']=()=>{
   const name=byId('ent-new').value.trim();
   if(!name) return showErr('ent-err','Напишите название юрлица.');
@@ -102,6 +109,7 @@ function vWarehouses(){
   </div></section>
   <section class="card"><div class="card-h"><h3>Откуда данные</h3></div><div class="card-b stack-s">
     <p class="m0"><b>Источник каталога:</b> копия таблицы для CRM — нет данных: ссылка; сейчас — снимок таблицы PVCalc на ${snapRu(CATALOG.snapshot)}.</p>
+    ${SERVER&&can('catalog')?`<p class="m0"><button type="button" class="btn sm" data-act="catalog-merge">${ic('box')}Обновить каталог из снимка</button> <small class="hint">Добавит товары снимка, которых ещё нет в номенклатуре, и допишет артикулы и данные поставщика там, где они пусты. Введённое вручную, названия и цены не меняются.</small></p>`:''}
     ${stockSources()}
   </div></section>`;
 }

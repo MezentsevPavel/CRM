@@ -1,0 +1,135 @@
+'use strict';
+// Обновляет снимок каталога src/js/10-catalog-data.js выгрузкой из Google-таблицы «PVCalc — параметры оборудования».
+// Снимок руками не правится: его пишет только этот скрипт, чтобы любой разбор таблицы можно было повторить.
+//
+//   node tools/catalog-snapshot.js <выгрузка.json>          — переписать снимок
+//   node tools/catalog-snapshot.js <выгрузка.json> --dry     — только отчёт, файл не трогать
+//
+// Выгрузка (JSON; в git её не кладут — в ней лежат цены и ссылки поставщиков на день выгрузки):
+//   { "date": "2026-11-07",
+//     "sheets": { "<лист>": [["<ключ каталога>", "<артикул с сайта или пусто>"], …], … },   — последний столбец «Артикул (с сайта)»
+//     "electrics": { "header": [заголовки листа «Электрика»], "rows": [[ячейки строки], …] } }
+// Столбцы листа «Электрика» ищутся по заголовку, а не по номеру. Позиции остальных листов (строки CATALOG.rows) берутся из прежнего
+// снимка как есть: меняются только артикул (sku) и позиции листа «Электрика» (sheet:'Электрика'); повторный прогон даёт тот же файл.
+//
+// Что кладётся в строку «Электрики»: key = код позиции, model = название, sku = артикул, unit = «Ед.», cat = путь категории
+// («Электрика › Автоматы»), supplier = «Сибэлком» | «Энергосфера» (по домену ссылки), supplierPrice = цена поставщика, priceDate = дата цены,
+// url = ссылка на карточку поставщика. price (наша цена продажи) всегда null: цена поставщика не цена продажи. Чего в таблице нет —
+// null («нет данных»), ничего не подставляется.
+
+const fs = require('node:fs');
+const path = require('node:path');
+
+const FILE = path.join(__dirname, '..', 'src', 'js', '10-catalog-data.js');
+const SHEET = 'Электрика';
+// код позиции → путь категории; незнакомый префикс — «Электрика»
+const CAT_BY_PREFIX = [
+  ['supplier-breaker-', 'Электрика › Автоматы'],
+  ['supplier-cable-', 'Электрика › Кабель'],
+  ['supplier-enclosure-', 'Электрика › Щиты и боксы'],
+  ['supplier-spd-', 'Электрика › УЗИП'],
+];
+const SUPPLIER_BY_HOST = [['sibelkom.ru', 'Сибэлком'], ['energosf.ru', 'Энергосфера']];
+
+const catOf = code => (CAT_BY_PREFIX.find(([p]) => String(code).startsWith(p)) || [null, 'Электрика'])[1];
+function supplierOf(url) {
+  if (!url) return null;
+  let host;
+  try { host = new URL(url).hostname.toLowerCase(); } catch (e) { return null; }
+  const hit = SUPPLIER_BY_HOST.find(([d]) => host === d || host.endsWith('.' + d));
+  return hit ? hit[1] : null;
+}
+// «1 569,32» → 1569.32; пусто или не число → null
+function money(v) {
+  const s = String(v ?? '').replace(/[\s  ]/g, '').replace(',', '.');
+  if (!s || !/^\d+(\.\d+)?$/.test(s)) return null;
+  return Number(s);
+}
+const text = v => { const s = String(v ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim(); return s || null; };
+const isoDate = v => { const s = String(v ?? '').trim(); return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null; };
+
+// строка электрики из таблицы → строка снимка
+function electricRow(cells, col) {
+  const at = name => cells[col[name]];
+  const code = text(at('code')), url = text(at('url'));
+  return {
+    key: code, model: text(at('name')), brand: null, price: null, avail: null, url, from: null,
+    cat: catOf(code), sheet: SHEET,
+    sku: text(at('sku')), unit: text(at('unit')), supplier: supplierOf(url), supplierPrice: money(at('price')), priceDate: isoDate(at('date')),
+  };
+}
+function columns(header) {
+  const find = (...names) => {
+    const i = header.findIndex(h => names.some(n => String(h).trim().toLowerCase().startsWith(n)));
+    if (i < 0) throw new Error(`В листе «${SHEET}» нет столбца «${names[0]}»`);
+    return i;
+  };
+  return { code: find('код позиции'), name: find('название'), sku: find('артикул'), unit: find('ед.'), price: find('цена'), date: find('дата цены'), url: find('ссылка') };
+}
+
+// ——— запись в формате файла ———
+const lit = v => {
+  if (v === null || v === undefined) return 'null';
+  if (typeof v === 'number') return String(v);
+  return "'" + String(v).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n') + "'";
+};
+const rowText = r => '  {' + Object.entries(r).map(([k, v]) => `${k}:${lit(v)}`).join(',') + '}';
+
+function build(prev, dump) {
+  const rows = prev.rows.filter(r => r.sheet !== SHEET).map(r => { const { sku, ...rest } = r; return rest; });
+  const report = { skuSet: 0, skuEmpty: [], skuUnknownKeys: [], dupes: [], electrics: 0, electricGaps: [], total: 0 };
+  const bySheetKey = new Map();
+  for (const [sheet, pairs] of Object.entries(dump.sheets || {})) for (const [k, sku] of pairs) bySheetKey.set(String(k), { sheet, sku: text(sku) });
+  for (const k of bySheetKey.keys()) if (!rows.some(r => String(r.key) === k)) report.skuUnknownKeys.push(k);
+  const withSku = rows.map(r => {
+    const hit = bySheetKey.get(String(r.key));
+    const sku = hit ? hit.sku : null;
+    if (sku) report.skuSet++; else report.skuEmpty.push(r.model);
+    return { ...r, sku };
+  });
+  report.total = withSku.length;
+  const col = columns(dump.electrics.header);
+  const electrics = dump.electrics.rows.filter(c => c && text(c[col.code])).map(c => electricRow(c, col));
+  report.electrics = electrics.length;
+  for (const e of electrics) {
+    const gaps = ['sku', 'unit', 'supplierPrice', 'priceDate', 'url', 'supplier'].filter(f => e[f] === null);
+    if (gaps.length) report.electricGaps.push({ model: e.model, gaps });
+  }
+  const all = [...withSku, ...electrics];
+  const bySku = new Map();
+  for (const r of all) if (r.sku) bySku.set(r.sku.toLowerCase(), [...(bySku.get(r.sku.toLowerCase()) || []), r]);
+  for (const [, list] of bySku) if (list.length > 1) report.dupes.push(list.map(r => r.model));
+  return { catalog: { ...prev, rows: all }, report };
+}
+
+function render(src, catalog, date) {
+  const eol = src.includes('\r\n') ? '\r\n' : '\n';
+  const head = src.split(/\r?\n/).filter(l => l.startsWith('//') && !l.startsWith('// Артикулы (sku)') && !l.startsWith('// Лист «Электрика»') && !l.startsWith('//   price (наша цена продажи) у них'));
+  head.forEach((l, i) => { if (/^\/\/ Листы: .*Исключено\.$/.test(l)) head[i] = l.replace(/Исключено\.$/, 'Исключено, Электрика.'); });
+  head.push(`// Артикулы (sku) — столбец «Артикул (с сайта)» листов таблицы, выгрузка ${date}; пусто в таблице — null («Артикул: нет данных»). Дубли артикулов не убираются.`);
+  head.push('// Лист «Электрика» (Сибэлком, Энергосфера): товары поставщиков, не обязательно лежащие на складе; supplierPrice/priceDate — цена поставщика и её дата;');
+  head.push('//   price (наша цена продажи) у них null. Снимок пишет tools/catalog-snapshot.js из выгрузки таблицы, руками не правится.');
+  const lines = catalog.rows.map(rowText);
+  return head.join(eol) + eol
+    + `const CATALOG = {source:${lit(catalog.source)}, snapshot:${lit(catalog.snapshot)}, rows:[` + eol
+    + lines.join(',' + eol) + eol + ']};' + eol;
+}
+
+function load(src) {
+  return new Function(src.replace(/^const CATALOG\b/m, 'var CATALOG') + '\nreturn CATALOG;')();
+}
+
+module.exports = { build, render, load, money, supplierOf, catOf, electricRow, columns, FILE, SHEET };
+
+if (require.main === module) {
+  const [file, flag] = process.argv.slice(2);
+  if (!file) { console.error('Нужна выгрузка: node tools/catalog-snapshot.js <выгрузка.json> [--dry]'); process.exit(2); }
+  const dump = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const src = fs.readFileSync(FILE, 'utf8');
+  const { catalog, report } = build(load(src), dump);
+  if (flag !== '--dry') fs.writeFileSync(FILE, render(src, catalog, dump.date || '?'), 'utf8');
+  console.log(JSON.stringify({
+    позиций: report.total, артикул_проставлен: report.skuSet, артикул_пуст: report.skuEmpty.length, электрика: report.electrics,
+    ключи_выгрузки_без_позиции: report.skuUnknownKeys, дубли_артикулов: report.dupes, электрика_пропуски: report.electricGaps,
+  }, null, 1));
+}

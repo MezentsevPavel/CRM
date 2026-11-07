@@ -180,14 +180,14 @@ function mShip(){
     <div class="field"><label for="ns-stage">Этап сейчас</label><select id="ns-stage" class="inp">${open.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select></div><div class="field"><label for="ns-eta">Ожидается на складе</label><input id="ns-eta" type="date" class="inp" value="${iso(day(7))}"></div></div>
     <div class="grid2"><div class="field"><label for="ns-city">Куда едет (город)</label><select id="ns-city" class="inp">${S.cities.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select></div><div class="field"><label for="ns-ent">На какое юрлицо</label><select id="ns-ent" class="inp">${S.entities.map(e=>`<option value="${esc(e.id)}">${esc(e.name)}</option>`).join('')}</select></div></div>
     <p class="hint">Маршрут: Китай → Чита (таможня и перевалка) → выбранный город.</p>
-    <div class="field"><span class="lbl">Что едет</span><div id="ns-items" class="stack-s" style="gap:8px">${irow()}</div><div><button type="button" class="btn sm ghost" data-act="add-irow">${ic('plus')}Ещё позиция</button></div></div>
+    <div class="field"><span class="lbl">Что едет</span><div id="ns-items" class="stack-s" style="gap:8px">${irow()}</div><div><button type="button" class="btn sm ghost" data-act="add-irow">${ic('plus')}Ещё позиция</button> <button type="button" class="btn sm ghost" data-act="pq-open" data-kind="ship" data-name="">${ic('plus')}Нет в списке — создать товар</button></div></div>
     ${attFormHtml()}
     <p class="err" id="ns-err" hidden></p></div>${mFoot('Создать и уведомить')}</form>`;
 }
 function mProduct(){
   return `<form data-form="product" novalidate>${mHead('Новый товар')}<div class="modal-b">
     <div class="grid2"><div class="field"><label for="np-name">Наименование</label><input id="np-name" class="inp" placeholder="Как товар называется в документах"></div><div class="field"><label for="np-unit">Единица</label><select id="np-unit" class="inp"><option>шт</option><option>м</option><option>пар</option><option>компл.</option></select></div></div>
-    <div class="field"><label for="np-sku">Артикул</label><input id="np-sku" class="inp" maxlength="${Catalog.SKU_MAX}" data-on="sku-dup" data-hint="np-dup" autocomplete="off" placeholder="Необязательно. Пусто — «нет данных: артикул»"></div><p class="hint warn-t" id="np-dup" aria-live="polite" hidden></p>
+    <div class="field"><label for="np-sku">Артикул</label><input id="np-sku" class="inp" maxlength="${Catalog.SKU_MAX}" data-on="sku-dup" data-hint="np-dup" autocomplete="off" placeholder="Необязательно. Пусто — «${SKU_NONE}»"></div><p class="hint warn-t" id="np-dup" aria-live="polite" hidden></p>
     <div class="grid2"><div class="field"><label for="np-cat">Категория</label><select id="np-cat" class="inp">${catOptions(Catalog.hasPath(S,S.ui.cat)&&S.ui.cat!=='Все'?S.ui.cat:Catalog.NO_CAT,{noCat:true})}</select></div>${can('prices')?'<div class="field"><label for="np-price">Цена, ₽</label><input id="np-price" class="inp" type="number" min="0" placeholder="Пусто — «нет данных»"></div>':''}</div>
     <p class="err" id="np-err" hidden></p></div>${mFoot('Добавить')}</form>`;
 }
@@ -588,7 +588,7 @@ document.addEventListener('change',e=>onField('change',e));
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
     if(!S) return;
-    if(S.ui.modal) closeModal();else if(S.ui.drawer) closeDrawer();else{byId('pop').hidden=true;byId('q-res').hidden=true;if(S.ui.navOpen) setNav(false)}
+    if(typeof PQ!=='undefined'&&PQ) pqClose();else if(S.ui.modal) closeModal();else if(S.ui.drawer) closeDrawer();else{byId('pop').hidden=true;byId('q-res').hidden=true;if(S.ui.navOpen) setNav(false)}
     return;
   }
   if((e.key==='Enter'||e.key===' ')&&e.target.matches?.('[data-act]:not(button):not(input):not(select):not(textarea):not(label)')){e.preventDefault();e.target.click()}

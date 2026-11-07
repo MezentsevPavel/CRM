@@ -116,7 +116,7 @@ span.ct-tg{cursor:default}
   .ct-body{display:none;margin-top:8px}
   .ct-box.open .ct-body{display:block}
 }
-/* артикул у названия товара: мелко под названием; «нет данных: артикул» — приглушённо */
+/* артикул у названия товара: мелко под названием; «Артикул: нет данных» — приглушённо */
 .sku{display:block;font-size:11.5px;color:var(--ink-3);font-weight:400}
 .pname .sku,.dl-n .sku,.cnt-name .sku{display:block}
 li .sku,.s-it .sku,.dsp-line .sku{display:inline}
@@ -127,3 +127,7 @@ li .sku,.s-it .sku,.dsp-line .sku{display:inline}
 .rcm-find,.rcm-new{display:flex;flex-direction:column;gap:6px}
 .rcm-pick{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
 .rcm-res{max-height:260px;overflow:auto}
+
+/* «Создать товар» поверх открытой формы (сделка, поставка, заявка на отправку) */
+.pq-wrap{z-index:60}
+.pq-link{margin-top:2px}

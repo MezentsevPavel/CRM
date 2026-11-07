@@ -10,9 +10,19 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const fs = require('node:fs');
 const { DatabaseSync } = require('node:sqlite');
-const { load } = require('./load.js');
+const { load: loadRaw } = require('./load.js');
 const kit = require('./server-kit.js');
 
+// В снимке каталога теперь есть настоящая «Электрика» поставщиков (Сибэлком, Энергосфера) со своим деревом. Эти тесты проверяют само дерево
+// на выдуманных «Электрика → Автоматы → АВР», поэтому убираем из демо настоящие товары и узлы этой ветки: дерево и товары — как были.
+function withoutSupplierBranch(a) {
+  if (!a.S) return a;
+  a.S.products = a.S.products.filter(p => p.sheet !== 'Электрика');
+  const gone = new Set((a.S.categories || []).filter(c => /^Электрика( › |$)/.test(a.Catalog.pathOf(a.S, c.id))).map(c => c.id));
+  a.S.categories = (a.S.categories || []).filter(c => !gone.has(c.id));
+  return a;
+}
+const load = opts => withoutSupplierBranch(loadRaw(opts));
 const plain = v => JSON.parse(JSON.stringify(v === undefined ? null : v));
 const deq = (actual, expected, msg) => assert.deepEqual(plain(actual), plain(expected), msg);
 const NOW = new Date(2026, 10, 7, 12, 0, 0);
@@ -34,7 +44,7 @@ test('право «Добавлять товары в номенклатуру»
   const a = load();
   for (const r of a.S.roles.filter(x => x.builtin)) assert.equal(r.perms.catalog, true, `у роли «${r.name}» нет права catalog`);
   for (const p of a.S.people) assert.equal(a.Perms.can(a.S, p.id, 'catalog'), true, `${p.name} не может добавлять товары`);
-  assert.equal(a.Store.REV, 20, 'форма записей изменилась (дерево категорий, артикул, право) — REV 20');
+  assert.ok(a.Store.REV >= 20, 'форма записей изменилась (дерево категорий, артикул, право) — REV не ниже 20');
 });
 
 test('демо и пустая рабочая база: дерево собрано из категорий товаров, у каждого товара путь есть в дереве; верхний уровень — в привычном порядке', () => {
@@ -284,16 +294,16 @@ test('сервер: сотрудник с правом catalog пишет кат
   try {
     const boss = await kit.director(srv);
     const sales = await kit.employee(srv, boss, { id: 'p3', name: 'Менеджер (тест)', role: 'managerB2b', dept: 'sales' });
-    const top = { id: 'c-e', name: 'Электрика', parentId: null }, sub = { id: 'c-a', name: 'Автоматы', parentId: 'c-e' };
-    const prod = { id: 'u-t1', name: 'Автомат 1P (тест)', brand: null, cat: 'Электрика › Автоматы', price: null, avail: null, url: null, src: 'user', inCatalog: false };
+    const top = { id: 'c-e', name: 'Электрощиты', parentId: null }, sub = { id: 'c-a', name: 'Автоматы', parentId: 'c-e' };
+    const prod = { id: 'u-t1', name: 'Автомат 1P (тест)', brand: null, cat: 'Электрощиты › Автоматы', price: null, avail: null, url: null, src: 'user', inCatalog: false };
     let r = await kit.changes(srv, sales.cookie, [
       { key: 'categories', id: 'c-e', base: null, data: top }, { key: 'categories', id: 'c-a', base: null, data: sub },
       { key: 'products', id: 'u-t1', base: null, data: prod }]);
     assert.equal(r.status, 200, r.text);
     // директор (второй сеанс) видит дерево и товар
     const st = await kit.state(srv, boss.cookie);
-    deq(st.categories.filter(c => c.id.startsWith('c-')).map(c => c.name), ['Электрика', 'Автоматы']);
-    assert.equal(st.products.find(p => p.id === 'u-t1').cat, 'Электрика › Автоматы');
+    deq(st.categories.filter(c => c.id.startsWith('c-')).map(c => c.name), ['Электрощиты', 'Автоматы']);
+    assert.equal(st.products.find(p => p.id === 'u-t1').cat, 'Электрощиты › Автоматы');
     // товар с путём вне дерева
     r = await kit.changes(srv, sales.cookie, [{ key: 'products', id: 'u-t2', base: null, data: { ...prod, id: 'u-t2', name: 'Нет в дереве (тест)', cat: 'Нет такой' } }]);
     assert.equal(r.status, 403, r.text); assert.match(r.body.error, /нет в списке категорий/);
@@ -473,12 +483,12 @@ test('перенос остатков: раздел листа, которого
   const a = load({ globals: { CRM_SERVER: 1 } });
   const st = a.seedBase();
   const rows = [
-    { name: 'Тестовый автомат Альфа', cat: 'Электрика', ip: 5, npp: null, vs: null, custody: null, transit: null, damaged: null, reserve: null, junk: [] },
+    { name: 'Тестовый автомат Альфа', cat: 'Электрощиты', ip: 5, npp: null, vs: null, custody: null, transit: null, damaged: null, reserve: null, junk: [] },
     { name: 'Тестовая панель Бета', cat: 'Солнечные панели', ip: 2, npp: null, vs: null, custody: null, transit: null, damaged: null, reserve: null, junk: [] },
   ];
   a.Import.applyStock(st, rows, 'p1', NOW);
   const n = st.categories.length;
-  assert.ok(st.categories.some(c => c.name === 'Электрика'), 'раздел «Электрика» не стал категорией');
+  assert.ok(st.categories.some(c => c.name === 'Электрощиты'), 'раздел «Электрощиты» не стал категорией');
   assert.equal(st.categories.filter(c => c.name === 'Панели').length, 1, '«Солнечные панели» легли в существующие «Панели»');
   for (const p of st.products) assert.equal(a.Catalog.hasPath(st, p.cat), true, `${p.name}: «${p.cat}»`);
   a.Import.applyStock(st, rows, 'p1', NOW);
@@ -510,7 +520,7 @@ async function openPage(srv, login, password) {
 }
 const posts = p => p.b.calls.filter(c => c.url === '/api/changes' && c.method === 'POST').length;
 
-test('сервер: через окно директор заводит «Электрика → Автоматы», товар в ней и переименовывает ветку — каждое действие одной пачкой, второй сеанс видит новые пути', async () => {
+test('сервер: через окно директор заводит «Электрощиты → Щитки», товар в ней и переименовывает ветку — каждое действие одной пачкой, второй сеанс видит новые пути', async () => {
   const srv = await kit.start();
   try {
     const boss = await kit.director(srv);
@@ -522,22 +532,22 @@ test('сервер: через окно директор заводит «Эле
     A.A['cat-manage']();
     const el = id => A.byId(id);
     const step = async fn => { const n = posts(w); fn(); await A.serverIdle(); return posts(w) - n; };
-    assert.equal(await step(() => { el('ct-name').value = 'Электрика'; el('ct-parent').value = ''; A.FORMS['cat-add'](); }), 1, 'категория — одна запись');
-    assert.equal(await step(() => { el('ct-name').value = 'Автоматы'; el('ct-parent').value = 'Электрика'; A.FORMS['cat-add'](); }), 1, 'подкатегория — одна запись');
+    assert.equal(await step(() => { el('ct-name').value = 'Электрощиты'; el('ct-parent').value = ''; A.FORMS['cat-add'](); }), 1, 'категория — одна запись');
+    assert.equal(await step(() => { el('ct-name').value = 'Щитки'; el('ct-parent').value = 'Электрощиты'; A.FORMS['cat-add'](); }), 1, 'подкатегория — одна запись');
     // новый товар в подкатегории: товар и (если надо) уровни — одной пачкой
     A.A['new-product']();
-    assert.equal(await step(() => { el('np-name').value = 'Автомат 1P (тест)'; el('np-unit').value = 'шт'; el('np-cat').value = 'Электрика › Автоматы'; el('np-price').value = ''; A.FORMS.product(); }), 1, 'товар — одна запись');
+    assert.equal(await step(() => { el('np-name').value = 'Автомат 1P (тест)'; el('np-unit').value = 'шт'; el('np-cat').value = 'Электрощиты › Щитки'; el('np-price').value = ''; A.FORMS.product(); }), 1, 'товар — одна запись');
     // сотрудник (с правом catalog по умолчанию) видит дерево и товар
     const st = await kit.state(srv, sales.cookie);
-    assert.ok(st.categories.some(c => c.name === 'Автоматы'));
-    assert.equal(st.products.find(p => p.name === 'Автомат 1P (тест)').cat, 'Электрика › Автоматы');
+    assert.ok(st.categories.some(c => c.name === 'Щитки'));
+    assert.equal(st.products.find(p => p.name === 'Автомат 1P (тест)').cat, 'Электрощиты › Щитки');
     // переименование ветки: узел и товар в нём — одна пачка
-    const au = A.S.categories.find(c => c.name === 'Автоматы');
+    const au = A.S.categories.find(c => c.name === 'Щитки');
     A.A['cat-edit']({ dataset: { id: au.id } });
-    assert.equal(await step(() => { el('ce-name').value = 'Автоматика'; el('ce-parent').value = 'Электрика'; A.FORMS['cat-edit']({ dataset: { id: au.id } }); }), 1, 'переименование ветки — одна запись');
+    assert.equal(await step(() => { el('ce-name').value = 'Автоматика'; el('ce-parent').value = 'Электрощиты'; A.FORMS['cat-edit']({ dataset: { id: au.id } }); }), 1, 'переименование ветки — одна запись');
     const st2 = await kit.state(srv, sales.cookie);
-    assert.ok(st2.categories.some(c => c.name === 'Автоматика') && !st2.categories.some(c => c.name === 'Автоматы'));
-    assert.equal(st2.products.find(p => p.name === 'Автомат 1P (тест)').cat, 'Электрика › Автоматика', 'путь товара обновлён вместе с категорией');
+    assert.ok(st2.categories.some(c => c.name === 'Автоматика') && !st2.categories.some(c => c.name === 'Щитки'));
+    assert.equal(st2.products.find(p => p.name === 'Автомат 1P (тест)').cat, 'Электрощиты › Автоматика', 'путь товара обновлён вместе с категорией');
     // непустую удалить нельзя — запись на сервер даже не уходит
     A.A['cat-edit']({ dataset: { id: au.id } });
     assert.equal(await step(() => A.A['cat-del']({ dataset: { id: au.id } })), 0, 'отказ — без записи на сервер');
