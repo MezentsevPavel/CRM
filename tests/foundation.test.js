@@ -235,14 +235,15 @@ test('Store: не влезает в лимит — фото выкинуты и 
 const ROLE_NAMES = ['Директор', 'Менеджер B2B', 'Менеджер B2C', 'Логист', 'Кладовщик', 'Главный инженер', 'Инженер'];
 // tasksAssign менеджерам вернули как в прошлой версии прототипа (таск 06): задачу можно поставить другому отделу
 // dealsEdit «Заводить и править сделки» — таск F1: у менеджеров есть, у инженеров нет (R30: сделки на просмотр)
-const MANAGER = ['stock', 'prices', 'reserve', 'leads', 'clients', 'dealsEdit', 'write', 'mail', 'sell', 'tasksAssign'];
+// auto («Настраивать авто-сообщения») — у всех: слова директора 2026-11-07 «дай разрешение всем менять шаблон сообщения клиентам»
+const MANAGER = ['stock', 'prices', 'reserve', 'leads', 'clients', 'dealsEdit', 'write', 'mail', 'sell', 'tasksAssign', 'auto'];
 const DEFAULT_ON = {
   'Менеджер B2B': MANAGER,
   'Менеджер B2C': MANAGER,
-  'Логист': ['stock', 'logistics', 'mail', 'tasksAssign', 'dispatch'],
-  'Кладовщик': ['stock', 'receive', 'dispatch', 'clients', 'dealsAll'],   // клиенты и сделки — слово директора 2026-11-01
-  'Главный инженер': ['tasksAssign', 'stock', 'clients', 'dealsAll'],
-  'Инженер': ['tasksAssign', 'stock', 'clients', 'dealsAll'],
+  'Логист': ['stock', 'logistics', 'mail', 'tasksAssign', 'dispatch', 'auto'],
+  'Кладовщик': ['stock', 'receive', 'dispatch', 'clients', 'dealsAll', 'auto'],   // клиенты и сделки — слово директора 2026-11-01
+  'Главный инженер': ['tasksAssign', 'stock', 'clients', 'dealsAll', 'auto'],
+  'Инженер': ['tasksAssign', 'stock', 'clients', 'dealsAll', 'auto'],
 };
 const V2_PERMS = ['firm', 'tasksAll', 'tasksAssign', 'stock', 'prices', 'reserve', 'catalog', 'logistics', 'receive', 'clients', 'write', 'auto', 'admin'];
 
@@ -630,10 +631,10 @@ test('меню: раздела без права у текущего челов�
   const app = load();
   app.render();
   assert.ok(app.byId('side').innerHTML.includes('data-view="team"'), 'директор не видит «Сотрудники и права»');
-  app.setMe('p5'); // Игорь К., кладовщик: «stock», «receive», «clients»; прав «admin» и сообщений клиентам нет
+  app.setMe('p5'); // Игорь К., кладовщик: «stock», «receive», «clients», «auto» (сообщения клиентам — слово директора: всем); права «admin» нет
   const side = app.byId('side').innerHTML;
-  for (const id of ['team', 'messages']) assert.ok(!side.includes(`data-view="${id}"`), `кладовщику в меню виден раздел ${id}`);
-  for (const id of ['home', 'stock', 'receiving', 'clients', 'settings']) assert.ok(side.includes(`data-view="${id}"`), `кладовщику в меню не виден раздел ${id}`);
+  assert.ok(!side.includes('data-view="team"'), 'кладовщику в меню виден раздел team');
+  for (const id of ['home', 'stock', 'receiving', 'clients', 'messages', 'settings']) assert.ok(side.includes(`data-view="${id}"`), `кладовщику в меню не виден раздел ${id}`);
   const views = [...side.matchAll(/data-view="(\w+)"/g)].map(m => m[1]);
   assert.equal(views.at(-1), 'settings', '«Настройки» — не последняя в меню');
   assert.ok(side.includes('<h4>Настройки</h4>'), 'нет группы «Настройки»');

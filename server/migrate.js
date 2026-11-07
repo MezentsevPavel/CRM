@@ -21,6 +21,18 @@ const MIGRATIONS = {
   // записей их нет, экран пишет «нет данных: кто / когда»; ключ watches без документов собирается пустым списком (Docs.join).
   // Переводить нечего — шаг только отмечает, что база этой формы.
   18: () => {},
+  // 19: право «Настраивать авто-сообщения» (auto) — всем ролям, встроенным и своим (слова директора: шаблон сообщения клиентам
+  // меняют все). Директору право и так есть. Снять его с роли можно в «Роли и права» как раньше.
+  19: ({ db, docs }) => {
+    const seq = Number((db.prepare("SELECT v FROM meta WHERE k = 'seq'").get() || {}).v) || 0;
+    for (const r of docs.all()) {
+      if (r.key !== 'roles') continue;
+      const role = JSON.parse(r.data);
+      if (!role.perms || role.perms.auto === true) continue;
+      role.perms.auto = true;
+      docs.put('roles', r.id, JSON.stringify(role), seq);
+    }
+  },
 };
 
 // → null, если всё в порядке; иначе текст отказа запуска. Данные при отказе не меняются.

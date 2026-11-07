@@ -2103,7 +2103,9 @@ const Store = (() => {
   //      «Продажа» seller и items[].from, у задачи bill/dropped (запрос счёта между юрлицами). Рабочая база — шаг MIGRATIONS[17].
   // 18 — резерв без сделки и история резерва: у резерва by, at, forWho, hist, warned; у «Резерв» / «Снят резерв» в журнале rid,
   //      src, sold; новый ключ st.watches — «Сообщить, когда появится». Рабочая база — шаг MIGRATIONS[18].
-  const REV = 18;
+  // 19 — право «Настраивать авто-сообщения» (auto) у всех встроенных ролей: слова директора — шаблон сообщения клиентам меняют все.
+  //      Рабочая база — шаг MIGRATIONS[19] (право ставится всем ролям).
+  const REV = 19;
   // Браузер даёт сайту около 5 млн символов на всё; берём с запасом.
   const LIMIT = 4500000;
   const NO_SPACE = 'не сохранено — мало места в браузере';
@@ -2288,14 +2290,14 @@ const Perms = (() => {
   // Права по умолчанию — «Решения по реализации» спецификации.
   // Менеджер видит лиды и сделки своего типа (scope), dealsAll у него нет. Заводить и править сделки (dealsEdit) — менеджерам,
   // РОП (право ему дают в шаге сделок, 42-deals.js) и директору; инженеры смотрят сделки, но не правят (R30).
-  const ENGINEER = ['tasksAssign', 'stock', 'clients', 'dealsAll'];
+  const ENGINEER = ['tasksAssign', 'stock', 'clients', 'dealsAll', 'auto'];
   const DEFAULTS = [
     { id: 'director', name: 'Директор', all: true, on: KEYS },
-    { id: 'managerB2b', name: 'Менеджер B2B', scope: 'b2b', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'dealsEdit', 'write', 'mail', 'sell', 'tasksAssign'] },
-    { id: 'managerB2c', name: 'Менеджер B2C', scope: 'b2c', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'dealsEdit', 'write', 'mail', 'sell', 'tasksAssign'] },
-    { id: 'logist', name: 'Логист', on: ['stock', 'logistics', 'mail', 'tasksAssign', 'dispatch'] },
+    { id: 'managerB2b', name: 'Менеджер B2B', scope: 'b2b', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'dealsEdit', 'write', 'mail', 'sell', 'tasksAssign', 'auto'] },
+    { id: 'managerB2c', name: 'Менеджер B2C', scope: 'b2c', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'dealsEdit', 'write', 'mail', 'sell', 'tasksAssign', 'auto'] },
+    { id: 'logist', name: 'Логист', on: ['stock', 'logistics', 'mail', 'tasksAssign', 'dispatch', 'auto'] },
     // Клиентов и сделки всех типов кладовщик видит — слово директора 2026-11-01: «Отметь сам по умолчанию».
-    { id: 'warehouse', name: 'Кладовщик', on: ['stock', 'receive', 'dispatch', 'clients', 'dealsAll'] },
+    { id: 'warehouse', name: 'Кладовщик', on: ['stock', 'receive', 'dispatch', 'clients', 'dealsAll', 'auto'] },
     // Главный инженер и инженер — одна матрица (R30).
     { id: 'chiefEngineer', name: 'Главный инженер', on: ENGINEER },
     { id: 'engineer', name: 'Инженер', on: ENGINEER },
@@ -4116,7 +4118,7 @@ KIND.leadWait = { l: 'Лид ждёт', ic: 'clock', c: 'bad' };
 // поэтому Leads.route и Leads.pick его не выбирают. Шаг SEEDS ниже — демо-человек с этой ролью; стоит до лидов,
 // чтобы человек уже был в команде.
 BASES.push(st => {
-  const on = ['leads', 'leadsAssign', 'dealsAll', 'clients', 'stock', 'prices', 'reserve', 'write', 'mail', 'tasksAssign'];
+  const on = ['leads', 'leadsAssign', 'dealsAll', 'clients', 'stock', 'prices', 'reserve', 'write', 'mail', 'tasksAssign', 'auto'];
   st.roles.push({ id: 'rop', name: 'РОП (руководитель отдела продаж)', builtin: true, perms: Object.fromEntries(Perms.LIST.map(([k]) => [k, on.includes(k)])) });
   // источник лидов и время реакции по умолчанию; лидов в новой базе нет
   st.leadSource = 'both';
@@ -5413,7 +5415,7 @@ KIND.dispatchStep = { l: 'Ход отправок', ic: 'truck', c: 'info' };
 // База: роль «Водитель», право РОП списывать при продаже, воронка отправок; заявок в новой базе нет.
 BASES.push(st => {
   const perms = on => Object.fromEntries(Perms.LIST.map(([k]) => [k, on.includes(k)]));
-  st.roles.push({ id: 'driver', name: 'Водитель', builtin: true, perms: perms(['dispatch']) });
+  st.roles.push({ id: 'driver', name: 'Водитель', builtin: true, perms: perms(['dispatch', 'auto']) });
   // РОП (роль заводит база лидов, 35-leads.js) списывает при продаже, как менеджеры
   const rop = st.roles.find(r => r.id === 'rop');
   if (rop) rop.perms.sell = true;

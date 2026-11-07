@@ -633,7 +633,7 @@ KIND.dispatchStep = { l: 'Ход отправок', ic: 'truck', c: 'info' };
 // База: роль «Водитель», право РОП списывать при продаже, воронка отправок; заявок в новой базе нет.
 BASES.push(st => {
   const perms = on => Object.fromEntries(Perms.LIST.map(([k]) => [k, on.includes(k)]));
-  st.roles.push({ id: 'driver', name: 'Водитель', builtin: true, perms: perms(['dispatch']) });
+  st.roles.push({ id: 'driver', name: 'Водитель', builtin: true, perms: perms(['dispatch', 'auto']) });
   // РОП (роль заводит база лидов, 35-leads.js) списывает при продаже, как менеджеры
   const rop = st.roles.find(r => r.id === 'rop');
   if (rop) rop.perms.sell = true;

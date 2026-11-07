@@ -238,7 +238,7 @@ test('seedBase(): 9 ролей с доборами РОП и водителя, �
   assert.equal(role('rop').perms.dealsEdit, true, 'РОП заводит сделки');
   assert.equal(role('rop').perms.sell, true, 'РОП списывает при продаже');
   assert.equal(role('rop').perms.leadsAssign, true);
-  assert.deepEqual(plain(Object.keys(role('driver').perms).filter(k => role('driver').perms[k])), ['dispatch']);
+  assert.deepEqual(plain(Object.keys(role('driver').perms).filter(k => role('driver').perms[k])), ['auto', 'dispatch']);   // auto — всем (слово директора 2026-11-07)
   assert.ok(st.pipelines.some(p => p.id === 'dispatch') && st.pipelines.some(p => p.id === 'shipsOut'), 'нет воронок отправок и отгрузок');
   assert.ok(['deals', 'leads', 'tasks', 'ships'].every(k => st.pipelines.some(p => p.kind === k)), 'нет воронок по умолчанию');
   assert.equal(st.depts.length, 5);
