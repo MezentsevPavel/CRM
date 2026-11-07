@@ -566,6 +566,16 @@ test('«Товары»: число позиций видно, список ид�
   app.A['stock-page']({ dataset: { page: '1' } });
   assert.match(plain(app.stockTable()), /Страница 2 из 9/);
   assert.notEqual(first(app.stockTable()), p1);
+  // «Показать ещё» дописывает следующую страницу под видимыми, «Показать всё» — все 434 строки, кнопки пропадают
+  app.A['stock-more']();
+  assert.match(plain(app.stockTable()), /Страницы 2–3 из 9/);
+  assert.equal(rowsIn(app.stockTable()), 100, '«Показать ещё» не добавил страницу');
+  assert.match(app.stockTable(), /data-page="3"\s*>Вперёд/, '«Вперёд» после «ещё» не ведёт за раскрытые страницы');
+  app.A['stock-all']();
+  assert.equal(rowsIn(app.stockTable()), 434, '«Показать всё» показал не все строки');
+  assert.match(plain(app.stockTable()), /Страницы 1–9 из 9/);
+  assert.ok(!app.stockTable().includes('stock-more'), 'после «Показать всё» осталась кнопка «Показать ещё»');
+  app.A['stock-page']({ dataset: { page: '1' } });
   const shown = () => plain(region(app, 'stock-tbl'));
   const count = () => Number(shown().match(/Показано (\d+) из 434/)[1]);
   // категория

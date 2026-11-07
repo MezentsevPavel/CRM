@@ -9162,9 +9162,12 @@ function stockRows(){
   // «не хватает»: с учётом поставок меньше нуля, либо остаток известен и свободного нет; без данных об остатке — не дефицит
   return u.deficit?list.filter(p=>{const k=stockOf(p.id);return k.freeAfter<0||(k.known&&k.free<=0)}):list;
 }
-function pagerHtml(page,pages){
+// Переключатель страниц: span — сколько страниц подряд раскрыто с page («Показать ещё» +1, «Показать всё» — все)
+function pagerHtml(page,pages,span){
   if(pages<2) return '';
-  return `<div class="pager"><button type="button" class="btn sm" data-act="stock-page" data-page="${page-1}" ${page<1?'disabled':''}>← Назад</button><span class="muted sm">Страница <b>${page+1}</b> из <b>${pages}</b></span><button type="button" class="btn sm" data-act="stock-page" data-page="${page+1}" ${page>=pages-1?'disabled':''}>Вперёд →</button></div>`;
+  const last=page+span-1,end=last>=pages-1;
+  const label=span>1?`Страницы <b>${page+1}–${last+1}</b> из <b>${pages}</b>`:`Страница <b>${page+1}</b> из <b>${pages}</b>`;
+  return `<div class="pager"><button type="button" class="btn sm" data-act="stock-page" data-page="${page-1}" ${page<1?'disabled':''}>← Назад</button><span class="muted sm">${label}</span><button type="button" class="btn sm" data-act="stock-page" data-page="${last+1}" ${end?'disabled':''}>Вперёд →</button>${end?'':`<button type="button" class="btn sm ghost" data-act="stock-more">Показать ещё</button><button type="button" class="btn sm ghost" data-act="stock-all">Показать всё</button>`}</div>`;
 }
 // Бейдж «N резервов» в строке номенклатуры: кнопка открывает карточку товара сразу на списке резервов
 const resBadge=p=>{const n=resOf(p.id).length;return n?`<button type="button" class="rbadge" data-act="product-reserves" data-id="${esc(p.id)}" title="Кто, что и когда зарезервировал">${ic('lock')}${n} ${pl(n,'резерв','резерва','резервов')}</button>`:''};
@@ -9179,13 +9182,14 @@ function stockRow(p,pr){
 // Содержимое #stock-tbl: «показано N из M», страница таблицы, переключатель страниц
 function stockTable(){
   const rows=stockRows(),all=S.products.length,pages=Math.max(1,Math.ceil(rows.length/PAGE_SIZE));
-  const page=Math.min(Math.max(0,parseInt(S.ui.page,10)||0),pages-1),from=page*PAGE_SIZE,part=rows.slice(from,from+PAGE_SIZE);
+  const page=Math.min(Math.max(0,parseInt(S.ui.page,10)||0),pages-1),span=Math.min(Math.max(1,Math.floor(Number(S.ui.span))||1),pages-page);
+  const from=page*PAGE_SIZE,part=rows.slice(from,from+span*PAGE_SIZE);
   const head=`<div class="count"><span>Показано <b>${rows.length}</b> из <b>${all}</b> позиций</span>${rows.length>PAGE_SIZE?`<span class="muted">строки ${from+1}–${from+part.length}</span>`:''}</div>`;
   if(!rows.length) return head+emptyState('Ничего не нашлось. Проверьте фильтр или строку поиска.','Сбросить фильтры','stock-reset');
-  const pr=can('prices'),pg=pagerHtml(page,pages);
+  const pr=can('prices'),pg=pagerHtml(page,pages,span);
   return `${head}<div class="xs"><table class="tbl"><thead><tr><th>Товар</th><th class="num">На складе</th><th class="num">В резерве</th><th class="num">Свободно сейчас</th><th>Едет к нам</th><th class="num">Свободно после прихода</th>${pr?'<th class="num">Цена</th>':''}<th>Картина</th></tr></thead><tbody>${part.map(p=>stockRow(p,pr)).join('')}</tbody></table></div>${pg}`;
 }
-const refreshStock=()=>{S.ui.page=0;byId('stock-tbl').innerHTML=stockTable()};
+const refreshStock=()=>{S.ui.page=0;S.ui.span=1;byId('stock-tbl').innerHTML=stockTable()};
 
 // ——— журнал движений: слова и строки общие для вкладки и карточки товара ———
 // «Ввод остатков» — знак «=»: в qty лежит остаток клетки после переноса, а не прибавка («+» был бы неправдой)
@@ -9423,10 +9427,13 @@ FORMS['reserve-until']=f=>{
   closeModal();render();toast(`Срок резерва — до ${fD(r.reserve.until)}. В истории резерва есть запись.`);
 };
 A['stock-tab']=el=>{S.ui.stockTab=el.dataset.tab;render()};
-A['stock-cat']=el=>{S.ui.cat=el.dataset.cat;S.ui.page=0;render()};
-A['stock-page']=el=>{S.ui.page=parseInt(el.dataset.page,10)||0;byId('stock-tbl').innerHTML=stockTable();byId('scroll').scrollTop=0};
+A['stock-cat']=el=>{S.ui.cat=el.dataset.cat;S.ui.page=0;S.ui.span=1;render()};
+A['stock-page']=el=>{S.ui.page=parseInt(el.dataset.page,10)||0;S.ui.span=1;byId('stock-tbl').innerHTML=stockTable();byId('scroll').scrollTop=0};
+// «Показать ещё» — дописать следующую страницу под видимыми (прокрутка остаётся), «Показать всё» — весь список с начала
+A['stock-more']=()=>{S.ui.span=(Number(S.ui.span)||1)+1;byId('stock-tbl').innerHTML=stockTable()};
+A['stock-all']=()=>{S.ui.page=0;S.ui.span=Infinity;byId('stock-tbl').innerHTML=stockTable()};
 // Пустой список остатков: сбросить категорию, бренд, наличие, каталог, поиск и «только где не хватает»
-A['stock-reset']=()=>{Object.assign(S.ui,{cat:'Все',sq:'',brand:'',avail:'',catf:'',deficit:false,page:0});render()};
+A['stock-reset']=()=>{Object.assign(S.ui,{cat:'Все',sq:'',brand:'',avail:'',catf:'',deficit:false,page:0,span:1});render()};
 // Из карточки товара — в журнал движений по этому товару
 A['stock-journal']=el=>{S.ui.stockTab='moves';S.ui.mvPid=el.dataset.pid||'';S.ui.mvKind='';S.ui.drawer=null;go('stock')};
 
