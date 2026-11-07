@@ -571,6 +571,14 @@ test('«Товары»: число позиций видно, список ид�
   assert.match(plain(app.stockTable()), /Страницы 2–3 из 9/);
   assert.equal(rowsIn(app.stockTable()), 100, '«Показать ещё» не добавил страницу');
   assert.match(app.stockTable(), /data-page="3"\s*>Вперёд/, '«Вперёд» после «ещё» не ведёт за раскрытые страницы');
+  // номер страницы вводится руками; за краем — ближайшая крайняя
+  app.ON.change['stock-goto']({ value: '5' });
+  assert.match(plain(app.stockTable()), /Страница 5 из 9/, 'ввод номера страницы не сработал');
+  app.ON.change['stock-goto']({ value: '99' });
+  assert.match(plain(app.stockTable()), /Страница 9 из 9/, 'номер за краем не прижат к последней странице');
+  app.ON.change['stock-goto']({ value: '0' });
+  assert.match(plain(app.stockTable()), /Страница 1 из 9/, 'нулевой номер не прижат к первой странице');
+  app.A['stock-more']();
   app.A['stock-all']();
   assert.equal(rowsIn(app.stockTable()), 434, '«Показать всё» показал не все строки');
   assert.match(plain(app.stockTable()), /Страницы 1–9 из 9/);

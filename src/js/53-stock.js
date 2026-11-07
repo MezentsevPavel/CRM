@@ -57,7 +57,7 @@ function pagerHtml(page,pages,span){
   if(pages<2) return '';
   const last=page+span-1,end=last>=pages-1;
   const label=span>1?`Страницы <b>${page+1}–${last+1}</b> из <b>${pages}</b>`:`Страница <b>${page+1}</b> из <b>${pages}</b>`;
-  return `<div class="pager"><button type="button" class="btn sm" data-act="stock-page" data-page="${page-1}" ${page<1?'disabled':''}>← Назад</button><span class="muted sm">${label}</span><button type="button" class="btn sm" data-act="stock-page" data-page="${last+1}" ${end?'disabled':''}>Вперёд →</button>${end?'':`<button type="button" class="btn sm ghost" data-act="stock-more">Показать ещё</button><button type="button" class="btn sm ghost" data-act="stock-all">Показать всё</button>`}</div>`;
+  return `<div class="pager"><button type="button" class="btn sm" data-act="stock-page" data-page="${page-1}" ${page<1?'disabled':''}>← Назад</button><span class="muted sm">${label}</span><button type="button" class="btn sm" data-act="stock-page" data-page="${last+1}" ${end?'disabled':''}>Вперёд →</button><label class="pgo muted sm">Перейти на <input class="inp" type="number" min="1" max="${pages}" value="${page+1}" inputmode="numeric" data-on="stock-goto" aria-label="Номер страницы"></label>${end?'':`<button type="button" class="btn sm ghost" data-act="stock-more">Показать ещё</button><button type="button" class="btn sm ghost" data-act="stock-all">Показать всё</button>`}</div>`;
 }
 // Бейдж «N резервов» в строке номенклатуры: кнопка открывает карточку товара сразу на списке резервов
 const resBadge=p=>{const n=resOf(p.id).length;return n?`<button type="button" class="rbadge" data-act="product-reserves" data-id="${esc(p.id)}" title="Кто, что и когда зарезервировал">${ic('lock')}${n} ${pl(n,'резерв','резерва','резервов')}</button>`:''};
@@ -320,6 +320,8 @@ A['stock-tab']=el=>{S.ui.stockTab=el.dataset.tab;render()};
 A['stock-cat']=el=>{S.ui.cat=el.dataset.cat;S.ui.page=0;S.ui.span=1;render()};
 A['stock-page']=el=>{S.ui.page=parseInt(el.dataset.page,10)||0;S.ui.span=1;byId('stock-tbl').innerHTML=stockTable();byId('scroll').scrollTop=0};
 // «Показать ещё» — дописать следующую страницу под видимыми (прокрутка остаётся), «Показать всё» — весь список с начала
+// Номер страницы, введённый вручную: за пределами 1…pages — ближайшая крайняя
+ON.change['stock-goto']=t=>{const rows=stockRows(),pages=Math.max(1,Math.ceil(rows.length/PAGE_SIZE)),n=Math.min(pages,Math.max(1,parseInt(t.value,10)||1));S.ui.page=n-1;S.ui.span=1;byId('stock-tbl').innerHTML=stockTable();byId('scroll').scrollTop=0};
 A['stock-more']=()=>{S.ui.span=(Number(S.ui.span)||1)+1;byId('stock-tbl').innerHTML=stockTable()};
 A['stock-all']=()=>{S.ui.page=0;S.ui.span=Infinity;byId('stock-tbl').innerHTML=stockTable()};
 // Пустой список остатков: сбросить категорию, бренд, наличие, каталог, поиск и «только где не хватает»
