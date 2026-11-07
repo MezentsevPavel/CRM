@@ -105,13 +105,24 @@ const Guard = (() => {
     if (m.kind === K.unreserve) return ['reserve', 'dealsEdit', 'sell', 'receive'];
     return ['admin'];
   }
+  // Приход без поставки («Оприходовать товар», Import.applyReceipt): «Приход» с документом «Оприходование …». Право то же, что у приёмки
+  // (receive, moveRights), но с него спрашивается больше, чем с приёмки: товар уже есть в базе (новый — в этой же пачке, и тогда его
+  // добавление проверяет правило products: право catalog), количество целое, а клетка склада — юрлицо и город из справочника (после пачки).
+  function receiptRule(ctx, m) {
+    if (m.kind !== Stock.KINDS.receive || !String(m.doc || '').startsWith(Stock.RECEIPT_DOC)) return null;
+    const has = (list, id) => (list || []).some(x => x && x.id === id);
+    if (!Number.isInteger(m.qty)) return no('оприходование — количество целое число');
+    if (!has(ctx.after.products, m.productId)) return no('оприходование — такого товара нет в номенклатуре');
+    if (!has(ctx.after.entities, m.entityId) || !has(ctx.after.cities, m.cityId)) return no('оприходование — юрлицо и склад (город) должны быть из справочника');
+    return null;
+  }
   function movesRule(ctx, c) {
     if (ctx.before(c) !== undefined || c.deleted) return no('записи журнала склада не правят и не удаляют');
     const m = c.data || {};
     if (m.by !== ctx.pid) return no('движение в журнале склада — только от своего имени');
     if ('qty' in m && !(isNum(m.qty) && m.qty > 0)) return no('количество в движении журнала склада — число больше нуля');
     const need = moveRights(ctx, m);
-    return need.some(ctx.can) ? null : needs(`движение «${m.kind || 'нет данных: вид'}»`, ...need);
+    return need.some(ctx.can) ? receiptRule(ctx, m) : needs(`движение «${m.kind || 'нет данных: вид'}»`, ...need);
   }
 
   // ——— резервы ———

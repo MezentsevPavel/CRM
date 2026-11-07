@@ -24,6 +24,9 @@ const Stock = (() => {
   const KINDS = { receive: 'Приход', ship: 'Отгрузка', reserve: 'Резерв', unreserve: 'Снят резерв', transfer: 'Перемещение', damage: 'Списание в бой', input: 'Ввод остатков' };
   // input — запись журнала от переноса таблицы остатков (Import.applyStock), в qty — остаток клетки, а не прибавка. Stock.move его не
   // принимает (список видов, меняющих остаток, ниже явный); сервер пускает такое движение по праву admin (Guard).
+  // Документ прихода без поставки («Оприходовать товар»): запись журнала «Приход» с документом «Оприходование <дата>». Слово одно на всех:
+  // его пишет Import.applyReceipt, по нему сервер (Guard) отличает такой приход от приёмки поставки.
+  const RECEIPT_DOC = 'Оприходование';
   const NO_ENTITY = 'нет данных: юрлицо';
   const NO_CITY = 'нет данных: город';
 
@@ -629,7 +632,7 @@ const Stock = (() => {
   }
 
   return {
-    ANY, RESERVE_DAYS, KINDS, NO_ENTITY, NO_CITY, HIDDEN_DEAL, HIDDEN_ID, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, table, canReserve, bestCell, cells, move, reserve, unreserve, release, expired, sellMax, sell, cellText, dealRef, reserveView, docView,
+    ANY, RESERVE_DAYS, KINDS, RECEIPT_DOC, NO_ENTITY, NO_CITY, HIDDEN_DEAL, HIDDEN_ID, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, table, canReserve, bestCell, cells, move, reserve, unreserve, release, expired, sellMax, sell, cellText, dealRef, reserveView, docView,
     reserveFor, extend, forText, placed, history, removed, transitBy, transitDetail, transitText, watchOf, watch, unwatch, notifyAppeared, remindExpiring, due, tick };
 })();
 

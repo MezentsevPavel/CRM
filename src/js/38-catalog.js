@@ -77,6 +77,21 @@ const Catalog = (() => {
     return id;
   }
 
+  // Товар, заведённый руками: единственное место, где он создаётся — форма «Новый товар» и «Оприходовать товар» (Import.applyReceipt).
+  // o: {name, cat?, unit?, price?}. Категория не названа — NO_CAT (так же подписан товар листа остатков без раздела), единица и цена
+  // не названы — пусто («нет данных»), не ноль. Название, уже стоящее в номенклатуре (Catalog.norm), — отказ: второй такой не заводится.
+  // → {ok, product} | {ok:false, reason}; при отказе st не меняется.
+  const NO_CAT = 'Без раздела';
+  function add(st, o = {}) {
+    const name = String(o.name ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
+    if (!name) return { ok: false, reason: 'Нужно наименование.' };
+    if (st.products.some(p => norm(p.name) === norm(name))) return { ok: false, reason: `Товар «${name}» уже есть в номенклатуре.` };
+    const product = { id: Store.freeId(st.products, 'u'), name, brand: null, cat: String(o.cat ?? '').trim() || NO_CAT, price: isNum(o.price) ? o.price : null, avail: null, url: null, src: 'user', inCatalog: false };
+    if (o.unit) product.unit = o.unit;
+    st.products.push(product);
+    return { ok: true, product };
+  }
+
   // Категории, которые есть у товаров: сначала привычный порядок CATS, потом остальные по алфавиту.
   function cats(st) {
     const have = new Set(st.products.map(p => p.cat));
@@ -144,7 +159,7 @@ const Catalog = (() => {
     return st;
   }
 
-  return { norm, CATS, build, cats, brands, query, sectionCat, base, pack, unpack };
+  return { norm, CATS, NO_CAT, build, add, cats, brands, query, sectionCat, base, pack, unpack };
 })();
 
 // Шаг SEEDS: товары и остатки — настоящие, из снимков. Демо-записи прототипа v2 (резервы, позиции поставок,

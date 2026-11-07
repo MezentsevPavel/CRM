@@ -518,6 +518,21 @@ td.free b{font-weight:700}
 .tg-h small{font:400 12.5px/1.3 var(--f-body, inherit)}
 .mv li.tbuy,.mv li.tfree{margin-left:14px;padding:6px 0 6px 12px;border-top:0;border-left:2px solid var(--line-2)}
 .mv li.tfree{border-left-color:var(--sun, var(--line-2))}
+/* ——— «Оприходовать товар»: окно со списком ——— */
+.modal:has(.rcpt){width:min(1080px,100%)}
+.rcpt .rc-text{min-height:150px;font-family:var(--f-mono);font-size:12.5px;line-height:1.5;white-space:pre;overflow:auto;resize:vertical}
+.rc-t{min-width:880px}
+.rc-t td{vertical-align:top}
+.rc-t .inp{height:34px;padding:0 10px;font-size:13px}
+.rc-t td:nth-child(2){min-width:240px}
+.rc-dec{display:flex;flex-direction:column;align-items:flex-start;gap:5px;min-width:250px}
+.rc-dec .pill{align-self:flex-start}
+.rc-dec small{display:block;font-size:11.5px;line-height:1.35}
+.rc-dec select{max-width:300px;text-overflow:ellipsis}
+.rc-q{width:84px;text-align:right}
+.rc-to-c{min-width:150px}
+.rc-to-c select+select{margin-top:6px}
+.rc-skip td{opacity:.55}
 
 /* ——— поставки и перевозки: таблица, воронка, шкала маршрута, позиции, карточка ——— */
 
@@ -2664,6 +2679,9 @@ const Stock = (() => {
   const KINDS = { receive: 'Приход', ship: 'Отгрузка', reserve: 'Резерв', unreserve: 'Снят резерв', transfer: 'Перемещение', damage: 'Списание в бой', input: 'Ввод остатков' };
   // input — запись журнала от переноса таблицы остатков (Import.applyStock), в qty — остаток клетки, а не прибавка. Stock.move его не
   // принимает (список видов, меняющих остаток, ниже явный); сервер пускает такое движение по праву admin (Guard).
+  // Документ прихода без поставки («Оприходовать товар»): запись журнала «Приход» с документом «Оприходование <дата>». Слово одно на всех:
+  // его пишет Import.applyReceipt, по нему сервер (Guard) отличает такой приход от приёмки поставки.
+  const RECEIPT_DOC = 'Оприходование';
   const NO_ENTITY = 'нет данных: юрлицо';
   const NO_CITY = 'нет данных: город';
 
@@ -3269,7 +3287,7 @@ const Stock = (() => {
   }
 
   return {
-    ANY, RESERVE_DAYS, KINDS, NO_ENTITY, NO_CITY, HIDDEN_DEAL, HIDDEN_ID, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, table, canReserve, bestCell, cells, move, reserve, unreserve, release, expired, sellMax, sell, cellText, dealRef, reserveView, docView,
+    ANY, RESERVE_DAYS, KINDS, RECEIPT_DOC, NO_ENTITY, NO_CITY, HIDDEN_DEAL, HIDDEN_ID, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, table, canReserve, bestCell, cells, move, reserve, unreserve, release, expired, sellMax, sell, cellText, dealRef, reserveView, docView,
     reserveFor, extend, forText, placed, history, removed, transitBy, transitDetail, transitText, watchOf, watch, unwatch, notifyAppeared, remindExpiring, due, tick };
 })();
 
@@ -4696,6 +4714,21 @@ const Catalog = (() => {
     return id;
   }
 
+  // Товар, заведённый руками: единственное место, где он создаётся — форма «Новый товар» и «Оприходовать товар» (Import.applyReceipt).
+  // o: {name, cat?, unit?, price?}. Категория не названа — NO_CAT (так же подписан товар листа остатков без раздела), единица и цена
+  // не названы — пусто («нет данных»), не ноль. Название, уже стоящее в номенклатуре (Catalog.norm), — отказ: второй такой не заводится.
+  // → {ok, product} | {ok:false, reason}; при отказе st не меняется.
+  const NO_CAT = 'Без раздела';
+  function add(st, o = {}) {
+    const name = String(o.name ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
+    if (!name) return { ok: false, reason: 'Нужно наименование.' };
+    if (st.products.some(p => norm(p.name) === norm(name))) return { ok: false, reason: `Товар «${name}» уже есть в номенклатуре.` };
+    const product = { id: Store.freeId(st.products, 'u'), name, brand: null, cat: String(o.cat ?? '').trim() || NO_CAT, price: isNum(o.price) ? o.price : null, avail: null, url: null, src: 'user', inCatalog: false };
+    if (o.unit) product.unit = o.unit;
+    st.products.push(product);
+    return { ok: true, product };
+  }
+
   // Категории, которые есть у товаров: сначала привычный порядок CATS, потом остальные по алфавиту.
   function cats(st) {
     const have = new Set(st.products.map(p => p.cat));
@@ -4763,7 +4796,7 @@ const Catalog = (() => {
     return st;
   }
 
-  return { norm, CATS, build, cats, brands, query, sectionCat, base, pack, unpack };
+  return { norm, CATS, NO_CAT, build, add, cats, brands, query, sectionCat, base, pack, unpack };
 })();
 
 // Шаг SEEDS: товары и остатки — настоящие, из снимков. Демо-записи прототипа v2 (резервы, позиции поставок,
@@ -7451,13 +7484,24 @@ const Guard = (() => {
     if (m.kind === K.unreserve) return ['reserve', 'dealsEdit', 'sell', 'receive'];
     return ['admin'];
   }
+  // Приход без поставки («Оприходовать товар», Import.applyReceipt): «Приход» с документом «Оприходование …». Право то же, что у приёмки
+  // (receive, moveRights), но с него спрашивается больше, чем с приёмки: товар уже есть в базе (новый — в этой же пачке, и тогда его
+  // добавление проверяет правило products: право catalog), количество целое, а клетка склада — юрлицо и город из справочника (после пачки).
+  function receiptRule(ctx, m) {
+    if (m.kind !== Stock.KINDS.receive || !String(m.doc || '').startsWith(Stock.RECEIPT_DOC)) return null;
+    const has = (list, id) => (list || []).some(x => x && x.id === id);
+    if (!Number.isInteger(m.qty)) return no('оприходование — количество целое число');
+    if (!has(ctx.after.products, m.productId)) return no('оприходование — такого товара нет в номенклатуре');
+    if (!has(ctx.after.entities, m.entityId) || !has(ctx.after.cities, m.cityId)) return no('оприходование — юрлицо и склад (город) должны быть из справочника');
+    return null;
+  }
   function movesRule(ctx, c) {
     if (ctx.before(c) !== undefined || c.deleted) return no('записи журнала склада не правят и не удаляют');
     const m = c.data || {};
     if (m.by !== ctx.pid) return no('движение в журнале склада — только от своего имени');
     if ('qty' in m && !(isNum(m.qty) && m.qty > 0)) return no('количество в движении журнала склада — число больше нуля');
     const need = moveRights(ctx, m);
-    return need.some(ctx.can) ? null : needs(`движение «${m.kind || 'нет данных: вид'}»`, ...need);
+    return need.some(ctx.can) ? receiptRule(ctx, m) : needs(`движение «${m.kind || 'нет данных: вид'}»`, ...need);
   }
 
   // ——— резервы ———
@@ -7830,7 +7874,7 @@ const Guard = (() => {
 const Import = (() => {
   // Движение «Ввод остатков»: слово одно на всех — Stock.KINDS.input; по нему сервер пускает запись остатка (право admin).
   const INPUT = Stock.KINDS.input;
-  const NO_SECTION = 'Без раздела';
+  const NO_SECTION = Catalog.NO_CAT;
   const ROWS_MAX = 50000;
   const str = v => String(v == null ? '' : v).trim();
   const isNum = v => typeof v === 'number' && isFinite(v);
@@ -7911,9 +7955,10 @@ const Import = (() => {
   }
 
   // Текст CSV → строки таблицы (массивы строк). Кавычки, «""» внутри, перевод строки внутри кавычек; пустые строки пропущены.
-  function parseCsv(text) {
+  // forced — разделитель, если он известен заранее (вставка из Excel — табуляция); иначе угадывается (delimiter).
+  function parseCsv(text, forced) {
     const t = String(text == null ? '' : text).replace(/^﻿/, '');
-    const d = delimiter(t), rows = [];
+    const d = forced || delimiter(t), rows = [];
     let row = [], cell = '', q = false, blank = true;
     for (let i = 0; i < t.length; i++) {
       const c = t[i];
@@ -8341,6 +8386,178 @@ const Import = (() => {
     return out;
   }
 
+  // ——— приход без поставки: «Товары и остатки → Оприходовать товар» ———
+  // Товар приехал не по заведённой поставке: список из Excel (название или ключ товара, количество, можно юрлицо и склад) разбирается
+  // (receiptRows), сопоставляется с номенклатурой (receiptPlan — один расчёт и для экрана, и для проведения) и проводится одним
+  // действием (applyReceipt): новые товары — Catalog.add, как форма «Новый товар»; на каждую клетку — Stock.move «Приход» с документом
+  // «Оприходование <дата>». Приход, а не замена остатка (в отличие от «Переноса»). Ни разбор, ни сопоставление st не меняют.
+  const RECEIPT_MAX = 2000;
+  const RECEIPT_HEADS = {
+    name: ['наименование', 'номенклатура', 'товар', 'название', 'модель', 'ключ', 'ключтовара', 'артикул', 'код'],
+    qty: ['количество', 'колво', 'кол', 'количествошт', 'штук', 'шт'],
+    entity: ['юрлицо', 'юридическоелицо', 'организация'],
+    city: ['склад', 'город', 'складгород', 'городсклада'],
+  };
+  const clean = (v, max = NAME_MAX) => str(v).replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, max).trim();
+
+  // Вставка из Excel (текст с табуляциями) или CSV (текст файла, или уже готовая таблица) → { rows, header, problems }.
+  // Колонки по порядку: название или ключ товара, количество, юрлицо, склад (город); последние две можно не давать. Первая строка —
+  // заголовок, если в ней узнаются названия колонок или в колонке количества стоит не число; header — её текст (экран показывает, что
+  // строка принята за заголовок, а не за товар). rows: { line, name, qty, entity, city, pick: '' } — строки как написаны, line — номер строки списка.
+  function receiptRows(input) {
+    const fail = text => ({ rows: [], header: null, problems: [text] });
+    const text = typeof input === 'string' ? input : null;
+    const table = text !== null ? parseCsv(text, text.includes('\t') ? '\t' : undefined) : (Array.isArray(input) ? input : []);
+    if (!table.some(r => !rowEmpty(r))) return fail('Список пустой: вставьте строки из Excel или выберите файл.');
+    if (table.some(r => r.some(c => BINARY.test(String(c))))) return fail('Это не список: в файле двоичные данные. Сохраните таблицу как CSV или вставьте её текстом.');
+    const at = { name: 0, qty: 1, entity: 2, city: 3 };
+    const first = table.findIndex(r => !rowEmpty(r)), heads = table[first].map(compact);
+    const known = {};
+    for (const k of Object.keys(RECEIPT_HEADS)) { const j = heads.findIndex(h => RECEIPT_HEADS[k].includes(h)); if (j >= 0) known[k] = j; }
+    const qcell = cellNum(table[first][at.qty]);
+    const header = Object.keys(known).length > 0 || (qcell !== null && qcell.n === undefined);
+    if (header) Object.assign(at, known);
+    const data = table.map((r, i) => [r, i]).filter(([r, i]) => i > first - (header ? 0 : 1) && !rowEmpty(r));
+    if (data.length > RECEIPT_MAX) return fail(`В списке больше ${RECEIPT_MAX} строк: разделите его на части.`);
+    if (!data.length) return fail('В списке нет ни одной строки с товаром под заголовком.');
+    const rows = data.map(([r, i]) => ({ line: i + 1, name: clean(r[at.name]), qty: clean(r[at.qty], 40), entity: clean(r[at.entity], 100), city: clean(r[at.city], 100), pick: '' }));
+    return { rows, header: header ? table[first].map(str).filter(Boolean).join(' · ') : null, problems: [] };
+  }
+
+  // Количество строки списка: целое больше нуля. «10», «1 200», «10 шт» — можно; «10,5», «0», «много» — нет (причина по-русски)
+  function receiptQty(raw) {
+    const s = str(raw).replace(/[\s ]/g, '').replace(/шт\.?$/i, '');
+    if (!s) return { error: 'не указано количество' };
+    const v = cellNum(s);
+    if (v === null || v.n === undefined) return { error: `количество «${str(raw)}» — не число` };
+    if (!Number.isInteger(v.n)) return { error: `количество ${str(raw)} — не целое число` };
+    if (v.n < 1) return { error: 'количество должно быть больше нуля' };
+    if (!Number.isSafeInteger(v.n)) return { error: 'количество слишком большое' };
+    return { n: v.n };
+  }
+
+  // Слова названия для поиска похожих: без регистра, ё = е, кавычек и знаков; однобуквенные (кроме цифр) отброшены
+  const nameWords = s => Catalog.norm(s).split(/[^a-zа-я0-9]+/).filter(w => w.length > 1 || /\d/.test(w));
+  // Слово то же, или одно — начало другого («панел» и «панель»); числа сравниваются только точно («550» и «5500» — разные)
+  const sameWord = (a, b) => a === b || (/\D/.test(a) && /\D/.test(b) && Math.min(a.length, b.length) >= 4 && (a.startsWith(b) || b.startsWith(a)));
+  function wordScore(a, b) {
+    if (!a.length || !b.length) return 0;
+    const used = new Set();
+    let m = 0;
+    for (const w of a) { const j = b.findIndex((x, k) => !used.has(k) && sameWord(w, x)); if (j >= 0) { used.add(j); m++; } }
+    return m === 0 ? 0 : 0.5 * (m / (a.length + b.length - m)) + 0.5 * (m / Math.min(a.length, b.length));
+  }
+  const SIMILAR_MIN = 0.4, SIMILAR_MAX = 3;
+
+  // Сопоставить строки списка с номенклатурой st.products и справочником юрлиц и городов. Ничего не меняет.
+  // rows — из receiptRows, правленные на экране; pick у строки: '' — решить само, <id товара> — «это тот же», 'new' — создать новый, 'skip' — пропустить.
+  // opts: entityId, cityId — куда приходит то, у чего своих юрлица и склада нет; canCreate — можно ли создавать новые товары (право catalog).
+  // Строка → товар: по ключу товара (id) или по названию без регистра, лишних пробелов, ё/е, кавычек и тире (Catalog.norm) — один такой товар =
+  // «найден» сам; иначе до трёх похожих по общим словам, из них выбирают (status 'choose'), либо создают новый, либо пропускают.
+  // Юрлицо и склад строки сопоставляются со справочником так же, без регистра; неизвестные — ошибка строки, а не «нет данных».
+  // → { lines, groups, warnings, positions, created, units, skipped, errors, choose, ready }:
+  //   lines[i] — { index, line, name, qty, entityId, cityId, status: 'found'|'picked'|'new'|'choose'|'skip'|'error', match (что вышло бы без ошибки
+  //   в количестве или юрлице), productId, productName, candidates: [{id, name}], error };
+  //   groups — что будет записано: один товар в одну клетку — одна запись, одинаковые строки сложены: { key, productId, name, isNew, entityId, cityId, qty, lines };
+  //   warnings — тексты про сложенные одинаковые строки; ready — можно проводить (нет строк с ошибкой и «выберите», есть что провести).
+  function receiptPlan(st, rows, opts = {}) {
+    const list = Array.isArray(rows) ? rows : [], products = st.products || [];
+    const byId = new Map(products.map(p => [String(p.id), p])), byKey = new Map(products.map(p => [String(p.id).toLowerCase(), p]));
+    const byNorm = new Map();
+    for (const p of products) { const k = Catalog.norm(p.name); if (!byNorm.has(k)) byNorm.set(k, []); byNorm.get(k).push(p); }
+    let wordsOf = null;
+    const similar = name => {
+      if (!wordsOf) wordsOf = products.map(p => [p, nameWords(p.name)]);
+      const w = nameWords(name);
+      return wordsOf.map(([p, pw], i) => [p, wordScore(w, pw), i]).filter(x => x[1] >= SIMILAR_MIN)
+        .sort((a, b) => b[1] - a[1] || a[2] - b[2]).slice(0, SIMILAR_MAX).map(x => x[0]);
+    };
+    const dir = (items, raw) => { const k = Catalog.norm(raw); const x = (items || []).find(i => Catalog.norm(i.name) === k || Catalog.norm(i.id) === k); return x ? x.id : ''; };
+    const defE = dir(st.entities, opts.entityId || ''), defC = dir(st.cities, opts.cityId || '');
+    const view = p => ({ id: p.id, name: p.name });
+
+    const lines = list.map((r, i) => {
+      const L = { index: i, line: r.line === undefined ? i + 1 : r.line, name: str(r.name), qty: null, entityId: '', cityId: '', status: '', match: '', productId: '', productName: '', candidates: [], error: '' };
+      const errs = [];
+      const q = receiptQty(r.qty);
+      if (q.error) errs.push(q.error); else L.qty = q.n;
+      if (str(r.entity)) { L.entityId = dir(st.entities, r.entity); if (!L.entityId) errs.push(`юрлица «${str(r.entity)}» нет в справочнике`); }
+      else if (defE) L.entityId = defE; else errs.push('не выбрано юрлицо');
+      if (str(r.city)) { L.cityId = dir(st.cities, r.city); if (!L.cityId) errs.push(`склада (города) «${str(r.city)}» нет в справочнике`); }
+      else if (defC) L.cityId = defC; else errs.push('не выбран склад (город)');
+      if (r.pick === 'skip') { L.status = 'skip'; return L; }   // пропущенную строку не разбирают: ошибки в ней не в счёт
+      if (!L.name) errs.push('нет названия товара');
+      else {
+        const hit = byKey.get(L.name.toLowerCase()), exact = hit ? [hit] : (byNorm.get(Catalog.norm(L.name)) || []);
+        const chosen = r.pick && r.pick !== 'new' ? byId.get(String(r.pick)) : null;
+        if (exact.length === 1) { L.match = 'found'; L.productId = exact[0].id; L.productName = exact[0].name; }
+        else {
+          L.candidates = (exact.length ? exact.slice(0, 5) : similar(L.name)).map(view);
+          if (chosen) { L.match = 'picked'; L.productId = chosen.id; L.productName = chosen.name; if (!L.candidates.some(c => c.id === chosen.id)) L.candidates.push(view(chosen)); }
+          else if (r.pick === 'new' && !exact.length) {
+            L.match = 'new';
+            if (opts.canCreate !== true) errs.push('нет права добавлять товары в номенклатуру: выберите товар из списка или пропустите строку');
+          } else L.match = 'choose';
+        }
+      }
+      L.status = errs.length ? 'error' : L.match;
+      L.error = errs.join('; ');
+      return L;
+    });
+
+    // что будет записано: один товар в одну клетку — одна запись; новый товар с тем же названием в двух строках — один товар
+    const groups = [], at = new Map();
+    for (const L of lines) {
+      if (!['found', 'picked', 'new'].includes(L.status)) continue;
+      const isNew = L.status === 'new', key = (isNew ? 'new:' + Catalog.norm(L.name) : L.productId) + '|' + L.entityId + '|' + L.cityId;
+      let g = at.get(key);
+      if (!g) { g = { key, productId: isNew ? '' : L.productId, name: isNew ? L.name : L.productName, isNew, entityId: L.entityId, cityId: L.cityId, qty: 0, lines: [] }; at.set(key, g); groups.push(g); }
+      g.qty += L.qty;
+      g.lines.push(L.line);
+    }
+    const join = ns => (ns.length === 2 ? ns.join(' и ') : ns.slice(0, -1).join(', ') + ' и ' + ns[ns.length - 1]);
+    const warnings = groups.filter(g => g.lines.length > 1)
+      .map(g => `«${g.name}» (${Stock.cellText(st, g.entityId, g.cityId)}) — строки ${join(g.lines)}: количества сложены, всего ${g.qty}.`);
+    const count = s => lines.filter(l => l.status === s).length;
+    const out = { lines, groups, warnings, positions: groups.length, created: new Set(groups.filter(g => g.isNew).map(g => g.key.split('|')[0])).size,
+      units: groups.reduce((a, g) => a + g.qty, 0), skipped: count('skip'), errors: count('error'), choose: count('choose') };
+    out.ready = lines.length > 0 && out.errors === 0 && out.choose === 0 && groups.length > 0;
+    return out;
+  }
+
+  // Провести список: тем же расчётом, что на экране (receiptPlan). Право receive нужно всегда, право catalog — только если есть новые
+  // товары. Сначала проверяется всё, потом пишется: отказ ничего не меняет. Новые товары — Catalog.add; на каждую запись плана — Stock.move
+  // «Приход» (остаток растёт на количество) с документом «Оприходование <дата>», автором by и временем now; одно уведомление о приходе.
+  // → { ok, positions, created, units, doc, products: [id новых товаров], moves } | { ok: false, reason, plan }
+  function applyReceipt(st, rows, opts, by, now) {
+    const o = opts || {}, at = new Date(now);
+    if (!Perms.can(st, by, 'receive')) return { ok: false, reason: 'У вашей роли нет права принимать товар на склад.' };
+    const plan = receiptPlan(st, rows, { entityId: o.entityId, cityId: o.cityId, canCreate: Perms.can(st, by, 'catalog') });
+    if (!plan.lines.length) return { ok: false, reason: 'Список пустой.', plan };
+    if (plan.errors || plan.choose) return { ok: false, reason: `Не все строки разобраны: с ошибкой ${plan.errors}, ждут выбора ${plan.choose}. Исправьте их или пропустите.`, plan };
+    if (!plan.groups.length) return { ok: false, reason: 'Нечего оприходовать: все строки пропущены.', plan };
+    const doc = `${Stock.RECEIPT_DOC} ${ru(at)}`, made = new Map(), products = [], moves = [];
+    for (const g of plan.groups) {
+      if (!g.isNew) continue;
+      const k = g.key.split('|')[0];
+      if (!made.has(k)) {
+        const r = Catalog.add(st, { name: g.name });
+        if (!r.ok) throw new Error(r.reason);
+        made.set(k, r.product.id); products.push(r.product.id);
+      }
+    }
+    for (const g of plan.groups) {
+      const r = Stock.move(st, { kind: Stock.KINDS.receive, productId: g.isNew ? made.get(g.key.split('|')[0]) : g.productId, qty: g.qty, entityId: g.entityId, cityId: g.cityId, doc, by: by || null, at });
+      if (!r.ok) throw new Error(r.reason);
+      moves.push(r.move);
+    }
+    const cells = new Set(plan.groups.map(g => g.entityId + '|' + g.cityId));
+    const where = cells.size === 1 ? ` на склад ${Stock.cellText(st, plan.groups[0].entityId, plan.groups[0].cityId)}` : '';
+    const ref = plan.groups.length === 1 ? { t: 'product', id: moves[0].productId } : undefined;
+    Notify.push(st, 'arrive', by || null, `Оприходован товар без поставки (${doc})${where}: ${plan.positions} ${pl(plan.positions, 'позиция', 'позиции', 'позиций')}${products.length ? `, из них новых товаров ${products.length}` : ''}.`, at, [], ref);
+    return { ok: true, positions: plan.positions, created: products.length, units: plan.units, doc, products, moves };
+  }
+
   // ——— предпросмотр ———
   // Что дала бы загрузка — тем же applyStock / applyClients, но на копии нужных частей состояния: st не меняется.
   // kind — 'stock' | 'clients'.
@@ -8355,7 +8572,7 @@ const Import = (() => {
     throw new Error('Перенос: неизвестный вид переноса.');
   }
 
-  return { INPUT, decode, parseCsv, stockRows, parseReserve, applyStock, clientRows, twins, applyClients, preview };
+  return { INPUT, decode, parseCsv, stockRows, parseReserve, applyStock, clientRows, twins, applyClients, receiptRows, receiptQty, receiptPlan, applyReceipt, preview };
 })();
 
 // Оболочка: состояние S и его сохранение, тема, разделы NAV, боковая панель, «Кто я», уведомления, окна,
@@ -8905,11 +9122,11 @@ const FORMS={
   ship:f=>shipCreate(f),
   product:()=>{
     const name=byId('np-name').value.trim(),pr=byId('np-price'),m=me();
-    if(!name) return showErr('np-err','Нужно наименование.');
-    if(S.products.some(p=>Catalog.norm(p.name)===Catalog.norm(name))) return showErr('np-err',`Товар «${name}» уже есть в номенклатуре.`);
     const price=pr&&pr.value!==''?Math.max(0,Number(pr.value)):null;
-    const pid=Store.freeId(S.products,'u');
-    S.products.push({id:pid,name,brand:null,cat:byId('np-cat').value,unit:byId('np-unit').value,price,avail:null,url:null,src:'user',inCatalog:false});
+    // товар создаёт Catalog.add — тот же код, что у «Оприходовать товар»; он же отказывает на пустое и повторное название
+    const made=Catalog.add(S,{name,cat:byId('np-cat').value,unit:byId('np-unit').value,price});
+    if(!made.ok) return showErr('np-err',made.reason);
+    const pid=made.product.id;
     Notify.push(S,'arrive',m.id,`В номенклатуру добавлен товар: ${name}.`,new Date(),[],{t:'product',id:pid});
     closeModal();S.ui.cat='Все';S.ui.sq='';render();toast('Товар добавлен. Остатка нет — он появится после первой приёмки.');
   },
@@ -9257,7 +9474,7 @@ function goodsPane(tabs){
     selField('f-avail','avail','Наличие',[['','Любое наличие'],...[...new Set(S.products.map(p=>p.avail).filter(Boolean))].map(a=>[a,a])],u.avail||''),
     selField('f-catf','catf','Каталог',[['','В каталоге и нет'],['in','Только в каталоге'],['out','Только «нет в каталоге»']],u.catf||'')
   ].join('');
-  return `<div class="bar">${tabs}<span class="grow"></span>${can('catalog')?`<button class="btn" data-act="new-product">${ic('plus')}Новый товар</button>`:''}</div>
+  return `<div class="bar">${tabs}<span class="grow"></span>${can('receive')?`<button class="btn" data-act="rcpt-open">${ic('plus')}Оприходовать товар</button>`:''}${can('catalog')?`<button class="btn" data-act="new-product">${ic('plus')}Новый товар</button>`:''}</div>
   <div class="bar"><div class="search-in">${ic('search')}<input id="sq" class="inp" type="search" placeholder="Название, бренд или ключ каталога" value="${esc(u.sq)}" data-on="sq" aria-label="Поиск товара"></div>
   <label class="check"><input type="checkbox" id="deficit" data-on="deficit" ${u.deficit?'checked':''}> Только где не хватает</label></div>
   <div class="fgrid">${filters}</div>
@@ -9503,6 +9720,142 @@ MODALS.stockSell=o=>{
       <div class="field"><label for="ps-doc">Документ</label><input id="ps-doc" class="inp" value="${esc(doc)}" placeholder="Номер сделки или накладной" autocomplete="off"></div></div>
     <p class="hint" id="ps-max">${esc(sellMaxText(o.pid,cur))}</p>
     <p class="err" id="ps-err" hidden></p></div>${mFoot('Списать')}</form>`;
+};
+
+// ——— «Оприходовать товар»: приход без поставки списком из Excel ———
+// Три шага в одном окне: вставили список → проверили, что решено по каждой строке → провели. Разбор, сопоставление и проведение —
+// Import.receiptRows / receiptPlan / applyReceipt (48-import.js): здесь только показ. Список живёт в RCPT (не в S: не сохраняется).
+// Склад один на город; юрлица — из справочника. Новые товары создаёт только тот, у кого есть право catalog.
+let RCPT=null;
+const rcptNew=()=>({stage:'input',text:'',rows:[],header:null,entityId:'',cityId:'',done:null});
+const rcptPlan=()=>Import.receiptPlan(S,RCPT.rows,{entityId:RCPT.entityId,cityId:RCPT.cityId,canCreate:can('catalog')});
+const rcptOpts=(list,cur)=>`<option value="">выберите</option>`+list.map(x=>`<option value="${esc(x.id)}"${x.id===cur?' selected':''}>${esc(x.name)}</option>`).join('');
+// «Всё это приходит на»: подставляется строкам списка, у которых нет своих юрлица и склада
+const rcptTo=()=>`<div class="grid2 rc-to"><div class="field"><label for="rc-ent">Всё это приходит на: юрлицо</label><select id="rc-ent" class="inp" data-on="rcpt-def" data-f="entityId">${rcptOpts(S.entities,RCPT.entityId)}</select></div><div class="field"><label for="rc-city">Склад (город)</label><select id="rc-city" class="inp" data-on="rcpt-def" data-f="cityId">${rcptOpts(S.cities,RCPT.cityId)}</select></div></div>`;
+const RC_PLACEHOLDER='Например (название, количество, юрлицо и склад — по желанию):&#10;Солнечная панель 550 Вт\t20\tИП\tИркутск&#10;Кабель PV 4 мм2\t100';
+function rcptInput(){
+  return `<form data-form="rcpt-parse" novalidate>${mHead('Оприходовать товар')}<div class="modal-b rcpt">
+    <p class="m0">Товар приехал без поставки? Вставьте список из Excel (или написанный от руки): в строке — название или ключ товара и количество, по желанию ещё юрлицо и склад. Первая строка может быть заголовком. Остаток вырастет только после «Оприходовать» на следующем шаге.</p>
+    ${rcptTo()}
+    <div class="field"><label for="rc-text">Вставьте список из Excel</label><textarea id="rc-text" class="inp rc-text" rows="9" placeholder="${RC_PLACEHOLDER}" spellcheck="false">${esc(RCPT.text)}</textarea></div>
+    <div><label class="btn" for="rc-file">${ic('plus')}Или выбрать файл CSV / TXT</label><input id="rc-file" class="sr" type="file" accept=".csv,.txt,text/csv,text/plain" data-on="rcpt-file"></div>
+    <p class="err" id="rc-err" hidden></p></div>${mFoot('Разобрать список')}</form>`;
+}
+// Одна строка предпросмотра: решение по товару — подпись и выбор («это тот же: …», «создать новый», «пропустить»)
+function rcptDecision(L,r){
+  const pill={found:'<span class="pill ok sm">найден</span>',picked:'<span class="pill ok sm">выбран</span>',new:'<span class="pill info sm">новый товар</span>',choose:'<span class="pill warn sm">выберите</span>',skip:'<span class="pill sm">пропущено</span>',error:'<span class="pill bad sm">ошибка</span>'}[L.status];
+  const o=(v,t,sel)=>`<option value="${esc(v)}"${sel?' selected':''}>${esc(t)}</option>`;
+  // что выбрано сейчас: пропуск, новый товар, один из похожих; найденный сам — пустое значение
+  const sel=r.pick==='skip'?'skip':L.match==='found'?'':L.match==='new'?'new':L.match==='picked'?L.productId:'',opts=[];
+  opts.push(o('',L.match==='found'?'найден: '+L.productName:'— выберите —',sel===''));
+  if(L.match!=='found'){
+    for(const c of L.candidates) opts.push(o(c.id,'это тот же: '+c.name,sel===c.id));
+    if(can('catalog')) opts.push(o('new','создать новый товар',sel==='new'));
+  }
+  opts.push(o('skip','пропустить',sel==='skip'));
+  const note=L.status==='error'?`<small class="bad-t">${esc(L.error)}</small>`:L.status==='found'||L.status==='picked'?`<small class="muted">${esc(L.productName)}</small>`:L.status==='new'?'<small class="muted">категория, цена и прочее — нет данных</small>':L.status==='choose'&&!L.candidates.length?'<small class="muted">похожих в номенклатуре нет</small>':'';
+  return `${pill}${note}<select class="inp" aria-label="Что делать со строкой ${L.line}" data-on="rcpt-pick" data-i="${L.index}">${opts.join('')}</select>`;
+}
+function rcptRow(L,r){
+  const cell=(list,raw,res,f)=>`<select class="inp" aria-label="${f==='entity'?'Юрлицо':'Склад (город)'}, строка ${L.line}" data-on="rcpt-f" data-f="${f}" data-i="${L.index}"><option value="">как выше</option>${list.map(x=>`<option value="${esc(x.id)}"${raw&&res===x.id?' selected':''}>${esc(x.name)}</option>`).join('')}${raw&&!res?`<option value="${esc(raw)}" selected>«${esc(raw)}» — нет в справочнике</option>`:''}</select>`;
+  return `<tr id="rc-r-${L.index}" class="${L.status==='skip'?'rc-skip':''}"><td class="num muted">${L.line}</td>
+    <td><input class="inp" aria-label="Название, строка ${L.line}" value="${esc(r.name)}" data-on="rcpt-f" data-f="name" data-i="${L.index}" autocomplete="off"></td>
+    <td><div class="rc-dec" id="rc-st-${L.index}">${rcptDecision(L,r)}</div></td>
+    <td class="num"><input class="inp rc-q" inputmode="numeric" aria-label="Количество, строка ${L.line}" value="${esc(r.qty)}" data-on="rcpt-f" data-f="qty" data-i="${L.index}" autocomplete="off"></td>
+    <td class="rc-to-c">${cell(S.entities,str0(r.entity),L.entityId,'entity')}${cell(S.cities,str0(r.city),L.cityId,'city')}</td></tr>`;
+}
+const str0=v=>String(v==null?'':v).trim();
+// Итог под таблицей: что будет оприходовано и что мешает
+function rcptSum(P){
+  const bits=[`Будет оприходовано: <b>${num(P.positions)}</b> ${pl(P.positions,'позиция','позиции','позиций')}, всего ${num(P.units)}, новых товаров: <b>${num(P.created)}</b>.`];
+  if(P.skipped) bits.push(`Пропущено строк: ${num(P.skipped)}.`);
+  const todo=P.errors+P.choose;
+  const bad=todo?`<p class="warn-t m0">Не разобрано строк: <b>${num(todo)}</b>${P.errors?` (с ошибкой ${num(P.errors)})`:''}${P.choose?` (ждут выбора ${num(P.choose)})`:''}. Выберите товар, создайте новый, исправьте строку или пропустите её — тогда «Оприходовать» включится.</p>`:'';
+  const warn=P.warnings.length?`<ul class="plain warn-t">${P.warnings.map(w=>`<li class="sm">Одинаковые строки: ${esc(w)}</li>`).join('')}</ul>`:'';
+  const bulk=can('catalog')&&RCPT.rows.some((r,i)=>P.lines[i].status==='choose'&&!P.lines[i].candidates.length)?`<div><button type="button" class="btn sm" data-act="rcpt-all-new">Создать новыми все незнакомые, где похожих нет</button></div>`:'';
+  return `<p class="m0">${bits.join(' ')}</p>${bad}${warn}${bulk}`;
+}
+function rcptCheck(){
+  const P=rcptPlan(),h=RCPT.header;
+  return `<form data-form="rcpt-go" novalidate>${mHead('Оприходовать товар: проверьте список')}<div class="modal-b rcpt">
+    ${rcptTo()}
+    ${h?`<p class="hint m0">Первая строка принята за заголовок и не оприходуется: «${esc(h)}».</p>`:''}
+    <div class="xs"><table class="tbl rc-t"><thead><tr><th class="num">№</th><th>Из списка</th><th>Что решено</th><th class="num">Количество</th><th>Куда (юрлицо, склад)</th></tr></thead><tbody id="rc-body">${P.lines.map(L=>rcptRow(L,RCPT.rows[L.index])).join('')}</tbody></table></div>
+    <div class="stack-s" id="rc-sum">${rcptSum(P)}</div>
+    <p class="err" id="rc-err" hidden></p></div>
+    <div class="modal-f"><button type="button" class="btn" data-act="rcpt-back">Назад к списку</button><button type="button" class="btn" data-act="close-modal">Отмена</button><button type="submit" class="btn pri" id="rc-go"${P.ready?'':' disabled'}>Оприходовать</button></div></form>`;
+}
+function rcptDone(){
+  const d=RCPT.done;
+  return `${mHead('Оприходовано')}<div class="modal-b rcpt"><div class="done-box"><span class="done-ic">${ic('check')}</span>
+    <h3 class="m0">Оприходовано ${num(d.positions)} ${pl(d.positions,'позиция','позиции','позиций')}, создано ${num(d.created)} ${pl(d.created,'новый товар','новых товара','новых товаров')}</h3>
+    <p class="m0 muted">Остатки обновлены, в журнале движений — «${esc(Stock.KINDS.receive)}», документ «${esc(d.doc)}».</p>
+    <div class="bar"><button type="button" class="btn pri" data-act="rcpt-journal">Открыть журнал движений</button><button type="button" class="btn" data-act="rcpt-again">Оприходовать ещё</button></div></div></div>
+    <div class="modal-f"><button type="button" class="btn" data-act="close-modal">Закрыть</button></div>`;
+}
+MODALS.receipt=()=>{
+  if(!RCPT) RCPT=rcptNew();
+  return RCPT.stage==='done'?rcptDone():RCPT.stage==='check'?rcptCheck():rcptInput();
+};
+// Перерисовать окно целиком, не сбрасывая прокрутку
+function rcptDraw(){
+  const m=byId('modal-root').querySelector('.modal');
+  if(!m||!S.ui.modal||S.ui.modal.type!=='receipt') return;
+  const sc=m.scrollTop;m.innerHTML=MODALS.receipt();m.scrollTop=sc;
+  const t=byId('rc-text');if(t&&RCPT.stage==='input') t.focus();
+}
+// Одна строка изменилась: пересчитать план, обновить её решение и итог. Поля строк не пересоздаются — фокус и ввод остаются.
+function rcptRefresh(i){
+  const P=rcptPlan(),L=P.lines[i],tr=byId('rc-r-'+i);
+  if(L&&tr){tr.className=L.status==='skip'?'rc-skip':'';byId('rc-st-'+i).innerHTML=rcptDecision(L,RCPT.rows[i])}
+  const s=byId('rc-sum');if(s) s.innerHTML=rcptSum(P);
+  const g=byId('rc-go');if(g) g.disabled=!P.ready;
+}
+function rcptParse(){
+  const t=byId('rc-text');if(t) RCPT.text=t.value;
+  const r=Import.receiptRows(RCPT.text);
+  if(r.problems.length) return showErr('rc-err',r.problems[0]);
+  Object.assign(RCPT,{rows:r.rows,header:r.header,stage:'check'});rcptDraw();
+}
+A['rcpt-open']=()=>{
+  if(!can('receive')){toast('У вашей роли нет права принимать товар на склад.','warn');return}
+  RCPT=rcptNew();openModal('receipt');
+};
+A['rcpt-back']=()=>{RCPT.stage='input';rcptDraw()};
+A['rcpt-again']=()=>{RCPT=rcptNew();rcptDraw()};
+A['rcpt-all-new']=()=>{
+  const P=rcptPlan();
+  P.lines.forEach(L=>{if(L.status==='choose'&&!L.candidates.length) RCPT.rows[L.index].pick='new'});
+  rcptDraw();
+};
+A['rcpt-journal']=()=>{
+  closeModal();S.ui.stockTab='moves';S.ui.mvPid='';S.ui.mvKind=Stock.KINDS.receive;S.ui.drawer=null;go('stock');
+};
+FORMS['rcpt-parse']=()=>rcptParse();
+// «Оприходовать»: Import.applyReceipt по тому же плану, что на экране; render() сохраняет изменения одним save()
+FORMS['rcpt-go']=()=>{
+  const r=Import.applyReceipt(S,RCPT.rows,{entityId:RCPT.entityId,cityId:RCPT.cityId},S.me,new Date());
+  if(!r.ok) return showErr('rc-err',r.reason);
+  RCPT.done=r;RCPT.stage='done';
+  render();rcptDraw();
+  toast(`Оприходовано ${num(r.positions)} ${pl(r.positions,'позиция','позиции','позиций')}${r.created?`, новых товаров ${num(r.created)}`:''}.`);
+};
+ON.change['rcpt-def']=t=>{RCPT[t.dataset.f]=t.value;if(RCPT.stage==='check') rcptDraw()};
+ON.change['rcpt-f']=t=>{
+  const i=Number(t.dataset.i),r=RCPT.rows[i];if(!r) return;
+  r[t.dataset.f]=t.value;
+  // другое название — прежнее решение («это тот же», «новый») к нему уже не относится
+  if(t.dataset.f==='name') r.pick='';
+  rcptRefresh(i);
+};
+ON.change['rcpt-pick']=t=>{const i=Number(t.dataset.i);if(RCPT.rows[i]){RCPT.rows[i].pick=t.value;rcptRefresh(i)}};
+// Файл CSV / TXT: тот же разбор кодировки, что у «Переноса» (Import.decode); текст ложится в поле и сразу разбирается
+ON.change['rcpt-file']=async t=>{
+  const f=t.files&&t.files[0];
+  try{t.value=''}catch(_){}
+  if(!f||!RCPT) return;
+  try{RCPT.text=Import.decode(new Uint8Array(await f.arrayBuffer()));const a=byId('rc-text');if(a) a.value=RCPT.text;rcptParse()}
+  catch(_){showErr('rc-err','Файл не прочитан.')}
 };
 
 // ——— регистрация в реестрах оболочки ———

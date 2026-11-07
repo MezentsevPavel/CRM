@@ -75,3 +75,18 @@ td.free b{font-weight:700}
 .tg-h small{font:400 12.5px/1.3 var(--f-body, inherit)}
 .mv li.tbuy,.mv li.tfree{margin-left:14px;padding:6px 0 6px 12px;border-top:0;border-left:2px solid var(--line-2)}
 .mv li.tfree{border-left-color:var(--sun, var(--line-2))}
+/* ——— «Оприходовать товар»: окно со списком ——— */
+.modal:has(.rcpt){width:min(1080px,100%)}
+.rcpt .rc-text{min-height:150px;font-family:var(--f-mono);font-size:12.5px;line-height:1.5;white-space:pre;overflow:auto;resize:vertical}
+.rc-t{min-width:880px}
+.rc-t td{vertical-align:top}
+.rc-t .inp{height:34px;padding:0 10px;font-size:13px}
+.rc-t td:nth-child(2){min-width:240px}
+.rc-dec{display:flex;flex-direction:column;align-items:flex-start;gap:5px;min-width:250px}
+.rc-dec .pill{align-self:flex-start}
+.rc-dec small{display:block;font-size:11.5px;line-height:1.35}
+.rc-dec select{max-width:300px;text-overflow:ellipsis}
+.rc-q{width:84px;text-align:right}
+.rc-to-c{min-width:150px}
+.rc-to-c select+select{margin-top:6px}
+.rc-skip td{opacity:.55}

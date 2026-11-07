@@ -34,7 +34,7 @@ function goodsPane(tabs){
     selField('f-avail','avail','Наличие',[['','Любое наличие'],...[...new Set(S.products.map(p=>p.avail).filter(Boolean))].map(a=>[a,a])],u.avail||''),
     selField('f-catf','catf','Каталог',[['','В каталоге и нет'],['in','Только в каталоге'],['out','Только «нет в каталоге»']],u.catf||'')
   ].join('');
-  return `<div class="bar">${tabs}<span class="grow"></span>${can('catalog')?`<button class="btn" data-act="new-product">${ic('plus')}Новый товар</button>`:''}</div>
+  return `<div class="bar">${tabs}<span class="grow"></span>${can('receive')?`<button class="btn" data-act="rcpt-open">${ic('plus')}Оприходовать товар</button>`:''}${can('catalog')?`<button class="btn" data-act="new-product">${ic('plus')}Новый товар</button>`:''}</div>
   <div class="bar"><div class="search-in">${ic('search')}<input id="sq" class="inp" type="search" placeholder="Название, бренд или ключ каталога" value="${esc(u.sq)}" data-on="sq" aria-label="Поиск товара"></div>
   <label class="check"><input type="checkbox" id="deficit" data-on="deficit" ${u.deficit?'checked':''}> Только где не хватает</label></div>
   <div class="fgrid">${filters}</div>
@@ -280,6 +280,142 @@ MODALS.stockSell=o=>{
       <div class="field"><label for="ps-doc">Документ</label><input id="ps-doc" class="inp" value="${esc(doc)}" placeholder="Номер сделки или накладной" autocomplete="off"></div></div>
     <p class="hint" id="ps-max">${esc(sellMaxText(o.pid,cur))}</p>
     <p class="err" id="ps-err" hidden></p></div>${mFoot('Списать')}</form>`;
+};
+
+// ——— «Оприходовать товар»: приход без поставки списком из Excel ———
+// Три шага в одном окне: вставили список → проверили, что решено по каждой строке → провели. Разбор, сопоставление и проведение —
+// Import.receiptRows / receiptPlan / applyReceipt (48-import.js): здесь только показ. Список живёт в RCPT (не в S: не сохраняется).
+// Склад один на город; юрлица — из справочника. Новые товары создаёт только тот, у кого есть право catalog.
+let RCPT=null;
+const rcptNew=()=>({stage:'input',text:'',rows:[],header:null,entityId:'',cityId:'',done:null});
+const rcptPlan=()=>Import.receiptPlan(S,RCPT.rows,{entityId:RCPT.entityId,cityId:RCPT.cityId,canCreate:can('catalog')});
+const rcptOpts=(list,cur)=>`<option value="">выберите</option>`+list.map(x=>`<option value="${esc(x.id)}"${x.id===cur?' selected':''}>${esc(x.name)}</option>`).join('');
+// «Всё это приходит на»: подставляется строкам списка, у которых нет своих юрлица и склада
+const rcptTo=()=>`<div class="grid2 rc-to"><div class="field"><label for="rc-ent">Всё это приходит на: юрлицо</label><select id="rc-ent" class="inp" data-on="rcpt-def" data-f="entityId">${rcptOpts(S.entities,RCPT.entityId)}</select></div><div class="field"><label for="rc-city">Склад (город)</label><select id="rc-city" class="inp" data-on="rcpt-def" data-f="cityId">${rcptOpts(S.cities,RCPT.cityId)}</select></div></div>`;
+const RC_PLACEHOLDER='Например (название, количество, юрлицо и склад — по желанию):&#10;Солнечная панель 550 Вт\t20\tИП\tИркутск&#10;Кабель PV 4 мм2\t100';
+function rcptInput(){
+  return `<form data-form="rcpt-parse" novalidate>${mHead('Оприходовать товар')}<div class="modal-b rcpt">
+    <p class="m0">Товар приехал без поставки? Вставьте список из Excel (или написанный от руки): в строке — название или ключ товара и количество, по желанию ещё юрлицо и склад. Первая строка может быть заголовком. Остаток вырастет только после «Оприходовать» на следующем шаге.</p>
+    ${rcptTo()}
+    <div class="field"><label for="rc-text">Вставьте список из Excel</label><textarea id="rc-text" class="inp rc-text" rows="9" placeholder="${RC_PLACEHOLDER}" spellcheck="false">${esc(RCPT.text)}</textarea></div>
+    <div><label class="btn" for="rc-file">${ic('plus')}Или выбрать файл CSV / TXT</label><input id="rc-file" class="sr" type="file" accept=".csv,.txt,text/csv,text/plain" data-on="rcpt-file"></div>
+    <p class="err" id="rc-err" hidden></p></div>${mFoot('Разобрать список')}</form>`;
+}
+// Одна строка предпросмотра: решение по товару — подпись и выбор («это тот же: …», «создать новый», «пропустить»)
+function rcptDecision(L,r){
+  const pill={found:'<span class="pill ok sm">найден</span>',picked:'<span class="pill ok sm">выбран</span>',new:'<span class="pill info sm">новый товар</span>',choose:'<span class="pill warn sm">выберите</span>',skip:'<span class="pill sm">пропущено</span>',error:'<span class="pill bad sm">ошибка</span>'}[L.status];
+  const o=(v,t,sel)=>`<option value="${esc(v)}"${sel?' selected':''}>${esc(t)}</option>`;
+  // что выбрано сейчас: пропуск, новый товар, один из похожих; найденный сам — пустое значение
+  const sel=r.pick==='skip'?'skip':L.match==='found'?'':L.match==='new'?'new':L.match==='picked'?L.productId:'',opts=[];
+  opts.push(o('',L.match==='found'?'найден: '+L.productName:'— выберите —',sel===''));
+  if(L.match!=='found'){
+    for(const c of L.candidates) opts.push(o(c.id,'это тот же: '+c.name,sel===c.id));
+    if(can('catalog')) opts.push(o('new','создать новый товар',sel==='new'));
+  }
+  opts.push(o('skip','пропустить',sel==='skip'));
+  const note=L.status==='error'?`<small class="bad-t">${esc(L.error)}</small>`:L.status==='found'||L.status==='picked'?`<small class="muted">${esc(L.productName)}</small>`:L.status==='new'?'<small class="muted">категория, цена и прочее — нет данных</small>':L.status==='choose'&&!L.candidates.length?'<small class="muted">похожих в номенклатуре нет</small>':'';
+  return `${pill}${note}<select class="inp" aria-label="Что делать со строкой ${L.line}" data-on="rcpt-pick" data-i="${L.index}">${opts.join('')}</select>`;
+}
+function rcptRow(L,r){
+  const cell=(list,raw,res,f)=>`<select class="inp" aria-label="${f==='entity'?'Юрлицо':'Склад (город)'}, строка ${L.line}" data-on="rcpt-f" data-f="${f}" data-i="${L.index}"><option value="">как выше</option>${list.map(x=>`<option value="${esc(x.id)}"${raw&&res===x.id?' selected':''}>${esc(x.name)}</option>`).join('')}${raw&&!res?`<option value="${esc(raw)}" selected>«${esc(raw)}» — нет в справочнике</option>`:''}</select>`;
+  return `<tr id="rc-r-${L.index}" class="${L.status==='skip'?'rc-skip':''}"><td class="num muted">${L.line}</td>
+    <td><input class="inp" aria-label="Название, строка ${L.line}" value="${esc(r.name)}" data-on="rcpt-f" data-f="name" data-i="${L.index}" autocomplete="off"></td>
+    <td><div class="rc-dec" id="rc-st-${L.index}">${rcptDecision(L,r)}</div></td>
+    <td class="num"><input class="inp rc-q" inputmode="numeric" aria-label="Количество, строка ${L.line}" value="${esc(r.qty)}" data-on="rcpt-f" data-f="qty" data-i="${L.index}" autocomplete="off"></td>
+    <td class="rc-to-c">${cell(S.entities,str0(r.entity),L.entityId,'entity')}${cell(S.cities,str0(r.city),L.cityId,'city')}</td></tr>`;
+}
+const str0=v=>String(v==null?'':v).trim();
+// Итог под таблицей: что будет оприходовано и что мешает
+function rcptSum(P){
+  const bits=[`Будет оприходовано: <b>${num(P.positions)}</b> ${pl(P.positions,'позиция','позиции','позиций')}, всего ${num(P.units)}, новых товаров: <b>${num(P.created)}</b>.`];
+  if(P.skipped) bits.push(`Пропущено строк: ${num(P.skipped)}.`);
+  const todo=P.errors+P.choose;
+  const bad=todo?`<p class="warn-t m0">Не разобрано строк: <b>${num(todo)}</b>${P.errors?` (с ошибкой ${num(P.errors)})`:''}${P.choose?` (ждут выбора ${num(P.choose)})`:''}. Выберите товар, создайте новый, исправьте строку или пропустите её — тогда «Оприходовать» включится.</p>`:'';
+  const warn=P.warnings.length?`<ul class="plain warn-t">${P.warnings.map(w=>`<li class="sm">Одинаковые строки: ${esc(w)}</li>`).join('')}</ul>`:'';
+  const bulk=can('catalog')&&RCPT.rows.some((r,i)=>P.lines[i].status==='choose'&&!P.lines[i].candidates.length)?`<div><button type="button" class="btn sm" data-act="rcpt-all-new">Создать новыми все незнакомые, где похожих нет</button></div>`:'';
+  return `<p class="m0">${bits.join(' ')}</p>${bad}${warn}${bulk}`;
+}
+function rcptCheck(){
+  const P=rcptPlan(),h=RCPT.header;
+  return `<form data-form="rcpt-go" novalidate>${mHead('Оприходовать товар: проверьте список')}<div class="modal-b rcpt">
+    ${rcptTo()}
+    ${h?`<p class="hint m0">Первая строка принята за заголовок и не оприходуется: «${esc(h)}».</p>`:''}
+    <div class="xs"><table class="tbl rc-t"><thead><tr><th class="num">№</th><th>Из списка</th><th>Что решено</th><th class="num">Количество</th><th>Куда (юрлицо, склад)</th></tr></thead><tbody id="rc-body">${P.lines.map(L=>rcptRow(L,RCPT.rows[L.index])).join('')}</tbody></table></div>
+    <div class="stack-s" id="rc-sum">${rcptSum(P)}</div>
+    <p class="err" id="rc-err" hidden></p></div>
+    <div class="modal-f"><button type="button" class="btn" data-act="rcpt-back">Назад к списку</button><button type="button" class="btn" data-act="close-modal">Отмена</button><button type="submit" class="btn pri" id="rc-go"${P.ready?'':' disabled'}>Оприходовать</button></div></form>`;
+}
+function rcptDone(){
+  const d=RCPT.done;
+  return `${mHead('Оприходовано')}<div class="modal-b rcpt"><div class="done-box"><span class="done-ic">${ic('check')}</span>
+    <h3 class="m0">Оприходовано ${num(d.positions)} ${pl(d.positions,'позиция','позиции','позиций')}, создано ${num(d.created)} ${pl(d.created,'новый товар','новых товара','новых товаров')}</h3>
+    <p class="m0 muted">Остатки обновлены, в журнале движений — «${esc(Stock.KINDS.receive)}», документ «${esc(d.doc)}».</p>
+    <div class="bar"><button type="button" class="btn pri" data-act="rcpt-journal">Открыть журнал движений</button><button type="button" class="btn" data-act="rcpt-again">Оприходовать ещё</button></div></div></div>
+    <div class="modal-f"><button type="button" class="btn" data-act="close-modal">Закрыть</button></div>`;
+}
+MODALS.receipt=()=>{
+  if(!RCPT) RCPT=rcptNew();
+  return RCPT.stage==='done'?rcptDone():RCPT.stage==='check'?rcptCheck():rcptInput();
+};
+// Перерисовать окно целиком, не сбрасывая прокрутку
+function rcptDraw(){
+  const m=byId('modal-root').querySelector('.modal');
+  if(!m||!S.ui.modal||S.ui.modal.type!=='receipt') return;
+  const sc=m.scrollTop;m.innerHTML=MODALS.receipt();m.scrollTop=sc;
+  const t=byId('rc-text');if(t&&RCPT.stage==='input') t.focus();
+}
+// Одна строка изменилась: пересчитать план, обновить её решение и итог. Поля строк не пересоздаются — фокус и ввод остаются.
+function rcptRefresh(i){
+  const P=rcptPlan(),L=P.lines[i],tr=byId('rc-r-'+i);
+  if(L&&tr){tr.className=L.status==='skip'?'rc-skip':'';byId('rc-st-'+i).innerHTML=rcptDecision(L,RCPT.rows[i])}
+  const s=byId('rc-sum');if(s) s.innerHTML=rcptSum(P);
+  const g=byId('rc-go');if(g) g.disabled=!P.ready;
+}
+function rcptParse(){
+  const t=byId('rc-text');if(t) RCPT.text=t.value;
+  const r=Import.receiptRows(RCPT.text);
+  if(r.problems.length) return showErr('rc-err',r.problems[0]);
+  Object.assign(RCPT,{rows:r.rows,header:r.header,stage:'check'});rcptDraw();
+}
+A['rcpt-open']=()=>{
+  if(!can('receive')){toast('У вашей роли нет права принимать товар на склад.','warn');return}
+  RCPT=rcptNew();openModal('receipt');
+};
+A['rcpt-back']=()=>{RCPT.stage='input';rcptDraw()};
+A['rcpt-again']=()=>{RCPT=rcptNew();rcptDraw()};
+A['rcpt-all-new']=()=>{
+  const P=rcptPlan();
+  P.lines.forEach(L=>{if(L.status==='choose'&&!L.candidates.length) RCPT.rows[L.index].pick='new'});
+  rcptDraw();
+};
+A['rcpt-journal']=()=>{
+  closeModal();S.ui.stockTab='moves';S.ui.mvPid='';S.ui.mvKind=Stock.KINDS.receive;S.ui.drawer=null;go('stock');
+};
+FORMS['rcpt-parse']=()=>rcptParse();
+// «Оприходовать»: Import.applyReceipt по тому же плану, что на экране; render() сохраняет изменения одним save()
+FORMS['rcpt-go']=()=>{
+  const r=Import.applyReceipt(S,RCPT.rows,{entityId:RCPT.entityId,cityId:RCPT.cityId},S.me,new Date());
+  if(!r.ok) return showErr('rc-err',r.reason);
+  RCPT.done=r;RCPT.stage='done';
+  render();rcptDraw();
+  toast(`Оприходовано ${num(r.positions)} ${pl(r.positions,'позиция','позиции','позиций')}${r.created?`, новых товаров ${num(r.created)}`:''}.`);
+};
+ON.change['rcpt-def']=t=>{RCPT[t.dataset.f]=t.value;if(RCPT.stage==='check') rcptDraw()};
+ON.change['rcpt-f']=t=>{
+  const i=Number(t.dataset.i),r=RCPT.rows[i];if(!r) return;
+  r[t.dataset.f]=t.value;
+  // другое название — прежнее решение («это тот же», «новый») к нему уже не относится
+  if(t.dataset.f==='name') r.pick='';
+  rcptRefresh(i);
+};
+ON.change['rcpt-pick']=t=>{const i=Number(t.dataset.i);if(RCPT.rows[i]){RCPT.rows[i].pick=t.value;rcptRefresh(i)}};
+// Файл CSV / TXT: тот же разбор кодировки, что у «Переноса» (Import.decode); текст ложится в поле и сразу разбирается
+ON.change['rcpt-file']=async t=>{
+  const f=t.files&&t.files[0];
+  try{t.value=''}catch(_){}
+  if(!f||!RCPT) return;
+  try{RCPT.text=Import.decode(new Uint8Array(await f.arrayBuffer()));const a=byId('rc-text');if(a) a.value=RCPT.text;rcptParse()}
+  catch(_){showErr('rc-err','Файл не прочитан.')}
 };
 
 // ——— регистрация в реестрах оболочки ———

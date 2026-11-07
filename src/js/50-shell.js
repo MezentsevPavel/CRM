@@ -545,11 +545,11 @@ const FORMS={
   ship:f=>shipCreate(f),
   product:()=>{
     const name=byId('np-name').value.trim(),pr=byId('np-price'),m=me();
-    if(!name) return showErr('np-err','Нужно наименование.');
-    if(S.products.some(p=>Catalog.norm(p.name)===Catalog.norm(name))) return showErr('np-err',`Товар «${name}» уже есть в номенклатуре.`);
     const price=pr&&pr.value!==''?Math.max(0,Number(pr.value)):null;
-    const pid=Store.freeId(S.products,'u');
-    S.products.push({id:pid,name,brand:null,cat:byId('np-cat').value,unit:byId('np-unit').value,price,avail:null,url:null,src:'user',inCatalog:false});
+    // товар создаёт Catalog.add — тот же код, что у «Оприходовать товар»; он же отказывает на пустое и повторное название
+    const made=Catalog.add(S,{name,cat:byId('np-cat').value,unit:byId('np-unit').value,price});
+    if(!made.ok) return showErr('np-err',made.reason);
+    const pid=made.product.id;
     Notify.push(S,'arrive',m.id,`В номенклатуру добавлен товар: ${name}.`,new Date(),[],{t:'product',id:pid});
     closeModal();S.ui.cat='Все';S.ui.sq='';render();toast('Товар добавлен. Остатка нет — он появится после первой приёмки.');
   },
