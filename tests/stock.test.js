@@ -669,7 +669,7 @@ test('карточка товара: сетка «юрлицо × город» �
   const cells = title => {
     const tr = body.match(new RegExp(`<tr><th scope="row">${title}</th>(.*?)</tr>`));
     assert.ok(tr, `в сетке нет строки «${title}»`);
-    return [...tr[1].matchAll(/<td[^>]*>(.*?)<\/td>/g)].map(m => m[1].match(/<b[^>]*>(.*?)<\/b>/)[1]); // крупное число клетки — остаток
+    return [...tr[1].matchAll(/<td(?![^>]*class="num in)[^>]*>(.*?)<\/td>/g)].map(m => m[1].match(/<b[^>]*>(.*?)<\/b>/)[1]); // крупное число клетки — остаток
   };
   // столбцы: Иркутск, Москва, Краснодар, «нет данных: город», Итого; пустая клетка — 0, не пусто
   assert.deepEqual(cells('ИП'), ['0', '0', '0', String(row.ip), String(row.ip)]);

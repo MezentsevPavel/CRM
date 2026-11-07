@@ -404,15 +404,18 @@ const Stock = (() => {
     const g = grid(st, productId);
     const rs = (st.reserves || []).filter(r => r.productId === productId && r.src === 'stock');
     const widen = (list, ids, nameOf) => [...list, ...[...new Set(ids)].filter(id => !list.some(x => x.id === id)).map(id => ({ id, name: nameOf(st, id) ?? id }))];
-    const rows = widen(g.rows, rs.map(r => r.entityId || ANY), entityName);
+    const tb = transitBy(st, productId);   // что едет к нам по юрлицам и сколько из этого уже продано (резерв под поставку)
+    const rows = widen(g.rows, [...rs.map(r => r.entityId || ANY), ...tb.map(a => a.entityId)], entityName);
     const cols = widen(g.cols, rs.map(r => r.cityId || ANY), cityName);
     const mk = (have, held) => ({ have, held, free: have - held });
     const sumOf = cells => mk(sum(cells, x => x.have), sum(cells, x => x.held));
     const m = {};
     for (const r of rows) for (const c of cols) m[r.id + '|' + c.id] = mk(g.cell(r.id, c.id) ?? 0, cellHeld(st, productId, r.id, c.id));
     const cell = (e, c) => m[e + '|' + c] ?? mk(0, 0);
+    const tr = e => { const a = tb.find(x => x.entityId === e); return { qty: a ? a.qty : 0, sold: a ? a.sold : 0, free: a ? a.qty - a.sold : 0 }; };
+    const trAll = { qty: sum(tb, a => a.qty), sold: sum(tb, a => a.sold), free: sum(tb, a => a.qty - a.sold) };
     return {
-      rows, cols, cell,
+      rows, cols, cell, transit: tr, transitAll: trAll,
       row: e => sumOf(cols.map(c => cell(e, c.id))),
       col: c => sumOf(rows.map(r => cell(r.id, c))),
       all: sumOf(rows.flatMap(r => cols.map(c => cell(r.id, c.id)))),

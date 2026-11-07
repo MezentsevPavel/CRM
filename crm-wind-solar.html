@@ -3036,15 +3036,18 @@ const Stock = (() => {
     const g = grid(st, productId);
     const rs = (st.reserves || []).filter(r => r.productId === productId && r.src === 'stock');
     const widen = (list, ids, nameOf) => [...list, ...[...new Set(ids)].filter(id => !list.some(x => x.id === id)).map(id => ({ id, name: nameOf(st, id) ?? id }))];
-    const rows = widen(g.rows, rs.map(r => r.entityId || ANY), entityName);
+    const tb = transitBy(st, productId);   // что едет к нам по юрлицам и сколько из этого уже продано (резерв под поставку)
+    const rows = widen(g.rows, [...rs.map(r => r.entityId || ANY), ...tb.map(a => a.entityId)], entityName);
     const cols = widen(g.cols, rs.map(r => r.cityId || ANY), cityName);
     const mk = (have, held) => ({ have, held, free: have - held });
     const sumOf = cells => mk(sum(cells, x => x.have), sum(cells, x => x.held));
     const m = {};
     for (const r of rows) for (const c of cols) m[r.id + '|' + c.id] = mk(g.cell(r.id, c.id) ?? 0, cellHeld(st, productId, r.id, c.id));
     const cell = (e, c) => m[e + '|' + c] ?? mk(0, 0);
+    const tr = e => { const a = tb.find(x => x.entityId === e); return { qty: a ? a.qty : 0, sold: a ? a.sold : 0, free: a ? a.qty - a.sold : 0 }; };
+    const trAll = { qty: sum(tb, a => a.qty), sold: sum(tb, a => a.sold), free: sum(tb, a => a.qty - a.sold) };
     return {
-      rows, cols, cell,
+      rows, cols, cell, transit: tr, transitAll: trAll,
       row: e => sumOf(cols.map(c => cell(e, c.id))),
       col: c => sumOf(rows.map(r => cell(r.id, c))),
       all: sumOf(rows.flatMap(r => cols.map(c => cell(r.id, c.id)))),
@@ -9219,7 +9222,7 @@ function goodsPane(tabs){
   <label class="check"><input type="checkbox" id="deficit" data-on="deficit" ${u.deficit?'checked':''}> Только где не хватает</label></div>
   <div class="fgrid">${filters}</div>
   <div class="chips">${chips}</div>
-  <section class="card clip"><div class="legend"><span><i class="lg f"></i>Свободно на складе</span><span><i class="lg r"></i>На складе в резерве</span><span><i class="lg w"></i>Едет к нам</span><span>«Свободно после прихода» = склад + в пути − все резервы</span></div><div id="stock-tbl">${stockTable()}</div></section>`;
+  <section class="card clip"><div class="legend"><span><i class="lg f"></i>Свободно на складе</span><span><i class="lg r"></i>На складе в резерве</span><span><i class="lg w"></i>В пути</span><span>«Свободно после прихода» = склад + в пути − все резервы</span></div><div id="stock-tbl">${stockTable()}</div></section>`;
 }
 function sbar(p,big){
   const k=stockOf(p.id),fn=Math.max(0,k.free),rs=Math.min(k.onHand,k.reservedStock),iq=k.incoming,tot=Math.max(1,fn+rs+iq),w=x=>(x/tot*100).toFixed(1)+'%';
@@ -9258,7 +9261,7 @@ function stockTable(){
   const head=`<div class="count"><span>Показано <b>${rows.length}</b> из <b>${all}</b> позиций</span>${rows.length>PAGE_SIZE?`<span class="muted">строки ${from+1}–${from+part.length}</span>`:''}</div>`;
   if(!rows.length) return head+emptyState('Ничего не нашлось. Проверьте фильтр или строку поиска.','Сбросить фильтры','stock-reset');
   const pr=can('prices'),pg=pagerHtml(page,pages,span);
-  return `${head}<div class="xs"><table class="tbl"><thead><tr><th>Товар</th><th class="num">На складе</th><th class="num">В резерве</th><th class="num">Свободно сейчас</th><th>Едет к нам</th><th class="num">Свободно после прихода</th>${pr?'<th class="num">Цена</th>':''}<th>Картина</th></tr></thead><tbody>${part.map(p=>stockRow(p,pr)).join('')}</tbody></table></div>${pg}`;
+  return `${head}<div class="xs"><table class="tbl"><thead><tr><th>Товар</th><th class="num">На складе</th><th class="num">В резерве</th><th class="num">Свободно сейчас</th><th>В пути</th><th class="num">Свободно после прихода</th>${pr?'<th class="num">Цена</th>':''}<th>Картина</th></tr></thead><tbody>${part.map(p=>stockRow(p,pr)).join('')}</tbody></table></div>${pg}`;
 }
 const refreshStock=()=>{S.ui.page=0;S.ui.span=1;byId('stock-tbl').innerHTML=stockTable()};
 
@@ -9312,8 +9315,8 @@ function srcPill(r){
 function gridHtml(p){
   const t=Stock.table(S,p.id);
   const cell=(v,cls='')=>`<td class="num${cls}"><b>${num(v.have)}</b><small>${v.held>0?`<button type="button" class="rlink" data-act="reserves-jump" title="Показать список резервов">резерв ${num(v.held)}</button>`:`резерв ${num(v.held)}`}</small><small class="${v.free<0?'bad-t':''}">свободно ${num(v.free)}</small></td>`;
-  const all=t.all;
-  return `<div class="xs"><table class="tbl mx"><thead><tr><th>Юрлицо / склад</th>${t.cols.map(c=>`<th class="num">${esc(c.name)}</th>`).join('')}<th class="num">Итого</th></tr></thead><tbody>${t.rows.map(r=>`<tr><th scope="row">${esc(r.name)}</th>${t.cols.map(c=>cell(t.cell(r.id,c.id))).join('')}${cell(t.row(r.id),' tot')}</tr>`).join('')}</tbody><tfoot><tr><th scope="row">Итого</th>${t.cols.map(c=>cell(t.col(c.id),' tot')).join('')}<td class="num tot all"><span>Свободно всего</span><b class="${all.free<0?'bad-t':''}">${num(all.free)}</b><small>по факту на складах ${num(all.have)}</small><small>в резерве ${num(all.held)}</small></td></tr></tfoot></table></div>`;
+  const all=t.all,tcell=(v,cls='')=>`<td class="num in${cls}"><b>${num(v.qty)}</b><small>продано ${num(v.sold)}</small><small>ждёт покупателя ${num(v.free)}</small></td>`;
+  return `<div class="xs"><table class="tbl mx"><thead><tr><th>Юрлицо / склад</th>${t.cols.map(c=>`<th class="num">${esc(c.name)}</th>`).join('')}<th class="num">Итого</th><th class="num">В пути</th></tr></thead><tbody>${t.rows.map(r=>`<tr><th scope="row">${esc(r.name)}</th>${t.cols.map(c=>cell(t.cell(r.id,c.id))).join('')}${cell(t.row(r.id),' tot')}${tcell(t.transit(r.id))}</tr>`).join('')}</tbody><tfoot><tr><th scope="row">Итого</th>${t.cols.map(c=>cell(t.col(c.id),' tot')).join('')}<td class="num tot all"><span>Свободно всего</span><b class="${all.free<0?'bad-t':''}">${num(all.free)}</b><small>по факту на складах ${num(all.have)}</small><small>в резерве ${num(all.held)}</small></td>${tcell(t.transitAll,' tot')}</tr></tfoot></table></div>`;
 }
 // Блок «Списать при продаже»: каждая клетка «юрлицо × город» с остатком — строка с кнопкой (право sell). Сколько можно списать
 // без резерва — Stock.sellMax; зарезервированное списывают по резерву (кнопка в таблице «Резервы»).
@@ -9339,7 +9342,7 @@ function reserveForm(p,k,inc){
   const cell=Stock.bestCell(S,p.id),opt=(list,none,cur)=>[...list.map(x=>[x.id,x.name]),[Stock.ANY,none]].map(([id,n])=>`<option value="${esc(id)}"${id===cur?' selected':''}>${esc(n)}</option>`).join('');
   return `<form class="rform" data-form="reserve" data-pid="${esc(p.id)}" novalidate><h4 class="sh">Поставить резерв</h4><div class="grid2"><div class="field span2"><label for="rs-kind">Под что</label><select id="rs-kind" class="inp" data-on="rskind">${optionsHtml([['deal','На сделку'],['free','Без сделки — для кого']],kind)}</select></div><div class="field" id="rs-deal-f"${kind==='free'?' hidden':''}><label for="rs-deal">Сделка</label><select id="rs-deal" class="inp">${deals.map(d=>`<option value="${d.id}">${d.id} · ${esc(d.client)} · можно ещё ${num(Deals.left(S,d,p.id))}</option>`).join('')}</select>${deals.length?'':'<small class="muted">Нет ваших открытых сделок с этим товаром в строках: добавьте товар в сделку или выберите «Без сделки — для кого».</small>'}</div><div class="field" id="rs-for-f"${kind==='free'?'':' hidden'}><label for="rs-for">Для кого</label><input id="rs-for" class="inp" maxlength="200" placeholder="под Иванова, монтаж в Шелехове" autocomplete="off"></div><div class="field"><label for="rs-qty">Количество${p.unit?', '+esc(p.unit):''}</label><input id="rs-qty" class="inp" type="number" min="1" value="1" inputmode="numeric"></div><div class="field span2"><label for="rs-src">Откуда</label><select id="rs-src" class="inp" data-on="rsmax">${src}</select></div><div class="field"><label for="rs-ent">Юрлицо (со склада)</label><select id="rs-ent" class="inp" data-on="rsmax">${opt(S.entities,Stock.NO_ENTITY,cell.entityId)}</select></div><div class="field"><label for="rs-city">Город (со склада)</label><select id="rs-city" class="inp" data-on="rsmax">${opt(S.cities,Stock.NO_CITY,cell.cityId)}</select></div><div class="field"><label for="rs-until">Резерв до</label><input id="rs-until" class="inp" type="date" value="${iso(day(Stock.RESERVE_DAYS))}"></div><div class="field end"><button class="btn pri" type="submit">${ic('lock')}Зарезервировать</button></div></div><p class="hint" id="rs-max">${maxText(p.id,'stock',cell.entityId,cell.cityId)}</p><p class="err" id="rs-err" hidden></p></form>`;
 }
-// Строка «Едет к нам»: поставка (этап и срок из карточки поставки) или груз перемещения между складами — «в пути: N, ОТ-NNN»
+// Строка «В пути»: поставка (этап и срок из карточки поставки) или груз перемещения между складами — «в пути: N, ОТ-NNN»
 // со ссылкой на заявку; у груза поставки нет, поэтому ни этапа поставки, ни резерва под него
 function iRow(x,p){
   if(x.dispatchId) return `<li><span class="pill sm info">перемещение</span><span>в пути: ${qtyOf(x.qty,p)}, <button type="button" class="link" data-act="open-dispatch" data-id="${esc(x.dispatchId)}">${esc(x.shipId)}</button></span><small>на склад ${esc(cellText(x.entityId,x.cityId))} · ожидается ${fD(x.eta)}</small></li>`;
@@ -9398,7 +9401,7 @@ function dProduct(p){
     <div id="p-reserves"><h4 class="sh">Резервы</h4>${rTbl}</div>
     ${removedHtml(p)}
     ${sellCells(p)}
-    <div><h4 class="sh">Едет к нам</h4>${inc.length&&transitLine(p.id)?`<p class="m0">${esc(transitLine(p.id))}</p>`:''}${iList}</div>
+    <div><h4 class="sh">В пути</h4>${inc.length&&transitLine(p.id)?`<p class="m0">${esc(transitLine(p.id))}</p>`:''}${iList}</div>
     <div><h4 class="sh">Журнал движений</h4>${mList}</div>`};
 }
 

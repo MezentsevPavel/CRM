@@ -156,7 +156,7 @@ test('номенклатура: бейдж с числом резервов; к�
   const row = app.stockRow(p, true);
   assert.match(row, /class="rbadge" data-act="product-reserves" data-id="[^"]+"[^>]*>.*1 резерв<\/button>/);
   const body = app.DRAWERS.product(p.id).body;
-  const res = body.slice(body.indexOf('id="p-reserves"'), body.indexOf('Едет к нам'));
+  const res = body.slice(body.indexOf('id="p-reserves"'), body.indexOf('<h4 class="sh">В пути</h4>'));
   for (const t of ['<th>Для кого</th>', '<th>Кто поставил</th>', '<th>Когда</th>', 'под Иванова, монтаж в Шелехове', app.person('p2').name, app.fWhen(at), 'История', 'Поставлен: 2', 'data-act="unreserve"', 'data-act="reserve-until"']) {
     assert.ok(res.includes(app.esc(t)) || res.includes(t), `в списке резервов нет «${t}»`);
   }

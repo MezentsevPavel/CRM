@@ -30,12 +30,12 @@ function parse(body) {
   const tbl = body.match(/<table class="tbl mx">[\s\S]*?<\/table>/);
   assert.ok(tbl, 'в карточке нет таблицы «юрлицо × склады»');
   for (const tr of tbl[0].matchAll(/<tr><th scope="row">(.*?)<\/th>(.*?)<\/tr>/g)) {
-    out[tr[1]] = [...tr[2].matchAll(/<td[^>]*>(.*?)<\/td>/g)].map(td => {
+    out[tr[1]] = [...tr[2].matchAll(/<td(?![^>]*class="num in)[^>]*>(.*?)<\/td>/g)].map(td => {
       const m = td[1].match(new RegExp(`<b[^>]*>${N}</b><small>(?:<button[^>]*>)?резерв ${N}(?:</button>)?</small><small[^>]*>свободно ${N}</small>`));
       return m ? { have: int(m[1]), held: int(m[2]), free: int(m[3]) } : td[1];
     });
   }
-  return { rows: out, head: [...tbl[0].matchAll(/<th class="num">(.*?)<\/th>/g)].map(m => m[1]), html: tbl[0] };
+  return { rows: out, head: [...tbl[0].matchAll(/<th class="num">(.*?)<\/th>/g)].map(m => m[1]).filter(h => h !== 'В пути'), html: tbl[0] };
 }
 
 test('карточка товара без данных по остатку: таблица есть, везде 0, итого 0, подпись, что чисел в таблице остатков нет', () => {
@@ -190,4 +190,17 @@ test('шаг назад: открыто то, что закрыто правам
   app.openDrawer('нет-такого', '1');
   assert.equal(app.S.ui.drawer, null);
   assert.equal(html(app), '');
+});
+
+test('таблица: «В пути» по юрлицам — сколько едет и сколько из этого уже продано (резерв под поставку не пропадает из карточки)', () => {
+  const app = asDirector(load());
+  const p = app.S.products.find(x => app.Stock.transitBy(app.S, x.id).some(a => a.sold > 0));
+  assert.ok(p, 'в демо нет товара с проданным из пути');
+  const by = app.Stock.transitBy(app.S, p.id), tb = app.Stock.table(app.S, p.id);
+  assert.equal(tb.transitAll.qty, by.reduce((a, x) => a + x.qty, 0));
+  assert.equal(tb.transitAll.sold, by.reduce((a, x) => a + x.sold, 0));
+  for (const a of by) assert.equal(js(tb.transit(a.entityId)).sold, a.sold, `по юрлицу ${a.name}`);
+  const html = app.DRAWERS.product(p.id).body.match(/<table class="tbl mx">[\s\S]*?<\/table>/)[0];
+  assert.match(plain(html), /В пути/);
+  assert.match(plain(html), new RegExp(`продано ${tb.transitAll.sold}`), 'в таблице не видно проданного из пути');
 });
