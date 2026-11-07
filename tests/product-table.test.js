@@ -202,5 +202,14 @@ test('таблица: «В пути» по юрлицам — сколько е�
   for (const a of by) assert.equal(js(tb.transit(a.entityId)).sold, a.sold, `по юрлицу ${a.name}`);
   const html = app.DRAWERS.product(p.id).body.match(/<table class="tbl mx">[\s\S]*?<\/table>/)[0];
   assert.match(plain(html), /В пути/);
+  // «Итого» — всегда самый правый столбец: и в шапке, и в строках, и в нижнем углу
+  const ths = [...html.matchAll(/<th class="num">(.*?)<\/th>/g)].map(m => m[1]);
+  assert.equal(ths.at(-1), 'Итого', 'в шапке «Итого» не последний');
+  assert.equal(ths.at(-2), 'В пути', '«В пути» стоит не перед «Итого»');
+  assert.match(html, /<td class="num tot all">[\s\S]*?<\/td><\/tr><\/tfoot>/, 'правая нижняя ячейка («Свободно всего») не последняя');
+  for (const tr of html.matchAll(/<tr><th scope="row">[\s\S]*?<\/tr>/g)) {
+    const cls = [...tr[0].matchAll(/<td class="([^"]*)">/g)].map(m => m[1]);
+    assert.ok(/\bin\b/.test(cls.at(-2)) && !/\bin\b/.test(cls.at(-1)), 'в строке «В пути» не перед последним столбцом «Итого»');
+  }
   assert.match(plain(html), new RegExp(`продано ${tb.transitAll.sold}`), 'в таблице не видно проданного из пути');
 });
