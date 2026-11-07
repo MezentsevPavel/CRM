@@ -856,3 +856,12 @@ test('«Настройки → Склады и юрлица»: источник 
   assert.ok(t.includes('Источник каталога: копия таблицы для CRM — нет данных: ссылка; сейчас — снимок таблицы PVCalc на 31.10.2026'));
   assert.ok(t.includes('Склеено по названию 16 из 208 строк таблицы менеджеров; остальные — «нет в каталоге»'));
 });
+
+test('отказ в резерве подсказывает, в какой клетке товар есть (остаток «без города» не теряется)', () => {
+  const app = load();
+  const p = app.S.products.find(x => x.name.includes('SUN-12K-SG04LP3'));
+  const r = app.Stock.canReserve(app.S, { productId: p.id, qty: 1, entityId: 'ip', cityId: 'irk' });
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /Есть: ИП · нет данных: город — 1/, 'в отказе нет подсказки, где товар лежит');
+  assert.equal(app.Stock.canReserve(app.S, { productId: p.id, qty: 1, entityId: 'ip', cityId: '_' }).ok, true);
+});

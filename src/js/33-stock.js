@@ -145,6 +145,15 @@ const Stock = (() => {
       const held = sum((st.reserves || []).filter(r => r.productId === productId && r.src === 'stock' && cellKey(r) === e + '|' + c), r => r.qty);
       max = Math.max(0, Math.min(have - held, summary(st, productId).free));
       where = `Со склада (${en}, ${cn}) свободно только ${max}.`;
+      // Подсказка, где товар есть: клетки с остатком, не занятым резервами (и не больше свободного по товару в целом)
+      const g = grid(st, productId), elsewhere = [];
+      for (const r of g.rows) for (const col of g.cols) {
+        if (r.id === e && col.id === c) continue;
+        const h = sum((st.reserves || []).filter(x => x.productId === productId && x.src === 'stock' && cellKey(x) === r.id + '|' + col.id), x => x.qty);
+        const f = Math.min((g.cell(r.id, col.id) ?? 0) - h, summary(st, productId).free);
+        if (f > 0) elsewhere.push(`${cellText(st, r.id, col.id)} — ${f}`);
+      }
+      if (elsewhere.length) where += ` Есть: ${elsewhere.join('; ')}.`;
     } else {
       const s = (st.shipments || []).find(x => x.id === source);
       if (!s || Pipes.isFinal(st, s.pipeId, s.stageId)) return { ok: false, max: 0, reason: `Поставки ${source} нет среди ожидаемых.` };
