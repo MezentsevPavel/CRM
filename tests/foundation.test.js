@@ -57,8 +57,12 @@ test('сборка: собранная страница запускается �
 });
 
 test('сборка: crm-wind-solar.html совпадает со сборкой из src/ (руками не правлен)', () => {
+  // Концы строк не в счёт: git на Windows (autocrlf) переводит файл в CRLF при выгрузке, сборка даёт LF
+  const lf = t => t.replace(/
+/g, '
+');
   const onDisk = fs.readFileSync(path.join(ROOT, OUT_NAME), 'utf8');
-  assert.ok(onDisk === build(), 'файл отличается от сборки — запустите node tools/build.js');
+  assert.ok(lf(onDisk) === lf(build()), 'файл отличается от сборки — запустите node tools/build.js');
 });
 
 test('load.js: код загружается, NAV — девять разделов v2 по порядку, у каждого есть вид', () => {
