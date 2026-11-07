@@ -27,19 +27,32 @@ function vStock(){
 
 // ——— вкладка «Товары» ———
 function goodsPane(tabs){
-  const u=S.ui,cur=u.cat||'Все';
-  const chips=['Все',...Catalog.cats(S)].map(c=>`<button type="button" class="fchip ${cur===c?'on':''}" data-act="stock-cat" data-cat="${esc(c)}">${esc(c)}</button>`).join('');
+  const u=S.ui;
   const filters=[
     selField('f-brand','brand','Бренд',[['','Все бренды'],...Catalog.brands(S).map(b=>[b,b])],u.brand||''),
     selField('f-avail','avail','Наличие',[['','Любое наличие'],...[...new Set(S.products.map(p=>p.avail).filter(Boolean))].map(a=>[a,a])],u.avail||''),
     selField('f-catf','catf','Каталог',[['','В каталоге и нет'],['in','Только в каталоге'],['out','Только «нет в каталоге»']],u.catf||'')
   ].join('');
-  return `<div class="bar">${tabs}<span class="grow"></span>${can('receive')?`<button class="btn" data-act="rcpt-open">${ic('plus')}Оприходовать товар</button>`:''}${can('catalog')?`<button class="btn" data-act="new-product">${ic('plus')}Новый товар</button>`:''}</div>
-  <div class="bar"><div class="search-in">${ic('search')}<input id="sq" class="inp" type="search" placeholder="Название, бренд или ключ каталога" value="${esc(u.sq)}" data-on="sq" aria-label="Поиск товара"></div>
+  return `<div class="bar">${tabs}<span class="grow"></span>${can('receive')?`<button class="btn" data-act="rcpt-open">${ic('plus')}Оприходовать товар</button>`:''}${can('catalog')?`<button class="btn" data-act="cat-manage">${ic('box')}Категории</button><button class="btn" data-act="new-product">${ic('plus')}Новый товар</button>`:''}</div>
+  <div class="bar"><div class="search-in">${ic('search')}<input id="sq" class="inp" type="search" placeholder="Название, артикул, бренд или ключ каталога" value="${esc(u.sq)}" data-on="sq" aria-label="Поиск товара по названию, артикулу, бренду или ключу"></div>
   <label class="check"><input type="checkbox" id="deficit" data-on="deficit" ${u.deficit?'checked':''}> Только где не хватает</label></div>
-  <div class="fgrid">${filters}</div>
-  <div class="chips">${chips}</div>
-  <section class="card clip"><div class="legend"><span><i class="lg f"></i>Свободно на складе</span><span><i class="lg r"></i>На складе в резерве</span><span><i class="lg w"></i>В пути</span><span>«Свободно после прихода» = склад + в пути − все резервы</span></div><div id="stock-tbl">${stockTable()}</div></section>`;
+  <div class="stock-lay">${catTree()}<div class="stock-main"><div class="fgrid">${filters}</div>
+  <section class="card clip"><div class="legend"><span><i class="lg f"></i>Свободно на складе</span><span><i class="lg r"></i>На складе в резерве</span><span><i class="lg w"></i>В пути</span><span>«Свободно после прихода» = склад + в пути − все резервы</span></div><div id="stock-tbl">${stockTable()}</div></section></div></div>`;
+}
+// ——— дерево категорий слева от списка ———
+// Строки — Catalog.rows (порядок дерева, число товаров с подкатегориями). Выбранная категория показывает и свои товары, и товары всех
+// подкатегорий (Catalog.query). Раскрытое запоминается в S.ui.catOpen (личное, на сервер не уходит). На узком экране дерево — под кнопкой.
+const CAT_ALL='Все';
+const catParent=path=>path.includes(Catalog.SEP)?path.slice(0,path.lastIndexOf(Catalog.SEP)):'';
+const catAncestors=path=>{const out=[];for(let p=catParent(path);p;p=catParent(p)) out.push(p);return out};
+function catTree(){
+  const cur=S.ui.cat||CAT_ALL,open=S.ui.catOpen||{},rows=Catalog.rows(S),parents=new Set(rows.map(r=>catParent(r.path)).filter(Boolean));
+  const noCat=S.products.filter(p=>!p.cat||p.cat===Catalog.NO_CAT).length;
+  const item=(path,name,n,depth,kids)=>`<li class="ct-row${cur===path?' on':''}" style="--d:${depth}">${kids?`<button type="button" class="ct-tg" data-act="cat-toggle" data-cat="${esc(path)}" aria-expanded="${!!open[path]}" aria-label="${open[path]?'Свернуть':'Раскрыть'} «${esc(name)}»">${open[path]?'▾':'▸'}</button>`:'<span class="ct-tg"></span>'}<button type="button" class="ct-name" data-act="stock-cat" data-cat="${esc(path)}"${cur===path?' aria-current="true"':''}><span>${esc(name)}</span><small>${num(n)}</small></button></li>`;
+  const list=rows.filter(r=>catAncestors(r.path).every(a=>open[a])).map(r=>item(r.path,r.name,r.total,r.depth,parents.has(r.path))).join('');
+  const label=cur===CAT_ALL?'все товары':cur;
+  return `<aside class="ct-box card${S.ui.catPane?' open':''}" aria-label="Категории товаров"><button type="button" class="btn ct-show" data-act="cat-pane" aria-expanded="${!!S.ui.catPane}">Категория: ${esc(label)} <span aria-hidden="true">▾</span></button>
+    <div class="ct-body"><ul class="ct-list">${item(CAT_ALL,'Все',S.products.length,0,false)}${list}${noCat?item(Catalog.NO_CAT,Catalog.NO_CAT,noCat,0,false):''}</ul>${can('catalog')?'<button type="button" class="btn sm ghost ct-mng" data-act="cat-manage">Добавить и изменить категории</button>':''}</div></aside>`;
 }
 function sbar(p,big){
   const k=stockOf(p.id),fn=Math.max(0,k.free),rs=Math.min(k.onHand,k.reservedStock),iq=k.incoming,tot=Math.max(1,fn+rs+iq),w=x=>(x/tot*100).toFixed(1)+'%';
@@ -68,7 +81,7 @@ function stockRow(p,pr){
   const k=stockOf(p.id),ra=k.reservedStock+k.reservedIncoming,inc=Stock.incomingOf(S,p.id),fa=k.freeAfter,unk=stockUnknown(k),nd='<span class="muted">нет данных</span>';
   const key=p.inCatalog?`<span class="mono">${esc(p.id)}</span>`:'<span class="pill sun sm">нет в каталоге</span>';
   const meta=[p.brand,p.cat].filter(Boolean).map(esc).join(' · ');
-  return `<tr class="click" data-act="open-product" data-pid="${esc(p.id)}" tabindex="0"><td><div class="pname"><span>${esc(p.name)}</span><small>${key}${meta?' · '+meta:''}</small></div></td><td class="num">${k.known?qtyOf(k.onHand,p):nd}</td><td class="num">${num(ra)}${k.reservedIncoming?`<small class="muted">${num(k.reservedIncoming)} под поставку</small>`:''}${resBadge(p)}</td><td class="num free">${unk?nd:`<b class="${k.free<=0?'bad-t':''}">${num(k.free)}</b>`}</td><td>${k.incoming?`<span class="in-t">${qtyOf(k.incoming,p)}</span><small class="muted">${esc(transitLine(p.id))}</small><small class="muted">ближайшая ${fD(k.nextEta)}${inc.length>1?` · ${inc.length} поставки`:''}</small>`:'<span class="muted">не ждём</span>'}</td><td class="num">${unk?nd:fa<0?`<span class="pill bad sm">не хватает ${num(-fa)}</span>`:num(fa)}</td>${pr?`<td class="num">${priceTxt(p)}</td>`:''}<td>${sbar(p)}</td></tr>`;
+  return `<tr class="click" data-act="open-product" data-pid="${esc(p.id)}" tabindex="0"><td><div class="pname"><span>${esc(p.name)}</span>${skuTag(p)}<small>${key}${meta?' · '+meta:''}</small></div></td><td class="num">${k.known?qtyOf(k.onHand,p):nd}</td><td class="num">${num(ra)}${k.reservedIncoming?`<small class="muted">${num(k.reservedIncoming)} под поставку</small>`:''}${resBadge(p)}</td><td class="num free">${unk?nd:`<b class="${k.free<=0?'bad-t':''}">${num(k.free)}</b>`}</td><td>${k.incoming?`<span class="in-t">${qtyOf(k.incoming,p)}</span><small class="muted">${esc(transitLine(p.id))}</small><small class="muted">ближайшая ${fD(k.nextEta)}${inc.length>1?` · ${inc.length} поставки`:''}</small>`:'<span class="muted">не ждём</span>'}</td><td class="num">${unk?nd:fa<0?`<span class="pill bad sm">не хватает ${num(-fa)}</span>`:num(fa)}</td>${pr?`<td class="num">${priceTxt(p)}</td>`:''}<td>${sbar(p)}</td></tr>`;
 }
 // Содержимое #stock-tbl: «показано N из M», страница таблицы, переключатель страниц
 function stockTable(){
@@ -81,6 +94,14 @@ function stockTable(){
   return `${head}<div class="xs"><table class="tbl"><thead><tr><th>Товар</th><th class="num">На складе</th><th class="num">В резерве</th><th class="num">Свободно сейчас</th><th>В пути</th><th class="num">Свободно после прихода</th>${pr?'<th class="num">Цена</th>':''}<th>Картина</th></tr></thead><tbody>${part.map(p=>stockRow(p,pr)).join('')}</tbody></table></div>${pg}`;
 }
 const refreshStock=()=>{S.ui.page=0;S.ui.span=1;byId('stock-tbl').innerHTML=stockTable()};
+// Выпадающий список категорий: путь — значение, отступ — глубина. opts: top — первая строка «ничего» (значение ''), noCat — строка «Без раздела»,
+// skipId — не показывать эту категорию и всё, что в ней (куда переносить саму её). Строки, которых нет в дереве, в выбор не попадают.
+function catOptions(cur,opts={}){
+  const skip=opts.skipId?Catalog.pathOf(S,opts.skipId):'',pad=n=>'   '.repeat(n);
+  const one=(v,t,d)=>`<option value="${esc(v)}"${v===cur?' selected':''}>${pad(d)}${esc(t)}</option>`;
+  return (opts.top?one('',opts.top,0):'')+(opts.noCat?one(Catalog.NO_CAT,Catalog.NO_CAT,0):'')
+    +Catalog.rows(S).filter(r=>!r.virtual&&!(skip&&(r.path===skip||r.path.startsWith(skip+Catalog.SEP)))).map(r=>one(r.path,r.name,r.depth)).join('');
+}
 
 // ——— журнал движений: слова и строки общие для вкладки и карточки товара ———
 // «Ввод остатков» — знак «=»: в qty лежит остаток клетки после переноса, а не прибавка («+» был бы неправдой)
@@ -104,7 +125,7 @@ const whoName=id=>person(id)?.name||'';
 function movesPane(tabs){
   const u=S.ui,ids=[...new Set(S.moves.map(m=>m.productId))];
   if(u.mvPid&&!ids.includes(u.mvPid)) ids.push(u.mvPid);
-  const prods=ids.map(id=>[id,product(id)?.name||id]).sort((a,b)=>a[1].localeCompare(b[1],'ru'));
+  const prods=ids.map(id=>[id,product(id)?Catalog.label(product(id)):id]).sort((a,b)=>a[1].localeCompare(b[1],'ru'));
   const filters=selField('mv-pid','mvpid','Товар',[['','Все товары'],...prods],u.mvPid||'')+selField('mv-kind','mvkind','Вид движения',[['','Все виды'],...Object.values(Stock.KINDS).map(k=>[k,k])],u.mvKind||'');
   return `<div class="bar">${tabs}</div><div class="fgrid">${filters}</div><section class="card clip"><div id="mv-tbl">${movesTable()}</div></section>`;
 }
@@ -114,7 +135,7 @@ function movesTable(){
   if(!part.length) return head+emptyState('Движений по этому фильтру нет.','Показать все движения','stock-journal');
   return `${head}<div class="xs"><table class="tbl"><thead><tr><th>Когда</th><th>Кто</th><th>Вид</th><th>Товар</th><th class="num">Сколько</th><th>Откуда и куда</th><th>Документ</th></tr></thead><tbody>${part.map(m=>{
     const p=product(m.productId),who=whoName(m.by);
-    return `<tr${p?` class="click" data-act="open-product" data-pid="${esc(p.id)}" tabindex="0"`:''}><td class="nowrap">${fWhen(m.at)}</td><td>${who?esc(who):noData('кто')}</td><td>${movePill(m)}</td><td>${p?`<button type="button" class="link" data-act="open-product" data-pid="${esc(p.id)}">${esc(p.name)}</button>`:noData('товар')}</td><td class="num">${moveSign(m)}${qtyOf(m.qty,p)}</td><td>${esc(moveWhere(m))}</td><td class="mono">${esc(moveDoc(m))}</td></tr>`;
+    return `<tr${p?` class="click" data-act="open-product" data-pid="${esc(p.id)}" tabindex="0"`:''}><td class="nowrap">${fWhen(m.at)}</td><td>${who?esc(who):noData('кто')}</td><td>${movePill(m)}</td><td>${p?`<button type="button" class="link" data-act="open-product" data-pid="${esc(p.id)}">${esc(p.name)}</button>${skuTag(p)}`:noData('товар')}</td><td class="num">${moveSign(m)}${qtyOf(m.qty,p)}</td><td>${esc(moveWhere(m))}</td><td class="mono">${esc(moveDoc(m))}</td></tr>`;
   }).join('')}</tbody></table></div>`;
 }
 
@@ -206,6 +227,8 @@ function watchHtml(p,k){
     ?`<p class="hint m0">${ic('bell')}Сообщу, когда появится свободный. <button type="button" class="link" data-act="stock-unwatch" data-pid="${esc(p.id)}">Не сообщать</button></p>`
     :`<p class="m0"><button type="button" class="btn sm" data-act="stock-watch" data-pid="${esc(p.id)}">${ic('bell')}Сообщить, когда появится</button></p>`;
 }
+// «Артикул» в карточке: сам артикул или «нет данных: артикул» и кнопка «Изменить» (право catalog)
+const skuRow=p=>{const k=Catalog.skuOf(p);return (k?`<b class="mono">${esc(k)}</b>`:noData('артикул'))+(can('catalog')?` <button type="button" class="link" data-act="product-sku" data-pid="${esc(p.id)}">${k?'Изменить':'Указать'}</button>`:'')};
 function dProduct(p){
   const k=stockOf(p.id),rs=resOf(p.id).map(r=>Stock.reserveView(S,r,S.me)).filter(Boolean);const inc=Stock.incomingOf(S,p.id),all=S.moves.filter(m=>m.productId===p.id),mv=all.slice(0,10),unk=stockUnknown(k);
   const st=(l,v,c='',note='')=>`<div class="st"><span>${l}</span><b class="${c}">${v}</b>${note?`<small>${note}</small>`:''}</div>`;
@@ -214,7 +237,7 @@ function dProduct(p){
   const key=p.inCatalog?`<span class="mono">${esc(p.id)}</span>`:'<span class="pill sun sm">нет в каталоге</span>';
   const url=/^https?:\/\//.test(p.url||'')?`<a class="link" href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">Открыть на сайте</a>`:'';
   const info=[
-    kv('Ключ каталога',key),kv('Модель',esc(p.name)),kv('Бренд',p.brand?esc(p.brand):noData('бренд')),kv('Категория',esc(p.cat)),
+    kv('Артикул',skuRow(p)),kv('Ключ каталога',key),kv('Модель',esc(p.name)),kv('Бренд',p.brand?esc(p.brand):noData('бренд')),kv('Категория',esc(p.cat)+(can('catalog')?` <button type="button" class="link" data-act="product-cat" data-pid="${esc(p.id)}">Сменить категорию</button>`:'')),
     can('prices')?kv('Цена',p.price==null?noData('цена'):`<b>${rub(p.price)}</b><small>${p.src==='user'?'введена вручную':priceNote()}</small>`):'',
     kv('Наличие',p.avail?esc(p.avail):noData('наличие')),url?kv('Ссылка',url):''
   ].join('');
@@ -273,7 +296,7 @@ MODALS.stockSell=o=>{
   const d=o.did?Deals.byId(S,o.did):null,max=Stock.sellMax(S,a);
   const qty=Math.max(1,Math.min(max,r?r.qty:d?Deals.lined(d,o.pid):1));
   const doc=r?(r.dealId||''):(o.did||'');
-  return `<form data-form="stock-sell" data-pid="${esc(o.pid)}" data-did="${esc(o.did||'')}" novalidate>${mHead('Списать при продаже: '+esc(p.name))}<div class="modal-b">
+  return `<form data-form="stock-sell" data-pid="${esc(o.pid)}" data-did="${esc(o.did||'')}" novalidate>${mHead('Списать при продаже: '+esc(Catalog.label(p)))}<div class="modal-b">
     <p class="m0">${o.did?`Сделка ${esc(o.did)}${d?' · '+esc(d.client):''}. `:''}Товар уходит со склада, в журнале движений появится «Отгрузка».</p>
     <div class="field"><label for="ps-src">Откуда</label><select id="ps-src" class="inp" data-on="sellsrc" data-pid="${esc(o.pid)}">${optionsHtml(src,cur)}</select></div>
     <div class="grid2"><div class="field"><label for="ps-qty">Сколько${p.unit?', '+esc(p.unit):''}</label><input id="ps-qty" class="inp" type="number" min="1" step="1" value="${esc(qty)}" inputmode="numeric"></div>
@@ -287,19 +310,67 @@ MODALS.stockSell=o=>{
 // Import.receiptRows / receiptPlan / applyReceipt (48-import.js): здесь только показ. Список живёт в RCPT (не в S: не сохраняется).
 // Склад один на город; юрлица — из справочника. Новые товары создаёт только тот, у кого есть право catalog.
 let RCPT=null;
-const rcptNew=()=>({stage:'input',text:'',rows:[],header:null,entityId:'',cityId:'',done:null});
-const rcptPlan=()=>Import.receiptPlan(S,RCPT.rows,{entityId:RCPT.entityId,cityId:RCPT.cityId,canCreate:can('catalog')});
+const rcptNew=()=>({stage:'input',tab:'paste',text:'',rows:[],header:null,entityId:'',cityId:'',cat:'',done:null,manual:[{pid:'',q:'',isNew:false,newName:'',sku:'',qty:'',entity:'',city:''}]});
+const rcptPlan=()=>Import.receiptPlan(S,RCPT.rows,{entityId:RCPT.entityId,cityId:RCPT.cityId,cat:RCPT.cat,canCreate:can('catalog')});
 const rcptOpts=(list,cur)=>`<option value="">выберите</option>`+list.map(x=>`<option value="${esc(x.id)}"${x.id===cur?' selected':''}>${esc(x.name)}</option>`).join('');
 // «Всё это приходит на»: подставляется строкам списка, у которых нет своих юрлица и склада
 const rcptTo=()=>`<div class="grid2 rc-to"><div class="field"><label for="rc-ent">Всё это приходит на: юрлицо</label><select id="rc-ent" class="inp" data-on="rcpt-def" data-f="entityId">${rcptOpts(S.entities,RCPT.entityId)}</select></div><div class="field"><label for="rc-city">Склад (город)</label><select id="rc-city" class="inp" data-on="rcpt-def" data-f="cityId">${rcptOpts(S.cities,RCPT.cityId)}</select></div></div>`;
-const RC_PLACEHOLDER='Например (название, количество, юрлицо и склад — по желанию):&#10;Солнечная панель 550 Вт\t20\tИП\tИркутск&#10;Кабель PV 4 мм2\t100';
+const RC_PLACEHOLDER='Например (артикул или название, количество, юрлицо и склад — по желанию):&#10;Солнечная панель 550 Вт\t20\tИП\tИркутск&#10;Кабель PV 4 мм2\t100';
+// Пример для инструкции: три строки на настоящих названиях из номенклатуры (покороче, чтобы читались); вторая — по артикулу, если он у товара есть
+function rcptExample(){
+  const all=S.products.filter(p=>p.name),short=all.filter(p=>p.name.length<=60),ps=(short.length>=3?short:all).slice(0,3);
+  // юрлицо и склад — в каждой строке, чтобы пример разобрался сам, без выбора «всё это приходит на»; первая и вторая строки — на одно юрлицо и город, третья — на другие
+  const e=S.entities[0],c=S.cities[0],e2=S.entities[1]||e,c2=S.cities[1]||c,qty=[10,5,20];
+  return ps.map((p,i)=>({id:i===1&&Catalog.skuOf(p)?Catalog.skuOf(p):p.name,qty:qty[i],entity:(i<2?e:e2)?.name||'',city:(i<2?c:c2)?.name||''}));
+}
+const rcptExampleText=()=>rcptExample().map(r=>[r.id,r.qty,r.entity,r.city].join('\t').replace(/\t+$/,'')).join('\n');
+const RCPT_TABS=[['paste','Вставить список'],['manual','Ввести вручную']];
+const rcptTabs=()=>'<div class="chips" role="tablist">'+RCPT_TABS.map(([k,t])=>'<button type="button" role="tab" class="fchip'+(RCPT.tab===k?' on':'')+'" aria-selected="'+(RCPT.tab===k)+'" data-act="rcpt-tab" data-tab="'+k+'">'+t+'</button>').join('')+'</div>';
+function rcptPasteTab(){
+  const ex=rcptExample();
+  const exTbl=ex.length?'<div class="xs"><table class="tbl rc-ex"><thead><tr><th>Артикул или название</th><th class="num">Количество</th><th>Юрлицо</th><th>Склад</th></tr></thead><tbody>'+ex.map(r=>'<tr><td>'+esc(r.id)+'</td><td class="num">'+r.qty+'</td><td>'+esc(r.entity)+'</td><td>'+esc(r.city)+'</td></tr>').join('')+'</tbody></table></div><div><button type="button" class="btn sm" data-act="rcpt-example">Вставить пример</button></div>':'';
+  return '<div class="rc-help"><p class="m0"><b>Колонки: Артикул или Название — Количество — Юрлицо — Склад</b> (юрлицо и склад можно не писать: тогда берётся то, что выбрано выше).</p>'
+    +'<p class="hint m0">Столбцы можно копировать прямо из Excel: выделите их вместе со строками, нажмите Ctrl+C и вставьте сюда (Ctrl+V). Первая строка может быть заголовком. Товар ищется сперва по артикулу, потом по ключу, потом по названию. Остаток вырастет только после «Оприходовать» на следующем шаге.</p>'
+    +exTbl+'</div>'
+    +'<div class="field"><label for="rc-text">Вставьте список из Excel</label><textarea id="rc-text" class="inp rc-text" rows="8" placeholder="'+RC_PLACEHOLDER+'" spellcheck="false">'+esc(RCPT.text)+'</textarea></div>'
+    +'<div><label class="btn" for="rc-file">'+ic('plus')+'Или выбрать файл CSV / TXT</label><input id="rc-file" class="sr" type="file" accept=".csv,.txt,text/csv,text/plain" data-on="rcpt-file"></div>';
+}
+// ——— вкладка «Ввести вручную»: строки таблицы, товар ищется по названию и артикулу ———
+// Строки живут в RCPT.manual; «Проверить» превращает их в те же строки списка (Import.manualRows) и ведёт на тот же шаг проверки и ту же applyReceipt.
+const rcmRow=()=>({pid:'',q:'',isNew:false,newName:'',sku:'',qty:'',entity:'',city:''});
+const rcmSel=(list,cur,i,f,label)=>'<select class="inp" aria-label="'+label+', строка '+(i+1)+'" data-on="rcm-f" data-f="'+f+'" data-i="'+i+'"><option value="">как выше</option>'+list.map(x=>'<option value="'+esc(x.id)+'"'+(x.id===cur?' selected':'')+'>'+esc(x.name)+'</option>').join('')+'</select>';
+// Результаты поиска под полем: до шести товаров (название, артикул, свободно) и «Новый товар», если есть право catalog
+function rcmFound(r,i){
+  const q=String(r.q||'').trim();
+  if(q.length<2) return '';
+  const hits=Catalog.query(S,{q}).slice(0,6);
+  const list=hits.map(p=>'<button type="button" class="dpr" data-act="rcm-pick" data-i="'+i+'" data-pid="'+esc(p.id)+'"><span class="dpr-n">'+esc(p.name)+'</span><small>'+esc(skuText(p))+' · '+esc(dspFreeText(p.id))+'</small></button>').join('');
+  const add=can('catalog')?'<button type="button" class="dpr" data-act="rcm-new" data-i="'+i+'"><span class="dpr-n">Новый товар «'+esc(q)+'»</span><small>завести в номенклатуре</small></button>':'';
+  return list+add||'<p class="hint m0">В номенклатуре такого нет.</p>';
+}
+function rcmProduct(r,i){
+  const p=r.pid?product(r.pid):null;
+  if(p) return '<div class="rcm-pick"><span><b>'+esc(p.name)+'</b> '+skuTag(p)+'</span><button type="button" class="link" data-act="rcm-clear" data-i="'+i+'">Сменить</button></div>';
+  if(r.isNew) return '<div class="rcm-new"><input class="inp" aria-label="Название нового товара, строка '+(i+1)+'" placeholder="Название нового товара" value="'+esc(r.newName)+'" data-on="rcm-f" data-f="newName" data-i="'+i+'" autocomplete="off">'
+    +'<input class="inp" aria-label="Артикул нового товара, строка '+(i+1)+'" placeholder="Артикул (необязательно)" maxlength="'+Catalog.SKU_MAX+'" value="'+esc(r.sku)+'" data-on="rcm-f" data-f="sku" data-i="'+i+'" autocomplete="off">'
+    +'<button type="button" class="link" data-act="rcm-clear" data-i="'+i+'">Выбрать из номенклатуры</button></div>';
+  return '<div class="rcm-find"><input class="inp" type="search" aria-label="Товар, строка '+(i+1)+': название или артикул" placeholder="Название или артикул" value="'+esc(r.q)+'" data-on="rcm-q" data-i="'+i+'" autocomplete="off"><div class="dpres rcm-res" id="rcm-res-'+i+'">'+rcmFound(r,i)+'</div></div>';
+}
+const rcmTr=(r,i)=>'<tr id="rcm-r-'+i+'"><td class="num muted">'+(i+1)+'</td><td class="rcm-pc">'+rcmProduct(r,i)+'</td>'
+  +'<td class="num"><input class="inp rc-q" inputmode="numeric" aria-label="Количество, строка '+(i+1)+'" value="'+esc(r.qty)+'" data-on="rcm-f" data-f="qty" data-i="'+i+'" autocomplete="off"></td>'
+  +'<td class="rc-to-c">'+rcmSel(S.entities,r.entity,i,'entity','Юрлицо')+rcmSel(S.cities,r.city,i,'city','Склад (город)')+'</td>'
+  +'<td><button type="button" class="btn ghost icon sm" data-act="rcm-del" data-i="'+i+'" aria-label="Убрать строку '+(i+1)+'">'+ic('x')+'</button></td></tr>';
+function rcptManualTab(){
+  return '<p class="m0">Выберите товар (поиск по названию и артикулу), впишите количество. Юрлицо и склад можно не выбирать: тогда берётся то, что выбрано выше. Нет такого товара — «Новый товар».</p>'
+    +'<div class="xs"><table class="tbl rc-t"><thead><tr><th class="num">№</th><th>Товар</th><th class="num">Количество</th><th>Юрлицо и склад</th><th></th></tr></thead><tbody id="rcm-body">'+RCPT.manual.map(rcmTr).join('')+'</tbody></table></div>'
+    +'<div><button type="button" class="btn sm" data-act="rcm-add">'+ic('plus')+'Добавить строку</button></div>';
+}
 function rcptInput(){
-  return `<form data-form="rcpt-parse" novalidate>${mHead('Оприходовать товар')}<div class="modal-b rcpt">
-    <p class="m0">Товар приехал без поставки? Вставьте список из Excel (или написанный от руки): в строке — название или ключ товара и количество, по желанию ещё юрлицо и склад. Первая строка может быть заголовком. Остаток вырастет только после «Оприходовать» на следующем шаге.</p>
-    ${rcptTo()}
-    <div class="field"><label for="rc-text">Вставьте список из Excel</label><textarea id="rc-text" class="inp rc-text" rows="9" placeholder="${RC_PLACEHOLDER}" spellcheck="false">${esc(RCPT.text)}</textarea></div>
-    <div><label class="btn" for="rc-file">${ic('plus')}Или выбрать файл CSV / TXT</label><input id="rc-file" class="sr" type="file" accept=".csv,.txt,text/csv,text/plain" data-on="rcpt-file"></div>
-    <p class="err" id="rc-err" hidden></p></div>${mFoot('Разобрать список')}</form>`;
+  const manual=RCPT.tab==='manual';
+  return '<form data-form="'+(manual?'rcpt-manual':'rcpt-parse')+'" novalidate>'+mHead('Оприходовать товар')+'<div class="modal-b rcpt">'
+    +'<p class="m0">Товар приехал без поставки? Внесите его списком из Excel или вручную. Остаток вырастет только после «Оприходовать» на следующем шаге.</p>'
+    +rcptTabs()+rcptTo()+(manual?rcptManualTab():rcptPasteTab())
+    +'<p class="err" id="rc-err" hidden></p></div>'+mFoot(manual?'Проверить':'Разобрать список')+'</form>';
 }
 // Одна строка предпросмотра: решение по товару — подпись и выбор («это тот же: …», «создать новый», «пропустить»)
 function rcptDecision(L,r){
@@ -307,19 +378,22 @@ function rcptDecision(L,r){
   const o=(v,t,sel)=>`<option value="${esc(v)}"${sel?' selected':''}>${esc(t)}</option>`;
   // что выбрано сейчас: пропуск, новый товар, один из похожих; найденный сам — пустое значение
   const sel=r.pick==='skip'?'skip':L.match==='found'?'':L.match==='new'?'new':L.match==='picked'?L.productId:'',opts=[];
-  opts.push(o('',L.match==='found'?'найден: '+L.productName:'— выберите —',sel===''));
+  const withSku=(n,k)=>k?n+' (арт. '+k+')':n;
+  opts.push(o('',L.match==='found'?'найден: '+withSku(L.productName,L.productSku):'— выберите —',sel===''));
   if(L.match!=='found'){
-    for(const c of L.candidates) opts.push(o(c.id,'это тот же: '+c.name,sel===c.id));
+    for(const c of L.candidates) opts.push(o(c.id,'это тот же: '+withSku(c.name,c.sku),sel===c.id));
     if(can('catalog')) opts.push(o('new','создать новый товар',sel==='new'));
   }
   opts.push(o('skip','пропустить',sel==='skip'));
-  const note=L.status==='error'?`<small class="bad-t">${esc(L.error)}</small>`:L.status==='found'||L.status==='picked'?`<small class="muted">${esc(L.productName)}</small>`:L.status==='new'?'<small class="muted">категория, цена и прочее — нет данных</small>':L.status==='choose'&&!L.candidates.length?'<small class="muted">похожих в номенклатуре нет</small>':'';
-  return `${pill}${note}<select class="inp" aria-label="Что делать со строкой ${L.line}" data-on="rcpt-pick" data-i="${L.index}">${opts.join('')}</select>`;
+  const note=L.status==='error'?`<small class="bad-t">${esc(L.error)}</small>`:L.status==='found'||L.status==='picked'?`<small class="muted">${esc(withSku(L.productName,L.productSku))}</small>`:L.status==='new'?'<small class="muted">категория, цена и прочее — нет данных</small>':L.status==='choose'&&!L.candidates.length?'<small class="muted">похожих в номенклатуре нет</small>':'';
+  // новый товар: в какую категорию его заводить (из дерева, «Без раздела» — по умолчанию или как выбрано выше для всех новых)
+  const cat=L.status==='new'?`<select class="inp" aria-label="Категория нового товара, строка ${L.line}" data-on="rcpt-cat" data-i="${L.index}">${catOptions(L.cat||Catalog.NO_CAT,{noCat:true})}</select>`:'';
+  return `${pill}${note}<select class="inp" aria-label="Что делать со строкой ${L.line}" data-on="rcpt-pick" data-i="${L.index}">${opts.join('')}</select>${cat}`;
 }
 function rcptRow(L,r){
   const cell=(list,raw,res,f)=>`<select class="inp" aria-label="${f==='entity'?'Юрлицо':'Склад (город)'}, строка ${L.line}" data-on="rcpt-f" data-f="${f}" data-i="${L.index}"><option value="">как выше</option>${list.map(x=>`<option value="${esc(x.id)}"${raw&&res===x.id?' selected':''}>${esc(x.name)}</option>`).join('')}${raw&&!res?`<option value="${esc(raw)}" selected>«${esc(raw)}» — нет в справочнике</option>`:''}</select>`;
   return `<tr id="rc-r-${L.index}" class="${L.status==='skip'?'rc-skip':''}"><td class="num muted">${L.line}</td>
-    <td><input class="inp" aria-label="Название, строка ${L.line}" value="${esc(r.name)}" data-on="rcpt-f" data-f="name" data-i="${L.index}" autocomplete="off"></td>
+    <td><input class="inp" aria-label="Название, строка ${L.line}" placeholder="Название" value="${esc(r.name)}" data-on="rcpt-f" data-f="name" data-i="${L.index}" autocomplete="off"><input class="inp rc-sku" aria-label="Артикул, строка ${L.line}" placeholder="Артикул" maxlength="${Catalog.SKU_MAX}" value="${esc(r.sku||'')}" data-on="rcpt-f" data-f="sku" data-i="${L.index}" autocomplete="off"></td>
     <td><div class="rc-dec" id="rc-st-${L.index}">${rcptDecision(L,r)}</div></td>
     <td class="num"><input class="inp rc-q" inputmode="numeric" aria-label="Количество, строка ${L.line}" value="${esc(r.qty)}" data-on="rcpt-f" data-f="qty" data-i="${L.index}" autocomplete="off"></td>
     <td class="rc-to-c">${cell(S.entities,str0(r.entity),L.entityId,'entity')}${cell(S.cities,str0(r.city),L.cityId,'city')}</td></tr>`;
@@ -337,8 +411,9 @@ function rcptSum(P){
 }
 function rcptCheck(){
   const P=rcptPlan(),h=RCPT.header;
+  const newCat=can('catalog')&&P.lines.some(L=>L.match==='new')?`<div class="field rc-cat"><label for="rc-cat">Новые товары — в категорию</label><select id="rc-cat" class="inp" data-on="rcpt-def" data-f="cat">${catOptions(RCPT.cat||Catalog.NO_CAT,{noCat:true})}</select></div>`:'';
   return `<form data-form="rcpt-go" novalidate>${mHead('Оприходовать товар: проверьте список')}<div class="modal-b rcpt">
-    ${rcptTo()}
+    ${rcptTo()}${newCat}
     ${h?`<p class="hint m0">Первая строка принята за заголовок и не оприходуется: «${esc(h)}».</p>`:''}
     <div class="xs"><table class="tbl rc-t"><thead><tr><th class="num">№</th><th>Из списка</th><th>Что решено</th><th class="num">Количество</th><th>Куда (юрлицо, склад)</th></tr></thead><tbody id="rc-body">${P.lines.map(L=>rcptRow(L,RCPT.rows[L.index])).join('')}</tbody></table></div>
     <div class="stack-s" id="rc-sum">${rcptSum(P)}</div>
@@ -382,6 +457,23 @@ A['rcpt-open']=()=>{
   RCPT=rcptNew();openModal('receipt');
 };
 A['rcpt-back']=()=>{RCPT.stage='input';rcptDraw()};
+A['rcpt-tab']=el=>{const t=el.dataset.tab;if(!RCPT||!RCPT_TABS.some(x=>x[0]===t)) return;const x=RCPT.tab==='paste'&&RCPT.stage==='input'?byId('rc-text'):null;if(x) RCPT.text=x.value;RCPT.tab=t;rcptDraw()};
+A['rcpt-example']=()=>{RCPT.text=rcptExampleText();rcptDraw()};
+// Ручной ввод: строки в RCPT.manual, правка полей — без перерисовки (фокус остаётся), выбор товара и «+ строка» — перерисовка таблицы
+const rcmDraw=()=>{const b=byId('rcm-body');if(b) b.innerHTML=RCPT.manual.map(rcmTr).join('')};
+A['rcm-add']=()=>{RCPT.manual.push(rcmRow());rcmDraw()};
+A['rcm-del']=el=>{const i=Number(el.dataset.i);RCPT.manual.splice(i,1);if(!RCPT.manual.length) RCPT.manual.push(rcmRow());rcmDraw()};
+A['rcm-pick']=el=>{const r=RCPT.manual[Number(el.dataset.i)];if(!r) return;r.pid=el.dataset.pid;r.q='';r.isNew=false;rcmDraw()};
+A['rcm-new']=el=>{const r=RCPT.manual[Number(el.dataset.i)];if(!r||!can('catalog')) return;r.isNew=true;r.pid='';r.newName=String(r.q||'').trim();r.q='';rcmDraw()};
+A['rcm-clear']=el=>{const r=RCPT.manual[Number(el.dataset.i)];if(!r) return;r.pid='';r.isNew=false;r.q='';rcmDraw()};
+ON.input['rcm-q']=t=>{const i=Number(t.dataset.i),r=RCPT.manual[i];if(!r) return;r.q=t.value;const o=byId('rcm-res-'+i);if(o) o.innerHTML=rcmFound(r,i)};
+ON.input['rcm-f']=ON.change['rcm-f']=t=>{const r=RCPT.manual[Number(t.dataset.i)];if(r&&['newName','sku','qty','entity','city'].includes(t.dataset.f)) r[t.dataset.f]=t.value};
+// «Проверить»: строки таблицы → строки списка (Import.manualRows) → тот же шаг проверки, что у вставки
+FORMS['rcpt-manual']=()=>{
+  const r=Import.manualRows(S,RCPT.manual);
+  if(r.problems.length) return showErr('rc-err',r.problems[0]);
+  Object.assign(RCPT,{rows:r.rows,header:null,stage:'check'});rcptDraw();
+};
 A['rcpt-again']=()=>{RCPT=rcptNew();rcptDraw()};
 A['rcpt-all-new']=()=>{
   const P=rcptPlan();
@@ -394,7 +486,7 @@ A['rcpt-journal']=()=>{
 FORMS['rcpt-parse']=()=>rcptParse();
 // «Оприходовать»: Import.applyReceipt по тому же плану, что на экране; render() сохраняет изменения одним save()
 FORMS['rcpt-go']=()=>{
-  const r=Import.applyReceipt(S,RCPT.rows,{entityId:RCPT.entityId,cityId:RCPT.cityId},S.me,new Date());
+  const r=Import.applyReceipt(S,RCPT.rows,{entityId:RCPT.entityId,cityId:RCPT.cityId,cat:RCPT.cat},S.me,new Date());
   if(!r.ok) return showErr('rc-err',r.reason);
   RCPT.done=r;RCPT.stage='done';
   render();rcptDraw();
@@ -404,11 +496,12 @@ ON.change['rcpt-def']=t=>{RCPT[t.dataset.f]=t.value;if(RCPT.stage==='check') rcp
 ON.change['rcpt-f']=t=>{
   const i=Number(t.dataset.i),r=RCPT.rows[i];if(!r) return;
   r[t.dataset.f]=t.value;
-  // другое название — прежнее решение («это тот же», «новый») к нему уже не относится
-  if(t.dataset.f==='name') r.pick='';
+  // другое название или артикул — прежнее решение («это тот же», «новый») к ним уже не относится
+  if(t.dataset.f==='name'||t.dataset.f==='sku') r.pick='';
   rcptRefresh(i);
 };
 ON.change['rcpt-pick']=t=>{const i=Number(t.dataset.i);if(RCPT.rows[i]){RCPT.rows[i].pick=t.value;rcptRefresh(i)}};
+ON.change['rcpt-cat']=t=>{const i=Number(t.dataset.i);if(RCPT.rows[i]){RCPT.rows[i].cat=t.value;rcptRefresh(i)}};
 // Файл CSV / TXT: тот же разбор кодировки, что у «Переноса» (Import.decode); текст ложится в поле и сразу разбирается
 ON.change['rcpt-file']=async t=>{
   const f=t.files&&t.files[0];
@@ -419,7 +512,7 @@ ON.change['rcpt-file']=async t=>{
 };
 
 // ——— регистрация в реестрах оболочки ———
-SEARCH.push({kind:'product',label:'Товар',order:10,find:q=>!can('stock')?[]:Catalog.query(S,{q}).slice(0,6).map(p=>{const k=stockOf(p.id);return {title:p.name,sub:k.known?`свободно ${qtyOf(k.free,p)}`:'остаток: нет данных',open:`data-act="open-product" data-pid="${esc(p.id)}"`}})});
+SEARCH.push({kind:'product',label:'Товар',order:10,find:q=>!can('stock')?[]:Catalog.query(S,{q}).slice(0,6).map(p=>{const k=stockOf(p.id);return {title:p.name,sub:(Catalog.skuOf(p)?`арт. ${Catalog.skuOf(p)} · `:'')+(k.known?`свободно ${qtyOf(k.free,p)}`:'остаток: нет данных'),open:`data-act="open-product" data-pid="${esc(p.id)}"`}})});
 DRAWERS.product=id=>{const p=can('stock')?product(id):null;return p?dProduct(p):null};
 regRef('product','товар',id=>!!product(id),'open-product','pid');
 ON.input.sq=t=>{S.ui.sq=t.value;refreshStock()};
@@ -449,7 +542,7 @@ FORMS['stock-sell']=f=>{
   if(rs) Deals.keepTrail(S,rs);
   const r=Stock.sell(S,{...arg,qty:byId('ps-qty').value,doc:byId('ps-doc').value.trim()},S.me,now);
   if(!r.ok) return showErr('ps-err',r.reason);
-  const p=product(pid),m=r.move,what=`${low(p.name)} — ${qtyOf(m.qty,p)} со склада ${cellText(m.entityId,m.cityId)}`;
+  const p=product(pid),m=r.move,what=`${low(Catalog.label(p))} — ${qtyOf(m.qty,p)} со склада ${cellText(m.entityId,m.cityId)}`;
   // из сделки или по резерву сделки: в её ленте остаётся запись о списании
   if(did) Feed.add(S,{t:'deal',id:did},{kind:'item',text:`Списано при продаже: ${what}${r.reserve?' (по резерву)':''}.`,by:S.me,at:now,data:r.reserve?{reserveId:r.reserve.id,sold:true}:undefined});
   closeModal();render();
@@ -469,7 +562,7 @@ A['reserve-until']=el=>openModal('reserveUntil',el.dataset.id);
 MODALS.reserveUntil=id=>{
   const r=S.reserves.find(x=>x.id===id),p=r&&product(r.productId);
   if(!r) return `${mHead('Срок резерва')}<div class="modal-b"><p class="m0">Резерва уже нет.</p></div>`;
-  return `<form data-form="reserve-until" data-id="${esc(id)}" novalidate>${mHead('Срок резерва: '+esc(p?p.name:'нет данных: товар'))}<div class="modal-b">
+  return `<form data-form="reserve-until" data-id="${esc(id)}" novalidate>${mHead('Срок резерва: '+esc(Catalog.label(p)))}<div class="modal-b">
     <p class="m0">${num(r.qty)} · ${esc(Stock.forText(S,r,S.me))}. Сейчас — ${r.until?'до '+fD(r.until):'нет данных: срок'}.</p>
     <div class="field"><label for="ru-until">Резерв до</label><input id="ru-until" class="inp" type="date" value="${esc(iso(r.until||day(Stock.RESERVE_DAYS)))}"></div>
     <p class="err" id="ru-err" hidden></p></div>${mFoot('Сохранить')}</form>`;
@@ -480,7 +573,119 @@ FORMS['reserve-until']=f=>{
   closeModal();render();toast(`Срок резерва — до ${fD(r.reserve.until)}. В истории резерва есть запись.`);
 };
 A['stock-tab']=el=>{S.ui.stockTab=el.dataset.tab;render()};
-A['stock-cat']=el=>{S.ui.cat=el.dataset.cat;S.ui.page=0;S.ui.span=1;render()};
+// Выбрали категорию: она раскрывается вместе с родителями, на узком экране дерево сворачивается обратно под кнопку
+A['stock-cat']=el=>{
+  const c=el.dataset.cat,o=S.ui.catOpen||(S.ui.catOpen={});
+  S.ui.cat=c;S.ui.page=0;S.ui.span=1;S.ui.catPane=false;
+  if(c!==CAT_ALL){o[c]=true;for(const a of catAncestors(c)) o[a]=true}
+  render();
+};
+A['cat-toggle']=el=>{const o=S.ui.catOpen||(S.ui.catOpen={}),c=el.dataset.cat;o[c]=!o[c];render()};
+A['cat-pane']=()=>{S.ui.catPane=!S.ui.catPane;render()};
+
+// ——— «Категории»: добавить, переименовать, перенести, удалить пустую ———
+// Дерево ведёт Catalog (catAdd / catEdit / catDelete): он же обновляет пути товаров, здесь только окна. Одно действие — один save() (render).
+const catCount=(n,one,few,many)=>`${num(n)} ${pl(n,one,few,many)}`;
+const catNodeId=path=>{const n=path?Catalog.nodeOf(S,path):null;return n?n.id:''};
+MODALS.categories=()=>{
+  const rows=Catalog.rows(S).filter(r=>!r.virtual);
+  return `<form data-form="cat-add" novalidate>${mHead('Категории товаров')}<div class="modal-b">
+    <p class="m0">Список «Товары и остатки» строится по этим категориям. Например: «Электрика» → «Автоматы» → «АВР». Категория бывает верхнего уровня или внутри другой.</p>
+    <div class="grid2"><div class="field"><label for="ct-name">Название новой категории</label><input id="ct-name" class="inp" maxlength="100" autocomplete="off" placeholder="Например: Автоматы"></div>
+      <div class="field"><label for="ct-parent">Куда добавить</label><select id="ct-parent" class="inp">${catOptions(S.ui.catPick||'',{top:'Верхний уровень'})}</select></div></div>
+    <p class="err" id="ct-err" hidden></p>
+    <h4 class="sh">Все категории</h4>
+    ${rows.length?`<ul class="ct-mlist">${rows.map(r=>`<li style="--d:${r.depth}"><span class="ct-mn">${esc(r.name)}</span><small class="muted">${catCount(r.total,'товар','товара','товаров')}</small><button type="button" class="btn sm ghost" data-act="cat-edit" data-id="${esc(r.id)}">Изменить</button></li>`).join('')}</ul>`:'<p class="muted m0">Категорий пока нет.</p>'}</div>
+    <div class="modal-f"><button type="button" class="btn" data-act="close-modal">Закрыть</button><button type="submit" class="btn pri">${ic('plus')}Добавить категорию</button></div></form>`;
+};
+// Перерисовать окно, не закрывая его (после добавления, правки, удаления)
+function catDraw(){
+  const m=byId('modal-root').querySelector('.modal'),t=S.ui.modal&&S.ui.modal.type;
+  if(!m||(t!=='categories'&&t!=='catEdit')) return;
+  m.innerHTML=MODALS[t](S.ui.modal.id);
+}
+A['cat-manage']=()=>{if(!can('catalog')){toast('У вашей роли нет права менять категории.','warn');return}openModal('categories')};
+FORMS['cat-add']=()=>{
+  const parent=byId('ct-parent').value,r=Catalog.catAdd(S,{name:byId('ct-name').value,parentId:catNodeId(parent)});
+  if(!r.ok) return showErr('ct-err',r.reason);
+  S.ui.catPick=parent;
+  const o=S.ui.catOpen||(S.ui.catOpen={});for(const a of catAncestors(r.path)) o[a]=true;
+  render();catDraw();
+  const n=byId('ct-name');if(n) n.focus();
+  toast(`Категория «${r.path}» добавлена.`);
+};
+MODALS.catEdit=id=>{
+  const n=(S.categories||[]).find(c=>c.id===id);
+  if(!n) return `${mHead('Категория')}<div class="modal-b"><p class="m0">Такой категории уже нет.</p></div><div class="modal-f"><button type="button" class="btn" data-act="cat-back">К списку категорий</button></div>`;
+  const b=Catalog.busy(S,id),busy=b.products||b.children;
+  return `<form data-form="cat-edit" data-id="${esc(id)}" novalidate>${mHead('Категория «'+esc(n.name)+'»')}<div class="modal-b">
+    <p class="m0 muted">Сейчас: ${esc(b.path)} · ${catCount(b.products,'товар','товара','товаров')}, ${catCount(b.children,'подкатегория','подкатегории','подкатегорий')}.</p>
+    <div class="grid2"><div class="field"><label for="ce-name">Название</label><input id="ce-name" class="inp" maxlength="100" value="${esc(n.name)}" autocomplete="off"></div>
+      <div class="field"><label for="ce-parent">Внутри</label><select id="ce-parent" class="inp">${catOptions(catParent(b.path),{top:'Верхний уровень',skipId:id})}</select></div></div>
+    <p class="hint">Новое название и новое место сразу меняют категорию у всех товаров внутри.</p>
+    <p class="hint">${busy?'Удалить можно только пустую категорию: сначала перенесите или удалите товары и подкатегории.':'Категория пустая — её можно удалить.'}</p>
+    <p class="err" id="ce-err" hidden></p></div>
+    <div class="modal-f"><button type="button" class="btn ghost" data-act="cat-del" data-id="${esc(id)}"${busy?' disabled':''}>Удалить</button><span class="ct-sp"></span><button type="button" class="btn" data-act="cat-back">К списку</button><button type="submit" class="btn pri">Сохранить</button></div></form>`;
+};
+A['cat-edit']=el=>openModal('catEdit',el.dataset.id);
+A['cat-back']=()=>openModal('categories');
+FORMS['cat-edit']=f=>{
+  const id=f.dataset.id,before=S.ui.cat,was=Catalog.pathOf(S,id);
+  const r=Catalog.catEdit(S,id,{name:byId('ce-name').value,parentId:catNodeId(byId('ce-parent').value)});
+  if(!r.ok) return showErr('ce-err',r.reason);
+  // выбранная в списке категория поехала вместе с переименованной — выбор остаётся на ней
+  if(before===was||String(before).startsWith(was+Catalog.SEP)) S.ui.cat=r.now+String(before).slice(was.length);
+  const o=S.ui.catOpen||{},moved={};
+  for(const k of Object.keys(o)) moved[k===was||k.startsWith(was+Catalog.SEP)?r.now+k.slice(was.length):k]=o[k];
+  S.ui.catOpen=moved;
+  render();openModal('categories');
+  toast(r.moved?`Категория: «${r.now}». Пути у товаров обновлены: ${num(r.moved)}.`:`Категория: «${r.now}».`);
+};
+A['cat-del']=el=>{
+  const r=Catalog.catDelete(S,el.dataset.id);
+  if(!r.ok){const e=byId('ce-err');if(e){e.textContent=r.reason;e.hidden=false}return}
+  if(S.ui.cat===r.path) S.ui.cat=CAT_ALL;
+  render();openModal('categories');
+  toast(`Категория «${r.path}» удалена.`);
+};
+// «Сменить категорию» в карточке товара
+MODALS.productCat=pid=>{
+  const p=product(pid);
+  if(!p) return `${mHead('Категория товара')}<div class="modal-b"><p class="m0">Такого товара нет.</p></div>`;
+  return `<form data-form="product-cat" data-pid="${esc(pid)}" novalidate>${mHead('Категория товара')}<div class="modal-b">
+    <p class="m0">${esc(Catalog.label(p))}</p>
+    <div class="field"><label for="pc-cat">Категория</label><select id="pc-cat" class="inp">${catOptions(p.cat,{noCat:true})}</select></div>
+    <p class="err" id="pc-err" hidden></p></div>${mFoot('Сохранить')}</form>`;
+};
+A['product-cat']=el=>{if(!can('catalog')){toast('У вашей роли нет права менять категорию товара.','warn');return}openModal('productCat',el.dataset.pid)};
+FORMS['product-cat']=f=>{
+  const r=Catalog.setCat(S,f.dataset.pid,byId('pc-cat').value);
+  if(!r.ok) return showErr('pc-err',r.reason);
+  closeModal();render();toast(`Категория товара: «${r.product.cat}».`);
+};
+// ——— артикул товара: «Изменить» в карточке ———
+// Такой же артикул у другого товара — предупреждение, не запрет (слово директора: артикул — поле, а не ключ). Текст общий с формой «Новый товар».
+const skuDupText=(sku,exceptId)=>{
+  const same=Catalog.bySku(S,sku,exceptId);
+  return same.length?'Внимание: такой артикул уже есть у '+same.slice(0,3).map(x=>'«'+x.name+'»').join(', ')+(same.length>3?' и ещё '+(same.length-3):'')+'. Сохранить можно.':'';
+};
+MODALS.productSku=pid=>{
+  const p=product(pid);
+  if(!p) return `${mHead('Артикул товара')}<div class="modal-b"><p class="m0">Такого товара нет.</p></div>`;
+  return `<form data-form="product-sku" data-pid="${esc(pid)}" novalidate>${mHead('Артикул товара')}<div class="modal-b">
+    <p class="m0">${esc(p.name)}</p>
+    <div class="field"><label for="ps-sku">Артикул</label><input id="ps-sku" class="inp" maxlength="${Catalog.SKU_MAX}" value="${esc(Catalog.skuOf(p))}" data-on="sku-dup" data-pid="${esc(pid)}" data-hint="ps-dup" autocomplete="off" placeholder="Пусто — «нет данных: артикул»"></div>
+    <p class="hint warn-t" id="ps-dup" aria-live="polite" hidden></p>
+    <p class="err" id="ps-err" hidden></p></div>${mFoot('Сохранить')}</form>`;
+};
+A['product-sku']=el=>{if(!can('catalog')){toast('У вашей роли нет права менять артикул.','warn');return}openModal('productSku',el.dataset.pid)};
+ON.input['sku-dup']=t=>{const h=byId(t.dataset.hint);if(!h) return;const x=skuDupText(t.value,t.dataset.pid||'');h.textContent=x;h.hidden=!x};
+FORMS['product-sku']=f=>{
+  const r=Catalog.setSku(S,f.dataset.pid,byId('ps-sku').value);
+  if(!r.ok) return showErr('ps-err',r.reason);
+  closeModal();render();
+  toast(r.product.sku?`Артикул: ${r.product.sku}.${r.same.length?' '+skuDupText(r.product.sku,r.product.id):''}`:'Артикул убран: «нет данных: артикул».');
+};
 A['stock-page']=el=>{S.ui.page=parseInt(el.dataset.page,10)||0;S.ui.span=1;byId('stock-tbl').innerHTML=stockTable();byId('scroll').scrollTop=0};
 // «Показать ещё» — дописать следующую страницу под видимыми (прокрутка остаётся), «Показать всё» — весь список с начала
 // Номер страницы, введённый вручную: за пределами 1…pages — ближайшая крайняя

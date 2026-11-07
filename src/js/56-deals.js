@@ -211,7 +211,7 @@ function dealLine(d,it,i,edit,pr){
     if(can('sell')) btn+=`<button type="button" class="btn sm" data-act="stock-sell" data-pid="${esc(p.id)}" data-did="${id}">Списать при продаже</button>`;
   }else info='<small class="dl-st">своя строка — не из каталога, резерва нет</small>';
   const numf=(f,label,val,ph)=>edit?`<div class="field"><label for="di-${f}-${i}">${label}</label><input id="di-${f}-${i}" class="inp sm" type="number" min="0" step="any" inputmode="decimal" data-on="deal-i" data-id="${id}" data-i="${i}" data-f="${f}" value="${val===null||val===undefined?'':esc(val)}"${ph?` placeholder="${ph}"`:''}></div>`:`<div class="field"><span class="lbl">${label}</span><span>${val===null||val===undefined||val===''?dealNoData('цена'):esc(val)}</span></div>`;
-  return `<li class="dline"><div class="dl-h"><div class="dl-n"><b>${esc(name)}</b>${info}</div>${edit?`<button type="button" class="btn ghost icon sm" data-act="deal-del-i" data-id="${id}" data-i="${i}" aria-label="Убрать строку «${esc(name)}»">${ic('x')}</button>`:''}</div>
+  return `<li class="dline"><div class="dl-h"><div class="dl-n"><b>${esc(name)}</b>${p?skuTag(p):''}${info}</div>${edit?`<button type="button" class="btn ghost icon sm" data-act="deal-del-i" data-id="${id}" data-i="${i}" aria-label="Убрать строку «${esc(name)}»">${ic('x')}</button>`:''}</div>
     <div class="dl-in">${numf('qty','Кол-во',it.qty)}${pr?`${numf('price','Цена, ₽',typeof it.price==='number'?it.price:null,'нет данных: цена')}${numf('disc','Скидка, %',it.disc||0)}<div class="field"><span class="lbl">Сумма</span><output class="dl-sum" id="di-sum-${i}">${esc(dealLineSum(it))}</output></div>`:''}</div>
     <div class="dl-f">${pr?`<span id="di-src-${i}">${dealPriceSrc(it)}</span>`:''}${res}${btn}</div></li>`;
 }
@@ -222,7 +222,7 @@ function dealFound(d,q){
   const list=Catalog.query(S,{q:query}).sort((a,b)=>(b.inCatalog?1:0)-(a.inCatalog?1:0)).slice(0,8);
   if(!list.length) return '<p class="hint">В каталоге такого нет. Можно добавить свою строку ниже.</p>';
   const pr=can('prices');
-  return list.map(p=>{const k=stockOf(p.id);return `<button type="button" class="dpr" data-act="deal-add-p" data-id="${esc(d.id)}" data-pid="${esc(p.id)}"><span class="dpr-n">${esc(p.name)}</span><small>${pr?(typeof p.price==='number'?rub(p.price):'нет данных: цена')+' · ':''}${k.known?'свободно '+qtyOf(Math.max(0,k.free),p):'остаток: нет данных'}${p.inCatalog?'':' · нет в каталоге'}</small>${ic('plus')}</button>`}).join('');
+  return list.map(p=>{const k=stockOf(p.id);return `<button type="button" class="dpr" data-act="deal-add-p" data-id="${esc(d.id)}" data-pid="${esc(p.id)}"><span class="dpr-n">${esc(p.name)}</span><small>${esc(skuText(p))} · ${pr?(typeof p.price==='number'?rub(p.price):'нет данных: цена')+' · ':''}${k.known?'свободно '+qtyOf(Math.max(0,k.free),p):'остаток: нет данных'}${p.inCatalog?'':' · нет в каталоге'}</small>${ic('plus')}</button>`}).join('');
 }
 function dealItems(d,edit){
   const pr=can('prices'),items=d.items||[],id=esc(d.id);
@@ -239,7 +239,7 @@ function dealItems(d,edit){
 function dealKp(d){
   const items=d.items||[],mgr=person(d.managerId),c=Clients.byId(S,d.clientId),now=new Date();
   const when=`${now.getDate()} ${MONF[now.getMonth()]} ${now.getFullYear()} г.`;
-  const rows=items.map((it,i)=>`<tr><td>${i+1}</td><td>${esc(Deals.itemName(S,it))}</td><td class="num">${num(it.qty)}</td><td class="num">${typeof it.price==='number'?rub(it.price):'нет данных: цена'}</td><td class="num">${it.disc?num(it.disc)+' %':'0 %'}</td><td class="num">${esc(dealLineSum(it))}</td></tr>`).join('');
+  const rows=items.map((it,i)=>`<tr><td>${i+1}</td><td>${esc(Deals.itemName(S,it))}${it.productId&&product(it.productId)?skuTag(product(it.productId)):''}</td><td class="num">${num(it.qty)}</td><td class="num">${typeof it.price==='number'?rub(it.price):'нет данных: цена'}</td><td class="num">${it.disc?num(it.disc)+' %':'0 %'}</td><td class="num">${esc(dealLineSum(it))}</td></tr>`).join('');
   const np=Deals.noPrice(d).length;
   return `<div class="kp" id="kp">
     <div class="kp-top"><span class="logo" id="kp-logo"></span><div class="kp-t"><h2>Коммерческое предложение</h2><p>№ ${esc(d.id)} · ${esc(when)}</p></div></div>
@@ -276,7 +276,7 @@ MODALS.dealReserve=key=>{
   if(!d||!it||!p) return `${mHead('Резерв')}<div class="modal-b"><p class="m0">Строка не найдена или это своя строка — резервировать нечего.</p></div>`;
   const held=Deals.reserved(S,d,p.id),all=Deals.lined(d,p.id),left=Deals.left(S,d,p.id),cell=Stock.bestCell(S,p.id),k=stockOf(p.id);
   const opt=(list,none,cur)=>[...list.map(x=>[x.id,x.name]),[Stock.ANY,none]].map(([v,n])=>`<option value="${esc(v)}"${v===cur?' selected':''}>${esc(n)}</option>`).join('');
-  return `<form data-form="deal-reserve" data-id="${esc(did)}" data-i="${+i}" novalidate>${mHead('Зарезервировать: '+esc(p.name))}<div class="modal-b">
+  return `<form data-form="deal-reserve" data-id="${esc(did)}" data-i="${+i}" novalidate>${mHead('Зарезервировать: '+esc(Catalog.label(p)))}<div class="modal-b">
     <p class="m0">Сделка ${esc(did)} · ${esc(d.client)}. ${all!==it.qty?`В сделке по этому товару ${qtyOf(all,p)} (в этой строке ${num(it.qty)})`:`В строке ${qtyOf(it.qty,p)}`}, уже в резерве ${num(held)}, осталось ${qtyOf(left,p)}. Свободно на складе: ${k.known?qtyOf(Math.max(0,k.free),p):'нет данных'} (${esc(stockNote())}).</p>
     <div class="grid2"><div class="field"><label for="dr-ent">Юрлицо</label><select id="dr-ent" class="inp" data-on="deal-rs" data-pid="${esc(p.id)}">${opt(S.entities,Stock.NO_ENTITY,cell.entityId)}</select></div><div class="field"><label for="dr-city">Город</label><select id="dr-city" class="inp" data-on="deal-rs" data-pid="${esc(p.id)}">${opt(S.cities,Stock.NO_CITY,cell.cityId)}</select></div>
       <div class="field"><label for="dr-qty">Сколько</label><input id="dr-qty" class="inp" type="number" min="1" step="any" value="${esc(left)}" inputmode="decimal"></div><div class="field"><label for="dr-until">Резерв до</label><input id="dr-until" class="inp" type="date" value="${iso(day(Stock.RESERVE_DAYS))}"></div></div>
@@ -341,12 +341,12 @@ A['deal-print']=()=>{if(typeof window!=='undefined'&&typeof window.print==='func
 A['deal-add-p']=el=>{
   const id=el.dataset.id,r=Deals.addItem(S,id,{productId:el.dataset.pid},S.me,new Date());
   if(!r.ok){toast(r.reason,'warn');return}
-  render();toast(`В сделку ${id} добавлено: ${Deals.itemName(S,dealById(id).items[r.idx])}. Количество и цену можно поправить в строке.`);
+  render();toast(`В сделку ${id} добавлено: ${Deals.itemLabel(S,dealById(id).items[r.idx])}. Количество и цену можно поправить в строке.`);
 };
 A['deal-del-i']=el=>{
   const id=el.dataset.id,d=dealById(id),it=d&&(d.items||[])[+el.dataset.i];
   if(!it){toast('Такой строки нет.','warn');return}
-  const name=Deals.itemName(S,it);
+  const name=Deals.itemLabel(S,it);
   dealRun(Deals.removeItem(S,id,+el.dataset.i,S.me,new Date()),`Строка «${name}» убрана из сделки ${id}.`);
 };
 A['deal-res']=el=>{
@@ -355,7 +355,7 @@ A['deal-res']=el=>{
 };
 A['deal-unres']=el=>{
   const id=el.dataset.id,rs=S.reserves.find(r=>r.id===el.dataset.rid),p=rs&&product(rs.productId);
-  dealRun(Deals.unreserve(S,id,el.dataset.rid,S.me,new Date()),`Резерв снят${p?`: ${low(p.name)} — ${qtyOf(rs.qty,p)}`:''}. Товар снова свободен.`);
+  dealRun(Deals.unreserve(S,id,el.dataset.rid,S.me,new Date()),`Резерв снят${p?`: ${low(Catalog.label(p))} — ${qtyOf(rs.qty,p)}`:''}. Товар снова свободен.`);
 };
 
 // ——— поля ———
@@ -461,7 +461,7 @@ FORMS['deal-reserve']=f=>{
   if(!r.ok) return showErr('dr-err',r.reason);
   const p=product(r.reserve.productId);
   closeModal();render();
-  toast(`Резерв поставлен: ${low(p.name)} — ${qtyOf(r.reserve.qty,p)} для ${id}. Склад и директор получили уведомление.`);
+  toast(`Резерв поставлен: ${low(Catalog.label(p))} — ${qtyOf(r.reserve.qty,p)} для ${id}. Склад и директор получили уведомление.`);
 };
 FORMS['deal-own']=f=>{
   const id=f.dataset.id,price=byId('do-price'),raw={text:byId('do-name').value,qty:byId('do-qty').value};

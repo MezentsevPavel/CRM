@@ -384,7 +384,7 @@ KIND.leadWait = { l: 'Лид ждёт', ic: 'clock', c: 'bad' };
 // поэтому Leads.route и Leads.pick его не выбирают. Шаг SEEDS ниже — демо-человек с этой ролью; стоит до лидов,
 // чтобы человек уже был в команде.
 BASES.push(st => {
-  const on = ['leads', 'leadsAssign', 'dealsAll', 'clients', 'stock', 'prices', 'reserve', 'write', 'mail', 'tasksAssign', 'auto'];
+  const on = ['leads', 'leadsAssign', 'dealsAll', 'clients', 'stock', 'prices', 'reserve', 'write', 'mail', 'tasksAssign', 'auto', 'catalog'];
   st.roles.push({ id: 'rop', name: 'РОП (руководитель отдела продаж)', builtin: true, perms: Object.fromEntries(Perms.LIST.map(([k]) => [k, on.includes(k)])) });
   // источник лидов и время реакции по умолчанию; лидов в новой базе нет
   st.leadSource = 'both';

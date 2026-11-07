@@ -38,7 +38,7 @@ function envInt(value, min, max, def) {
   return Number.isInteger(n) && n >= min && n <= max ? n : def;
 }
 
-function createBackups({ store, dataDir, sync, revision, now, keep, hour } = {}) {
+function createBackups({ store, dataDir, sync, revision, core, now, keep, hour } = {}) {
   const env = process.env;
   const KEEP = envInt(keep !== undefined ? keep : env.CRM_BACKUP_KEEP, 1, 100000, 30);
   const HOUR = envInt(hour !== undefined ? hour : env.CRM_BACKUP_HOUR, 0, 23, 3);
@@ -185,7 +185,7 @@ function createBackups({ store, dataDir, sync, revision, now, keep, hour } = {})
       try { store.db.exec('DETACH DATABASE bk'); } catch { /* не подключена */ }
     }
     if (rev < revision) {
-      const refusal = migrate(store, rev, revision);
+      const refusal = migrate(store, rev, revision, undefined, core);
       if (refusal) throw new BackupError(500, refusal);
     }
     sync.load();

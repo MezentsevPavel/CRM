@@ -443,11 +443,47 @@ const Guard = (() => {
     return null;
   }
 
+  // ——— товары и категории ———
+  // Товар правит и заводит право catalog. Категория товара — только из дерева (st.categories) или «Без раздела»: товара «вне дерева» не
+  // бывает. Проверяется то, что пачка меняет (новый товар, смена категории): старые товары с чужой категорией правкой цены не блокируются.
+  function productsRule(ctx, c) {
+    if (!ctx.can('catalog')) return needs('менять товары и каталог', 'catalog');
+    if (c.deleted || !c.data) return null;
+    // артикул — строка не длиннее Catalog.SKU_MAX (или поля нет): право на него то же, catalog
+    if (c.data.sku != null && (typeof c.data.sku !== 'string' || c.data.sku.length > Catalog.SKU_MAX)) return no(`артикул — строка не длиннее ${Catalog.SKU_MAX} знаков`);
+    const was = ctx.before(c);
+    if (was && was.cat === c.data.cat) return null;
+    return Catalog.hasPath(ctx.after, c.data.cat) ? null : no(`категории «${c.data.cat}» нет в списке категорий — сначала заведите её`);
+  }
+  // Категория: правит право catalog; название и место — Catalog.nameProblem по состоянию после пачки; удалить можно только пустую
+  // (в состоянии после пачки нет ни подкатегорий, ни товаров этого пути — по пути из состояния до пачки)
+  function categoriesRule(ctx, c) {
+    if (!ctx.can('catalog')) return needs('менять категории товаров', 'catalog');
+    const node = c.deleted ? null : c.data;
+    if (node) {
+      if (typeof node.name !== 'string') return no('у категории нет названия');
+      const parent = node.parentId || null;
+      const clean = { ...ctx.after, categories: (ctx.after.categories || []).filter(x => x.id !== node.id) };
+      const bad = Catalog.nameProblem(clean, node.name, parent, node.id);
+      if (bad) return no(bad);
+      if (!Catalog.pathOf(ctx.after, node.id)) return no('категория стоит внутри себя');
+      // переименование и перенос ведут за собой пути товаров: товар, чей путь был в дереве, а после пачки не найден, — пачка неполная
+      const lost = (ctx.after.products || []).find(p => Catalog.hasPath(ctx.st, p.cat) && !Catalog.hasPath(ctx.after, p.cat));
+      return lost ? no(`у товара «${lost.name}» осталась категория «${lost.cat}», которой после этой правки нет, — обновите пути товаров вместе с категорией`) : null;
+    }
+    const was = ctx.before(c);
+    if (!was) return null;
+    const path = Catalog.pathOf(ctx.st, was.id);
+    const kids = (ctx.after.categories || []).some(x => x.parentId === was.id);
+    const busy = (ctx.after.products || []).some(p => path && (p.cat === path || String(p.cat).startsWith(path + Catalog.SEP)));
+    return kids || busy ? no(`удалить можно только пустую категорию: в «${path}» остались товары или подкатегории`) : null;
+  }
+
   const right = (r, what) => ctx => (ctx.can(r) ? null : needs(what, r));
   const SETTINGS = right('settings', 'менять настройки фирмы');
   const ADMIN = right('admin', 'менять эти данные');
   const RULES = {
-    products: right('catalog', 'менять товары и каталог'),
+    products: productsRule, categories: categoriesRule,
     stock: stockRule, aside: asideRule, moves: movesRule, reserves: reservesRule, shipments: shipmentsRule, watches: watchesRule,
     deals: dealsRule, leads: leadsRule, clients: clientsRule, feed: feedRule, acts: actsRule,
     tasks: tasksRule, dispatches: dispatchesRule, notes: notesRule,

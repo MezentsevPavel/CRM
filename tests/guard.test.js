@@ -409,10 +409,14 @@ test('Guard настройки фирмы — право settings; роли и �
 
 test('Guard товары: добавить товар в номенклатуру — с правом «Добавлять товары в номенклатуру»; без него — нельзя', () => {
   const a = app();
+  // слово директора 2026-11-07: «Новые товары — пусть все могут создавать» — у менеджера B2C право есть; «без него» — роль, у которой директор его снял
+  a.S.roles.find(r => r.id === 'managerB2c').perms.catalog = false;
   const b = batch(a, st => { st.products.push({ ...st.products[0], id: 'tov-primer', src: 'manual', name: 'Товар-пример' }); });
   assert.deepEqual(keys(b), ['products']);
-  assert.equal(a.Perms.can(a.S, 'p2', 'catalog'), false, 'у менеджера B2C в демо есть право catalog — тест ничего не проверит');
+  assert.equal(a.Perms.can(a.S, 'p2', 'catalog'), false, 'право у менеджера B2C снято — тест ничего не проверит');
+  assert.equal(a.Perms.can(a.S, 'p3', 'catalog'), true, 'по умолчанию право есть у менеджера B2B');
   allowed(check(a, b, 'p1'), 'товар директором');
+  allowed(check(a, b, 'p3'), 'товар менеджером с правом');
   denied(check(a, b, 'p2'), 'товар менеджером', /товары/);
 });
 

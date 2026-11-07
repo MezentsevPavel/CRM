@@ -34,6 +34,8 @@ const Dispatch = (() => {
   const byId = (st, id) => (st.dispatches || []).find(d => d.id === id) || null;
   const productOf = (st, id) => (st.products || []).find(p => p.id === id) || null;
   const lineName = (st, it) => (it.productId ? (productOf(st, it.productId) || {}).name || 'нет данных: товар' : it.text);
+  // то же с артикулом — для текста без разметки (лента, уведомления, задача на счёт): «Название (арт. X)»
+  const lineLabel = (st, it) => (it.productId ? Catalog.label(productOf(st, it.productId)) : it.text);
   const ref = d => ({ t: 'dispatch', id: d.id });
   const dateKey = v => { const n = new Date(v); return isNaN(n.getTime()) ? '' : n.getFullYear() + '-' + (n.getMonth() + 1) + '-' + n.getDate(); };
   const sum = (list, f) => list.reduce((a, x) => a + f(x), 0);
@@ -104,7 +106,7 @@ const Dispatch = (() => {
     for (const [productId, need] of needs(d)) {
       const lies = Stock.grid(st, productId).cell(d.from.entityId, d.from.cityId) ?? 0;
       const have = Stock.sellMax(st, { productId, entityId: d.from.entityId, cityId: d.from.cityId });
-      if (need > have) short.push({ productId, name: (productOf(st, productId) || {}).name || 'нет данных: товар', need, have, held: lies - have });
+      if (need > have) short.push({ productId, name: Catalog.label(productOf(st, productId)), need, have, held: lies - have });
     }
     if (short.length) {
       const list = short.map(x => (x.held > 0
@@ -315,7 +317,7 @@ const Dispatch = (() => {
     const taken = new Set();
     for (const old of d.items.filter(i => i.sold)) {
       const k = n.rec.items.findIndex((row, i) => !taken.has(i) && !row.sold && row.productId === old.productId && row.text === old.text && row.qty === old.qty);
-      if (k < 0) return fail(`Строка «${lineName(st, old)}» уже списана при продаже (${num(old.qty)}): изменить или удалить её нельзя. Нужно больше — добавьте новую строку.`, { missing: [] });
+      if (k < 0) return fail(`Строка «${lineLabel(st, old)}» уже списана при продаже (${num(old.qty)}): изменить или удалить её нельзя. Нужно больше — добавьте новую строку.`, { missing: [] });
       taken.add(k);
       n.rec.items[k].sold = old.sold;
       // клетка списанной строки — та, что была (счёт между юрлицами считается по клетке списания)
@@ -397,7 +399,7 @@ const Dispatch = (() => {
     if (!!it.picked === !!done) return { ok: true, reason: '' };
     if (done) it.picked = true; else delete it.picked;
     const p = picked(d);
-    Feed.add(st, ref(d), { kind: 'item', text: `${done ? 'Собрано' : 'Снята отметка'}: ${lineName(st, it)} — ${num(it.qty)}. Собрано ${p.done} из ${p.total}.`, by, at: now });
+    Feed.add(st, ref(d), { kind: 'item', text: `${done ? 'Собрано' : 'Снята отметка'}: ${lineLabel(st, it)} — ${num(it.qty)}. Собрано ${p.done} из ${p.total}.`, by, at: now });
     return { ok: true, reason: '' };
   }
   // «Собрано N из M»: строк с отметкой и всего строк. Единственный счёт для карточки и таблицы.
@@ -432,7 +434,7 @@ const Dispatch = (() => {
     const r = Stock.sell(st, { productId: it.productId, qty: it.qty, entityId: o.entityId, cityId: o.cityId, reserveId: o.reserveId, doc: d.number }, by, now);
     if (!r.ok) return r;
     it.sold = { at: now, by, entityId: r.move.entityId, cityId: r.move.cityId };
-    Feed.add(st, ref(d), { kind: 'item', text: `Списано при продаже: ${lineName(st, it)} — ${num(it.qty)} со склада ${cellText(st, it.sold)}.`, by, at: now });
+    Feed.add(st, ref(d), { kind: 'item', text: `Списано при продаже: ${lineLabel(st, it)} — ${num(it.qty)} со склада ${cellText(st, it.sold)}.`, by, at: now });
     return r;
   }
   // «списано: кто, когда, откуда» — одна фраза для карточки и таблицы
@@ -491,7 +493,7 @@ const Dispatch = (() => {
     const to = biller(st);
     return [...groups].map(([owner, items]) => {
       const from = entName(st, owner), seller = entName(st, d.seller);
-      const lines = items.map(it => `${lineName(st, it)} — ${num(it.qty)} (склад ${from}, ${Stock.cityName(st, ownerCell(it).cityId) ?? ownerCell(it).cityId})`).join('; ');
+      const lines = items.map(it => `${lineLabel(st, it)} — ${num(it.qty)} (склад ${from}, ${Stock.cityName(st, ownerCell(it).cityId) ?? ownerCell(it).cityId})`).join('; ');
       return {
         owner, seller: d.seller, to: to ? { t: 'p', id: to } : null,
         title: `Выставить счёт: ${from} → ${seller}`,
@@ -602,7 +604,7 @@ const Dispatch = (() => {
 
   return {
     PIPE, ST, STEP_KIND, PURPOSE, MISSING, NO_ADDRESS, byId, nextNumber, create, update, canWork, canEdit, canCancel, canComment, canSell,
-    setStage, assign, drivers, pick, picked, comment, sell, soldText, query, transit, inTransit, warehouseAddress, lineName,
+    setStage, assign, drivers, pick, picked, comment, sell, soldText, query, transit, inTransit, warehouseAddress, lineName, lineLabel,
     defaultSeller, defaultFrom, billPlan, billTasks, billView, canBill, requestBill, BILL_DROP,
   };
 })();
@@ -633,7 +635,7 @@ KIND.dispatchStep = { l: 'Ход отправок', ic: 'truck', c: 'info' };
 // База: роль «Водитель», право РОП списывать при продаже, воронка отправок; заявок в новой базе нет.
 BASES.push(st => {
   const perms = on => Object.fromEntries(Perms.LIST.map(([k]) => [k, on.includes(k)]));
-  st.roles.push({ id: 'driver', name: 'Водитель', builtin: true, perms: perms(['dispatch', 'auto']) });
+  st.roles.push({ id: 'driver', name: 'Водитель', builtin: true, perms: perms(['dispatch', 'auto', 'catalog']) });
   // РОП (роль заводит база лидов, 35-leads.js) списывает при продаже, как менеджеры
   const rop = st.roles.find(r => r.id === 'rop');
   if (rop) rop.perms.sell = true;

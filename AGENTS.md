@@ -12,7 +12,7 @@
 | Команда | Что делает |
 |---|---|
 | `node tools/build.js` | собирает `crm-wind-solar.html` из `src/` и `assets/` |
-| `node --test tests/` | все тесты (569), около 180 с |
+| `node --test tests/` | все тесты (707), около 270 с |
 | `node --test tests/stock.test.js` | один файл тестов (любой `tests/*.test.js`), около 4 с |
 | `node tools/serve.js 5179` | демо-страница на `http://localhost:5179` (сам не собирает) |
 | `CRM_PORT=5181 node server/main.js` | серверная версия на `http://127.0.0.1:5181`; читает собранный файл один раз при старте — после `build.js` перезапустить |

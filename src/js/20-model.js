@@ -170,6 +170,10 @@ const roleName=p=>(p&&Perms.roleOf(S,p.id)?.name)||'нет данных: рол�
 const deptName=id=>S.depts.find(d=>d.id===id)?.name||'нет данных: отдел';
 // Товар по productId: ключ каталога, 'sheet-NNN' (строка остатков без пары в каталоге) или 'uN' (добавлен вручную)
 const product=id=>S.products.find(p=>p.id===id);
+// Артикул рядом с названием товара (слово директора 2026-11-07: «везде нужен артикул»): мелко «арт. X», а нет артикула — «нет данных: артикул».
+// Читает его только Catalog.skuOf, а в строках без разметки (уведомления, тосты, журнал) название с артикулом даёт Catalog.label.
+const skuText=p=>Catalog.skuOf(p)?'арт. '+Catalog.skuOf(p):'нет данных: артикул';
+const skuTag=p=>`<small class="sku${Catalog.skuOf(p)?'':' muted'}">${esc(skuText(p))}</small>`;
 const deal=id=>S.deals.find(d=>d.id===id);
 const ship=id=>S.shipments.find(s=>s.id===id);
 const rule=id=>S.rules.find(r=>r.id===id);

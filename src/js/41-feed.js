@@ -15,7 +15,7 @@ const Feed = (() => {
 
   const same = (a, b) => !!a && !!b && a.t === b.t && a.id === b.id;
   const time = at => { const n = at == null ? NaN : new Date(at).getTime(); return isNaN(n) ? null : n; };
-  const nameOf = (st, id) => ((st.products || []).find(p => p.id === id) || {}).name || 'нет данных: товар';
+  const nameOf = (st, id) => Catalog.label((st.products || []).find(p => p.id === id));
 
   // Запись в ленту ref = {t:'deal'|'lead'|'client'|'dispatch', id}: {kind, text, by, at, data?}.
   // Без ссылки, текста или времени записи не будет (null). Новая запись — в конец st.feed; порядок показа решает of().

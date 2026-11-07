@@ -59,6 +59,8 @@ const Deals = (() => {
 
   // ——— строки товаров ———
   const itemName = (st, it) => (it.productId ? (productOf(st, it.productId) || {}).name || 'нет данных: товар' : it.text);
+  // Строка с артикулом — для текста без разметки (лента, уведомления): «Название (арт. X)»; своя строка — как есть
+  const itemLabel = (st, it) => (it.productId ? Catalog.label(productOf(st, it.productId)) : it.text);
   const priceText = it => (hasPrice(it) ? rub(it.price) : 'нет данных: цена');
 
   // Строка из введённого: товар из каталога (productId) или своя (text), количество, цена (по умолчанию цена сайта, а нет её —
@@ -88,7 +90,7 @@ const Deals = (() => {
     return { item: it };
   }
 
-  const itemLine = (st, it) => `${itemName(st, it)} — ${num(it.qty)} × ${priceText(it)}${it.disc ? ', скидка ' + num(it.disc) + ' %' : ''}`;
+  const itemLine = (st, it) => `${itemLabel(st, it)} — ${num(it.qty)} × ${priceText(it)}${it.disc ? ', скидка ' + num(it.disc) + ' %' : ''}`;
 
   // Сколько по сделке зарезервировано этого товара (все резервы сделки по нему).
   const reserved = (st, d, productId) => (st.reserves || []).filter(r => r.dealId === d.id && r.productId === productId).reduce((s, r) => s + r.qty, 0);
@@ -100,7 +102,7 @@ const Deals = (() => {
   const reserveBlock = (st, d, productId, after, what) => {
     const held = reserved(st, d, productId);
     if (!(held > after)) return null;
-    const p = productOf(st, productId), name = (p || {}).name || 'нет данных: товар', rows = (d.items || []).filter(x => x.productId === productId).length;
+    const p = productOf(st, productId), name = Catalog.label(p), rows = (d.items || []).filter(x => x.productId === productId).length;
     return what === 'remove'
       ? `По товару «${name}» в резерве ${qtyOf(held, p)}, а после удаления в строках останется ${qtyOf(after, p)} — сначала снимите резерв.`
       : `По товару «${name}» в резерве ${qtyOf(held, p)} — сначала снимите резерв или оставьте не меньше ${num(held)}${rows > 1 ? ' в сумме по строкам этого товара' : ''}.`;
@@ -307,7 +309,7 @@ const Deals = (() => {
       if (c.item[f] !== it[f]) lines.push(`${ITEM_LABEL[f]}: ${f === 'price' ? priceText(it) : it[f]} → ${f === 'price' ? priceText(c.item) : c.item[f]}`);
     }
     if (!lines.length) return { ok: true, reason: '' };
-    const name = itemName(st, it);
+    const name = itemLabel(st, it);
     Object.assign(it, c.item);
     log(st, d, 'item', `Строка «${name}»: ${lines.join('; ')}`, by, now, { idx });
     return { ok: true, reason: '' };
@@ -354,10 +356,10 @@ const Deals = (() => {
     const o = opt || {}, pid = o.productId, p = productOf(st, pid);
     if (!p) return fail('Такого товара нет в каталоге.');
     const rows = (d.items || []).filter(x => x.productId === pid).length;
-    if (!rows) return fail(`В сделке ${d.id} нет строки с товаром «${p.name}»: сначала добавьте его в сделку, потом ставьте резерв.`, { max: 0 });
+    if (!rows) return fail(`В сделке ${d.id} нет строки с товаром «${Catalog.label(p)}»: сначала добавьте его в сделку, потом ставьте резерв.`, { max: 0 });
     // Предел — по товару, а не по строке: две строки одного товара (10 и 5) дают 15, а не 10.
     const all = lined(d, pid), held = reserved(st, d, pid), rest = left(st, d, pid);
-    if (!(rest > 0)) return fail(`Строка «${p.name}» уже зарезервирована целиком (${num(held)}).`, { max: 0 });
+    if (!(rest > 0)) return fail(`Строка «${Catalog.label(p)}» уже зарезервирована целиком (${num(held)}).`, { max: 0 });
     const qty = o.qty === undefined || str(o.qty) === '' ? rest : toNum(o.qty);
     if (qty > rest) return fail(`${rows > 1 ? `В ${rows} строках этого товара ${num(all)}` : `В строке ${num(all)}`}, уже зарезервировано ${num(held)}: можно ещё ${num(rest)}.`, { max: rest });
     const src = o.src || 'stock';
@@ -402,7 +404,7 @@ const Deals = (() => {
     const d = r && byId(st, r.dealId);
     if (!d) return;
     keepTrail(st, r);
-    const name = low((productOf(st, r.productId) || {}).name || 'нет данных: товар'), tail = why ? ' ' + why : '';
+    const name = low(Catalog.label(productOf(st, r.productId))), tail = why ? ' ' + why : '';
     log(st, d, 'reserve', `Снят резерв: ${name} — ${num(q)}${why ? '.' + tail : ''}`, by, now, { reserveId: r.id, productId: r.productId, qty: q, removed: true });
     notifyReserve(st, d, by, now, withDeal => `Снят резерв: ${name} — ${num(q)}${withDeal ? ` (${d.id}, ${d.client})` : ''}.${tail}`);
   }
@@ -453,7 +455,7 @@ const Deals = (() => {
   }
 
   return {
-    defaultReasons, reasons, lineSum, total, sumOf, noPrice, state, canEdit, itemName, reserved, lined, left, reservesOf, byId,
+    defaultReasons, reasons, lineSum, total, sumOf, noPrice, state, canEdit, itemName, itemLabel, reserved, lined, left, reservesOf, byId,
     create, update, move, win, lose, reopen, RELEASED_NOTE, addItem, setItem, removeItem, reserve, reserveItem, keepTrail, noteRelease, unreserve, query, columns,
   };
 })();

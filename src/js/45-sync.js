@@ -22,7 +22,7 @@ const Docs = (() => {
   const KEYS = {
     // массивы записей с id: документ — запись
     ARRAY: ['products', 'moves', 'reserves', 'shipments', 'shipRules', 'deals', 'leads', 'clients', 'feed', 'acts', 'tasks', 'msgs',
-      'notes', 'dispatches', 'pipelines', 'depts', 'entities', 'cities', 'roles', 'people', 'rules', 'lostReasons', 'watches'],
+      'notes', 'dispatches', 'pipelines', 'depts', 'entities', 'cities', 'roles', 'people', 'rules', 'lostReasons', 'watches', 'categories'],
     // по id товара: документ — строка остатков (stock) или отложенного (aside) одного товара
     MAP: ['stock', 'aside'],
     // целиком одним документом с id ''

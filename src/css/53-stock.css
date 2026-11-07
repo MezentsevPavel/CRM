@@ -90,3 +90,40 @@ td.free b{font-weight:700}
 .rc-to-c{min-width:150px}
 .rc-to-c select+select{margin-top:6px}
 .rc-skip td{opacity:.55}
+/* список номенклатуры: дерево категорий слева, таблица справа; на узком экране дерево — под кнопкой */
+.stock-lay{display:grid;grid-template-columns:260px minmax(0,1fr);gap:14px;align-items:start}
+.stock-main{display:flex;flex-direction:column;gap:12px;min-width:0}
+.ct-box{padding:8px;position:sticky;top:8px;max-height:calc(100vh - 120px);overflow:auto}
+.ct-show{display:none;width:100%;justify-content:space-between}
+.ct-list,.ct-mlist{list-style:none;margin:0;padding:0}
+.ct-row{display:flex;align-items:center;gap:2px;padding-left:calc(var(--d,0)*16px)}
+.ct-tg{flex:none;width:26px;height:30px;padding:0;border:0;background:none;color:var(--ink-3);font-size:12px;cursor:pointer}
+span.ct-tg{cursor:default}
+.ct-name{flex:1 1 auto;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px;border:0;border-radius:10px;background:none;color:var(--ink-2);font-size:13.5px;text-align:left;cursor:pointer}
+.ct-name span{min-width:0;overflow-wrap:anywhere}
+.ct-name small{flex:none;font-size:11.5px;color:var(--ink-3)}
+.ct-name:hover{background:var(--sunken)}
+.ct-row.on .ct-name{background:var(--primary-soft);color:var(--primary-deep);font-weight:600}
+.ct-mng{margin:8px 4px 2px}
+.ct-mlist li{display:flex;align-items:center;gap:10px;padding:5px 0 5px calc(var(--d,0)*18px);border-bottom:1px solid var(--line)}
+.ct-mn{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
+.ct-sp{flex:1 1 auto}
+.rc-cat{max-width:340px}
+@media (max-width:900px){
+  .stock-lay{grid-template-columns:minmax(0,1fr)}
+  .ct-box{position:static;max-height:none}
+  .ct-show{display:flex}
+  .ct-body{display:none;margin-top:8px}
+  .ct-box.open .ct-body{display:block}
+}
+/* артикул у названия товара: мелко под названием; «нет данных: артикул» — приглушённо */
+.sku{display:block;font-size:11.5px;color:var(--ink-3);font-weight:400}
+.pname .sku,.dl-n .sku,.cnt-name .sku{display:block}
+li .sku,.s-it .sku,.dsp-line .sku{display:inline}
+.rc-help{display:flex;flex-direction:column;gap:8px}
+.rc-ex td,.rc-ex th{font-size:12.5px}
+.rc-sku{margin-top:6px}
+.rcm-pc{min-width:240px}
+.rcm-find,.rcm-new{display:flex;flex-direction:column;gap:6px}
+.rcm-pick{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.rcm-res{max-height:260px;overflow:auto}

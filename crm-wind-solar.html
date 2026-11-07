@@ -533,6 +533,43 @@ td.free b{font-weight:700}
 .rc-to-c{min-width:150px}
 .rc-to-c select+select{margin-top:6px}
 .rc-skip td{opacity:.55}
+/* список номенклатуры: дерево категорий слева, таблица справа; на узком экране дерево — под кнопкой */
+.stock-lay{display:grid;grid-template-columns:260px minmax(0,1fr);gap:14px;align-items:start}
+.stock-main{display:flex;flex-direction:column;gap:12px;min-width:0}
+.ct-box{padding:8px;position:sticky;top:8px;max-height:calc(100vh - 120px);overflow:auto}
+.ct-show{display:none;width:100%;justify-content:space-between}
+.ct-list,.ct-mlist{list-style:none;margin:0;padding:0}
+.ct-row{display:flex;align-items:center;gap:2px;padding-left:calc(var(--d,0)*16px)}
+.ct-tg{flex:none;width:26px;height:30px;padding:0;border:0;background:none;color:var(--ink-3);font-size:12px;cursor:pointer}
+span.ct-tg{cursor:default}
+.ct-name{flex:1 1 auto;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px;border:0;border-radius:10px;background:none;color:var(--ink-2);font-size:13.5px;text-align:left;cursor:pointer}
+.ct-name span{min-width:0;overflow-wrap:anywhere}
+.ct-name small{flex:none;font-size:11.5px;color:var(--ink-3)}
+.ct-name:hover{background:var(--sunken)}
+.ct-row.on .ct-name{background:var(--primary-soft);color:var(--primary-deep);font-weight:600}
+.ct-mng{margin:8px 4px 2px}
+.ct-mlist li{display:flex;align-items:center;gap:10px;padding:5px 0 5px calc(var(--d,0)*18px);border-bottom:1px solid var(--line)}
+.ct-mn{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
+.ct-sp{flex:1 1 auto}
+.rc-cat{max-width:340px}
+@media (max-width:900px){
+  .stock-lay{grid-template-columns:minmax(0,1fr)}
+  .ct-box{position:static;max-height:none}
+  .ct-show{display:flex}
+  .ct-body{display:none;margin-top:8px}
+  .ct-box.open .ct-body{display:block}
+}
+/* артикул у названия товара: мелко под названием; «нет данных: артикул» — приглушённо */
+.sku{display:block;font-size:11.5px;color:var(--ink-3);font-weight:400}
+.pname .sku,.dl-n .sku,.cnt-name .sku{display:block}
+li .sku,.s-it .sku,.dsp-line .sku{display:inline}
+.rc-help{display:flex;flex-direction:column;gap:8px}
+.rc-ex td,.rc-ex th{font-size:12.5px}
+.rc-sku{margin-top:6px}
+.rcm-pc{min-width:240px}
+.rcm-find,.rcm-new{display:flex;flex-direction:column;gap:6px}
+.rcm-pick{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.rcm-res{max-height:260px;overflow:auto}
 
 /* ——— поставки и перевозки: таблица, воронка, шкала маршрута, позиции, карточка ——— */
 
@@ -2018,6 +2055,10 @@ const roleName=p=>(p&&Perms.roleOf(S,p.id)?.name)||'нет данных: рол�
 const deptName=id=>S.depts.find(d=>d.id===id)?.name||'нет данных: отдел';
 // Товар по productId: ключ каталога, 'sheet-NNN' (строка остатков без пары в каталоге) или 'uN' (добавлен вручную)
 const product=id=>S.products.find(p=>p.id===id);
+// Артикул рядом с названием товара (слово директора 2026-11-07: «везде нужен артикул»): мелко «арт. X», а нет артикула — «нет данных: артикул».
+// Читает его только Catalog.skuOf, а в строках без разметки (уведомления, тосты, журнал) название с артикулом даёт Catalog.label.
+const skuText=p=>Catalog.skuOf(p)?'арт. '+Catalog.skuOf(p):'нет данных: артикул';
+const skuTag=p=>`<small class="sku${Catalog.skuOf(p)?'':' muted'}">${esc(skuText(p))}</small>`;
 const deal=id=>S.deals.find(d=>d.id===id);
 const ship=id=>S.shipments.find(s=>s.id===id);
 const rule=id=>S.rules.find(r=>r.id===id);
@@ -2126,7 +2167,10 @@ const Store = (() => {
   //      src, sold; новый ключ st.watches — «Сообщить, когда появится». Рабочая база — шаг MIGRATIONS[18].
   // 19 — право «Настраивать авто-сообщения» (auto) у всех встроенных ролей: слова директора — шаблон сообщения клиентам меняют все.
   //      Рабочая база — шаг MIGRATIONS[19] (право ставится всем ролям).
-  const REV = 19;
+  // 20 — категории товаров деревом (st.categories: {id, name, parentId}; product.cat остаётся строкой-путём «Электрика › Автоматы»),
+  //      артикул товара product.sku (необязателен), право «Добавлять товары» (catalog) у всех ролей: слова директора 2026-11-07.
+  //      Рабочая база — шаг MIGRATIONS[20] (дерево из товаров, право всем ролям).
+  const REV = 20;
   // Браузер даёт сайту около 5 млн символов на всё; берём с запасом.
   const LIMIT = 4500000;
   const NO_SPACE = 'не сохранено — мало места в браузере';
@@ -2311,14 +2355,14 @@ const Perms = (() => {
   // Права по умолчанию — «Решения по реализации» спецификации.
   // Менеджер видит лиды и сделки своего типа (scope), dealsAll у него нет. Заводить и править сделки (dealsEdit) — менеджерам,
   // РОП (право ему дают в шаге сделок, 42-deals.js) и директору; инженеры смотрят сделки, но не правят (R30).
-  const ENGINEER = ['tasksAssign', 'stock', 'clients', 'dealsAll', 'auto'];
+  const ENGINEER = ['tasksAssign', 'stock', 'clients', 'dealsAll', 'auto', 'catalog'];
   const DEFAULTS = [
     { id: 'director', name: 'Директор', all: true, on: KEYS },
-    { id: 'managerB2b', name: 'Менеджер B2B', scope: 'b2b', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'dealsEdit', 'write', 'mail', 'sell', 'tasksAssign', 'auto'] },
-    { id: 'managerB2c', name: 'Менеджер B2C', scope: 'b2c', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'dealsEdit', 'write', 'mail', 'sell', 'tasksAssign', 'auto'] },
-    { id: 'logist', name: 'Логист', on: ['stock', 'logistics', 'mail', 'tasksAssign', 'dispatch', 'auto'] },
+    { id: 'managerB2b', name: 'Менеджер B2B', scope: 'b2b', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'dealsEdit', 'write', 'mail', 'sell', 'tasksAssign', 'auto', 'catalog'] },
+    { id: 'managerB2c', name: 'Менеджер B2C', scope: 'b2c', on: ['stock', 'prices', 'reserve', 'leads', 'clients', 'dealsEdit', 'write', 'mail', 'sell', 'tasksAssign', 'auto', 'catalog'] },
+    { id: 'logist', name: 'Логист', on: ['stock', 'logistics', 'mail', 'tasksAssign', 'dispatch', 'auto', 'catalog'] },
     // Клиентов и сделки всех типов кладовщик видит — слово директора 2026-11-01: «Отметь сам по умолчанию».
-    { id: 'warehouse', name: 'Кладовщик', on: ['stock', 'receive', 'dispatch', 'clients', 'dealsAll', 'auto'] },
+    { id: 'warehouse', name: 'Кладовщик', on: ['stock', 'receive', 'dispatch', 'clients', 'dealsAll', 'auto', 'catalog'] },
     // Главный инженер и инженер — одна матрица (R30).
     { id: 'chiefEngineer', name: 'Главный инженер', on: ENGINEER },
     { id: 'engineer', name: 'Инженер', on: ENGINEER },
@@ -2914,7 +2958,7 @@ const Stock = (() => {
   }
   // Куда ведёт уведомление о резерве человеку personId: сделка, если она ему видна, иначе карточка товара
   const refFor = (st, r, personId) => (r.dealId && dealRef(st, r.dealId, personId) ? { t: 'deal', id: r.dealId } : { t: 'product', id: r.productId });
-  const prodName = (st, id) => low(((st.products || []).find(p => p.id === id) || {}).name || 'нет данных: товар');
+  const prodName = (st, id) => low(Catalog.label((st.products || []).find(p => p.id === id)));
   const personName = (st, id) => ((st.people || []).find(p => p.id === id) || {}).name || 'нет данных: кто';
   // Автор резерва: кто поставил (by); у старых — по журналу (Feed.reserveWhen); нет — менеджер сделки
   function authorOf(st, r) {
@@ -3250,7 +3294,7 @@ const Stock = (() => {
     for (const [pid, ws] of ready) {
       const k = summary(st, pid), cs = cells(st, pid);
       const where = cs.length === 1 ? cellText(st, cs[0].entityId, cs[0].cityId) : cs.map(c => `${cellText(st, c.entityId, c.cityId)} ${num(c.free)}`).join(', ');
-      const name = ((st.products || []).find(p => p.id === pid) || {}).name || 'нет данных: товар';
+      const name = Catalog.label((st.products || []).find(p => p.id === pid));
       const n = Notify.to(st, 'arrive', null, `${name} появился: свободно ${num(k.free)}${where ? ` (${where})` : ''}.`, now, ws.map(w => w.personId), { t: 'product', id: pid });
       if (n) out.push(n);
       st.watches = st.watches.filter(w => !ws.includes(w));
@@ -3442,7 +3486,7 @@ const Ships = (() => {
   }
 
   // ——— поиск, фильтры, сортировка, страницы ———
-  const productNames = st => new Map((st.products || []).map(p => [p.id, p.name]));
+  const productNames = st => new Map((st.products || []).map(p => [p.id, Catalog.skuOf(p) ? `${p.name} ${Catalog.skuOf(p)} ${Catalog.skuKey(p.sku)}` : p.name]));
   const atNode = (s, key) => {
     const w = where(s);
     return String(key).includes('>') ? !!w.from && w.from + '>' + w.to === key : w.at === key;
@@ -3508,8 +3552,10 @@ const Ships = (() => {
     const items = s.items || [];
     if (!items.length) return 'без позиций';
     const p = (st.products || []).find(x => x.id === items[0].productId);
-    let first = p ? p.name : 'нет данных: товар';
-    if (first.length > 56) first = first.slice(0, 55) + '…';
+    // длинное название укорачивается, артикул (если он есть) остаётся целиком
+    let name = p ? p.name : 'нет данных: товар';
+    if (name.length > 56) name = name.slice(0, 55) + '…';
+    const first = p && Catalog.skuOf(p) ? `${name} (арт. ${Catalog.skuOf(p)})` : name;
     const more = items.length - 1;
     return more > 0 ? `${first} и ещё ${more} ${pl(more, 'позиция', 'позиции', 'позиций')}` : first;
   }
@@ -4174,7 +4220,7 @@ KIND.leadWait = { l: 'Лид ждёт', ic: 'clock', c: 'bad' };
 // поэтому Leads.route и Leads.pick его не выбирают. Шаг SEEDS ниже — демо-человек с этой ролью; стоит до лидов,
 // чтобы человек уже был в команде.
 BASES.push(st => {
-  const on = ['leads', 'leadsAssign', 'dealsAll', 'clients', 'stock', 'prices', 'reserve', 'write', 'mail', 'tasksAssign', 'auto'];
+  const on = ['leads', 'leadsAssign', 'dealsAll', 'clients', 'stock', 'prices', 'reserve', 'write', 'mail', 'tasksAssign', 'auto', 'catalog'];
   st.roles.push({ id: 'rop', name: 'РОП (руководитель отдела продаж)', builtin: true, perms: Object.fromEntries(Perms.LIST.map(([k]) => [k, on.includes(k)])) });
   // источник лидов и время реакции по умолчанию; лидов в новой базе нет
   st.leadSource = 'both';
@@ -4715,7 +4761,7 @@ const Catalog = (() => {
   }
 
   // Товар, заведённый руками: единственное место, где он создаётся — форма «Новый товар» и «Оприходовать товар» (Import.applyReceipt).
-  // o: {name, cat?, unit?, price?}. Категория не названа — NO_CAT (так же подписан товар листа остатков без раздела), единица и цена
+  // o: {name, cat?, unit?, price?, sku?}. Категория не названа — NO_CAT (так же подписан товар листа остатков без раздела), единица и цена
   // не названы — пусто («нет данных»), не ноль. Название, уже стоящее в номенклатуре (Catalog.norm), — отказ: второй такой не заводится.
   // → {ok, product} | {ok:false, reason}; при отказе st не меняется.
   const NO_CAT = 'Без раздела';
@@ -4723,10 +4769,186 @@ const Catalog = (() => {
     const name = String(o.name ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
     if (!name) return { ok: false, reason: 'Нужно наименование.' };
     if (st.products.some(p => norm(p.name) === norm(name))) return { ok: false, reason: `Товар «${name}» уже есть в номенклатуре.` };
-    const product = { id: Store.freeId(st.products, 'u'), name, brand: null, cat: String(o.cat ?? '').trim() || NO_CAT, price: isNum(o.price) ? o.price : null, avail: null, url: null, src: 'user', inCatalog: false };
+    // категория — путь «Электрика › Автоматы»; такой категории в дереве нет — она заводится (ensure), чтобы товар не висел вне дерева
+    const product = { id: Store.freeId(st.products, 'u'), name, brand: null, cat: ensure(st, o.cat), price: isNum(o.price) ? o.price : null, avail: null, url: null, src: 'user', inCatalog: false };
     if (o.unit) product.unit = o.unit;
+    if (skuClean(o.sku)) product.sku = skuClean(o.sku);
     st.products.push(product);
     return { ok: true, product };
+  }
+
+  // ——— категории деревом ———
+  // st.categories — узлы {id, name, parentId|null}: дерево ведёт сам пользователь («Электрика» → «Автоматы» → «АВР»). У товара
+  // по-прежнему одна строка product.cat — путь «Электрика › Автоматы» (так подписаны и товары листа остатков), поэтому остальной код,
+  // снимки и отчёты не меняются; путь строится из дерева только здесь (pathOf). «Без раздела» (NO_CAT) — не узел, а подпись товара без
+  // категории: она есть всегда, её нельзя ни переименовать, ни удалить.
+  const SEP = ' › ';
+  const CAT_MAX = 100;
+  const cname = s => String(s ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
+  const isNoCat = c => !String(c ?? '').trim() || c === NO_CAT;
+  const nodes = st => (Array.isArray(st.categories) ? st.categories : []);
+  const kidsOf = (st, parentId) => nodes(st).filter(c => (c.parentId || null) === (parentId || null));
+  // Путь узла; узла нет или цепочка зациклена — ''
+  function pathOf(st, id) {
+    const by = new Map(nodes(st).map(c => [c.id, c])), names = [];
+    let c = by.get(id), n = 0;
+    while (c && n++ < 64) { names.unshift(c.name); c = c.parentId ? by.get(c.parentId) : null; }
+    return n <= 64 ? names.join(SEP) : '';
+  }
+  // Узел по пути (без учёта регистра и лишних пробелов, как norm); нет такого — null
+  function nodeOf(st, path) {
+    let parent = null, node = null;
+    for (const seg of String(path ?? '').split(SEP)) {
+      const k = norm(seg);
+      if (!k) return null;
+      node = kidsOf(st, parent).find(c => norm(c.name) === k);
+      if (!node) return null;
+      parent = node.id;
+    }
+    return node;
+  }
+  // Годится ли строка как категория товара: «Без раздела» (или пусто) либо путь, который есть в дереве
+  const hasPath = (st, path) => isNoCat(path) || !!nodeOf(st, path);
+  // Путь заведён в дерево (недостающие узлы создаются) → путь так, как он записан в дереве; пустой путь — NO_CAT.
+  // Знак «›» в названии уровня заменяется на «-»: им разделяются уровни.
+  function ensure(st, path) {
+    if (isNoCat(path)) return NO_CAT;
+    if (!Array.isArray(st.categories)) st.categories = [];
+    let parent = null;
+    const names = [];
+    for (const raw of String(path).split(SEP)) {
+      const name = cname(raw).replace(/›/g, '-').slice(0, CAT_MAX);
+      if (!name) continue;
+      let node = kidsOf(st, parent).find(c => norm(c.name) === norm(name));
+      if (!node) { node = { id: Store.freeId(st.categories, 'c'), name, parentId: parent }; st.categories.push(node); }
+      parent = node.id;
+      names.push(node.name);
+    }
+    return names.length ? names.join(SEP) : NO_CAT;
+  }
+  // Дерево по товарам: верхний уровень — привычный порядок CATS, потом по алфавиту; внутри — по алфавиту. Для базы, демо и миграции.
+  function treeFrom(products) {
+    const st = { categories: [] };
+    const top = c => String(c).split(SEP)[0], rank = c => { const i = CATS.indexOf(top(c)); return i < 0 ? CATS.length : i; };
+    const paths = [...new Set((products || []).map(p => p.cat).filter(c => !isNoCat(c)))]
+      .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b, 'ru'));
+    for (const p of paths) ensure(st, p);
+    return st.categories;
+  }
+  // Привести дерево в порядок после того, как товары пришли снаружи (перенос остатков): недостающие узлы заводятся, путь товара
+  // становится таким, как в дереве
+  function syncTree(st) {
+    for (const p of st.products || []) if (!isNoCat(p.cat)) { const c = ensure(st, p.cat); if (c !== p.cat) p.cat = c; }
+  }
+  const under = (cat, path) => cat === path || String(cat).startsWith(path + SEP);
+  // Сколько товаров лежит в категории (с подкатегориями) и сколько в ней прямых подкатегорий
+  function busy(st, id) {
+    const path = pathOf(st, id);
+    return { path, products: path ? (st.products || []).filter(p => under(p.cat, path)).length : 0, children: kidsOf(st, id).length };
+  }
+  // Название и место узла годятся? → текст отказа | null. selfId — узел, который правят (сам себе не двойник)
+  function nameProblem(st, name, parentId, selfId) {
+    if (!name) return 'Нужно название категории.';
+    if (name.length > CAT_MAX) return `Название категории — не длиннее ${CAT_MAX} знаков.`;
+    if (name.includes('›')) return 'В названии категории нельзя знак «›»: им разделяются уровни.';
+    if (!parentId && norm(name) === norm(NO_CAT)) return `«${NO_CAT}» — подпись товаров без категории, назовите иначе.`;
+    if (parentId && !nodes(st).some(c => c.id === parentId)) return 'Родительской категории нет.';
+    if (kidsOf(st, parentId).some(c => c.id !== selfId && norm(c.name) === norm(name))) {
+      return parentId ? `В «${pathOf(st, parentId)}» уже есть «${name}».` : `Категория «${name}» уже есть на верхнем уровне.`;
+    }
+    return null;
+  }
+  // Новая категория: o = {name, parentId?} (parentId пусто — верхний уровень). → {ok, node, path} | {ok: false, reason}
+  function catAdd(st, o = {}) {
+    const name = cname(o.name), parentId = o.parentId || null, bad = nameProblem(st, name, parentId, null);
+    if (bad) return { ok: false, reason: bad };
+    if (!Array.isArray(st.categories)) st.categories = [];
+    const node = { id: Store.freeId(st.categories, 'c'), name, parentId };
+    st.categories.push(node);
+    return { ok: true, node, path: pathOf(st, node.id) };
+  }
+  // Заменить начало пути у товаров: «Электрика › Автоматы» → «Электрика › Автоматика» у самой категории и всех подкатегорий
+  function rewrite(st, was, now) {
+    let n = 0;
+    for (const p of st.products || []) {
+      if (p.cat === was) { p.cat = now; n++; } else if (String(p.cat).startsWith(was + SEP)) { p.cat = now + p.cat.slice(was.length); n++; }
+    }
+    return n;
+  }
+  // Узел id лежит внутри узла ancestorId (или это он сам)
+  function isInside(st, id, ancestorId) {
+    const by = new Map(nodes(st).map(c => [c.id, c]));
+    for (let c = by.get(id), n = 0; c && n++ < 64; c = c.parentId ? by.get(c.parentId) : null) if (c.id === ancestorId) return true;
+    return false;
+  }
+  // Переименовать и/или перенести под другого родителя: o = {name?, parentId?} (parentId '' — на верхний уровень). Пути товаров
+  // обновляются здесь же — вызывающий сохраняет всё одним save(). → {ok, node, was, now, moved: сколько товаров сменили путь}
+  function catEdit(st, id, o = {}) {
+    const node = nodes(st).find(c => c.id === id);
+    if (!node) return { ok: false, reason: 'Такой категории нет.' };
+    const name = o.name === undefined ? node.name : cname(o.name), parentId = o.parentId === undefined ? (node.parentId || null) : (o.parentId || null);
+    if (parentId && isInside(st, parentId, id)) return { ok: false, reason: 'Нельзя перенести категорию внутрь себя или своей подкатегории.' };
+    const bad = nameProblem(st, name, parentId, id);
+    if (bad) return { ok: false, reason: bad };
+    const was = pathOf(st, id);
+    node.name = name; node.parentId = parentId;
+    const now = pathOf(st, id);
+    return { ok: true, node, was, now, moved: was === now ? 0 : rewrite(st, was, now) };
+  }
+  // Удалить пустую категорию (ни товаров, ни подкатегорий); иначе отказ с тем, что мешает
+  function catDelete(st, id) {
+    const node = nodes(st).find(c => c.id === id);
+    if (!node) return { ok: false, reason: 'Такой категории нет.' };
+    const b = busy(st, id), why = [];
+    if (b.children) why.push(`${b.children} ${pl(b.children, 'подкатегория', 'подкатегории', 'подкатегорий')}`);
+    if (b.products) why.push(`${b.products} ${pl(b.products, 'товар', 'товара', 'товаров')}`);
+    if (why.length) return { ok: false, reason: `Удалить «${b.path}» нельзя: в ней ${why.join(' и ')}. Сначала перенесите или удалите их.` };
+    st.categories.splice(st.categories.indexOf(node), 1);
+    return { ok: true, path: b.path };
+  }
+  // Сменить категорию товара на путь из дерева (или NO_CAT). → {ok, product} | {ok: false, reason}
+  function setCat(st, productId, path) {
+    const p = (st.products || []).find(x => x.id === productId);
+    if (!p) return { ok: false, reason: 'Такого товара нет.' };
+    if (!hasPath(st, path)) return { ok: false, reason: `Категории «${path}» нет в списке категорий.` };
+    const node = nodeOf(st, path);
+    p.cat = node ? pathOf(st, node.id) : NO_CAT;
+    return { ok: true, product: p };
+  }
+  // Для экрана: категории в порядке дерева, {path, name, depth, id, total, own, virtual}. total — товаров в категории с подкатегориями.
+  // Путь, который есть у товаров, но которого нет в дереве (старые данные), показывается узлом без id (virtual): товары не теряются.
+  function rows(st) {
+    const own = new Map();
+    for (const p of st.products || []) if (!isNoCat(p.cat)) own.set(p.cat, (own.get(p.cat) || 0) + 1);
+    const root = { path: '', kids: [] }, by = new Map();
+    const walk = (parentId, parent) => {
+      for (const c of kidsOf(st, parentId)) {
+        const path = parent.path ? parent.path + SEP + c.name : c.name, n = { path, name: c.name, id: c.id, kids: [] };
+        parent.kids.push(n); by.set(path, n); walk(c.id, n);
+      }
+    };
+    walk(null, root);
+    for (const full of [...own.keys()].sort((a, b) => a.localeCompare(b, 'ru'))) {
+      let parent = root;
+      full.split(SEP).forEach((seg, i, all) => {
+        const path = all.slice(0, i + 1).join(SEP);
+        let n = by.get(path);
+        if (!n) { n = { path, name: seg, id: '', virtual: true, kids: [] }; parent.kids.push(n); by.set(path, n); }
+        parent = n;
+      });
+    }
+    const out = [];
+    const flat = (list, depth) => {
+      for (const n of list) {
+        const row = { path: n.path, name: n.name, depth, id: n.id, virtual: !!n.virtual, own: own.get(n.path) || 0, total: 0 };
+        out.push(row);
+        const at = out.length;
+        flat(n.kids, depth + 1);
+        row.total = row.own + out.slice(at).filter(r => r.depth === depth + 1).reduce((a, r) => a + r.total, 0);
+      }
+    };
+    flat(root.kids, 0);
+    return out;
   }
 
   // Категории, которые есть у товаров: сначала привычный порядок CATS, потом остальные по алфавиту.
@@ -4738,14 +4960,50 @@ const Catalog = (() => {
     return [...new Set(st.products.map(p => p.brand).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ru'));
   }
 
-  // Поиск и фильтры: q — слова через пробел, каждое должно встретиться в названии, бренде или ключе;
-  // cat, brand, avail ('в наличии' | 'предзаказ') — точное совпадение; inCatalog — true | false. Пустое не фильтрует.
+  // ——— артикул ———
+  // Артикул (product.sku) — строка, необязательная: у товара без артикула поля нет или оно пусто («нет данных: артикул»). Не ключ каталога
+  // (product.id) и из него не берётся. Правит право catalog. Один и тот же артикул у двух товаров не запрещён — на экране предупреждение.
+  const SKU_MAX = 60;
+  const skuClean = s => String(s ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, SKU_MAX).trim();
+  const skuOf = p => skuClean(p && p.sku);
+  // Артикул для сравнения и поиска: без регистра, ё = е, без пробелов, дефисов, точек, подчёркиваний и косых («ABC-123» = «abc 123» = «ABC123»)
+  const skuKey = s => String(s ?? '').toLowerCase().replace(/ё/g, 'е').replace(/[\s\-‐‑‒–—−_./\\]+/g, '');
+  // Товары с этим артикулом (по skuKey, целиком); пустой артикул не ищется. except — id товара, который не считается
+  const bySku = (st, sku, except) => {
+    const k = skuKey(sku);
+    return k ? (st.products || []).filter(p => p.id !== except && skuKey(p.sku) === k) : [];
+  };
+  // Подпись товара для текста без разметки (уведомления, журнал, тосты): «Название (арт. X)»; нет артикула — одно название
+  const label = p => (p ? String(p.name ?? '') + (skuOf(p) ? ` (арт. ${skuOf(p)})` : '') : 'нет данных: товар');
+  // Поставить или убрать артикул: → {ok, product, same: [товары с таким же артикулом], was}; пусто — убрать. Дубль — не отказ, а same
+  function setSku(st, productId, sku) {
+    const p = (st.products || []).find(x => x.id === productId);
+    if (!p) return { ok: false, reason: 'Такого товара нет.' };
+    const v = skuClean(sku), was = skuOf(p);
+    if (String(sku ?? '').trim().length > SKU_MAX) return { ok: false, reason: `Артикул — не длиннее ${SKU_MAX} знаков.` };
+    if (v) p.sku = v; else delete p.sku;
+    return { ok: true, product: p, was, same: v ? bySku(st, v, p.id) : [] };
+  }
+
+  // Поиск и фильтры: q — слова через пробел, каждое должно встретиться в названии, бренде, ключе или артикуле (артикул — без регистра,
+  // пробелов и дефисов, и целиком, и частью; точное совпадение артикула — в начале списка);
+  // brand, avail ('в наличии' | 'предзаказ') — точное совпадение; cat — путь категории: берутся товары и самой категории, и всех её
+  // подкатегорий (NO_CAT — товары без категории); inCatalog — true | false. Пустое не фильтрует.
+  // Слово запроса — в названии, бренде, ключе или артикуле; артикул сравнивается по skuKey (без пробелов и дефисов), целиком или частью.
+  // Вся строка запроса целиком тоже может быть артикулом («ABC 123» ищет «ABC-123»).
+  function matchText(p, words, qKey) {
+    const hay = norm(p.name + ' ' + (p.brand || '') + ' ' + p.id), sk = skuKey(p.sku);
+    if (qKey && sk && sk.includes(qKey)) return true;
+    return words.every(w => hay.includes(w) || (sk && skuKey(w) && sk.includes(skuKey(w))));
+  }
   function query(st, { q, cat, brand, avail, inCatalog } = {}) {
-    const words = norm(q).split(' ').filter(Boolean);
-    return st.products.filter(p =>
-      (!cat || p.cat === cat) && (!brand || p.brand === brand) && (!avail || p.avail === avail) &&
+    const words = norm(q).split(' ').filter(Boolean), qKey = skuKey(q);
+    const out = st.products.filter(p =>
+      (!cat || (cat === NO_CAT ? isNoCat(p.cat) : under(p.cat, cat))) && (!brand || p.brand === brand) && (!avail || p.avail === avail) &&
       (inCatalog === undefined || inCatalog === null || p.inCatalog === inCatalog) &&
-      (!words.length || words.every(w => norm(p.name + ' ' + (p.brand || '') + ' ' + p.id).includes(w))));
+      (!words.length || matchText(p, words, qKey)));
+    // точное совпадение артикула — первым (порядок остальных не меняется)
+    return qKey ? [...out.filter(p => skuKey(p.sku) === qKey), ...out.filter(p => skuKey(p.sku) !== qKey)] : out;
   }
 
   // ——— снимок не живёт в сохранении браузера ———
@@ -4796,7 +5054,8 @@ const Catalog = (() => {
     return st;
   }
 
-  return { norm, CATS, NO_CAT, build, add, cats, brands, query, sectionCat, base, pack, unpack };
+  return { norm, CATS, NO_CAT, SEP, build, add, cats, brands, query, sectionCat, base, pack, unpack,
+    SKU_MAX, skuClean, skuOf, skuKey, bySku, label, setSku, pathOf, nodeOf, hasPath, ensure, treeFrom, syncTree, busy, catAdd, catEdit, catDelete, setCat, rows, nameProblem };
 })();
 
 // Шаг SEEDS: товары и остатки — настоящие, из снимков. Демо-записи прототипа v2 (резервы, позиции поставок,
@@ -4821,11 +5080,12 @@ const DEMO_LINKS = {
 };
 // База: юрлица и города по умолчанию, товары — каталог сайта без снимка остатков; остатков и отложенного нет.
 BASES.push(st => {
-  Object.assign(st, Stock.defaults(), { products: Catalog.build(CATALOG, { rows: [] }).products, stock: {}, aside: {} });
+  const products = Catalog.build(CATALOG, { rows: [] }).products;
+  Object.assign(st, Stock.defaults(), { products, categories: Catalog.treeFrom(products), stock: {}, aside: {} });
 });
 /*CRM-GATE-OPEN*/SEEDS.push(st => {
   const built = Catalog.build(CATALOG, STOCK_SNAPSHOT);
-  Object.assign(st, { products: built.products, stock: built.stock, aside: built.aside });
+  Object.assign(st, { products: built.products, categories: Catalog.treeFrom(built.products), stock: built.stock, aside: built.aside });
   const pick = ({ cat, name }) => st.products.find(p => p.cat === cat && Catalog.norm(p.name) === Catalog.norm(name))
     || st.products.find(p => p.cat === cat);
   const link = Object.fromEntries(Object.entries(DEMO_LINKS).map(([sku, rule]) => [sku, pick(rule).id]));
@@ -4887,6 +5147,8 @@ const Dispatch = (() => {
   const byId = (st, id) => (st.dispatches || []).find(d => d.id === id) || null;
   const productOf = (st, id) => (st.products || []).find(p => p.id === id) || null;
   const lineName = (st, it) => (it.productId ? (productOf(st, it.productId) || {}).name || 'нет данных: товар' : it.text);
+  // то же с артикулом — для текста без разметки (лента, уведомления, задача на счёт): «Название (арт. X)»
+  const lineLabel = (st, it) => (it.productId ? Catalog.label(productOf(st, it.productId)) : it.text);
   const ref = d => ({ t: 'dispatch', id: d.id });
   const dateKey = v => { const n = new Date(v); return isNaN(n.getTime()) ? '' : n.getFullYear() + '-' + (n.getMonth() + 1) + '-' + n.getDate(); };
   const sum = (list, f) => list.reduce((a, x) => a + f(x), 0);
@@ -4957,7 +5219,7 @@ const Dispatch = (() => {
     for (const [productId, need] of needs(d)) {
       const lies = Stock.grid(st, productId).cell(d.from.entityId, d.from.cityId) ?? 0;
       const have = Stock.sellMax(st, { productId, entityId: d.from.entityId, cityId: d.from.cityId });
-      if (need > have) short.push({ productId, name: (productOf(st, productId) || {}).name || 'нет данных: товар', need, have, held: lies - have });
+      if (need > have) short.push({ productId, name: Catalog.label(productOf(st, productId)), need, have, held: lies - have });
     }
     if (short.length) {
       const list = short.map(x => (x.held > 0
@@ -5168,7 +5430,7 @@ const Dispatch = (() => {
     const taken = new Set();
     for (const old of d.items.filter(i => i.sold)) {
       const k = n.rec.items.findIndex((row, i) => !taken.has(i) && !row.sold && row.productId === old.productId && row.text === old.text && row.qty === old.qty);
-      if (k < 0) return fail(`Строка «${lineName(st, old)}» уже списана при продаже (${num(old.qty)}): изменить или удалить её нельзя. Нужно больше — добавьте новую строку.`, { missing: [] });
+      if (k < 0) return fail(`Строка «${lineLabel(st, old)}» уже списана при продаже (${num(old.qty)}): изменить или удалить её нельзя. Нужно больше — добавьте новую строку.`, { missing: [] });
       taken.add(k);
       n.rec.items[k].sold = old.sold;
       // клетка списанной строки — та, что была (счёт между юрлицами считается по клетке списания)
@@ -5250,7 +5512,7 @@ const Dispatch = (() => {
     if (!!it.picked === !!done) return { ok: true, reason: '' };
     if (done) it.picked = true; else delete it.picked;
     const p = picked(d);
-    Feed.add(st, ref(d), { kind: 'item', text: `${done ? 'Собрано' : 'Снята отметка'}: ${lineName(st, it)} — ${num(it.qty)}. Собрано ${p.done} из ${p.total}.`, by, at: now });
+    Feed.add(st, ref(d), { kind: 'item', text: `${done ? 'Собрано' : 'Снята отметка'}: ${lineLabel(st, it)} — ${num(it.qty)}. Собрано ${p.done} из ${p.total}.`, by, at: now });
     return { ok: true, reason: '' };
   }
   // «Собрано N из M»: строк с отметкой и всего строк. Единственный счёт для карточки и таблицы.
@@ -5285,7 +5547,7 @@ const Dispatch = (() => {
     const r = Stock.sell(st, { productId: it.productId, qty: it.qty, entityId: o.entityId, cityId: o.cityId, reserveId: o.reserveId, doc: d.number }, by, now);
     if (!r.ok) return r;
     it.sold = { at: now, by, entityId: r.move.entityId, cityId: r.move.cityId };
-    Feed.add(st, ref(d), { kind: 'item', text: `Списано при продаже: ${lineName(st, it)} — ${num(it.qty)} со склада ${cellText(st, it.sold)}.`, by, at: now });
+    Feed.add(st, ref(d), { kind: 'item', text: `Списано при продаже: ${lineLabel(st, it)} — ${num(it.qty)} со склада ${cellText(st, it.sold)}.`, by, at: now });
     return r;
   }
   // «списано: кто, когда, откуда» — одна фраза для карточки и таблицы
@@ -5344,7 +5606,7 @@ const Dispatch = (() => {
     const to = biller(st);
     return [...groups].map(([owner, items]) => {
       const from = entName(st, owner), seller = entName(st, d.seller);
-      const lines = items.map(it => `${lineName(st, it)} — ${num(it.qty)} (склад ${from}, ${Stock.cityName(st, ownerCell(it).cityId) ?? ownerCell(it).cityId})`).join('; ');
+      const lines = items.map(it => `${lineLabel(st, it)} — ${num(it.qty)} (склад ${from}, ${Stock.cityName(st, ownerCell(it).cityId) ?? ownerCell(it).cityId})`).join('; ');
       return {
         owner, seller: d.seller, to: to ? { t: 'p', id: to } : null,
         title: `Выставить счёт: ${from} → ${seller}`,
@@ -5455,7 +5717,7 @@ const Dispatch = (() => {
 
   return {
     PIPE, ST, STEP_KIND, PURPOSE, MISSING, NO_ADDRESS, byId, nextNumber, create, update, canWork, canEdit, canCancel, canComment, canSell,
-    setStage, assign, drivers, pick, picked, comment, sell, soldText, query, transit, inTransit, warehouseAddress, lineName,
+    setStage, assign, drivers, pick, picked, comment, sell, soldText, query, transit, inTransit, warehouseAddress, lineName, lineLabel,
     defaultSeller, defaultFrom, billPlan, billTasks, billView, canBill, requestBill, BILL_DROP,
   };
 })();
@@ -5486,7 +5748,7 @@ KIND.dispatchStep = { l: 'Ход отправок', ic: 'truck', c: 'info' };
 // База: роль «Водитель», право РОП списывать при продаже, воронка отправок; заявок в новой базе нет.
 BASES.push(st => {
   const perms = on => Object.fromEntries(Perms.LIST.map(([k]) => [k, on.includes(k)]));
-  st.roles.push({ id: 'driver', name: 'Водитель', builtin: true, perms: perms(['dispatch', 'auto']) });
+  st.roles.push({ id: 'driver', name: 'Водитель', builtin: true, perms: perms(['dispatch', 'auto', 'catalog']) });
   // РОП (роль заводит база лидов, 35-leads.js) списывает при продаже, как менеджеры
   const rop = st.roles.find(r => r.id === 'rop');
   if (rop) rop.perms.sell = true;
@@ -5890,7 +6152,7 @@ const Feed = (() => {
 
   const same = (a, b) => !!a && !!b && a.t === b.t && a.id === b.id;
   const time = at => { const n = at == null ? NaN : new Date(at).getTime(); return isNaN(n) ? null : n; };
-  const nameOf = (st, id) => ((st.products || []).find(p => p.id === id) || {}).name || 'нет данных: товар';
+  const nameOf = (st, id) => Catalog.label((st.products || []).find(p => p.id === id));
 
   // Запись в ленту ref = {t:'deal'|'lead'|'client'|'dispatch', id}: {kind, text, by, at, data?}.
   // Без ссылки, текста или времени записи не будет (null). Новая запись — в конец st.feed; порядок показа решает of().
@@ -6181,6 +6443,8 @@ const Deals = (() => {
 
   // ——— строки товаров ———
   const itemName = (st, it) => (it.productId ? (productOf(st, it.productId) || {}).name || 'нет данных: товар' : it.text);
+  // Строка с артикулом — для текста без разметки (лента, уведомления): «Название (арт. X)»; своя строка — как есть
+  const itemLabel = (st, it) => (it.productId ? Catalog.label(productOf(st, it.productId)) : it.text);
   const priceText = it => (hasPrice(it) ? rub(it.price) : 'нет данных: цена');
 
   // Строка из введённого: товар из каталога (productId) или своя (text), количество, цена (по умолчанию цена сайта, а нет её —
@@ -6210,7 +6474,7 @@ const Deals = (() => {
     return { item: it };
   }
 
-  const itemLine = (st, it) => `${itemName(st, it)} — ${num(it.qty)} × ${priceText(it)}${it.disc ? ', скидка ' + num(it.disc) + ' %' : ''}`;
+  const itemLine = (st, it) => `${itemLabel(st, it)} — ${num(it.qty)} × ${priceText(it)}${it.disc ? ', скидка ' + num(it.disc) + ' %' : ''}`;
 
   // Сколько по сделке зарезервировано этого товара (все резервы сделки по нему).
   const reserved = (st, d, productId) => (st.reserves || []).filter(r => r.dealId === d.id && r.productId === productId).reduce((s, r) => s + r.qty, 0);
@@ -6222,7 +6486,7 @@ const Deals = (() => {
   const reserveBlock = (st, d, productId, after, what) => {
     const held = reserved(st, d, productId);
     if (!(held > after)) return null;
-    const p = productOf(st, productId), name = (p || {}).name || 'нет данных: товар', rows = (d.items || []).filter(x => x.productId === productId).length;
+    const p = productOf(st, productId), name = Catalog.label(p), rows = (d.items || []).filter(x => x.productId === productId).length;
     return what === 'remove'
       ? `По товару «${name}» в резерве ${qtyOf(held, p)}, а после удаления в строках останется ${qtyOf(after, p)} — сначала снимите резерв.`
       : `По товару «${name}» в резерве ${qtyOf(held, p)} — сначала снимите резерв или оставьте не меньше ${num(held)}${rows > 1 ? ' в сумме по строкам этого товара' : ''}.`;
@@ -6429,7 +6693,7 @@ const Deals = (() => {
       if (c.item[f] !== it[f]) lines.push(`${ITEM_LABEL[f]}: ${f === 'price' ? priceText(it) : it[f]} → ${f === 'price' ? priceText(c.item) : c.item[f]}`);
     }
     if (!lines.length) return { ok: true, reason: '' };
-    const name = itemName(st, it);
+    const name = itemLabel(st, it);
     Object.assign(it, c.item);
     log(st, d, 'item', `Строка «${name}»: ${lines.join('; ')}`, by, now, { idx });
     return { ok: true, reason: '' };
@@ -6476,10 +6740,10 @@ const Deals = (() => {
     const o = opt || {}, pid = o.productId, p = productOf(st, pid);
     if (!p) return fail('Такого товара нет в каталоге.');
     const rows = (d.items || []).filter(x => x.productId === pid).length;
-    if (!rows) return fail(`В сделке ${d.id} нет строки с товаром «${p.name}»: сначала добавьте его в сделку, потом ставьте резерв.`, { max: 0 });
+    if (!rows) return fail(`В сделке ${d.id} нет строки с товаром «${Catalog.label(p)}»: сначала добавьте его в сделку, потом ставьте резерв.`, { max: 0 });
     // Предел — по товару, а не по строке: две строки одного товара (10 и 5) дают 15, а не 10.
     const all = lined(d, pid), held = reserved(st, d, pid), rest = left(st, d, pid);
-    if (!(rest > 0)) return fail(`Строка «${p.name}» уже зарезервирована целиком (${num(held)}).`, { max: 0 });
+    if (!(rest > 0)) return fail(`Строка «${Catalog.label(p)}» уже зарезервирована целиком (${num(held)}).`, { max: 0 });
     const qty = o.qty === undefined || str(o.qty) === '' ? rest : toNum(o.qty);
     if (qty > rest) return fail(`${rows > 1 ? `В ${rows} строках этого товара ${num(all)}` : `В строке ${num(all)}`}, уже зарезервировано ${num(held)}: можно ещё ${num(rest)}.`, { max: rest });
     const src = o.src || 'stock';
@@ -6524,7 +6788,7 @@ const Deals = (() => {
     const d = r && byId(st, r.dealId);
     if (!d) return;
     keepTrail(st, r);
-    const name = low((productOf(st, r.productId) || {}).name || 'нет данных: товар'), tail = why ? ' ' + why : '';
+    const name = low(Catalog.label(productOf(st, r.productId))), tail = why ? ' ' + why : '';
     log(st, d, 'reserve', `Снят резерв: ${name} — ${num(q)}${why ? '.' + tail : ''}`, by, now, { reserveId: r.id, productId: r.productId, qty: q, removed: true });
     notifyReserve(st, d, by, now, withDeal => `Снят резерв: ${name} — ${num(q)}${withDeal ? ` (${d.id}, ${d.client})` : ''}.${tail}`);
   }
@@ -6575,7 +6839,7 @@ const Deals = (() => {
   }
 
   return {
-    defaultReasons, reasons, lineSum, total, sumOf, noPrice, state, canEdit, itemName, reserved, lined, left, reservesOf, byId,
+    defaultReasons, reasons, lineSum, total, sumOf, noPrice, state, canEdit, itemName, itemLabel, reserved, lined, left, reservesOf, byId,
     create, update, move, win, lose, reopen, RELEASED_NOTE, addItem, setItem, removeItem, reserve, reserveItem, keepTrail, noteRelease, unreserve, query, columns,
   };
 })();
@@ -7007,7 +7271,7 @@ const Docs = (() => {
   const KEYS = {
     // массивы записей с id: документ — запись
     ARRAY: ['products', 'moves', 'reserves', 'shipments', 'shipRules', 'deals', 'leads', 'clients', 'feed', 'acts', 'tasks', 'msgs',
-      'notes', 'dispatches', 'pipelines', 'depts', 'entities', 'cities', 'roles', 'people', 'rules', 'lostReasons', 'watches'],
+      'notes', 'dispatches', 'pipelines', 'depts', 'entities', 'cities', 'roles', 'people', 'rules', 'lostReasons', 'watches', 'categories'],
     // по id товара: документ — строка остатков (stock) или отложенного (aside) одного товара
     MAP: ['stock', 'aside'],
     // целиком одним документом с id ''
@@ -7822,11 +8086,47 @@ const Guard = (() => {
     return null;
   }
 
+  // ——— товары и категории ———
+  // Товар правит и заводит право catalog. Категория товара — только из дерева (st.categories) или «Без раздела»: товара «вне дерева» не
+  // бывает. Проверяется то, что пачка меняет (новый товар, смена категории): старые товары с чужой категорией правкой цены не блокируются.
+  function productsRule(ctx, c) {
+    if (!ctx.can('catalog')) return needs('менять товары и каталог', 'catalog');
+    if (c.deleted || !c.data) return null;
+    // артикул — строка не длиннее Catalog.SKU_MAX (или поля нет): право на него то же, catalog
+    if (c.data.sku != null && (typeof c.data.sku !== 'string' || c.data.sku.length > Catalog.SKU_MAX)) return no(`артикул — строка не длиннее ${Catalog.SKU_MAX} знаков`);
+    const was = ctx.before(c);
+    if (was && was.cat === c.data.cat) return null;
+    return Catalog.hasPath(ctx.after, c.data.cat) ? null : no(`категории «${c.data.cat}» нет в списке категорий — сначала заведите её`);
+  }
+  // Категория: правит право catalog; название и место — Catalog.nameProblem по состоянию после пачки; удалить можно только пустую
+  // (в состоянии после пачки нет ни подкатегорий, ни товаров этого пути — по пути из состояния до пачки)
+  function categoriesRule(ctx, c) {
+    if (!ctx.can('catalog')) return needs('менять категории товаров', 'catalog');
+    const node = c.deleted ? null : c.data;
+    if (node) {
+      if (typeof node.name !== 'string') return no('у категории нет названия');
+      const parent = node.parentId || null;
+      const clean = { ...ctx.after, categories: (ctx.after.categories || []).filter(x => x.id !== node.id) };
+      const bad = Catalog.nameProblem(clean, node.name, parent, node.id);
+      if (bad) return no(bad);
+      if (!Catalog.pathOf(ctx.after, node.id)) return no('категория стоит внутри себя');
+      // переименование и перенос ведут за собой пути товаров: товар, чей путь был в дереве, а после пачки не найден, — пачка неполная
+      const lost = (ctx.after.products || []).find(p => Catalog.hasPath(ctx.st, p.cat) && !Catalog.hasPath(ctx.after, p.cat));
+      return lost ? no(`у товара «${lost.name}» осталась категория «${lost.cat}», которой после этой правки нет, — обновите пути товаров вместе с категорией`) : null;
+    }
+    const was = ctx.before(c);
+    if (!was) return null;
+    const path = Catalog.pathOf(ctx.st, was.id);
+    const kids = (ctx.after.categories || []).some(x => x.parentId === was.id);
+    const busy = (ctx.after.products || []).some(p => path && (p.cat === path || String(p.cat).startsWith(path + Catalog.SEP)));
+    return kids || busy ? no(`удалить можно только пустую категорию: в «${path}» остались товары или подкатегории`) : null;
+  }
+
   const right = (r, what) => ctx => (ctx.can(r) ? null : needs(what, r));
   const SETTINGS = right('settings', 'менять настройки фирмы');
   const ADMIN = right('admin', 'менять эти данные');
   const RULES = {
-    products: right('catalog', 'менять товары и каталог'),
+    products: productsRule, categories: categoriesRule,
     stock: stockRule, aside: asideRule, moves: movesRule, reserves: reservesRule, shipments: shipmentsRule, watches: watchesRule,
     deals: dealsRule, leads: leadsRule, clients: clientsRule, feed: feedRule, acts: actsRule,
     tasks: tasksRule, dispatches: dispatchesRule, notes: notesRule,
@@ -7985,6 +8285,8 @@ const Import = (() => {
   const MARKS = { ip: 'складип', npp: 'нпп', vs: 'вс', custody: 'ответхранение', transit: 'впути', damaged: 'бой', reserve: 'резерв' };
   const NUM_KEYS = ['ip', 'npp', 'vs', 'custody', 'transit', 'damaged'];
   const NAME_HEADS = ['наименование', 'номенклатура', 'товар', 'название', 'модель'];
+  // колонка артикула в листе остатков и в списке прихода (compact: «Арт.» → «арт», «Артикул» → «артикул»)
+  const SKU_HEADS = ['артикул', 'арт', 'артикултовара', 'sku'];
   const HEADER_ROWS = 10;
 
   // Клетка → {n: число} | {text} | null (пусто). Пробелы-разделители тысяч и запятая-десятичная понимаются.
@@ -8010,11 +8312,12 @@ const Import = (() => {
     }
     if (h < 0) return fail('Не найдена строка заголовков среди первых 10 строк: нужны хотя бы две колонки из «Склад ИП», «НПП», «ВС», «ответхранение», «В пути», «Бой», «Резерв». Похоже, это не лист «Остатки».');
     const head = t[h], data = t.slice(h + 1), marked = new Set(Object.values(cols));
-    let nameCol = head.findIndex((c, j) => !marked.has(j) && NAME_HEADS.includes(compact(c)));
+    const skuCol = head.findIndex((c, j) => !marked.has(j) && SKU_HEADS.includes(compact(c)));
+    let nameCol = head.findIndex((c, j) => !marked.has(j) && j !== skuCol && NAME_HEADS.includes(compact(c)));
     if (nameCol < 0) {
       const width = Math.max(head.length, ...data.map(r => r.length));
       for (let j = 0; j < width && nameCol < 0; j++) {
-        if (!marked.has(j) && data.some(r => { const v = cellNum(r[j]); return v !== null && v.text !== undefined; })) nameCol = j;
+        if (!marked.has(j) && j !== skuCol && data.some(r => { const v = cellNum(r[j]); return v !== null && v.text !== undefined; })) nameCol = j;
       }
     }
     if (nameCol < 0) return fail('Нет колонки с названием товара: заголовок «Наименование», «Номенклатура», «Товар», «Название» или «Модель», либо любая колонка с текстом.');
@@ -8032,6 +8335,8 @@ const Import = (() => {
         continue;
       }
       const row = { name, cat: sub ? root + ' › ' + sub : root };
+      const sku = skuCol >= 0 ? Catalog.skuClean(r[skuCol]) : '';
+      if (sku) row.sku = sku;
       const junk = [];
       for (const k of NUM_KEYS) {
         const v = cols[k] === undefined ? null : cellNum(r[cols[k]]);
@@ -8080,6 +8385,7 @@ const Import = (() => {
       const name = str(r.name).replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, NAME_MAX).trim();
       if (!name) continue;
       const row = { name, cat: str(r.cat).slice(0, NAME_MAX) };
+      if (Catalog.skuClean(r.sku)) row.sku = Catalog.skuClean(r.sku);
       for (const k of NUM_KEYS) row[k] = isNum(r[k]) ? r[k] : null;
       row.reserve = typeof r.reserve === 'string' && r.reserve.trim() ? r.reserve.trim().slice(0, 1000) : null;
       row.junk = (Array.isArray(r.junk) ? r.junk : []).filter(isObj).map(j => ({ column: str(j.column).slice(0, 100), text: str(j.text).slice(0, 200) })).filter(j => j.text);
@@ -8139,6 +8445,11 @@ const Import = (() => {
       // товар листа — новый; позиция каталога — только если снята из списка, а остаток у неё есть
       if (sheetIds.has(p.id)) { st.products.push(p); created++; } else if (built.stock[p.id] || built.aside[p.id]) st.products.push(p);
     }
+    Catalog.syncTree(st);   // раздел листа, которого ещё нет в дереве категорий, становится категорией
+    // артикул строки листа — товару, у которого своего артикула ещё нет (поставленный руками не затирается)
+    const byId = new Map(st.products.map(p => [p.id, p]));
+    let skus = 0;
+    list.forEach((row, i) => { const p = byId.get(built.ids[i]); if (row.sku && p && !Catalog.skuOf(p)) { p.sku = row.sku; skus++; } });
     const was = st.stock || {}, wasAside = st.aside || {};
     const changed = leafDiff(was, built.stock) + leafDiff(wasAside, built.aside);
     st.stock = built.stock;
@@ -8203,7 +8514,7 @@ const Import = (() => {
       logMove(st, { at, productId: r.productId, kind: Stock.KINDS.reserve, qty: r.qty, entityId: r.entityId, cityId: r.cityId, doc: w.note ? `перенос: ${w.note}` : 'перенос', by: who, rid: r.id });
     }
     st.stockSheet = { at, by: who, rows: list.map(({ name, cat, ip, npp, vs, custody, transit, damaged }) => ({ name, cat, ip, npp, vs, custody, transit, damaged })) };
-    return { products: list.length, matched: list.length - built.unmatched.length, created, cells, changed, withStock, reserves: wanted.length, reservesChanged: removed + toAdd.length, moves, unparsed };
+    return { products: list.length, matched: list.length - built.unmatched.length, created, cells, changed, withStock, reserves: wanted.length, reservesChanged: removed + toAdd.length, skus, moves, unparsed };
   }
 
   // ——— клиенты из Битрикса ———
@@ -8393,7 +8704,8 @@ const Import = (() => {
   // «Оприходование <дата>». Приход, а не замена остатка (в отличие от «Переноса»). Ни разбор, ни сопоставление st не меняют.
   const RECEIPT_MAX = 2000;
   const RECEIPT_HEADS = {
-    name: ['наименование', 'номенклатура', 'товар', 'название', 'модель', 'ключ', 'ключтовара', 'артикул', 'код'],
+    name: ['наименование', 'номенклатура', 'товар', 'название', 'модель', 'ключ', 'ключтовара', 'код'],
+    sku: SKU_HEADS,
     qty: ['количество', 'колво', 'кол', 'количествошт', 'штук', 'шт'],
     entity: ['юрлицо', 'юридическоелицо', 'организация'],
     city: ['склад', 'город', 'складгород', 'городсклада'],
@@ -8401,7 +8713,8 @@ const Import = (() => {
   const clean = (v, max = NAME_MAX) => str(v).replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, max).trim();
 
   // Вставка из Excel (текст с табуляциями) или CSV (текст файла, или уже готовая таблица) → { rows, header, problems }.
-  // Колонки по порядку: название или ключ товара, количество, юрлицо, склад (город); последние две можно не давать. Первая строка —
+  // Колонки по порядку: артикул, название или ключ товара (одна колонка), количество, юрлицо, склад (город); последние две можно не давать.
+  // Если в заголовке есть «Артикул» (а колонка названия отдельная) — артикул идёт своей колонкой. Первая строка —
   // заголовок, если в ней узнаются названия колонок или в колонке количества стоит не число; header — её текст (экран показывает, что
   // строка принята за заголовок, а не за товар). rows: { line, name, qty, entity, city, pick: '' } — строки как написаны, line — номер строки списка.
   function receiptRows(input) {
@@ -8410,18 +8723,42 @@ const Import = (() => {
     const table = text !== null ? parseCsv(text, text.includes('\t') ? '\t' : undefined) : (Array.isArray(input) ? input : []);
     if (!table.some(r => !rowEmpty(r))) return fail('Список пустой: вставьте строки из Excel или выберите файл.');
     if (table.some(r => r.some(c => BINARY.test(String(c))))) return fail('Это не список: в файле двоичные данные. Сохраните таблицу как CSV или вставьте её текстом.');
-    const at = { name: 0, qty: 1, entity: 2, city: 3 };
+    const at = { name: 0, qty: 1, entity: 2, city: 3, sku: -1 };
     const first = table.findIndex(r => !rowEmpty(r)), heads = table[first].map(compact);
     const known = {};
     for (const k of Object.keys(RECEIPT_HEADS)) { const j = heads.findIndex(h => RECEIPT_HEADS[k].includes(h)); if (j >= 0) known[k] = j; }
     const qcell = cellNum(table[first][at.qty]);
     const header = Object.keys(known).length > 0 || (qcell !== null && qcell.n === undefined);
     if (header) Object.assign(at, known);
+    // в заголовке есть «Артикул», а колонки названия нет — товар опознаётся по одному артикулу (имя пустое)
+    if (header && known.sku !== undefined && known.name === undefined) at.name = -1;
     const data = table.map((r, i) => [r, i]).filter(([r, i]) => i > first - (header ? 0 : 1) && !rowEmpty(r));
     if (data.length > RECEIPT_MAX) return fail(`В списке больше ${RECEIPT_MAX} строк: разделите его на части.`);
     if (!data.length) return fail('В списке нет ни одной строки с товаром под заголовком.');
-    const rows = data.map(([r, i]) => ({ line: i + 1, name: clean(r[at.name]), qty: clean(r[at.qty], 40), entity: clean(r[at.entity], 100), city: clean(r[at.city], 100), pick: '' }));
+    const rows = data.map(([r, i]) => ({ line: i + 1, name: at.name >= 0 ? clean(r[at.name]) : '', sku: at.sku >= 0 ? clean(r[at.sku], Catalog.SKU_MAX) : '', qty: clean(r[at.qty], 40), entity: clean(r[at.entity], 100), city: clean(r[at.city], 100), pick: '' }));
     return { rows, header: header ? table[first].map(str).filter(Boolean).join(' · ') : null, problems: [] };
+  }
+
+  // Ручной ввод («Оприходовать товар → Ввести вручную»): строки таблицы → те же строки списка, что даёт receiptRows, и дальше тот же разбор
+  // (receiptPlan) и то же проведение (applyReceipt) — своей копии логики нет. Строка таблицы: { pid (выбранный товар), q (набранный поиск), isNew,
+  // newName, sku (у нового товара), qty, entity, city (id или название; пусто — «всё это приходит на») }. Полностью пустые строки пропускаются.
+  // Выбранный товар идёт строкой «название + артикул, это он» (pick); новый — pick 'new'; набранный текст без выбора — как строка из Excel
+  // (опознаётся по артикулу, ключу, названию или ждёт выбора). line — номер строки в таблице на экране.
+  // → { rows, problems }
+  function manualRows(st, list) {
+    const rows = [];
+    (Array.isArray(list) ? list : []).forEach((m, i) => {
+      if (!isObj(m)) return;
+      const p = str(m.pid) ? (st.products || []).find(x => x.id === str(m.pid)) : null;
+      const row = { line: i + 1, qty: clean(m.qty, 40), entity: clean(m.entity, 100), city: clean(m.city, 100) };
+      if (p) Object.assign(row, { name: p.name, sku: Catalog.skuOf(p), pick: p.id });
+      else if (m.isNew === true) Object.assign(row, { name: clean(m.newName), sku: clean(m.sku, Catalog.SKU_MAX), pick: 'new' });
+      else Object.assign(row, { name: clean(m.q), sku: '', pick: '' });
+      if (!p && !row.name && !row.sku && !row.qty && !row.entity && !row.city) return;
+      rows.push(row);
+    });
+    if (rows.length > RECEIPT_MAX) return { rows: [], problems: [`В списке больше ${RECEIPT_MAX} строк: разделите его на части.`] };
+    return rows.length ? { rows, problems: [] } : { rows: [], problems: ['Добавьте хотя бы одну строку: выберите товар и впишите количество.'] };
   }
 
   // Количество строки списка: целое больше нуля. «10», «1 200», «10 шт» — можно; «10,5», «0», «много» — нет (причина по-русски)
@@ -8451,14 +8788,15 @@ const Import = (() => {
 
   // Сопоставить строки списка с номенклатурой st.products и справочником юрлиц и городов. Ничего не меняет.
   // rows — из receiptRows, правленные на экране; pick у строки: '' — решить само, <id товара> — «это тот же», 'new' — создать новый, 'skip' — пропустить.
-  // opts: entityId, cityId — куда приходит то, у чего своих юрлица и склада нет; canCreate — можно ли создавать новые товары (право catalog).
-  // Строка → товар: по ключу товара (id) или по названию без регистра, лишних пробелов, ё/е, кавычек и тире (Catalog.norm) — один такой товар =
+  // opts: entityId, cityId — куда приходит то, у чего своих юрлица и склада нет; canCreate — можно ли создавать новые товары (право catalog);
+  // cat — категория новых товаров, у которых своей нет (строка r.cat: путь «Электрика › Автоматы»; пусто — «Без раздела»); пути, которого нет в дереве, — ошибка строки.
+  // Строка → товар: по артикулу (без регистра, пробелов и дефисов; им может быть и первая колонка), по ключу товара (id) или по названию без регистра, лишних пробелов, ё/е, кавычек и тире (Catalog.norm) — один такой товар =
   // «найден» сам; иначе до трёх похожих по общим словам, из них выбирают (status 'choose'), либо создают новый, либо пропускают.
   // Юрлицо и склад строки сопоставляются со справочником так же, без регистра; неизвестные — ошибка строки, а не «нет данных».
   // → { lines, groups, warnings, positions, created, units, skipped, errors, choose, ready }:
   //   lines[i] — { index, line, name, qty, entityId, cityId, status: 'found'|'picked'|'new'|'choose'|'skip'|'error', match (что вышло бы без ошибки
   //   в количестве или юрлице), productId, productName, candidates: [{id, name}], error };
-  //   groups — что будет записано: один товар в одну клетку — одна запись, одинаковые строки сложены: { key, productId, name, isNew, entityId, cityId, qty, lines };
+  //   groups — что будет записано: один товар в одну клетку — одна запись, одинаковые строки сложены: { key, productId, name, isNew, cat и sku (у нового), entityId, cityId, qty, lines };
   //   warnings — тексты про сложенные одинаковые строки; ready — можно проводить (нет строк с ошибкой и «выберите», есть что провести).
   function receiptPlan(st, rows, opts = {}) {
     const list = Array.isArray(rows) ? rows : [], products = st.products || [];
@@ -8474,10 +8812,10 @@ const Import = (() => {
     };
     const dir = (items, raw) => { const k = Catalog.norm(raw); const x = (items || []).find(i => Catalog.norm(i.name) === k || Catalog.norm(i.id) === k); return x ? x.id : ''; };
     const defE = dir(st.entities, opts.entityId || ''), defC = dir(st.cities, opts.cityId || '');
-    const view = p => ({ id: p.id, name: p.name });
+    const view = p => ({ id: p.id, name: p.name, sku: Catalog.skuOf(p) });
 
     const lines = list.map((r, i) => {
-      const L = { index: i, line: r.line === undefined ? i + 1 : r.line, name: str(r.name), qty: null, entityId: '', cityId: '', status: '', match: '', productId: '', productName: '', candidates: [], error: '' };
+      const L = { index: i, line: r.line === undefined ? i + 1 : r.line, name: str(r.name), sku: Catalog.skuClean(r.sku), qty: null, entityId: '', cityId: '', status: '', match: '', productId: '', productName: '', productSku: '', candidates: [], cat: str(r.cat) || str(opts.cat), error: '' };
       const errs = [];
       const q = receiptQty(r.qty);
       if (q.error) errs.push(q.error); else L.qty = q.n;
@@ -8486,17 +8824,21 @@ const Import = (() => {
       if (str(r.city)) { L.cityId = dir(st.cities, r.city); if (!L.cityId) errs.push(`склада (города) «${str(r.city)}» нет в справочнике`); }
       else if (defC) L.cityId = defC; else errs.push('не выбран склад (город)');
       if (r.pick === 'skip') { L.status = 'skip'; return L; }   // пропущенную строку не разбирают: ошибки в ней не в счёт
-      if (!L.name) errs.push('нет названия товара');
+      if (!L.name && !L.sku) errs.push('нет названия или артикула товара');
       else {
-        const hit = byKey.get(L.name.toLowerCase()), exact = hit ? [hit] : (byNorm.get(Catalog.norm(L.name)) || []);
+        // сперва по артикулу (колонка «Артикул» или то, что написано в первой колонке), потом по ключу товара, потом по названию
+        const bySku = Catalog.bySku(st, L.sku || L.name), hit = byKey.get((L.name || L.sku).toLowerCase());
+        const exact = bySku.length ? bySku : (hit ? [hit] : (byNorm.get(Catalog.norm(L.name || L.sku)) || []));
         const chosen = r.pick && r.pick !== 'new' ? byId.get(String(r.pick)) : null;
-        if (exact.length === 1) { L.match = 'found'; L.productId = exact[0].id; L.productName = exact[0].name; }
+        if (exact.length === 1) { L.match = 'found'; L.productId = exact[0].id; L.productName = exact[0].name; L.productSku = Catalog.skuOf(exact[0]); }
         else {
           L.candidates = (exact.length ? exact.slice(0, 5) : similar(L.name)).map(view);
-          if (chosen) { L.match = 'picked'; L.productId = chosen.id; L.productName = chosen.name; if (!L.candidates.some(c => c.id === chosen.id)) L.candidates.push(view(chosen)); }
+          if (chosen) { L.match = 'picked'; L.productId = chosen.id; L.productName = chosen.name; L.productSku = Catalog.skuOf(chosen); if (!L.candidates.some(c => c.id === chosen.id)) L.candidates.push(view(chosen)); }
           else if (r.pick === 'new' && !exact.length) {
             L.match = 'new';
             if (opts.canCreate !== true) errs.push('нет права добавлять товары в номенклатуру: выберите товар из списка или пропустите строку');
+            else if (!L.name) errs.push('для нового товара нужно название (в строке только артикул)');
+            else if (!Catalog.hasPath(st, L.cat)) errs.push(`категории «${L.cat}» нет в списке категорий`);
           } else L.match = 'choose';
         }
       }
@@ -8511,7 +8853,7 @@ const Import = (() => {
       if (!['found', 'picked', 'new'].includes(L.status)) continue;
       const isNew = L.status === 'new', key = (isNew ? 'new:' + Catalog.norm(L.name) : L.productId) + '|' + L.entityId + '|' + L.cityId;
       let g = at.get(key);
-      if (!g) { g = { key, productId: isNew ? '' : L.productId, name: isNew ? L.name : L.productName, isNew, entityId: L.entityId, cityId: L.cityId, qty: 0, lines: [] }; at.set(key, g); groups.push(g); }
+      if (!g) { g = { key, productId: isNew ? '' : L.productId, name: isNew ? L.name : L.productName, isNew, cat: isNew ? L.cat : '', sku: isNew ? L.sku : '', entityId: L.entityId, cityId: L.cityId, qty: 0, lines: [] }; at.set(key, g); groups.push(g); }
       g.qty += L.qty;
       g.lines.push(L.line);
     }
@@ -8532,7 +8874,7 @@ const Import = (() => {
   function applyReceipt(st, rows, opts, by, now) {
     const o = opts || {}, at = new Date(now);
     if (!Perms.can(st, by, 'receive')) return { ok: false, reason: 'У вашей роли нет права принимать товар на склад.' };
-    const plan = receiptPlan(st, rows, { entityId: o.entityId, cityId: o.cityId, canCreate: Perms.can(st, by, 'catalog') });
+    const plan = receiptPlan(st, rows, { entityId: o.entityId, cityId: o.cityId, cat: o.cat, canCreate: Perms.can(st, by, 'catalog') });
     if (!plan.lines.length) return { ok: false, reason: 'Список пустой.', plan };
     if (plan.errors || plan.choose) return { ok: false, reason: `Не все строки разобраны: с ошибкой ${plan.errors}, ждут выбора ${plan.choose}. Исправьте их или пропустите.`, plan };
     if (!plan.groups.length) return { ok: false, reason: 'Нечего оприходовать: все строки пропущены.', plan };
@@ -8541,7 +8883,7 @@ const Import = (() => {
       if (!g.isNew) continue;
       const k = g.key.split('|')[0];
       if (!made.has(k)) {
-        const r = Catalog.add(st, { name: g.name });
+        const r = Catalog.add(st, { name: g.name, cat: g.cat, sku: g.sku });
         if (!r.ok) throw new Error(r.reason);
         made.set(k, r.product.id); products.push(r.product.id);
       }
@@ -8572,7 +8914,7 @@ const Import = (() => {
     throw new Error('Перенос: неизвестный вид переноса.');
   }
 
-  return { INPUT, decode, parseCsv, stockRows, parseReserve, applyStock, clientRows, twins, applyClients, receiptRows, receiptQty, receiptPlan, applyReceipt, preview };
+  return { INPUT, decode, parseCsv, stockRows, parseReserve, applyStock, clientRows, twins, applyClients, receiptRows, manualRows, receiptQty, receiptPlan, applyReceipt, preview };
 })();
 
 // Оболочка: состояние S и его сохранение, тема, разделы NAV, боковая панель, «Кто я», уведомления, окна,
@@ -8747,7 +9089,7 @@ function mStage(s){
   </div>${mFoot('Отметить и уведомить')}</form>`;
 }
 let _ir=0;
-const irow=()=>{_ir++;return `<div class="irow"><select class="inp" id="ns-sku-${_ir}" aria-label="Товар">${S.products.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select><input class="inp" id="ns-qty-${_ir}" type="number" min="1" value="1" aria-label="Количество"></div>`};
+const irow=()=>{_ir++;return `<div class="irow"><select class="inp" id="ns-sku-${_ir}" aria-label="Товар">${S.products.map(p=>`<option value="${esc(p.id)}">${esc(Catalog.label(p))}</option>`).join('')}</select><input class="inp" id="ns-qty-${_ir}" type="number" min="1" value="1" aria-label="Количество"></div>`};
 function mShip(){
   // этап новой поставки — любой до «прибыло» (этапы с флагами ставит приёмка)
   const stg=shipPipe('in')?.stages||[],stop=stg.findIndex(x=>x.flag),open=stop<0?stg:stg.slice(0,stop);
@@ -8764,7 +9106,8 @@ function mShip(){
 function mProduct(){
   return `<form data-form="product" novalidate>${mHead('Новый товар')}<div class="modal-b">
     <div class="grid2"><div class="field"><label for="np-name">Наименование</label><input id="np-name" class="inp" placeholder="Как товар называется в документах"></div><div class="field"><label for="np-unit">Единица</label><select id="np-unit" class="inp"><option>шт</option><option>м</option><option>пар</option><option>компл.</option></select></div></div>
-    <div class="grid2"><div class="field"><label for="np-cat">Категория</label><select id="np-cat" class="inp">${Catalog.cats(S).map(c=>`<option>${esc(c)}</option>`).join('')}</select></div>${can('prices')?'<div class="field"><label for="np-price">Цена, ₽</label><input id="np-price" class="inp" type="number" min="0" placeholder="Пусто — «нет данных»"></div>':''}</div>
+    <div class="field"><label for="np-sku">Артикул</label><input id="np-sku" class="inp" maxlength="${Catalog.SKU_MAX}" data-on="sku-dup" data-hint="np-dup" autocomplete="off" placeholder="Необязательно. Пусто — «нет данных: артикул»"></div><p class="hint warn-t" id="np-dup" aria-live="polite" hidden></p>
+    <div class="grid2"><div class="field"><label for="np-cat">Категория</label><select id="np-cat" class="inp">${catOptions(Catalog.hasPath(S,S.ui.cat)&&S.ui.cat!=='Все'?S.ui.cat:Catalog.NO_CAT,{noCat:true})}</select></div>${can('prices')?'<div class="field"><label for="np-price">Цена, ₽</label><input id="np-price" class="inp" type="number" min="0" placeholder="Пусто — «нет данных»"></div>':''}</div>
     <p class="err" id="np-err" hidden></p></div>${mFoot('Добавить')}</form>`;
 }
 const mReset=()=>`<form data-form="reset" novalidate>${mHead('Сбросить данные прототипа?')}<div class="modal-b">
@@ -9124,11 +9467,12 @@ const FORMS={
     const name=byId('np-name').value.trim(),pr=byId('np-price'),m=me();
     const price=pr&&pr.value!==''?Math.max(0,Number(pr.value)):null;
     // товар создаёт Catalog.add — тот же код, что у «Оприходовать товар»; он же отказывает на пустое и повторное название
-    const made=Catalog.add(S,{name,cat:byId('np-cat').value,unit:byId('np-unit').value,price});
+    const made=Catalog.add(S,{name,cat:byId('np-cat').value,unit:byId('np-unit').value,price,sku:byId('np-sku').value});
     if(!made.ok) return showErr('np-err',made.reason);
     const pid=made.product.id;
-    Notify.push(S,'arrive',m.id,`В номенклатуру добавлен товар: ${name}.`,new Date(),[],{t:'product',id:pid});
-    closeModal();S.ui.cat='Все';S.ui.sq='';render();toast('Товар добавлен. Остатка нет — он появится после первой приёмки.');
+    Notify.push(S,'arrive',m.id,`В номенклатуру добавлен товар: ${Catalog.label(made.product)}.`,new Date(),[],{t:'product',id:pid});
+    const dup=made.product.sku?skuDupText(made.product.sku,made.product.id):'';
+    closeModal();S.ui.cat='Все';S.ui.sq='';render();toast('Товар добавлен. Остатка нет — он появится после первой приёмки.'+(dup?' '+dup:''));
   },
   msg:f=>{
     const d=deal(f.dataset.id),ta=byId('msg-text'),txt=ta.value.trim();
@@ -9320,11 +9664,11 @@ function attention(){
     S.shipments.filter(isLate).forEach(s=>a.push({lvl:'warn',icon:'truck',text:`${s.id} задерживается на ${days(-dd(s.eta))}`,sub:`Последняя отметка: ${shipLast(s).text}`,act:`data-act="open-ship" data-id="${esc(s.id)}"`}));
     S.products.forEach(p=>{
       const k=stockOf(p.id);
-      if(k.freeAfter<0) a.push({lvl:'bad',icon:'box',text:`${p.name}: под резервы не хватает ${qtyOf(-k.freeAfter,p)}`,sub:'Даже с учётом всех поставок в пути',act:`data-act="open-product" data-pid="${esc(p.id)}"`});
-      else if(k.onHand>0&&k.free<=0&&!k.incoming) a.push({lvl:'warn',icon:'box',text:`${p.name}: свободный остаток закончился`,sub:'Всё, что на складе, в резерве. Поставок нет',act:`data-act="open-product" data-pid="${esc(p.id)}"`});
+      if(k.freeAfter<0) a.push({lvl:'bad',icon:'box',text:`${Catalog.label(p)}: под резервы не хватает ${qtyOf(-k.freeAfter,p)}`,sub:'Даже с учётом всех поставок в пути',act:`data-act="open-product" data-pid="${esc(p.id)}"`});
+      else if(k.onHand>0&&k.free<=0&&!k.incoming) a.push({lvl:'warn',icon:'box',text:`${Catalog.label(p)}: свободный остаток закончился`,sub:'Всё, что на складе, в резерве. Поставок нет',act:`data-act="open-product" data-pid="${esc(p.id)}"`});
     });
-    homeExpired().forEach(r=>{const p=product(r.productId),d=deal(r.dealId);a.push({lvl:'bad',icon:'clock',text:`Срок резерва вышел: ${p?p.name:'нет данных: товар'} — ${qtyOf(r.qty,p)}`,sub:`${r.dealId} · ${d?.client||''} · был до ${fD(r.until)}`,act:`data-act="open-product" data-pid="${esc(r.productId)}"`})});
-    homeSoon().forEach(r=>{const p=product(r.productId),d=deal(r.dealId);a.push({lvl:'info',icon:'clock',text:`Резерв истекает ${fRel(r.until)}: ${p.name} — ${qtyOf(r.qty,p)}`,sub:`${r.dealId} · ${d?.client||''}`,act:`data-act="open-product" data-pid="${esc(p.id)}"`})});
+    homeExpired().forEach(r=>{const p=product(r.productId),d=deal(r.dealId);a.push({lvl:'bad',icon:'clock',text:`Срок резерва вышел: ${Catalog.label(p)} — ${qtyOf(r.qty,p)}`,sub:`${r.dealId} · ${d?.client||''} · был до ${fD(r.until)}`,act:`data-act="open-product" data-pid="${esc(r.productId)}"`})});
+    homeSoon().forEach(r=>{const p=product(r.productId),d=deal(r.dealId);a.push({lvl:'info',icon:'clock',text:`Резерв истекает ${fRel(r.until)}: ${Catalog.label(p)} — ${qtyOf(r.qty,p)}`,sub:`${r.dealId} · ${d?.client||''}`,act:`data-act="open-product" data-pid="${esc(p.id)}"`})});
   }
   return a;
 }
@@ -9467,19 +9811,32 @@ function vStock(){
 
 // ——— вкладка «Товары» ———
 function goodsPane(tabs){
-  const u=S.ui,cur=u.cat||'Все';
-  const chips=['Все',...Catalog.cats(S)].map(c=>`<button type="button" class="fchip ${cur===c?'on':''}" data-act="stock-cat" data-cat="${esc(c)}">${esc(c)}</button>`).join('');
+  const u=S.ui;
   const filters=[
     selField('f-brand','brand','Бренд',[['','Все бренды'],...Catalog.brands(S).map(b=>[b,b])],u.brand||''),
     selField('f-avail','avail','Наличие',[['','Любое наличие'],...[...new Set(S.products.map(p=>p.avail).filter(Boolean))].map(a=>[a,a])],u.avail||''),
     selField('f-catf','catf','Каталог',[['','В каталоге и нет'],['in','Только в каталоге'],['out','Только «нет в каталоге»']],u.catf||'')
   ].join('');
-  return `<div class="bar">${tabs}<span class="grow"></span>${can('receive')?`<button class="btn" data-act="rcpt-open">${ic('plus')}Оприходовать товар</button>`:''}${can('catalog')?`<button class="btn" data-act="new-product">${ic('plus')}Новый товар</button>`:''}</div>
-  <div class="bar"><div class="search-in">${ic('search')}<input id="sq" class="inp" type="search" placeholder="Название, бренд или ключ каталога" value="${esc(u.sq)}" data-on="sq" aria-label="Поиск товара"></div>
+  return `<div class="bar">${tabs}<span class="grow"></span>${can('receive')?`<button class="btn" data-act="rcpt-open">${ic('plus')}Оприходовать товар</button>`:''}${can('catalog')?`<button class="btn" data-act="cat-manage">${ic('box')}Категории</button><button class="btn" data-act="new-product">${ic('plus')}Новый товар</button>`:''}</div>
+  <div class="bar"><div class="search-in">${ic('search')}<input id="sq" class="inp" type="search" placeholder="Название, артикул, бренд или ключ каталога" value="${esc(u.sq)}" data-on="sq" aria-label="Поиск товара по названию, артикулу, бренду или ключу"></div>
   <label class="check"><input type="checkbox" id="deficit" data-on="deficit" ${u.deficit?'checked':''}> Только где не хватает</label></div>
-  <div class="fgrid">${filters}</div>
-  <div class="chips">${chips}</div>
-  <section class="card clip"><div class="legend"><span><i class="lg f"></i>Свободно на складе</span><span><i class="lg r"></i>На складе в резерве</span><span><i class="lg w"></i>В пути</span><span>«Свободно после прихода» = склад + в пути − все резервы</span></div><div id="stock-tbl">${stockTable()}</div></section>`;
+  <div class="stock-lay">${catTree()}<div class="stock-main"><div class="fgrid">${filters}</div>
+  <section class="card clip"><div class="legend"><span><i class="lg f"></i>Свободно на складе</span><span><i class="lg r"></i>На складе в резерве</span><span><i class="lg w"></i>В пути</span><span>«Свободно после прихода» = склад + в пути − все резервы</span></div><div id="stock-tbl">${stockTable()}</div></section></div></div>`;
+}
+// ——— дерево категорий слева от списка ———
+// Строки — Catalog.rows (порядок дерева, число товаров с подкатегориями). Выбранная категория показывает и свои товары, и товары всех
+// подкатегорий (Catalog.query). Раскрытое запоминается в S.ui.catOpen (личное, на сервер не уходит). На узком экране дерево — под кнопкой.
+const CAT_ALL='Все';
+const catParent=path=>path.includes(Catalog.SEP)?path.slice(0,path.lastIndexOf(Catalog.SEP)):'';
+const catAncestors=path=>{const out=[];for(let p=catParent(path);p;p=catParent(p)) out.push(p);return out};
+function catTree(){
+  const cur=S.ui.cat||CAT_ALL,open=S.ui.catOpen||{},rows=Catalog.rows(S),parents=new Set(rows.map(r=>catParent(r.path)).filter(Boolean));
+  const noCat=S.products.filter(p=>!p.cat||p.cat===Catalog.NO_CAT).length;
+  const item=(path,name,n,depth,kids)=>`<li class="ct-row${cur===path?' on':''}" style="--d:${depth}">${kids?`<button type="button" class="ct-tg" data-act="cat-toggle" data-cat="${esc(path)}" aria-expanded="${!!open[path]}" aria-label="${open[path]?'Свернуть':'Раскрыть'} «${esc(name)}»">${open[path]?'▾':'▸'}</button>`:'<span class="ct-tg"></span>'}<button type="button" class="ct-name" data-act="stock-cat" data-cat="${esc(path)}"${cur===path?' aria-current="true"':''}><span>${esc(name)}</span><small>${num(n)}</small></button></li>`;
+  const list=rows.filter(r=>catAncestors(r.path).every(a=>open[a])).map(r=>item(r.path,r.name,r.total,r.depth,parents.has(r.path))).join('');
+  const label=cur===CAT_ALL?'все товары':cur;
+  return `<aside class="ct-box card${S.ui.catPane?' open':''}" aria-label="Категории товаров"><button type="button" class="btn ct-show" data-act="cat-pane" aria-expanded="${!!S.ui.catPane}">Категория: ${esc(label)} <span aria-hidden="true">▾</span></button>
+    <div class="ct-body"><ul class="ct-list">${item(CAT_ALL,'Все',S.products.length,0,false)}${list}${noCat?item(Catalog.NO_CAT,Catalog.NO_CAT,noCat,0,false):''}</ul>${can('catalog')?'<button type="button" class="btn sm ghost ct-mng" data-act="cat-manage">Добавить и изменить категории</button>':''}</div></aside>`;
 }
 function sbar(p,big){
   const k=stockOf(p.id),fn=Math.max(0,k.free),rs=Math.min(k.onHand,k.reservedStock),iq=k.incoming,tot=Math.max(1,fn+rs+iq),w=x=>(x/tot*100).toFixed(1)+'%';
@@ -9508,7 +9865,7 @@ function stockRow(p,pr){
   const k=stockOf(p.id),ra=k.reservedStock+k.reservedIncoming,inc=Stock.incomingOf(S,p.id),fa=k.freeAfter,unk=stockUnknown(k),nd='<span class="muted">нет данных</span>';
   const key=p.inCatalog?`<span class="mono">${esc(p.id)}</span>`:'<span class="pill sun sm">нет в каталоге</span>';
   const meta=[p.brand,p.cat].filter(Boolean).map(esc).join(' · ');
-  return `<tr class="click" data-act="open-product" data-pid="${esc(p.id)}" tabindex="0"><td><div class="pname"><span>${esc(p.name)}</span><small>${key}${meta?' · '+meta:''}</small></div></td><td class="num">${k.known?qtyOf(k.onHand,p):nd}</td><td class="num">${num(ra)}${k.reservedIncoming?`<small class="muted">${num(k.reservedIncoming)} под поставку</small>`:''}${resBadge(p)}</td><td class="num free">${unk?nd:`<b class="${k.free<=0?'bad-t':''}">${num(k.free)}</b>`}</td><td>${k.incoming?`<span class="in-t">${qtyOf(k.incoming,p)}</span><small class="muted">${esc(transitLine(p.id))}</small><small class="muted">ближайшая ${fD(k.nextEta)}${inc.length>1?` · ${inc.length} поставки`:''}</small>`:'<span class="muted">не ждём</span>'}</td><td class="num">${unk?nd:fa<0?`<span class="pill bad sm">не хватает ${num(-fa)}</span>`:num(fa)}</td>${pr?`<td class="num">${priceTxt(p)}</td>`:''}<td>${sbar(p)}</td></tr>`;
+  return `<tr class="click" data-act="open-product" data-pid="${esc(p.id)}" tabindex="0"><td><div class="pname"><span>${esc(p.name)}</span>${skuTag(p)}<small>${key}${meta?' · '+meta:''}</small></div></td><td class="num">${k.known?qtyOf(k.onHand,p):nd}</td><td class="num">${num(ra)}${k.reservedIncoming?`<small class="muted">${num(k.reservedIncoming)} под поставку</small>`:''}${resBadge(p)}</td><td class="num free">${unk?nd:`<b class="${k.free<=0?'bad-t':''}">${num(k.free)}</b>`}</td><td>${k.incoming?`<span class="in-t">${qtyOf(k.incoming,p)}</span><small class="muted">${esc(transitLine(p.id))}</small><small class="muted">ближайшая ${fD(k.nextEta)}${inc.length>1?` · ${inc.length} поставки`:''}</small>`:'<span class="muted">не ждём</span>'}</td><td class="num">${unk?nd:fa<0?`<span class="pill bad sm">не хватает ${num(-fa)}</span>`:num(fa)}</td>${pr?`<td class="num">${priceTxt(p)}</td>`:''}<td>${sbar(p)}</td></tr>`;
 }
 // Содержимое #stock-tbl: «показано N из M», страница таблицы, переключатель страниц
 function stockTable(){
@@ -9521,6 +9878,14 @@ function stockTable(){
   return `${head}<div class="xs"><table class="tbl"><thead><tr><th>Товар</th><th class="num">На складе</th><th class="num">В резерве</th><th class="num">Свободно сейчас</th><th>В пути</th><th class="num">Свободно после прихода</th>${pr?'<th class="num">Цена</th>':''}<th>Картина</th></tr></thead><tbody>${part.map(p=>stockRow(p,pr)).join('')}</tbody></table></div>${pg}`;
 }
 const refreshStock=()=>{S.ui.page=0;S.ui.span=1;byId('stock-tbl').innerHTML=stockTable()};
+// Выпадающий список категорий: путь — значение, отступ — глубина. opts: top — первая строка «ничего» (значение ''), noCat — строка «Без раздела»,
+// skipId — не показывать эту категорию и всё, что в ней (куда переносить саму её). Строки, которых нет в дереве, в выбор не попадают.
+function catOptions(cur,opts={}){
+  const skip=opts.skipId?Catalog.pathOf(S,opts.skipId):'',pad=n=>'   '.repeat(n);
+  const one=(v,t,d)=>`<option value="${esc(v)}"${v===cur?' selected':''}>${pad(d)}${esc(t)}</option>`;
+  return (opts.top?one('',opts.top,0):'')+(opts.noCat?one(Catalog.NO_CAT,Catalog.NO_CAT,0):'')
+    +Catalog.rows(S).filter(r=>!r.virtual&&!(skip&&(r.path===skip||r.path.startsWith(skip+Catalog.SEP)))).map(r=>one(r.path,r.name,r.depth)).join('');
+}
 
 // ——— журнал движений: слова и строки общие для вкладки и карточки товара ———
 // «Ввод остатков» — знак «=»: в qty лежит остаток клетки после переноса, а не прибавка («+» был бы неправдой)
@@ -9544,7 +9909,7 @@ const whoName=id=>person(id)?.name||'';
 function movesPane(tabs){
   const u=S.ui,ids=[...new Set(S.moves.map(m=>m.productId))];
   if(u.mvPid&&!ids.includes(u.mvPid)) ids.push(u.mvPid);
-  const prods=ids.map(id=>[id,product(id)?.name||id]).sort((a,b)=>a[1].localeCompare(b[1],'ru'));
+  const prods=ids.map(id=>[id,product(id)?Catalog.label(product(id)):id]).sort((a,b)=>a[1].localeCompare(b[1],'ru'));
   const filters=selField('mv-pid','mvpid','Товар',[['','Все товары'],...prods],u.mvPid||'')+selField('mv-kind','mvkind','Вид движения',[['','Все виды'],...Object.values(Stock.KINDS).map(k=>[k,k])],u.mvKind||'');
   return `<div class="bar">${tabs}</div><div class="fgrid">${filters}</div><section class="card clip"><div id="mv-tbl">${movesTable()}</div></section>`;
 }
@@ -9554,7 +9919,7 @@ function movesTable(){
   if(!part.length) return head+emptyState('Движений по этому фильтру нет.','Показать все движения','stock-journal');
   return `${head}<div class="xs"><table class="tbl"><thead><tr><th>Когда</th><th>Кто</th><th>Вид</th><th>Товар</th><th class="num">Сколько</th><th>Откуда и куда</th><th>Документ</th></tr></thead><tbody>${part.map(m=>{
     const p=product(m.productId),who=whoName(m.by);
-    return `<tr${p?` class="click" data-act="open-product" data-pid="${esc(p.id)}" tabindex="0"`:''}><td class="nowrap">${fWhen(m.at)}</td><td>${who?esc(who):noData('кто')}</td><td>${movePill(m)}</td><td>${p?`<button type="button" class="link" data-act="open-product" data-pid="${esc(p.id)}">${esc(p.name)}</button>`:noData('товар')}</td><td class="num">${moveSign(m)}${qtyOf(m.qty,p)}</td><td>${esc(moveWhere(m))}</td><td class="mono">${esc(moveDoc(m))}</td></tr>`;
+    return `<tr${p?` class="click" data-act="open-product" data-pid="${esc(p.id)}" tabindex="0"`:''}><td class="nowrap">${fWhen(m.at)}</td><td>${who?esc(who):noData('кто')}</td><td>${movePill(m)}</td><td>${p?`<button type="button" class="link" data-act="open-product" data-pid="${esc(p.id)}">${esc(p.name)}</button>${skuTag(p)}`:noData('товар')}</td><td class="num">${moveSign(m)}${qtyOf(m.qty,p)}</td><td>${esc(moveWhere(m))}</td><td class="mono">${esc(moveDoc(m))}</td></tr>`;
   }).join('')}</tbody></table></div>`;
 }
 
@@ -9646,6 +10011,8 @@ function watchHtml(p,k){
     ?`<p class="hint m0">${ic('bell')}Сообщу, когда появится свободный. <button type="button" class="link" data-act="stock-unwatch" data-pid="${esc(p.id)}">Не сообщать</button></p>`
     :`<p class="m0"><button type="button" class="btn sm" data-act="stock-watch" data-pid="${esc(p.id)}">${ic('bell')}Сообщить, когда появится</button></p>`;
 }
+// «Артикул» в карточке: сам артикул или «нет данных: артикул» и кнопка «Изменить» (право catalog)
+const skuRow=p=>{const k=Catalog.skuOf(p);return (k?`<b class="mono">${esc(k)}</b>`:noData('артикул'))+(can('catalog')?` <button type="button" class="link" data-act="product-sku" data-pid="${esc(p.id)}">${k?'Изменить':'Указать'}</button>`:'')};
 function dProduct(p){
   const k=stockOf(p.id),rs=resOf(p.id).map(r=>Stock.reserveView(S,r,S.me)).filter(Boolean);const inc=Stock.incomingOf(S,p.id),all=S.moves.filter(m=>m.productId===p.id),mv=all.slice(0,10),unk=stockUnknown(k);
   const st=(l,v,c='',note='')=>`<div class="st"><span>${l}</span><b class="${c}">${v}</b>${note?`<small>${note}</small>`:''}</div>`;
@@ -9654,7 +10021,7 @@ function dProduct(p){
   const key=p.inCatalog?`<span class="mono">${esc(p.id)}</span>`:'<span class="pill sun sm">нет в каталоге</span>';
   const url=/^https?:\/\//.test(p.url||'')?`<a class="link" href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">Открыть на сайте</a>`:'';
   const info=[
-    kv('Ключ каталога',key),kv('Модель',esc(p.name)),kv('Бренд',p.brand?esc(p.brand):noData('бренд')),kv('Категория',esc(p.cat)),
+    kv('Артикул',skuRow(p)),kv('Ключ каталога',key),kv('Модель',esc(p.name)),kv('Бренд',p.brand?esc(p.brand):noData('бренд')),kv('Категория',esc(p.cat)+(can('catalog')?` <button type="button" class="link" data-act="product-cat" data-pid="${esc(p.id)}">Сменить категорию</button>`:'')),
     can('prices')?kv('Цена',p.price==null?noData('цена'):`<b>${rub(p.price)}</b><small>${p.src==='user'?'введена вручную':priceNote()}</small>`):'',
     kv('Наличие',p.avail?esc(p.avail):noData('наличие')),url?kv('Ссылка',url):''
   ].join('');
@@ -9713,7 +10080,7 @@ MODALS.stockSell=o=>{
   const d=o.did?Deals.byId(S,o.did):null,max=Stock.sellMax(S,a);
   const qty=Math.max(1,Math.min(max,r?r.qty:d?Deals.lined(d,o.pid):1));
   const doc=r?(r.dealId||''):(o.did||'');
-  return `<form data-form="stock-sell" data-pid="${esc(o.pid)}" data-did="${esc(o.did||'')}" novalidate>${mHead('Списать при продаже: '+esc(p.name))}<div class="modal-b">
+  return `<form data-form="stock-sell" data-pid="${esc(o.pid)}" data-did="${esc(o.did||'')}" novalidate>${mHead('Списать при продаже: '+esc(Catalog.label(p)))}<div class="modal-b">
     <p class="m0">${o.did?`Сделка ${esc(o.did)}${d?' · '+esc(d.client):''}. `:''}Товар уходит со склада, в журнале движений появится «Отгрузка».</p>
     <div class="field"><label for="ps-src">Откуда</label><select id="ps-src" class="inp" data-on="sellsrc" data-pid="${esc(o.pid)}">${optionsHtml(src,cur)}</select></div>
     <div class="grid2"><div class="field"><label for="ps-qty">Сколько${p.unit?', '+esc(p.unit):''}</label><input id="ps-qty" class="inp" type="number" min="1" step="1" value="${esc(qty)}" inputmode="numeric"></div>
@@ -9727,19 +10094,67 @@ MODALS.stockSell=o=>{
 // Import.receiptRows / receiptPlan / applyReceipt (48-import.js): здесь только показ. Список живёт в RCPT (не в S: не сохраняется).
 // Склад один на город; юрлица — из справочника. Новые товары создаёт только тот, у кого есть право catalog.
 let RCPT=null;
-const rcptNew=()=>({stage:'input',text:'',rows:[],header:null,entityId:'',cityId:'',done:null});
-const rcptPlan=()=>Import.receiptPlan(S,RCPT.rows,{entityId:RCPT.entityId,cityId:RCPT.cityId,canCreate:can('catalog')});
+const rcptNew=()=>({stage:'input',tab:'paste',text:'',rows:[],header:null,entityId:'',cityId:'',cat:'',done:null,manual:[{pid:'',q:'',isNew:false,newName:'',sku:'',qty:'',entity:'',city:''}]});
+const rcptPlan=()=>Import.receiptPlan(S,RCPT.rows,{entityId:RCPT.entityId,cityId:RCPT.cityId,cat:RCPT.cat,canCreate:can('catalog')});
 const rcptOpts=(list,cur)=>`<option value="">выберите</option>`+list.map(x=>`<option value="${esc(x.id)}"${x.id===cur?' selected':''}>${esc(x.name)}</option>`).join('');
 // «Всё это приходит на»: подставляется строкам списка, у которых нет своих юрлица и склада
 const rcptTo=()=>`<div class="grid2 rc-to"><div class="field"><label for="rc-ent">Всё это приходит на: юрлицо</label><select id="rc-ent" class="inp" data-on="rcpt-def" data-f="entityId">${rcptOpts(S.entities,RCPT.entityId)}</select></div><div class="field"><label for="rc-city">Склад (город)</label><select id="rc-city" class="inp" data-on="rcpt-def" data-f="cityId">${rcptOpts(S.cities,RCPT.cityId)}</select></div></div>`;
-const RC_PLACEHOLDER='Например (название, количество, юрлицо и склад — по желанию):&#10;Солнечная панель 550 Вт\t20\tИП\tИркутск&#10;Кабель PV 4 мм2\t100';
+const RC_PLACEHOLDER='Например (артикул или название, количество, юрлицо и склад — по желанию):&#10;Солнечная панель 550 Вт\t20\tИП\tИркутск&#10;Кабель PV 4 мм2\t100';
+// Пример для инструкции: три строки на настоящих названиях из номенклатуры (покороче, чтобы читались); вторая — по артикулу, если он у товара есть
+function rcptExample(){
+  const all=S.products.filter(p=>p.name),short=all.filter(p=>p.name.length<=60),ps=(short.length>=3?short:all).slice(0,3);
+  // юрлицо и склад — в каждой строке, чтобы пример разобрался сам, без выбора «всё это приходит на»; первая и вторая строки — на одно юрлицо и город, третья — на другие
+  const e=S.entities[0],c=S.cities[0],e2=S.entities[1]||e,c2=S.cities[1]||c,qty=[10,5,20];
+  return ps.map((p,i)=>({id:i===1&&Catalog.skuOf(p)?Catalog.skuOf(p):p.name,qty:qty[i],entity:(i<2?e:e2)?.name||'',city:(i<2?c:c2)?.name||''}));
+}
+const rcptExampleText=()=>rcptExample().map(r=>[r.id,r.qty,r.entity,r.city].join('\t').replace(/\t+$/,'')).join('\n');
+const RCPT_TABS=[['paste','Вставить список'],['manual','Ввести вручную']];
+const rcptTabs=()=>'<div class="chips" role="tablist">'+RCPT_TABS.map(([k,t])=>'<button type="button" role="tab" class="fchip'+(RCPT.tab===k?' on':'')+'" aria-selected="'+(RCPT.tab===k)+'" data-act="rcpt-tab" data-tab="'+k+'">'+t+'</button>').join('')+'</div>';
+function rcptPasteTab(){
+  const ex=rcptExample();
+  const exTbl=ex.length?'<div class="xs"><table class="tbl rc-ex"><thead><tr><th>Артикул или название</th><th class="num">Количество</th><th>Юрлицо</th><th>Склад</th></tr></thead><tbody>'+ex.map(r=>'<tr><td>'+esc(r.id)+'</td><td class="num">'+r.qty+'</td><td>'+esc(r.entity)+'</td><td>'+esc(r.city)+'</td></tr>').join('')+'</tbody></table></div><div><button type="button" class="btn sm" data-act="rcpt-example">Вставить пример</button></div>':'';
+  return '<div class="rc-help"><p class="m0"><b>Колонки: Артикул или Название — Количество — Юрлицо — Склад</b> (юрлицо и склад можно не писать: тогда берётся то, что выбрано выше).</p>'
+    +'<p class="hint m0">Столбцы можно копировать прямо из Excel: выделите их вместе со строками, нажмите Ctrl+C и вставьте сюда (Ctrl+V). Первая строка может быть заголовком. Товар ищется сперва по артикулу, потом по ключу, потом по названию. Остаток вырастет только после «Оприходовать» на следующем шаге.</p>'
+    +exTbl+'</div>'
+    +'<div class="field"><label for="rc-text">Вставьте список из Excel</label><textarea id="rc-text" class="inp rc-text" rows="8" placeholder="'+RC_PLACEHOLDER+'" spellcheck="false">'+esc(RCPT.text)+'</textarea></div>'
+    +'<div><label class="btn" for="rc-file">'+ic('plus')+'Или выбрать файл CSV / TXT</label><input id="rc-file" class="sr" type="file" accept=".csv,.txt,text/csv,text/plain" data-on="rcpt-file"></div>';
+}
+// ——— вкладка «Ввести вручную»: строки таблицы, товар ищется по названию и артикулу ———
+// Строки живут в RCPT.manual; «Проверить» превращает их в те же строки списка (Import.manualRows) и ведёт на тот же шаг проверки и ту же applyReceipt.
+const rcmRow=()=>({pid:'',q:'',isNew:false,newName:'',sku:'',qty:'',entity:'',city:''});
+const rcmSel=(list,cur,i,f,label)=>'<select class="inp" aria-label="'+label+', строка '+(i+1)+'" data-on="rcm-f" data-f="'+f+'" data-i="'+i+'"><option value="">как выше</option>'+list.map(x=>'<option value="'+esc(x.id)+'"'+(x.id===cur?' selected':'')+'>'+esc(x.name)+'</option>').join('')+'</select>';
+// Результаты поиска под полем: до шести товаров (название, артикул, свободно) и «Новый товар», если есть право catalog
+function rcmFound(r,i){
+  const q=String(r.q||'').trim();
+  if(q.length<2) return '';
+  const hits=Catalog.query(S,{q}).slice(0,6);
+  const list=hits.map(p=>'<button type="button" class="dpr" data-act="rcm-pick" data-i="'+i+'" data-pid="'+esc(p.id)+'"><span class="dpr-n">'+esc(p.name)+'</span><small>'+esc(skuText(p))+' · '+esc(dspFreeText(p.id))+'</small></button>').join('');
+  const add=can('catalog')?'<button type="button" class="dpr" data-act="rcm-new" data-i="'+i+'"><span class="dpr-n">Новый товар «'+esc(q)+'»</span><small>завести в номенклатуре</small></button>':'';
+  return list+add||'<p class="hint m0">В номенклатуре такого нет.</p>';
+}
+function rcmProduct(r,i){
+  const p=r.pid?product(r.pid):null;
+  if(p) return '<div class="rcm-pick"><span><b>'+esc(p.name)+'</b> '+skuTag(p)+'</span><button type="button" class="link" data-act="rcm-clear" data-i="'+i+'">Сменить</button></div>';
+  if(r.isNew) return '<div class="rcm-new"><input class="inp" aria-label="Название нового товара, строка '+(i+1)+'" placeholder="Название нового товара" value="'+esc(r.newName)+'" data-on="rcm-f" data-f="newName" data-i="'+i+'" autocomplete="off">'
+    +'<input class="inp" aria-label="Артикул нового товара, строка '+(i+1)+'" placeholder="Артикул (необязательно)" maxlength="'+Catalog.SKU_MAX+'" value="'+esc(r.sku)+'" data-on="rcm-f" data-f="sku" data-i="'+i+'" autocomplete="off">'
+    +'<button type="button" class="link" data-act="rcm-clear" data-i="'+i+'">Выбрать из номенклатуры</button></div>';
+  return '<div class="rcm-find"><input class="inp" type="search" aria-label="Товар, строка '+(i+1)+': название или артикул" placeholder="Название или артикул" value="'+esc(r.q)+'" data-on="rcm-q" data-i="'+i+'" autocomplete="off"><div class="dpres rcm-res" id="rcm-res-'+i+'">'+rcmFound(r,i)+'</div></div>';
+}
+const rcmTr=(r,i)=>'<tr id="rcm-r-'+i+'"><td class="num muted">'+(i+1)+'</td><td class="rcm-pc">'+rcmProduct(r,i)+'</td>'
+  +'<td class="num"><input class="inp rc-q" inputmode="numeric" aria-label="Количество, строка '+(i+1)+'" value="'+esc(r.qty)+'" data-on="rcm-f" data-f="qty" data-i="'+i+'" autocomplete="off"></td>'
+  +'<td class="rc-to-c">'+rcmSel(S.entities,r.entity,i,'entity','Юрлицо')+rcmSel(S.cities,r.city,i,'city','Склад (город)')+'</td>'
+  +'<td><button type="button" class="btn ghost icon sm" data-act="rcm-del" data-i="'+i+'" aria-label="Убрать строку '+(i+1)+'">'+ic('x')+'</button></td></tr>';
+function rcptManualTab(){
+  return '<p class="m0">Выберите товар (поиск по названию и артикулу), впишите количество. Юрлицо и склад можно не выбирать: тогда берётся то, что выбрано выше. Нет такого товара — «Новый товар».</p>'
+    +'<div class="xs"><table class="tbl rc-t"><thead><tr><th class="num">№</th><th>Товар</th><th class="num">Количество</th><th>Юрлицо и склад</th><th></th></tr></thead><tbody id="rcm-body">'+RCPT.manual.map(rcmTr).join('')+'</tbody></table></div>'
+    +'<div><button type="button" class="btn sm" data-act="rcm-add">'+ic('plus')+'Добавить строку</button></div>';
+}
 function rcptInput(){
-  return `<form data-form="rcpt-parse" novalidate>${mHead('Оприходовать товар')}<div class="modal-b rcpt">
-    <p class="m0">Товар приехал без поставки? Вставьте список из Excel (или написанный от руки): в строке — название или ключ товара и количество, по желанию ещё юрлицо и склад. Первая строка может быть заголовком. Остаток вырастет только после «Оприходовать» на следующем шаге.</p>
-    ${rcptTo()}
-    <div class="field"><label for="rc-text">Вставьте список из Excel</label><textarea id="rc-text" class="inp rc-text" rows="9" placeholder="${RC_PLACEHOLDER}" spellcheck="false">${esc(RCPT.text)}</textarea></div>
-    <div><label class="btn" for="rc-file">${ic('plus')}Или выбрать файл CSV / TXT</label><input id="rc-file" class="sr" type="file" accept=".csv,.txt,text/csv,text/plain" data-on="rcpt-file"></div>
-    <p class="err" id="rc-err" hidden></p></div>${mFoot('Разобрать список')}</form>`;
+  const manual=RCPT.tab==='manual';
+  return '<form data-form="'+(manual?'rcpt-manual':'rcpt-parse')+'" novalidate>'+mHead('Оприходовать товар')+'<div class="modal-b rcpt">'
+    +'<p class="m0">Товар приехал без поставки? Внесите его списком из Excel или вручную. Остаток вырастет только после «Оприходовать» на следующем шаге.</p>'
+    +rcptTabs()+rcptTo()+(manual?rcptManualTab():rcptPasteTab())
+    +'<p class="err" id="rc-err" hidden></p></div>'+mFoot(manual?'Проверить':'Разобрать список')+'</form>';
 }
 // Одна строка предпросмотра: решение по товару — подпись и выбор («это тот же: …», «создать новый», «пропустить»)
 function rcptDecision(L,r){
@@ -9747,19 +10162,22 @@ function rcptDecision(L,r){
   const o=(v,t,sel)=>`<option value="${esc(v)}"${sel?' selected':''}>${esc(t)}</option>`;
   // что выбрано сейчас: пропуск, новый товар, один из похожих; найденный сам — пустое значение
   const sel=r.pick==='skip'?'skip':L.match==='found'?'':L.match==='new'?'new':L.match==='picked'?L.productId:'',opts=[];
-  opts.push(o('',L.match==='found'?'найден: '+L.productName:'— выберите —',sel===''));
+  const withSku=(n,k)=>k?n+' (арт. '+k+')':n;
+  opts.push(o('',L.match==='found'?'найден: '+withSku(L.productName,L.productSku):'— выберите —',sel===''));
   if(L.match!=='found'){
-    for(const c of L.candidates) opts.push(o(c.id,'это тот же: '+c.name,sel===c.id));
+    for(const c of L.candidates) opts.push(o(c.id,'это тот же: '+withSku(c.name,c.sku),sel===c.id));
     if(can('catalog')) opts.push(o('new','создать новый товар',sel==='new'));
   }
   opts.push(o('skip','пропустить',sel==='skip'));
-  const note=L.status==='error'?`<small class="bad-t">${esc(L.error)}</small>`:L.status==='found'||L.status==='picked'?`<small class="muted">${esc(L.productName)}</small>`:L.status==='new'?'<small class="muted">категория, цена и прочее — нет данных</small>':L.status==='choose'&&!L.candidates.length?'<small class="muted">похожих в номенклатуре нет</small>':'';
-  return `${pill}${note}<select class="inp" aria-label="Что делать со строкой ${L.line}" data-on="rcpt-pick" data-i="${L.index}">${opts.join('')}</select>`;
+  const note=L.status==='error'?`<small class="bad-t">${esc(L.error)}</small>`:L.status==='found'||L.status==='picked'?`<small class="muted">${esc(withSku(L.productName,L.productSku))}</small>`:L.status==='new'?'<small class="muted">категория, цена и прочее — нет данных</small>':L.status==='choose'&&!L.candidates.length?'<small class="muted">похожих в номенклатуре нет</small>':'';
+  // новый товар: в какую категорию его заводить (из дерева, «Без раздела» — по умолчанию или как выбрано выше для всех новых)
+  const cat=L.status==='new'?`<select class="inp" aria-label="Категория нового товара, строка ${L.line}" data-on="rcpt-cat" data-i="${L.index}">${catOptions(L.cat||Catalog.NO_CAT,{noCat:true})}</select>`:'';
+  return `${pill}${note}<select class="inp" aria-label="Что делать со строкой ${L.line}" data-on="rcpt-pick" data-i="${L.index}">${opts.join('')}</select>${cat}`;
 }
 function rcptRow(L,r){
   const cell=(list,raw,res,f)=>`<select class="inp" aria-label="${f==='entity'?'Юрлицо':'Склад (город)'}, строка ${L.line}" data-on="rcpt-f" data-f="${f}" data-i="${L.index}"><option value="">как выше</option>${list.map(x=>`<option value="${esc(x.id)}"${raw&&res===x.id?' selected':''}>${esc(x.name)}</option>`).join('')}${raw&&!res?`<option value="${esc(raw)}" selected>«${esc(raw)}» — нет в справочнике</option>`:''}</select>`;
   return `<tr id="rc-r-${L.index}" class="${L.status==='skip'?'rc-skip':''}"><td class="num muted">${L.line}</td>
-    <td><input class="inp" aria-label="Название, строка ${L.line}" value="${esc(r.name)}" data-on="rcpt-f" data-f="name" data-i="${L.index}" autocomplete="off"></td>
+    <td><input class="inp" aria-label="Название, строка ${L.line}" placeholder="Название" value="${esc(r.name)}" data-on="rcpt-f" data-f="name" data-i="${L.index}" autocomplete="off"><input class="inp rc-sku" aria-label="Артикул, строка ${L.line}" placeholder="Артикул" maxlength="${Catalog.SKU_MAX}" value="${esc(r.sku||'')}" data-on="rcpt-f" data-f="sku" data-i="${L.index}" autocomplete="off"></td>
     <td><div class="rc-dec" id="rc-st-${L.index}">${rcptDecision(L,r)}</div></td>
     <td class="num"><input class="inp rc-q" inputmode="numeric" aria-label="Количество, строка ${L.line}" value="${esc(r.qty)}" data-on="rcpt-f" data-f="qty" data-i="${L.index}" autocomplete="off"></td>
     <td class="rc-to-c">${cell(S.entities,str0(r.entity),L.entityId,'entity')}${cell(S.cities,str0(r.city),L.cityId,'city')}</td></tr>`;
@@ -9777,8 +10195,9 @@ function rcptSum(P){
 }
 function rcptCheck(){
   const P=rcptPlan(),h=RCPT.header;
+  const newCat=can('catalog')&&P.lines.some(L=>L.match==='new')?`<div class="field rc-cat"><label for="rc-cat">Новые товары — в категорию</label><select id="rc-cat" class="inp" data-on="rcpt-def" data-f="cat">${catOptions(RCPT.cat||Catalog.NO_CAT,{noCat:true})}</select></div>`:'';
   return `<form data-form="rcpt-go" novalidate>${mHead('Оприходовать товар: проверьте список')}<div class="modal-b rcpt">
-    ${rcptTo()}
+    ${rcptTo()}${newCat}
     ${h?`<p class="hint m0">Первая строка принята за заголовок и не оприходуется: «${esc(h)}».</p>`:''}
     <div class="xs"><table class="tbl rc-t"><thead><tr><th class="num">№</th><th>Из списка</th><th>Что решено</th><th class="num">Количество</th><th>Куда (юрлицо, склад)</th></tr></thead><tbody id="rc-body">${P.lines.map(L=>rcptRow(L,RCPT.rows[L.index])).join('')}</tbody></table></div>
     <div class="stack-s" id="rc-sum">${rcptSum(P)}</div>
@@ -9822,6 +10241,23 @@ A['rcpt-open']=()=>{
   RCPT=rcptNew();openModal('receipt');
 };
 A['rcpt-back']=()=>{RCPT.stage='input';rcptDraw()};
+A['rcpt-tab']=el=>{const t=el.dataset.tab;if(!RCPT||!RCPT_TABS.some(x=>x[0]===t)) return;const x=RCPT.tab==='paste'&&RCPT.stage==='input'?byId('rc-text'):null;if(x) RCPT.text=x.value;RCPT.tab=t;rcptDraw()};
+A['rcpt-example']=()=>{RCPT.text=rcptExampleText();rcptDraw()};
+// Ручной ввод: строки в RCPT.manual, правка полей — без перерисовки (фокус остаётся), выбор товара и «+ строка» — перерисовка таблицы
+const rcmDraw=()=>{const b=byId('rcm-body');if(b) b.innerHTML=RCPT.manual.map(rcmTr).join('')};
+A['rcm-add']=()=>{RCPT.manual.push(rcmRow());rcmDraw()};
+A['rcm-del']=el=>{const i=Number(el.dataset.i);RCPT.manual.splice(i,1);if(!RCPT.manual.length) RCPT.manual.push(rcmRow());rcmDraw()};
+A['rcm-pick']=el=>{const r=RCPT.manual[Number(el.dataset.i)];if(!r) return;r.pid=el.dataset.pid;r.q='';r.isNew=false;rcmDraw()};
+A['rcm-new']=el=>{const r=RCPT.manual[Number(el.dataset.i)];if(!r||!can('catalog')) return;r.isNew=true;r.pid='';r.newName=String(r.q||'').trim();r.q='';rcmDraw()};
+A['rcm-clear']=el=>{const r=RCPT.manual[Number(el.dataset.i)];if(!r) return;r.pid='';r.isNew=false;r.q='';rcmDraw()};
+ON.input['rcm-q']=t=>{const i=Number(t.dataset.i),r=RCPT.manual[i];if(!r) return;r.q=t.value;const o=byId('rcm-res-'+i);if(o) o.innerHTML=rcmFound(r,i)};
+ON.input['rcm-f']=ON.change['rcm-f']=t=>{const r=RCPT.manual[Number(t.dataset.i)];if(r&&['newName','sku','qty','entity','city'].includes(t.dataset.f)) r[t.dataset.f]=t.value};
+// «Проверить»: строки таблицы → строки списка (Import.manualRows) → тот же шаг проверки, что у вставки
+FORMS['rcpt-manual']=()=>{
+  const r=Import.manualRows(S,RCPT.manual);
+  if(r.problems.length) return showErr('rc-err',r.problems[0]);
+  Object.assign(RCPT,{rows:r.rows,header:null,stage:'check'});rcptDraw();
+};
 A['rcpt-again']=()=>{RCPT=rcptNew();rcptDraw()};
 A['rcpt-all-new']=()=>{
   const P=rcptPlan();
@@ -9834,7 +10270,7 @@ A['rcpt-journal']=()=>{
 FORMS['rcpt-parse']=()=>rcptParse();
 // «Оприходовать»: Import.applyReceipt по тому же плану, что на экране; render() сохраняет изменения одним save()
 FORMS['rcpt-go']=()=>{
-  const r=Import.applyReceipt(S,RCPT.rows,{entityId:RCPT.entityId,cityId:RCPT.cityId},S.me,new Date());
+  const r=Import.applyReceipt(S,RCPT.rows,{entityId:RCPT.entityId,cityId:RCPT.cityId,cat:RCPT.cat},S.me,new Date());
   if(!r.ok) return showErr('rc-err',r.reason);
   RCPT.done=r;RCPT.stage='done';
   render();rcptDraw();
@@ -9844,11 +10280,12 @@ ON.change['rcpt-def']=t=>{RCPT[t.dataset.f]=t.value;if(RCPT.stage==='check') rcp
 ON.change['rcpt-f']=t=>{
   const i=Number(t.dataset.i),r=RCPT.rows[i];if(!r) return;
   r[t.dataset.f]=t.value;
-  // другое название — прежнее решение («это тот же», «новый») к нему уже не относится
-  if(t.dataset.f==='name') r.pick='';
+  // другое название или артикул — прежнее решение («это тот же», «новый») к ним уже не относится
+  if(t.dataset.f==='name'||t.dataset.f==='sku') r.pick='';
   rcptRefresh(i);
 };
 ON.change['rcpt-pick']=t=>{const i=Number(t.dataset.i);if(RCPT.rows[i]){RCPT.rows[i].pick=t.value;rcptRefresh(i)}};
+ON.change['rcpt-cat']=t=>{const i=Number(t.dataset.i);if(RCPT.rows[i]){RCPT.rows[i].cat=t.value;rcptRefresh(i)}};
 // Файл CSV / TXT: тот же разбор кодировки, что у «Переноса» (Import.decode); текст ложится в поле и сразу разбирается
 ON.change['rcpt-file']=async t=>{
   const f=t.files&&t.files[0];
@@ -9859,7 +10296,7 @@ ON.change['rcpt-file']=async t=>{
 };
 
 // ——— регистрация в реестрах оболочки ———
-SEARCH.push({kind:'product',label:'Товар',order:10,find:q=>!can('stock')?[]:Catalog.query(S,{q}).slice(0,6).map(p=>{const k=stockOf(p.id);return {title:p.name,sub:k.known?`свободно ${qtyOf(k.free,p)}`:'остаток: нет данных',open:`data-act="open-product" data-pid="${esc(p.id)}"`}})});
+SEARCH.push({kind:'product',label:'Товар',order:10,find:q=>!can('stock')?[]:Catalog.query(S,{q}).slice(0,6).map(p=>{const k=stockOf(p.id);return {title:p.name,sub:(Catalog.skuOf(p)?`арт. ${Catalog.skuOf(p)} · `:'')+(k.known?`свободно ${qtyOf(k.free,p)}`:'остаток: нет данных'),open:`data-act="open-product" data-pid="${esc(p.id)}"`}})});
 DRAWERS.product=id=>{const p=can('stock')?product(id):null;return p?dProduct(p):null};
 regRef('product','товар',id=>!!product(id),'open-product','pid');
 ON.input.sq=t=>{S.ui.sq=t.value;refreshStock()};
@@ -9889,7 +10326,7 @@ FORMS['stock-sell']=f=>{
   if(rs) Deals.keepTrail(S,rs);
   const r=Stock.sell(S,{...arg,qty:byId('ps-qty').value,doc:byId('ps-doc').value.trim()},S.me,now);
   if(!r.ok) return showErr('ps-err',r.reason);
-  const p=product(pid),m=r.move,what=`${low(p.name)} — ${qtyOf(m.qty,p)} со склада ${cellText(m.entityId,m.cityId)}`;
+  const p=product(pid),m=r.move,what=`${low(Catalog.label(p))} — ${qtyOf(m.qty,p)} со склада ${cellText(m.entityId,m.cityId)}`;
   // из сделки или по резерву сделки: в её ленте остаётся запись о списании
   if(did) Feed.add(S,{t:'deal',id:did},{kind:'item',text:`Списано при продаже: ${what}${r.reserve?' (по резерву)':''}.`,by:S.me,at:now,data:r.reserve?{reserveId:r.reserve.id,sold:true}:undefined});
   closeModal();render();
@@ -9909,7 +10346,7 @@ A['reserve-until']=el=>openModal('reserveUntil',el.dataset.id);
 MODALS.reserveUntil=id=>{
   const r=S.reserves.find(x=>x.id===id),p=r&&product(r.productId);
   if(!r) return `${mHead('Срок резерва')}<div class="modal-b"><p class="m0">Резерва уже нет.</p></div>`;
-  return `<form data-form="reserve-until" data-id="${esc(id)}" novalidate>${mHead('Срок резерва: '+esc(p?p.name:'нет данных: товар'))}<div class="modal-b">
+  return `<form data-form="reserve-until" data-id="${esc(id)}" novalidate>${mHead('Срок резерва: '+esc(Catalog.label(p)))}<div class="modal-b">
     <p class="m0">${num(r.qty)} · ${esc(Stock.forText(S,r,S.me))}. Сейчас — ${r.until?'до '+fD(r.until):'нет данных: срок'}.</p>
     <div class="field"><label for="ru-until">Резерв до</label><input id="ru-until" class="inp" type="date" value="${esc(iso(r.until||day(Stock.RESERVE_DAYS)))}"></div>
     <p class="err" id="ru-err" hidden></p></div>${mFoot('Сохранить')}</form>`;
@@ -9920,7 +10357,119 @@ FORMS['reserve-until']=f=>{
   closeModal();render();toast(`Срок резерва — до ${fD(r.reserve.until)}. В истории резерва есть запись.`);
 };
 A['stock-tab']=el=>{S.ui.stockTab=el.dataset.tab;render()};
-A['stock-cat']=el=>{S.ui.cat=el.dataset.cat;S.ui.page=0;S.ui.span=1;render()};
+// Выбрали категорию: она раскрывается вместе с родителями, на узком экране дерево сворачивается обратно под кнопку
+A['stock-cat']=el=>{
+  const c=el.dataset.cat,o=S.ui.catOpen||(S.ui.catOpen={});
+  S.ui.cat=c;S.ui.page=0;S.ui.span=1;S.ui.catPane=false;
+  if(c!==CAT_ALL){o[c]=true;for(const a of catAncestors(c)) o[a]=true}
+  render();
+};
+A['cat-toggle']=el=>{const o=S.ui.catOpen||(S.ui.catOpen={}),c=el.dataset.cat;o[c]=!o[c];render()};
+A['cat-pane']=()=>{S.ui.catPane=!S.ui.catPane;render()};
+
+// ——— «Категории»: добавить, переименовать, перенести, удалить пустую ———
+// Дерево ведёт Catalog (catAdd / catEdit / catDelete): он же обновляет пути товаров, здесь только окна. Одно действие — один save() (render).
+const catCount=(n,one,few,many)=>`${num(n)} ${pl(n,one,few,many)}`;
+const catNodeId=path=>{const n=path?Catalog.nodeOf(S,path):null;return n?n.id:''};
+MODALS.categories=()=>{
+  const rows=Catalog.rows(S).filter(r=>!r.virtual);
+  return `<form data-form="cat-add" novalidate>${mHead('Категории товаров')}<div class="modal-b">
+    <p class="m0">Список «Товары и остатки» строится по этим категориям. Например: «Электрика» → «Автоматы» → «АВР». Категория бывает верхнего уровня или внутри другой.</p>
+    <div class="grid2"><div class="field"><label for="ct-name">Название новой категории</label><input id="ct-name" class="inp" maxlength="100" autocomplete="off" placeholder="Например: Автоматы"></div>
+      <div class="field"><label for="ct-parent">Куда добавить</label><select id="ct-parent" class="inp">${catOptions(S.ui.catPick||'',{top:'Верхний уровень'})}</select></div></div>
+    <p class="err" id="ct-err" hidden></p>
+    <h4 class="sh">Все категории</h4>
+    ${rows.length?`<ul class="ct-mlist">${rows.map(r=>`<li style="--d:${r.depth}"><span class="ct-mn">${esc(r.name)}</span><small class="muted">${catCount(r.total,'товар','товара','товаров')}</small><button type="button" class="btn sm ghost" data-act="cat-edit" data-id="${esc(r.id)}">Изменить</button></li>`).join('')}</ul>`:'<p class="muted m0">Категорий пока нет.</p>'}</div>
+    <div class="modal-f"><button type="button" class="btn" data-act="close-modal">Закрыть</button><button type="submit" class="btn pri">${ic('plus')}Добавить категорию</button></div></form>`;
+};
+// Перерисовать окно, не закрывая его (после добавления, правки, удаления)
+function catDraw(){
+  const m=byId('modal-root').querySelector('.modal'),t=S.ui.modal&&S.ui.modal.type;
+  if(!m||(t!=='categories'&&t!=='catEdit')) return;
+  m.innerHTML=MODALS[t](S.ui.modal.id);
+}
+A['cat-manage']=()=>{if(!can('catalog')){toast('У вашей роли нет права менять категории.','warn');return}openModal('categories')};
+FORMS['cat-add']=()=>{
+  const parent=byId('ct-parent').value,r=Catalog.catAdd(S,{name:byId('ct-name').value,parentId:catNodeId(parent)});
+  if(!r.ok) return showErr('ct-err',r.reason);
+  S.ui.catPick=parent;
+  const o=S.ui.catOpen||(S.ui.catOpen={});for(const a of catAncestors(r.path)) o[a]=true;
+  render();catDraw();
+  const n=byId('ct-name');if(n) n.focus();
+  toast(`Категория «${r.path}» добавлена.`);
+};
+MODALS.catEdit=id=>{
+  const n=(S.categories||[]).find(c=>c.id===id);
+  if(!n) return `${mHead('Категория')}<div class="modal-b"><p class="m0">Такой категории уже нет.</p></div><div class="modal-f"><button type="button" class="btn" data-act="cat-back">К списку категорий</button></div>`;
+  const b=Catalog.busy(S,id),busy=b.products||b.children;
+  return `<form data-form="cat-edit" data-id="${esc(id)}" novalidate>${mHead('Категория «'+esc(n.name)+'»')}<div class="modal-b">
+    <p class="m0 muted">Сейчас: ${esc(b.path)} · ${catCount(b.products,'товар','товара','товаров')}, ${catCount(b.children,'подкатегория','подкатегории','подкатегорий')}.</p>
+    <div class="grid2"><div class="field"><label for="ce-name">Название</label><input id="ce-name" class="inp" maxlength="100" value="${esc(n.name)}" autocomplete="off"></div>
+      <div class="field"><label for="ce-parent">Внутри</label><select id="ce-parent" class="inp">${catOptions(catParent(b.path),{top:'Верхний уровень',skipId:id})}</select></div></div>
+    <p class="hint">Новое название и новое место сразу меняют категорию у всех товаров внутри.</p>
+    <p class="hint">${busy?'Удалить можно только пустую категорию: сначала перенесите или удалите товары и подкатегории.':'Категория пустая — её можно удалить.'}</p>
+    <p class="err" id="ce-err" hidden></p></div>
+    <div class="modal-f"><button type="button" class="btn ghost" data-act="cat-del" data-id="${esc(id)}"${busy?' disabled':''}>Удалить</button><span class="ct-sp"></span><button type="button" class="btn" data-act="cat-back">К списку</button><button type="submit" class="btn pri">Сохранить</button></div></form>`;
+};
+A['cat-edit']=el=>openModal('catEdit',el.dataset.id);
+A['cat-back']=()=>openModal('categories');
+FORMS['cat-edit']=f=>{
+  const id=f.dataset.id,before=S.ui.cat,was=Catalog.pathOf(S,id);
+  const r=Catalog.catEdit(S,id,{name:byId('ce-name').value,parentId:catNodeId(byId('ce-parent').value)});
+  if(!r.ok) return showErr('ce-err',r.reason);
+  // выбранная в списке категория поехала вместе с переименованной — выбор остаётся на ней
+  if(before===was||String(before).startsWith(was+Catalog.SEP)) S.ui.cat=r.now+String(before).slice(was.length);
+  const o=S.ui.catOpen||{},moved={};
+  for(const k of Object.keys(o)) moved[k===was||k.startsWith(was+Catalog.SEP)?r.now+k.slice(was.length):k]=o[k];
+  S.ui.catOpen=moved;
+  render();openModal('categories');
+  toast(r.moved?`Категория: «${r.now}». Пути у товаров обновлены: ${num(r.moved)}.`:`Категория: «${r.now}».`);
+};
+A['cat-del']=el=>{
+  const r=Catalog.catDelete(S,el.dataset.id);
+  if(!r.ok){const e=byId('ce-err');if(e){e.textContent=r.reason;e.hidden=false}return}
+  if(S.ui.cat===r.path) S.ui.cat=CAT_ALL;
+  render();openModal('categories');
+  toast(`Категория «${r.path}» удалена.`);
+};
+// «Сменить категорию» в карточке товара
+MODALS.productCat=pid=>{
+  const p=product(pid);
+  if(!p) return `${mHead('Категория товара')}<div class="modal-b"><p class="m0">Такого товара нет.</p></div>`;
+  return `<form data-form="product-cat" data-pid="${esc(pid)}" novalidate>${mHead('Категория товара')}<div class="modal-b">
+    <p class="m0">${esc(Catalog.label(p))}</p>
+    <div class="field"><label for="pc-cat">Категория</label><select id="pc-cat" class="inp">${catOptions(p.cat,{noCat:true})}</select></div>
+    <p class="err" id="pc-err" hidden></p></div>${mFoot('Сохранить')}</form>`;
+};
+A['product-cat']=el=>{if(!can('catalog')){toast('У вашей роли нет права менять категорию товара.','warn');return}openModal('productCat',el.dataset.pid)};
+FORMS['product-cat']=f=>{
+  const r=Catalog.setCat(S,f.dataset.pid,byId('pc-cat').value);
+  if(!r.ok) return showErr('pc-err',r.reason);
+  closeModal();render();toast(`Категория товара: «${r.product.cat}».`);
+};
+// ——— артикул товара: «Изменить» в карточке ———
+// Такой же артикул у другого товара — предупреждение, не запрет (слово директора: артикул — поле, а не ключ). Текст общий с формой «Новый товар».
+const skuDupText=(sku,exceptId)=>{
+  const same=Catalog.bySku(S,sku,exceptId);
+  return same.length?'Внимание: такой артикул уже есть у '+same.slice(0,3).map(x=>'«'+x.name+'»').join(', ')+(same.length>3?' и ещё '+(same.length-3):'')+'. Сохранить можно.':'';
+};
+MODALS.productSku=pid=>{
+  const p=product(pid);
+  if(!p) return `${mHead('Артикул товара')}<div class="modal-b"><p class="m0">Такого товара нет.</p></div>`;
+  return `<form data-form="product-sku" data-pid="${esc(pid)}" novalidate>${mHead('Артикул товара')}<div class="modal-b">
+    <p class="m0">${esc(p.name)}</p>
+    <div class="field"><label for="ps-sku">Артикул</label><input id="ps-sku" class="inp" maxlength="${Catalog.SKU_MAX}" value="${esc(Catalog.skuOf(p))}" data-on="sku-dup" data-pid="${esc(pid)}" data-hint="ps-dup" autocomplete="off" placeholder="Пусто — «нет данных: артикул»"></div>
+    <p class="hint warn-t" id="ps-dup" aria-live="polite" hidden></p>
+    <p class="err" id="ps-err" hidden></p></div>${mFoot('Сохранить')}</form>`;
+};
+A['product-sku']=el=>{if(!can('catalog')){toast('У вашей роли нет права менять артикул.','warn');return}openModal('productSku',el.dataset.pid)};
+ON.input['sku-dup']=t=>{const h=byId(t.dataset.hint);if(!h) return;const x=skuDupText(t.value,t.dataset.pid||'');h.textContent=x;h.hidden=!x};
+FORMS['product-sku']=f=>{
+  const r=Catalog.setSku(S,f.dataset.pid,byId('ps-sku').value);
+  if(!r.ok) return showErr('ps-err',r.reason);
+  closeModal();render();
+  toast(r.product.sku?`Артикул: ${r.product.sku}.${r.same.length?' '+skuDupText(r.product.sku,r.product.id):''}`:'Артикул убран: «нет данных: артикул».');
+};
 A['stock-page']=el=>{S.ui.page=parseInt(el.dataset.page,10)||0;S.ui.span=1;byId('stock-tbl').innerHTML=stockTable();byId('scroll').scrollTop=0};
 // «Показать ещё» — дописать следующую страницу под видимыми (прокрутка остаётся), «Показать всё» — весь список с начала
 // Номер страницы, введённый вручную: за пределами 1…pages — ближайшая крайняя
@@ -10054,27 +10603,29 @@ function shipScale(s,now,full){
 function shipItems(s){
   const its=s.items||[],first=its.slice(0,SHIP_ITEMS_SHOWN),more=its.length-first.length;
   if(!its.length) return '<span class="muted sm">нет данных: позиции</span>';
-  const line=it=>{const p=product(it.productId);return `<div class="s-it"><span>${esc(p?p.name:'нет данных: товар')}</span> <b>× ${esc(qtyOf(it.qty,p))}</b></div>`};
+  const line=it=>{const p=product(it.productId);return `<div class="s-it"><span>${esc(p?p.name:'нет данных: товар')}</span>${p?skuTag(p):''} <b>× ${esc(qtyOf(it.qty,p))}</b></div>`};
   return `<div class="s-items"><div class="s-itl">${first.map(line).join('')}</div>${more>0?`<button type="button" class="s-more" data-act="ship-items" data-id="${esc(s.id)}" aria-label="Показать все ${its.length} ${pl(its.length,'позицию','позиции','позиций')}">+${more}</button>`:''}</div>`;
 }
 // Список для окна: подходящие под поиск по названию позиции и итог штук. Пустой поиск — всё.
 function shipItemsList(s,q){
   const its=s.items||[],names=new Map(),want=shipFold(q).trim().split(/\s+/).filter(Boolean);
   its.forEach(it=>{const p=product(it.productId);names.set(it,p?p.name:'нет данных: товар')});
-  const shown=its.filter(it=>want.every(w=>shipFold(names.get(it)).includes(w)));
+  // по названию и по артикулу (артикул — без регистра, пробелов и дефисов)
+  const hit=(it,w)=>{const p=product(it.productId),k=Catalog.skuKey(w);return shipFold(names.get(it)).includes(w)||(!!k&&!!p&&Catalog.skuKey(p.sku).includes(k))};
+  const shown=its.filter(it=>want.every(w=>hit(it,w)));
   const sum=a=>a.reduce((x,it)=>x+(Number(it.qty)||0),0);
   const all=sum(its),part=sum(shown);
   const head=shown.length===its.length?`${its.length} ${pl(its.length,'позиция','позиции','позиций')} · штук ${num(all)}`:`Найдено ${shown.length} из ${its.length} · штук ${num(part)} из ${num(all)}`;
   const rows=shown.map(it=>{
     const p=product(it.productId);
-    return `<tr><td class="num muted">${its.indexOf(it)+1}</td><td>${esc(names.get(it))}</td><td class="num"><b>${esc(qtyOf(it.qty,p))}</b>${it.got!==undefined&&it.got!==it.qty?`<small class="muted"> принято ${esc(qtyOf(it.got,p))}</small>`:''}</td></tr>`;
+    return `<tr><td class="num muted">${its.indexOf(it)+1}</td><td>${esc(names.get(it))}${p?skuTag(p):''}</td><td class="num"><b>${esc(qtyOf(it.qty,p))}</b>${it.got!==undefined&&it.got!==it.qty?`<small class="muted"> принято ${esc(qtyOf(it.got,p))}</small>`:''}</td></tr>`;
   }).join('');
   return `<p class="si-sum" id="si-sum">${head}</p>${shown.length?`<div class="si-scroll"><table class="tbl"><thead><tr><th class="num">№</th><th>Название</th><th class="num">Кол-во</th></tr></thead><tbody>${rows}</tbody></table></div>`:'<p class="empty">Ничего не нашлось.</p>'}`;
 }
 function mShipItems(s){
   if(!s) return `<div>${mHead('Позиции')}<div class="modal-b"><p class="empty">Поставки нет.</p></div></div>`;
   return `<div>${mHead('Позиции поставки '+esc(s.id))}<div class="modal-b si">
-    <div class="field"><label for="si-q">Поиск по названию</label><input id="si-q" class="inp" type="search" data-on="ship-items-q" data-id="${esc(s.id)}" placeholder="Например: панель" autocomplete="off"></div>
+    <div class="field"><label for="si-q">Поиск по названию или артикулу</label><input id="si-q" class="inp" type="search" data-on="ship-items-q" data-id="${esc(s.id)}" placeholder="Например: панель" autocomplete="off"></div>
     <div id="si-body">${shipItemsList(s,'')}</div>
   </div><div class="modal-f"><button type="button" class="btn" data-act="close-modal">Закрыть</button></div></div>`;
 }
@@ -10374,7 +10925,7 @@ function dShip(s){
   // остатки, а сделку и клиента называют только тому, кому сделка видна; остальным — «сделка скрыта» (отгрузка: Stock.dealRef)
   const dealLink=ref=>`<button type="button" class="link" data-act="open-deal" data-id="${esc(ref.id)}">${esc(ref.id)} · ${esc(ref.client||'')}</button>`;
   const waits=s.dir==='in'?S.reserves.filter(r=>r.src===s.id).map(r=>Stock.reserveView(S,r,S.me)).filter(Boolean)
-    .map(v=>{const p=product(v.productId);return (v.deal?dealLink(v.deal):v.hasDeal?`<span class="muted">${Stock.HIDDEN_DEAL}</span>`:noData('сделка'))+` <small class="muted">${esc(low(p?.name||'нет данных: товар'))} — ${qtyOf(v.qty,p)}</small>`})
+    .map(v=>{const p=product(v.productId);return (v.deal?dealLink(v.deal):v.hasDeal?`<span class="muted">${Stock.HIDDEN_DEAL}</span>`:noData('сделка'))+` <small class="muted">${esc(low(Catalog.label(p)))} — ${qtyOf(v.qty,p)}</small>`})
     :(s.deal?[Stock.dealRef(S,s.deal,S.me)?dealLink(Stock.dealRef(S,s.deal,S.me)):`<span class="muted">${Stock.HIDDEN_DEAL}</span>`]:[]);
   const hist=(s.history||[]).slice().reverse().map(h=>{
     const src=h.source||(h.auto?'автоматически':'вручную'),who=h.by?person(h.by)?.name:null;
@@ -10484,9 +11035,9 @@ function rcvPlan(r=S.rcv){
   const s=ship(r.shipId),auto=!SERVER&&rule('arrive').on,issues=[],dmg=[];
   s.items.forEach(it=>{
     const p=product(it.productId),q=qv(it.productId,r);
-    if(q<it.qty) issues.push(`${p.name}: принято ${num(q)} из ${qtyOf(it.qty,p)}`);
-    else if(q>it.qty) issues.push(`${p.name}: принято ${num(q)} вместо ${qtyOf(it.qty,p)}`);
-    if(r.dmg[it.productId]) dmg.push(p.name);
+    if(q<it.qty) issues.push(`${Catalog.label(p)}: принято ${num(q)} из ${qtyOf(it.qty,p)}`);
+    else if(q>it.qty) issues.push(`${Catalog.label(p)}: принято ${num(q)} вместо ${qtyOf(it.qty,p)}`);
+    if(r.dmg[it.productId]) dmg.push(Catalog.label(p));
   });
   const cell=rcvCell(r),fin=finalStage(s);
   // что ляжет на склад: принятое по каждой позиции, в порядке позиций поставки (ноль — ничего не кладём)
@@ -10530,7 +11081,7 @@ function rcvCellHtml(r){
 function rcvPhoneHtml(r,pend){
   const s=ship(r.shipId);
   const opts=pend.map(x=>{const on=x.id===s.id;return `<label class="opt ${on?'on':''}"><input type="radio" name="rcv-ship" id="rcv-s-${x.id}" value="${x.id}" ${on?'checked':''} data-on="rcv-ship"><span><b class="mono">${x.id}</b> · ${esc(x.supplier)}<small>${isLate(x)?'задерживается':esc(stageName(x).toLowerCase())} · ${x.items.length} ${pl(x.items.length,'позиция','позиции','позиций')} · ожидается ${fRel(x.eta)}</small></span></label>`}).join('');
-  const rows=s.items.map(it=>{const p=product(it.productId);return `<div class="cnt-row"><div class="cnt-name">${esc(p.name)}<small>Ожидалось: ${qtyOf(it.qty,p)}</small></div><div class="qty"><button type="button" data-act="rcv-step" data-pid="${it.productId}" data-d="-1" aria-label="Меньше">−</button><input id="rcv-q-${it.productId}" type="number" inputmode="numeric" min="0" value="${esc(r.qty[it.productId])}" data-on="rcv-qty" data-pid="${it.productId}" aria-label="Принято"><button type="button" data-act="rcv-step" data-pid="${it.productId}" data-d="1" aria-label="Больше">+</button></div><div class="cnt-x"><label class="check"><input type="checkbox" id="rcv-d-${it.productId}" data-on="rcv-dmg" data-pid="${it.productId}" ${r.dmg[it.productId]?'checked':''}> Есть повреждения</label><span id="rcv-diff-${it.productId}">${diffHtml(it,r)}</span></div></div>`}).join('');
+  const rows=s.items.map(it=>{const p=product(it.productId);return `<div class="cnt-row"><div class="cnt-name">${esc(p.name)}${skuTag(p)}<small>Ожидалось: ${qtyOf(it.qty,p)}</small></div><div class="qty"><button type="button" data-act="rcv-step" data-pid="${it.productId}" data-d="-1" aria-label="Меньше">−</button><input id="rcv-q-${it.productId}" type="number" inputmode="numeric" min="0" value="${esc(r.qty[it.productId])}" data-on="rcv-qty" data-pid="${it.productId}" aria-label="Принято"><button type="button" data-act="rcv-step" data-pid="${it.productId}" data-d="1" aria-label="Больше">+</button></div><div class="cnt-x"><label class="check"><input type="checkbox" id="rcv-d-${it.productId}" data-on="rcv-dmg" data-pid="${it.productId}" ${r.dmg[it.productId]?'checked':''}> Есть повреждения</label><span id="rcv-diff-${it.productId}">${diffHtml(it,r)}</span></div></div>`}).join('');
   return `<div class="ph-sec"><span class="ph-step">Шаг 1</span><h3>Какая поставка пришла</h3>${opts}</div>
     <div class="ph-sec"><span class="ph-step">Шаг 2</span><h3>Пересчитайте товар</h3>${rows}</div>
     <div class="ph-sec"><span class="ph-step">Шаг 3</span><h3>На какое юрлицо и в какой город</h3>${rcvCellHtml(r)}</div>
@@ -10540,7 +11091,7 @@ function rcvPhoneHtml(r,pend){
 function rcvPreview(r=S.rcv){
   const P=rcvPlan(r),s=P.s,m=me();
   const ppl=P.to.filter(id=>id!==m.id).map(person).filter(Boolean);
-  const add=s.items.map((it,i)=>{const p=product(it.productId);return `<li><span>${esc(p.name)}</span><b class="num">+${qtyOf(P.adds[i].qty,p)}</b></li>`}).join('');
+  const add=s.items.map((it,i)=>{const p=product(it.productId);return `<li><span>${esc(p.name)}</span>${skuTag(p)}<b class="num">+${qtyOf(P.adds[i].qty,p)}</b></li>`}).join('');
   const rules=P.rules.map(x=>`<li class="sm">Правило «если ${esc(Ships.eventLabel(x.when))}» — этап «${esc(Pipes.stage(S,s.pipeId,x.then).name)}»</li>`).join('');
   const warnNames=P.warnTo.map(id=>person(id)?.name).filter(Boolean).map(esc).join(', ');
   // кто ждёт: количество видно всем, у кого есть право на остатки; клиента, номер сделки, менеджера и текст сообщения клиенту
@@ -10555,7 +11106,7 @@ function rcvPreview(r=S.rcv){
     <div><h4 class="sh">Добавится на склад: ${esc(P.cell.entityName)}, ${esc(P.cell.cityName)}</h4><ul class="plain">${add}</ul></div>
     <div><h4 class="sh">Поставка ${esc(s.id)}</h4><p class="sm m0">${P.final?`Перейдёт на этап «${esc(P.final.name)}» (автоматически: приёмка).`:'нет данных: этап «на складе» в воронке'}</p>${rules?`<ul class="plain">${rules}</ul>`:''}${P.block?`<p class="warn-t sm" style="margin:6px 0 0">${esc(P.block)}</p>`:''}</div>
     <div><h4 class="sh">Уведомление получат</h4><div class="who-list">${ppl.map(p=>`<span class="chip">${av(p,'xs')}${esc(p.name)} · ${esc(roleName(p).toLowerCase())}</span>`).join('')}</div>${P.issues.length||P.dmg.length?`<p class="warn-t sm" style="margin:8px 0 0">Есть расхождение или повреждение — отдельное предупреждение получат: ${warnNames}.</p>`:''}</div>
-    <div><h4 class="sh">Клиенты, которые ждут этот товар</h4><div class="stack-s">${waits||'<p class="muted sm m0">Резервов под эту поставку нет — весь товар станет свободным для продажи.</p>'}</div>${P.cuts.length?`<ul class="plain">${P.cuts.map(c=>{const v=Stock.reserveView(S,c.r,m.id);return `<li class="sm warn-t">Резерв ${v&&v.deal?esc(v.deal.id)+(v.deal.client?' ('+esc(v.deal.client)+')':''):'('+Stock.HIDDEN_DEAL+')'}: ${esc(low(product(c.r.productId)?.name||'нет данных: товар'))} — ${c.keep?`останется ${num(c.keep)}, снимется ${num(c.drop)}`:`снимется весь (${num(c.drop)})`}.</li>`}).join('')}</ul>`:''}</div>
+    <div><h4 class="sh">Клиенты, которые ждут этот товар</h4><div class="stack-s">${waits||'<p class="muted sm m0">Резервов под эту поставку нет — весь товар станет свободным для продажи.</p>'}</div>${P.cuts.length?`<ul class="plain">${P.cuts.map(c=>{const v=Stock.reserveView(S,c.r,m.id);return `<li class="sm warn-t">Резерв ${v&&v.deal?esc(v.deal.id)+(v.deal.client?' ('+esc(v.deal.client)+')':''):'('+Stock.HIDDEN_DEAL+')'}: ${esc(low(Catalog.label(product(c.r.productId))))} — ${c.keep?`останется ${num(c.keep)}, снимется ${num(c.drop)}`:`снимется весь (${num(c.drop)})`}.</li>`}).join('')}</ul>`:''}</div>
   </div></section>`;
 }
 function updRcvPrev(){const b=byId('rcv-prev');if(b) b.innerHTML=rcvPreview()}
@@ -10586,7 +11137,7 @@ function receiveShip(by,now){
   const fired=Ships.applyRules(S,'received',s.id,by,now);
   s.received={at:now,by,photos:r.photos.length,urls:r.photos.slice(),note:r.note.trim()};
   const notes=S.notes.slice(0,S.notes.length-before),msgIds=[],taskIds=[],asked=[];
-  notes.push(Notify.push(S,'arrive',by,`${s.id} принята на склад (${P.cell.entityName}, ${P.cell.cityName}): ${s.items.map(it=>`${low(product(it.productId).name)} ${qtyOf(it.got,product(it.productId))}`).join(', ')}. Фото: ${r.photos.length}.${s.received.note?' Комментарий: '+s.received.note:''}`,now,[],{t:'ship',id:s.id}));
+  notes.push(Notify.push(S,'arrive',by,`${s.id} принята на склад (${P.cell.entityName}, ${P.cell.cityName}): ${s.items.map(it=>`${low(Catalog.label(product(it.productId)))} ${qtyOf(it.got,product(it.productId))}`).join(', ')}. Фото: ${r.photos.length}.${s.received.note?' Комментарий: '+s.received.note:''}`,now,[],{t:'ship',id:s.id}));
   if(P.issues.length||P.dmg.length) notes.push(Notify.push(S,'warn',by,`Приёмка ${s.id} с замечаниями. ${[P.issues.join('; '),P.dmg.length?'Повреждено: '+P.dmg.join(', '):''].filter(Boolean).join('. ')}. Фото в карточке поставки.`,now,[],{t:'ship',id:s.id}));
   P.waits.forEach(({d,items,how})=>{
     const mg=person(d.managerId);let tail;
@@ -10867,7 +11418,7 @@ function dealLine(d,it,i,edit,pr){
     if(can('sell')) btn+=`<button type="button" class="btn sm" data-act="stock-sell" data-pid="${esc(p.id)}" data-did="${id}">Списать при продаже</button>`;
   }else info='<small class="dl-st">своя строка — не из каталога, резерва нет</small>';
   const numf=(f,label,val,ph)=>edit?`<div class="field"><label for="di-${f}-${i}">${label}</label><input id="di-${f}-${i}" class="inp sm" type="number" min="0" step="any" inputmode="decimal" data-on="deal-i" data-id="${id}" data-i="${i}" data-f="${f}" value="${val===null||val===undefined?'':esc(val)}"${ph?` placeholder="${ph}"`:''}></div>`:`<div class="field"><span class="lbl">${label}</span><span>${val===null||val===undefined||val===''?dealNoData('цена'):esc(val)}</span></div>`;
-  return `<li class="dline"><div class="dl-h"><div class="dl-n"><b>${esc(name)}</b>${info}</div>${edit?`<button type="button" class="btn ghost icon sm" data-act="deal-del-i" data-id="${id}" data-i="${i}" aria-label="Убрать строку «${esc(name)}»">${ic('x')}</button>`:''}</div>
+  return `<li class="dline"><div class="dl-h"><div class="dl-n"><b>${esc(name)}</b>${p?skuTag(p):''}${info}</div>${edit?`<button type="button" class="btn ghost icon sm" data-act="deal-del-i" data-id="${id}" data-i="${i}" aria-label="Убрать строку «${esc(name)}»">${ic('x')}</button>`:''}</div>
     <div class="dl-in">${numf('qty','Кол-во',it.qty)}${pr?`${numf('price','Цена, ₽',typeof it.price==='number'?it.price:null,'нет данных: цена')}${numf('disc','Скидка, %',it.disc||0)}<div class="field"><span class="lbl">Сумма</span><output class="dl-sum" id="di-sum-${i}">${esc(dealLineSum(it))}</output></div>`:''}</div>
     <div class="dl-f">${pr?`<span id="di-src-${i}">${dealPriceSrc(it)}</span>`:''}${res}${btn}</div></li>`;
 }
@@ -10878,7 +11429,7 @@ function dealFound(d,q){
   const list=Catalog.query(S,{q:query}).sort((a,b)=>(b.inCatalog?1:0)-(a.inCatalog?1:0)).slice(0,8);
   if(!list.length) return '<p class="hint">В каталоге такого нет. Можно добавить свою строку ниже.</p>';
   const pr=can('prices');
-  return list.map(p=>{const k=stockOf(p.id);return `<button type="button" class="dpr" data-act="deal-add-p" data-id="${esc(d.id)}" data-pid="${esc(p.id)}"><span class="dpr-n">${esc(p.name)}</span><small>${pr?(typeof p.price==='number'?rub(p.price):'нет данных: цена')+' · ':''}${k.known?'свободно '+qtyOf(Math.max(0,k.free),p):'остаток: нет данных'}${p.inCatalog?'':' · нет в каталоге'}</small>${ic('plus')}</button>`}).join('');
+  return list.map(p=>{const k=stockOf(p.id);return `<button type="button" class="dpr" data-act="deal-add-p" data-id="${esc(d.id)}" data-pid="${esc(p.id)}"><span class="dpr-n">${esc(p.name)}</span><small>${esc(skuText(p))} · ${pr?(typeof p.price==='number'?rub(p.price):'нет данных: цена')+' · ':''}${k.known?'свободно '+qtyOf(Math.max(0,k.free),p):'остаток: нет данных'}${p.inCatalog?'':' · нет в каталоге'}</small>${ic('plus')}</button>`}).join('');
 }
 function dealItems(d,edit){
   const pr=can('prices'),items=d.items||[],id=esc(d.id);
@@ -10895,7 +11446,7 @@ function dealItems(d,edit){
 function dealKp(d){
   const items=d.items||[],mgr=person(d.managerId),c=Clients.byId(S,d.clientId),now=new Date();
   const when=`${now.getDate()} ${MONF[now.getMonth()]} ${now.getFullYear()} г.`;
-  const rows=items.map((it,i)=>`<tr><td>${i+1}</td><td>${esc(Deals.itemName(S,it))}</td><td class="num">${num(it.qty)}</td><td class="num">${typeof it.price==='number'?rub(it.price):'нет данных: цена'}</td><td class="num">${it.disc?num(it.disc)+' %':'0 %'}</td><td class="num">${esc(dealLineSum(it))}</td></tr>`).join('');
+  const rows=items.map((it,i)=>`<tr><td>${i+1}</td><td>${esc(Deals.itemName(S,it))}${it.productId&&product(it.productId)?skuTag(product(it.productId)):''}</td><td class="num">${num(it.qty)}</td><td class="num">${typeof it.price==='number'?rub(it.price):'нет данных: цена'}</td><td class="num">${it.disc?num(it.disc)+' %':'0 %'}</td><td class="num">${esc(dealLineSum(it))}</td></tr>`).join('');
   const np=Deals.noPrice(d).length;
   return `<div class="kp" id="kp">
     <div class="kp-top"><span class="logo" id="kp-logo"></span><div class="kp-t"><h2>Коммерческое предложение</h2><p>№ ${esc(d.id)} · ${esc(when)}</p></div></div>
@@ -10932,7 +11483,7 @@ MODALS.dealReserve=key=>{
   if(!d||!it||!p) return `${mHead('Резерв')}<div class="modal-b"><p class="m0">Строка не найдена или это своя строка — резервировать нечего.</p></div>`;
   const held=Deals.reserved(S,d,p.id),all=Deals.lined(d,p.id),left=Deals.left(S,d,p.id),cell=Stock.bestCell(S,p.id),k=stockOf(p.id);
   const opt=(list,none,cur)=>[...list.map(x=>[x.id,x.name]),[Stock.ANY,none]].map(([v,n])=>`<option value="${esc(v)}"${v===cur?' selected':''}>${esc(n)}</option>`).join('');
-  return `<form data-form="deal-reserve" data-id="${esc(did)}" data-i="${+i}" novalidate>${mHead('Зарезервировать: '+esc(p.name))}<div class="modal-b">
+  return `<form data-form="deal-reserve" data-id="${esc(did)}" data-i="${+i}" novalidate>${mHead('Зарезервировать: '+esc(Catalog.label(p)))}<div class="modal-b">
     <p class="m0">Сделка ${esc(did)} · ${esc(d.client)}. ${all!==it.qty?`В сделке по этому товару ${qtyOf(all,p)} (в этой строке ${num(it.qty)})`:`В строке ${qtyOf(it.qty,p)}`}, уже в резерве ${num(held)}, осталось ${qtyOf(left,p)}. Свободно на складе: ${k.known?qtyOf(Math.max(0,k.free),p):'нет данных'} (${esc(stockNote())}).</p>
     <div class="grid2"><div class="field"><label for="dr-ent">Юрлицо</label><select id="dr-ent" class="inp" data-on="deal-rs" data-pid="${esc(p.id)}">${opt(S.entities,Stock.NO_ENTITY,cell.entityId)}</select></div><div class="field"><label for="dr-city">Город</label><select id="dr-city" class="inp" data-on="deal-rs" data-pid="${esc(p.id)}">${opt(S.cities,Stock.NO_CITY,cell.cityId)}</select></div>
       <div class="field"><label for="dr-qty">Сколько</label><input id="dr-qty" class="inp" type="number" min="1" step="any" value="${esc(left)}" inputmode="decimal"></div><div class="field"><label for="dr-until">Резерв до</label><input id="dr-until" class="inp" type="date" value="${iso(day(Stock.RESERVE_DAYS))}"></div></div>
@@ -10997,12 +11548,12 @@ A['deal-print']=()=>{if(typeof window!=='undefined'&&typeof window.print==='func
 A['deal-add-p']=el=>{
   const id=el.dataset.id,r=Deals.addItem(S,id,{productId:el.dataset.pid},S.me,new Date());
   if(!r.ok){toast(r.reason,'warn');return}
-  render();toast(`В сделку ${id} добавлено: ${Deals.itemName(S,dealById(id).items[r.idx])}. Количество и цену можно поправить в строке.`);
+  render();toast(`В сделку ${id} добавлено: ${Deals.itemLabel(S,dealById(id).items[r.idx])}. Количество и цену можно поправить в строке.`);
 };
 A['deal-del-i']=el=>{
   const id=el.dataset.id,d=dealById(id),it=d&&(d.items||[])[+el.dataset.i];
   if(!it){toast('Такой строки нет.','warn');return}
-  const name=Deals.itemName(S,it);
+  const name=Deals.itemLabel(S,it);
   dealRun(Deals.removeItem(S,id,+el.dataset.i,S.me,new Date()),`Строка «${name}» убрана из сделки ${id}.`);
 };
 A['deal-res']=el=>{
@@ -11011,7 +11562,7 @@ A['deal-res']=el=>{
 };
 A['deal-unres']=el=>{
   const id=el.dataset.id,rs=S.reserves.find(r=>r.id===el.dataset.rid),p=rs&&product(rs.productId);
-  dealRun(Deals.unreserve(S,id,el.dataset.rid,S.me,new Date()),`Резерв снят${p?`: ${low(p.name)} — ${qtyOf(rs.qty,p)}`:''}. Товар снова свободен.`);
+  dealRun(Deals.unreserve(S,id,el.dataset.rid,S.me,new Date()),`Резерв снят${p?`: ${low(Catalog.label(p))} — ${qtyOf(rs.qty,p)}`:''}. Товар снова свободен.`);
 };
 
 // ——— поля ———
@@ -11117,7 +11668,7 @@ FORMS['deal-reserve']=f=>{
   if(!r.ok) return showErr('dr-err',r.reason);
   const p=product(r.reserve.productId);
   closeModal();render();
-  toast(`Резерв поставлен: ${low(p.name)} — ${qtyOf(r.reserve.qty,p)} для ${id}. Склад и директор получили уведомление.`);
+  toast(`Резерв поставлен: ${low(Catalog.label(p))} — ${qtyOf(r.reserve.qty,p)} для ${id}. Склад и директор получили уведомление.`);
 };
 FORMS['deal-own']=f=>{
   const id=f.dataset.id,price=byId('do-price'),raw={text:byId('do-name').value,qty:byId('do-qty').value};
@@ -12942,7 +13493,7 @@ function dDispatch(d){
     const pr=it.productId?product(it.productId):null,sold=Dispatch.soldText(S,it);
     const sellBtn=canSell&&it.productId&&!it.sold?`<button type="button" class="btn sm dsp-sell" data-act="dsp-sell" data-id="${esc(d.id)}" data-i="${i}">Списать при продаже</button>`:'';
     const from=d.purpose==='sale'&&it.productId&&!it.sold?`<small class="dsp-sold">${it.from?'откуда: '+esc(dspCell(it.from)):'склад не выбран'}</small>`:'';
-    return `<li><label class="dsp-line"><input type="checkbox"${it.picked?' checked':''}${canPick?'':' disabled'} data-on="dsp-pick" data-id="${esc(d.id)}" data-i="${i}"><span><b>${esc(Dispatch.lineName(S,it))}</b> — ${esc(qtyOf(it.qty,pr))}${it.productId?'':' <small class="muted">своя строка</small>'}${from}${sold?`<small class="dsp-sold">${esc(sold)}</small>`:''}</span></label>${sellBtn}</li>`;
+    return `<li><label class="dsp-line"><input type="checkbox"${it.picked?' checked':''}${canPick?'':' disabled'} data-on="dsp-pick" data-id="${esc(d.id)}" data-i="${i}"><span><b>${esc(Dispatch.lineName(S,it))}</b>${pr?skuTag(pr):''} — ${esc(qtyOf(it.qty,pr))}${it.productId?'':' <small class="muted">своя строка</small>'}${from}${sold?`<small class="dsp-sold">${esc(sold)}</small>`:''}</span></label>${sellBtn}</li>`;
   }).join('');
   const files=d.files.length?`<div class="dsp-files">${d.files.map(f=>dspFileHtml(d,f)).join('')}</div>`:'<p class="muted m0">Файлов нет.</p>';
   const deal=d.dealId?(S.deals||[]).find(x=>x.id===d.dealId):null;
@@ -13023,9 +13574,9 @@ function dspItemsHtml(x){
   if(!x.items.length) return '<p class="muted m0">Список пуст: найдите товар в каталоге или добавьте свою строку.</p>';
   return `<ul class="dsp-its">${x.items.map((it,i)=>{
     const name=it.productId?(product(it.productId)||{}).name||'нет данных: товар':it.text;
-    if(it.locked) return `<li class="dsp-it"><div class="dsp-it-n"><b>${esc(name)}</b><small>списано при продаже — строку не изменить и не удалить</small></div><input class="inp dsp-q" type="number" value="${esc(it.qty)}" disabled aria-label="Количество: ${esc(name)} (списано)"></li>`;
+    if(it.locked) return `<li class="dsp-it"><div class="dsp-it-n"><b>${esc(name)}</b>${it.productId&&product(it.productId)?skuTag(product(it.productId)):''}<small>списано при продаже — строку не изменить и не удалить</small></div><input class="inp dsp-q" type="number" value="${esc(it.qty)}" disabled aria-label="Количество: ${esc(name)} (списано)"></li>`;
     const sale=x.purpose==='sale'&&it.productId;
-    return `<li class="dsp-it"><div class="dsp-it-n"><b>${esc(name)}</b><small>${it.productId?esc(sale?dspCellsText(it.productId):dspFreeText(it.productId)):'своя строка — склад не трогает'}</small>${sale?dspSrcHtml(x,it,i,name):''}</div><input class="inp dsp-q" type="number" min="1" step="1" inputmode="numeric" value="${esc(it.qty)}" data-on="dsp-qty" data-i="${i}" aria-label="Количество: ${esc(name)}"><button type="button" class="btn ghost icon" data-act="dsp-line-del" data-i="${i}" aria-label="Убрать строку: ${esc(name)}">${ic('x')}</button></li>`;
+    return `<li class="dsp-it"><div class="dsp-it-n"><b>${esc(name)}</b>${it.productId&&product(it.productId)?skuTag(product(it.productId)):''}<small>${it.productId?esc(sale?dspCellsText(it.productId):dspFreeText(it.productId)):'своя строка — склад не трогает'}</small>${sale?dspSrcHtml(x,it,i,name):''}</div><input class="inp dsp-q" type="number" min="1" step="1" inputmode="numeric" value="${esc(it.qty)}" data-on="dsp-qty" data-i="${i}" aria-label="Количество: ${esc(name)}"><button type="button" class="btn ghost icon" data-act="dsp-line-del" data-i="${i}" aria-label="Убрать строку: ${esc(name)}">${ic('x')}</button></li>`;
   }).join('')}</ul>`;
 }
 // Откуда берём товар строки «Продажи»: клетки со свободным (Stock.cells); сохранённая клетка, где свободного уже нет, остаётся
@@ -13045,7 +13596,7 @@ function dspPresHtml(q){
   const hits=Catalog.query(S,{q}).slice(0,6);
   if(!hits.length) return '<p class="hint">В каталоге такого нет — добавьте свою строку.</p>';
   const sale=(dspDraft()||{}).purpose==='sale';
-  return `<ul class="dsp-pres">${hits.map(p=>`<li><button type="button" class="dpr" data-act="dsp-add" data-pid="${esc(p.id)}"><span class="dpr-n">${esc(p.name)}</span><small>${esc(sale?dspCellsText(p.id):dspFreeText(p.id))}</small>${ic('plus')}</button></li>`).join('')}</ul>`;
+  return `<ul class="dsp-pres">${hits.map(p=>`<li><button type="button" class="dpr" data-act="dsp-add" data-pid="${esc(p.id)}"><span class="dpr-n">${esc(p.name)}</span><small>${esc(skuText(p))} · ${esc(sale?dspCellsText(p.id):dspFreeText(p.id))}</small>${ic('plus')}</button></li>`).join('')}</ul>`;
 }
 function dspFilesEditHtml(x){return attEditHtml(x.files,'dsp-file-del')}
 MODALS.dispatchForm=()=>{
@@ -13085,7 +13636,7 @@ MODALS.dspSell=o=>{
   const inFrom=f&&src.find(x=>{const r=x[0][0]==='r'&&S.reserves.find(y=>'r:'+y.id===x[0]);return r&&(r.entityId||Stock.ANY)===f.entityId&&(r.cityId||Stock.ANY)===f.cityId});
   const fromKey=f?`c:${f.entityId}|${f.cityId}`:'';
   const want=inFrom?inFrom[0]:fromKey&&src.some(x=>x[0]===fromKey)?fromKey:dealRs?dealRs[0]:`c:${best.entityId}|${best.cityId}`,cur=src.some(x=>x[0]===want)?want:src[0][0];
-  return `<form data-form="dsp-sell" data-id="${esc(d.id)}" data-i="${esc(o.i)}" novalidate>${mHead('Списать при продаже: '+esc(p.name))}<div class="modal-b">
+  return `<form data-form="dsp-sell" data-id="${esc(d.id)}" data-i="${esc(o.i)}" novalidate>${mHead('Списать при продаже: '+esc(Catalog.label(p)))}<div class="modal-b">
     <p class="m0">Заявка ${esc(d.number)}, ${esc(d.to.name)}. Списывается вся строка: ${esc(qtyOf(it.qty,p))}.${d.dealId?` Сделка ${esc(d.dealId)}.`:''} В журнале движений появится «Отгрузка».</p>
     <div class="field"><label for="ps-src">Откуда</label><select id="ps-src" class="inp" data-on="sellsrc" data-pid="${esc(p.id)}">${optionsHtml(src,cur)}</select></div>
     <p class="hint" id="ps-max">${esc(sellMaxText(p.id,cur))}</p>

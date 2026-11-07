@@ -146,7 +146,7 @@ const Ships = (() => {
   }
 
   // ——— поиск, фильтры, сортировка, страницы ———
-  const productNames = st => new Map((st.products || []).map(p => [p.id, p.name]));
+  const productNames = st => new Map((st.products || []).map(p => [p.id, Catalog.skuOf(p) ? `${p.name} ${Catalog.skuOf(p)} ${Catalog.skuKey(p.sku)}` : p.name]));
   const atNode = (s, key) => {
     const w = where(s);
     return String(key).includes('>') ? !!w.from && w.from + '>' + w.to === key : w.at === key;
@@ -212,8 +212,10 @@ const Ships = (() => {
     const items = s.items || [];
     if (!items.length) return 'без позиций';
     const p = (st.products || []).find(x => x.id === items[0].productId);
-    let first = p ? p.name : 'нет данных: товар';
-    if (first.length > 56) first = first.slice(0, 55) + '…';
+    // длинное название укорачивается, артикул (если он есть) остаётся целиком
+    let name = p ? p.name : 'нет данных: товар';
+    if (name.length > 56) name = name.slice(0, 55) + '…';
+    const first = p && Catalog.skuOf(p) ? `${name} (арт. ${Catalog.skuOf(p)})` : name;
     const more = items.length - 1;
     return more > 0 ? `${first} и ещё ${more} ${pl(more, 'позиция', 'позиции', 'позиций')}` : first;
   }

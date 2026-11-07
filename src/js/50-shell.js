@@ -170,7 +170,7 @@ function mStage(s){
   </div>${mFoot('Отметить и уведомить')}</form>`;
 }
 let _ir=0;
-const irow=()=>{_ir++;return `<div class="irow"><select class="inp" id="ns-sku-${_ir}" aria-label="Товар">${S.products.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select><input class="inp" id="ns-qty-${_ir}" type="number" min="1" value="1" aria-label="Количество"></div>`};
+const irow=()=>{_ir++;return `<div class="irow"><select class="inp" id="ns-sku-${_ir}" aria-label="Товар">${S.products.map(p=>`<option value="${esc(p.id)}">${esc(Catalog.label(p))}</option>`).join('')}</select><input class="inp" id="ns-qty-${_ir}" type="number" min="1" value="1" aria-label="Количество"></div>`};
 function mShip(){
   // этап новой поставки — любой до «прибыло» (этапы с флагами ставит приёмка)
   const stg=shipPipe('in')?.stages||[],stop=stg.findIndex(x=>x.flag),open=stop<0?stg:stg.slice(0,stop);
@@ -187,7 +187,8 @@ function mShip(){
 function mProduct(){
   return `<form data-form="product" novalidate>${mHead('Новый товар')}<div class="modal-b">
     <div class="grid2"><div class="field"><label for="np-name">Наименование</label><input id="np-name" class="inp" placeholder="Как товар называется в документах"></div><div class="field"><label for="np-unit">Единица</label><select id="np-unit" class="inp"><option>шт</option><option>м</option><option>пар</option><option>компл.</option></select></div></div>
-    <div class="grid2"><div class="field"><label for="np-cat">Категория</label><select id="np-cat" class="inp">${Catalog.cats(S).map(c=>`<option>${esc(c)}</option>`).join('')}</select></div>${can('prices')?'<div class="field"><label for="np-price">Цена, ₽</label><input id="np-price" class="inp" type="number" min="0" placeholder="Пусто — «нет данных»"></div>':''}</div>
+    <div class="field"><label for="np-sku">Артикул</label><input id="np-sku" class="inp" maxlength="${Catalog.SKU_MAX}" data-on="sku-dup" data-hint="np-dup" autocomplete="off" placeholder="Необязательно. Пусто — «нет данных: артикул»"></div><p class="hint warn-t" id="np-dup" aria-live="polite" hidden></p>
+    <div class="grid2"><div class="field"><label for="np-cat">Категория</label><select id="np-cat" class="inp">${catOptions(Catalog.hasPath(S,S.ui.cat)&&S.ui.cat!=='Все'?S.ui.cat:Catalog.NO_CAT,{noCat:true})}</select></div>${can('prices')?'<div class="field"><label for="np-price">Цена, ₽</label><input id="np-price" class="inp" type="number" min="0" placeholder="Пусто — «нет данных»"></div>':''}</div>
     <p class="err" id="np-err" hidden></p></div>${mFoot('Добавить')}</form>`;
 }
 const mReset=()=>`<form data-form="reset" novalidate>${mHead('Сбросить данные прототипа?')}<div class="modal-b">
@@ -547,11 +548,12 @@ const FORMS={
     const name=byId('np-name').value.trim(),pr=byId('np-price'),m=me();
     const price=pr&&pr.value!==''?Math.max(0,Number(pr.value)):null;
     // товар создаёт Catalog.add — тот же код, что у «Оприходовать товар»; он же отказывает на пустое и повторное название
-    const made=Catalog.add(S,{name,cat:byId('np-cat').value,unit:byId('np-unit').value,price});
+    const made=Catalog.add(S,{name,cat:byId('np-cat').value,unit:byId('np-unit').value,price,sku:byId('np-sku').value});
     if(!made.ok) return showErr('np-err',made.reason);
     const pid=made.product.id;
-    Notify.push(S,'arrive',m.id,`В номенклатуру добавлен товар: ${name}.`,new Date(),[],{t:'product',id:pid});
-    closeModal();S.ui.cat='Все';S.ui.sq='';render();toast('Товар добавлен. Остатка нет — он появится после первой приёмки.');
+    Notify.push(S,'arrive',m.id,`В номенклатуру добавлен товар: ${Catalog.label(made.product)}.`,new Date(),[],{t:'product',id:pid});
+    const dup=made.product.sku?skuDupText(made.product.sku,made.product.id):'';
+    closeModal();S.ui.cat='Все';S.ui.sq='';render();toast('Товар добавлен. Остатка нет — он появится после первой приёмки.'+(dup?' '+dup:''));
   },
   msg:f=>{
     const d=deal(f.dataset.id),ta=byId('msg-text'),txt=ta.value.trim();

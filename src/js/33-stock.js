@@ -259,7 +259,7 @@ const Stock = (() => {
   }
   // Куда ведёт уведомление о резерве человеку personId: сделка, если она ему видна, иначе карточка товара
   const refFor = (st, r, personId) => (r.dealId && dealRef(st, r.dealId, personId) ? { t: 'deal', id: r.dealId } : { t: 'product', id: r.productId });
-  const prodName = (st, id) => low(((st.products || []).find(p => p.id === id) || {}).name || 'нет данных: товар');
+  const prodName = (st, id) => low(Catalog.label((st.products || []).find(p => p.id === id)));
   const personName = (st, id) => ((st.people || []).find(p => p.id === id) || {}).name || 'нет данных: кто';
   // Автор резерва: кто поставил (by); у старых — по журналу (Feed.reserveWhen); нет — менеджер сделки
   function authorOf(st, r) {
@@ -595,7 +595,7 @@ const Stock = (() => {
     for (const [pid, ws] of ready) {
       const k = summary(st, pid), cs = cells(st, pid);
       const where = cs.length === 1 ? cellText(st, cs[0].entityId, cs[0].cityId) : cs.map(c => `${cellText(st, c.entityId, c.cityId)} ${num(c.free)}`).join(', ');
-      const name = ((st.products || []).find(p => p.id === pid) || {}).name || 'нет данных: товар';
+      const name = Catalog.label((st.products || []).find(p => p.id === pid));
       const n = Notify.to(st, 'arrive', null, `${name} появился: свободно ${num(k.free)}${where ? ` (${where})` : ''}.`, now, ws.map(w => w.personId), { t: 'product', id: pid });
       if (n) out.push(n);
       st.watches = st.watches.filter(w => !ws.includes(w));

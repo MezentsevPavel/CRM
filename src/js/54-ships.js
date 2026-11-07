@@ -120,27 +120,29 @@ function shipScale(s,now,full){
 function shipItems(s){
   const its=s.items||[],first=its.slice(0,SHIP_ITEMS_SHOWN),more=its.length-first.length;
   if(!its.length) return '<span class="muted sm">нет данных: позиции</span>';
-  const line=it=>{const p=product(it.productId);return `<div class="s-it"><span>${esc(p?p.name:'нет данных: товар')}</span> <b>× ${esc(qtyOf(it.qty,p))}</b></div>`};
+  const line=it=>{const p=product(it.productId);return `<div class="s-it"><span>${esc(p?p.name:'нет данных: товар')}</span>${p?skuTag(p):''} <b>× ${esc(qtyOf(it.qty,p))}</b></div>`};
   return `<div class="s-items"><div class="s-itl">${first.map(line).join('')}</div>${more>0?`<button type="button" class="s-more" data-act="ship-items" data-id="${esc(s.id)}" aria-label="Показать все ${its.length} ${pl(its.length,'позицию','позиции','позиций')}">+${more}</button>`:''}</div>`;
 }
 // Список для окна: подходящие под поиск по названию позиции и итог штук. Пустой поиск — всё.
 function shipItemsList(s,q){
   const its=s.items||[],names=new Map(),want=shipFold(q).trim().split(/\s+/).filter(Boolean);
   its.forEach(it=>{const p=product(it.productId);names.set(it,p?p.name:'нет данных: товар')});
-  const shown=its.filter(it=>want.every(w=>shipFold(names.get(it)).includes(w)));
+  // по названию и по артикулу (артикул — без регистра, пробелов и дефисов)
+  const hit=(it,w)=>{const p=product(it.productId),k=Catalog.skuKey(w);return shipFold(names.get(it)).includes(w)||(!!k&&!!p&&Catalog.skuKey(p.sku).includes(k))};
+  const shown=its.filter(it=>want.every(w=>hit(it,w)));
   const sum=a=>a.reduce((x,it)=>x+(Number(it.qty)||0),0);
   const all=sum(its),part=sum(shown);
   const head=shown.length===its.length?`${its.length} ${pl(its.length,'позиция','позиции','позиций')} · штук ${num(all)}`:`Найдено ${shown.length} из ${its.length} · штук ${num(part)} из ${num(all)}`;
   const rows=shown.map(it=>{
     const p=product(it.productId);
-    return `<tr><td class="num muted">${its.indexOf(it)+1}</td><td>${esc(names.get(it))}</td><td class="num"><b>${esc(qtyOf(it.qty,p))}</b>${it.got!==undefined&&it.got!==it.qty?`<small class="muted"> принято ${esc(qtyOf(it.got,p))}</small>`:''}</td></tr>`;
+    return `<tr><td class="num muted">${its.indexOf(it)+1}</td><td>${esc(names.get(it))}${p?skuTag(p):''}</td><td class="num"><b>${esc(qtyOf(it.qty,p))}</b>${it.got!==undefined&&it.got!==it.qty?`<small class="muted"> принято ${esc(qtyOf(it.got,p))}</small>`:''}</td></tr>`;
   }).join('');
   return `<p class="si-sum" id="si-sum">${head}</p>${shown.length?`<div class="si-scroll"><table class="tbl"><thead><tr><th class="num">№</th><th>Название</th><th class="num">Кол-во</th></tr></thead><tbody>${rows}</tbody></table></div>`:'<p class="empty">Ничего не нашлось.</p>'}`;
 }
 function mShipItems(s){
   if(!s) return `<div>${mHead('Позиции')}<div class="modal-b"><p class="empty">Поставки нет.</p></div></div>`;
   return `<div>${mHead('Позиции поставки '+esc(s.id))}<div class="modal-b si">
-    <div class="field"><label for="si-q">Поиск по названию</label><input id="si-q" class="inp" type="search" data-on="ship-items-q" data-id="${esc(s.id)}" placeholder="Например: панель" autocomplete="off"></div>
+    <div class="field"><label for="si-q">Поиск по названию или артикулу</label><input id="si-q" class="inp" type="search" data-on="ship-items-q" data-id="${esc(s.id)}" placeholder="Например: панель" autocomplete="off"></div>
     <div id="si-body">${shipItemsList(s,'')}</div>
   </div><div class="modal-f"><button type="button" class="btn" data-act="close-modal">Закрыть</button></div></div>`;
 }
@@ -440,7 +442,7 @@ function dShip(s){
   // остатки, а сделку и клиента называют только тому, кому сделка видна; остальным — «сделка скрыта» (отгрузка: Stock.dealRef)
   const dealLink=ref=>`<button type="button" class="link" data-act="open-deal" data-id="${esc(ref.id)}">${esc(ref.id)} · ${esc(ref.client||'')}</button>`;
   const waits=s.dir==='in'?S.reserves.filter(r=>r.src===s.id).map(r=>Stock.reserveView(S,r,S.me)).filter(Boolean)
-    .map(v=>{const p=product(v.productId);return (v.deal?dealLink(v.deal):v.hasDeal?`<span class="muted">${Stock.HIDDEN_DEAL}</span>`:noData('сделка'))+` <small class="muted">${esc(low(p?.name||'нет данных: товар'))} — ${qtyOf(v.qty,p)}</small>`})
+    .map(v=>{const p=product(v.productId);return (v.deal?dealLink(v.deal):v.hasDeal?`<span class="muted">${Stock.HIDDEN_DEAL}</span>`:noData('сделка'))+` <small class="muted">${esc(low(Catalog.label(p)))} — ${qtyOf(v.qty,p)}</small>`})
     :(s.deal?[Stock.dealRef(S,s.deal,S.me)?dealLink(Stock.dealRef(S,s.deal,S.me)):`<span class="muted">${Stock.HIDDEN_DEAL}</span>`]:[]);
   const hist=(s.history||[]).slice().reverse().map(h=>{
     const src=h.source||(h.auto?'автоматически':'вручную'),who=h.by?person(h.by)?.name:null;

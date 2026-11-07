@@ -223,6 +223,8 @@ test('applyReceipt: директор оприходовал и новый тов
 
 test('applyReceipt: пока есть строка с ошибкой или выбором — отказ, и ничего не меняется; без права receive — отказ; кладовщику без catalog новый товар не создать', () => {
   const a = app();
+  // слово директора 2026-11-07: право catalog теперь у всех ролей; тест — про кладовщика, у которого директор его снял
+  a.S.roles.find(r => r.id === 'warehouse').perms.catalog = false;
   const { rows } = plan(a, tab(['Тестовая панель Альфа 550 Вт', '10'], ['Совсем новая штука', '7']));
   const snap = () => JSON.stringify(a.Store.plain(a.S));
   const before = snap();
@@ -276,12 +278,14 @@ test('Guard: оприходование (Import.applyReceipt) — кладовщ
   }
 
   const b = app();
+  b.S.roles.find(r => r.id === 'warehouse').perms.catalog = false;   // слово директора 2026-11-07: catalog у всех по умолчанию; здесь у кладовщика его сняли
   const fresh = receiptBatch(b, tab(['Совсем новая штука', '7']), 'p1', { 0: 'new' });
   assert.ok(fresh.changes.some(c => c.key === 'products'), 'новый товар — в той же пачке');
   assert.equal(check(b, fresh, 'p1'), null, 'директор: новый товар и его приход');
   denied(check(b, fresh, 'p5'), 'кладовщик: чужая пачка с новым товаром', /Добавлять товары в номенклатуру/);
   // пачка кладовщика с новым товаром: тот же состав, но автор движения — он сам, и всё равно нельзя (нет права catalog)
   const c = app();
+  c.S.roles.find(r => r.id === 'warehouse').perms.catalog = false;
   const mine = batch(c, st => {
     const p = c.Catalog.add(st, { name: 'Совсем новая штука' }).product;
     assert.equal(c.Stock.move(st, { kind: 'Приход', productId: p.id, qty: 7, entityId: 'ip', cityId: 'irk', doc: DOC, by: 'p5', at: NOW }).ok, true);
@@ -311,6 +315,13 @@ test('Guard: подделка оприходования — чужой by, ко
   const good = batch(app(), st => assert.equal(move(st, {}).ok, true));
   assert.equal(check(a, good, 'p5'), null);
 });
+
+// Директор снимает у роли право «Добавлять товары» (по умолчанию оно у всех — слово директора 2026-11-07)
+async function dropCatalog(srv, boss, roleId) {
+  const role = (await kit.state(srv, boss.cookie)).roles.find(r => r.id === roleId);
+  const r = await kit.changes(srv, boss.cookie, [{ key: 'roles', id: roleId, base: role, data: { ...role, perms: { ...role.perms, catalog: false } } }]);
+  assert.equal(r.status, 200, r.text);
+}
 
 // ——— сервер: настоящий сервер и браузер ———
 function browser(srv) {
@@ -342,6 +353,7 @@ test('сервер: кладовщик оприходовал список че�
   try {
     const boss = await kit.director(srv);
     const stockman = await kit.employee(srv, boss, { id: 'p5', name: 'Кладовщик (тест)', role: 'warehouse', dept: 'stock' });
+    await dropCatalog(srv, boss, 'warehouse');
     const P = (await kit.state(srv, boss.cookie)).products[0];
     const w = await openPage(srv, stockman.login, stockman.password);
     const { app: A } = w;
@@ -380,6 +392,7 @@ test('сервер: директор оприходовал со списком 
     const boss = await kit.director(srv);
     const stockman = await kit.employee(srv, boss, { id: 'p5', name: 'Кладовщик (тест)', role: 'warehouse', dept: 'stock' });
     const anna = await kit.employee(srv, boss, { id: 'p2', name: 'Анна (тест)', role: 'managerB2c', dept: 'sales' });
+    await dropCatalog(srv, boss, 'warehouse');
     const P = (await kit.state(srv, boss.cookie)).products[0].id;
     // директор через окно: существующий и новый товар
     const d = await openPage(srv, boss.login, boss.password);
@@ -429,9 +442,10 @@ test('сервер: директор оприходовал со списком 
 // ——— экран (демо) ———
 test('экран: кнопка «Оприходовать товар» — у кладовщика и директора, у менеджера и логиста нет; «Новый товар» по-прежнему только с правом catalog', () => {
   const a = app();
+  a.S.roles.find(r => r.id === 'warehouse').perms.catalog = false;   // слово директора 2026-11-07: у всех по умолчанию; здесь кладовщику право сняли
   const has = (me, act) => { a.S.me = me; a.S.ui.stockTab = 'goods'; return a.vStock().includes(`data-act="${act}"`); };
   deq(['p5', 'p1', 'p2', 'p6'].map(p => has(p, 'rcpt-open')), [true, true, false, false]);
-  deq(['p5', 'p1'].map(p => has(p, 'new-product')), [false, true]);
+  deq(['p5', 'p1', 'p6'].map(p => has(p, 'new-product')), [false, true, true]);
 });
 
 test('экран: список из 5 строк — найдено, найдено с опечаткой по выбору, новая, ошибка; «Оприходовать» неактивна, пока не разобрано; итог и ссылка на журнал', () => {

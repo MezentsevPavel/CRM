@@ -103,11 +103,11 @@ function attention(){
     S.shipments.filter(isLate).forEach(s=>a.push({lvl:'warn',icon:'truck',text:`${s.id} задерживается на ${days(-dd(s.eta))}`,sub:`Последняя отметка: ${shipLast(s).text}`,act:`data-act="open-ship" data-id="${esc(s.id)}"`}));
     S.products.forEach(p=>{
       const k=stockOf(p.id);
-      if(k.freeAfter<0) a.push({lvl:'bad',icon:'box',text:`${p.name}: под резервы не хватает ${qtyOf(-k.freeAfter,p)}`,sub:'Даже с учётом всех поставок в пути',act:`data-act="open-product" data-pid="${esc(p.id)}"`});
-      else if(k.onHand>0&&k.free<=0&&!k.incoming) a.push({lvl:'warn',icon:'box',text:`${p.name}: свободный остаток закончился`,sub:'Всё, что на складе, в резерве. Поставок нет',act:`data-act="open-product" data-pid="${esc(p.id)}"`});
+      if(k.freeAfter<0) a.push({lvl:'bad',icon:'box',text:`${Catalog.label(p)}: под резервы не хватает ${qtyOf(-k.freeAfter,p)}`,sub:'Даже с учётом всех поставок в пути',act:`data-act="open-product" data-pid="${esc(p.id)}"`});
+      else if(k.onHand>0&&k.free<=0&&!k.incoming) a.push({lvl:'warn',icon:'box',text:`${Catalog.label(p)}: свободный остаток закончился`,sub:'Всё, что на складе, в резерве. Поставок нет',act:`data-act="open-product" data-pid="${esc(p.id)}"`});
     });
-    homeExpired().forEach(r=>{const p=product(r.productId),d=deal(r.dealId);a.push({lvl:'bad',icon:'clock',text:`Срок резерва вышел: ${p?p.name:'нет данных: товар'} — ${qtyOf(r.qty,p)}`,sub:`${r.dealId} · ${d?.client||''} · был до ${fD(r.until)}`,act:`data-act="open-product" data-pid="${esc(r.productId)}"`})});
-    homeSoon().forEach(r=>{const p=product(r.productId),d=deal(r.dealId);a.push({lvl:'info',icon:'clock',text:`Резерв истекает ${fRel(r.until)}: ${p.name} — ${qtyOf(r.qty,p)}`,sub:`${r.dealId} · ${d?.client||''}`,act:`data-act="open-product" data-pid="${esc(p.id)}"`})});
+    homeExpired().forEach(r=>{const p=product(r.productId),d=deal(r.dealId);a.push({lvl:'bad',icon:'clock',text:`Срок резерва вышел: ${Catalog.label(p)} — ${qtyOf(r.qty,p)}`,sub:`${r.dealId} · ${d?.client||''} · был до ${fD(r.until)}`,act:`data-act="open-product" data-pid="${esc(r.productId)}"`})});
+    homeSoon().forEach(r=>{const p=product(r.productId),d=deal(r.dealId);a.push({lvl:'info',icon:'clock',text:`Резерв истекает ${fRel(r.until)}: ${Catalog.label(p)} — ${qtyOf(r.qty,p)}`,sub:`${r.dealId} · ${d?.client||''}`,act:`data-act="open-product" data-pid="${esc(p.id)}"`})});
   }
   return a;
 }

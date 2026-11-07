@@ -94,11 +94,11 @@ function openCore({ dataDir, now = Date.now, fileMaxMb = 20, secureCookie = fals
     else {
       const rev = Number(store.meta.get('rev'));
       if (!Number.isInteger(rev) || store.meta.get('rev') === null) throw new Error('В базе нет ревизии (meta.rev) — это не база CRM или она повреждена. Данные не тронуты.');
-      const refusal = migrate(store, rev, core.Store.REV);
+      const refusal = migrate(store, rev, core.Store.REV, undefined, core);
       if (refusal) throw new Error(refusal);
     }
     sync.load();
-    const backups = createBackups({ store, dataDir, sync, revision: core.Store.REV, now: clock, hour: backupHour, keep: backupKeep });
+    const backups = createBackups({ store, dataDir, sync, revision: core.Store.REV, core, now: clock, hour: backupHour, keep: backupKeep });
     return { store, core, files, auth, sync, backups, clock };
   } catch (e) {
     store.close();

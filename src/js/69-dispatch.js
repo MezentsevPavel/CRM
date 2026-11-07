@@ -145,7 +145,7 @@ function dDispatch(d){
     const pr=it.productId?product(it.productId):null,sold=Dispatch.soldText(S,it);
     const sellBtn=canSell&&it.productId&&!it.sold?`<button type="button" class="btn sm dsp-sell" data-act="dsp-sell" data-id="${esc(d.id)}" data-i="${i}">Списать при продаже</button>`:'';
     const from=d.purpose==='sale'&&it.productId&&!it.sold?`<small class="dsp-sold">${it.from?'откуда: '+esc(dspCell(it.from)):'склад не выбран'}</small>`:'';
-    return `<li><label class="dsp-line"><input type="checkbox"${it.picked?' checked':''}${canPick?'':' disabled'} data-on="dsp-pick" data-id="${esc(d.id)}" data-i="${i}"><span><b>${esc(Dispatch.lineName(S,it))}</b> — ${esc(qtyOf(it.qty,pr))}${it.productId?'':' <small class="muted">своя строка</small>'}${from}${sold?`<small class="dsp-sold">${esc(sold)}</small>`:''}</span></label>${sellBtn}</li>`;
+    return `<li><label class="dsp-line"><input type="checkbox"${it.picked?' checked':''}${canPick?'':' disabled'} data-on="dsp-pick" data-id="${esc(d.id)}" data-i="${i}"><span><b>${esc(Dispatch.lineName(S,it))}</b>${pr?skuTag(pr):''} — ${esc(qtyOf(it.qty,pr))}${it.productId?'':' <small class="muted">своя строка</small>'}${from}${sold?`<small class="dsp-sold">${esc(sold)}</small>`:''}</span></label>${sellBtn}</li>`;
   }).join('');
   const files=d.files.length?`<div class="dsp-files">${d.files.map(f=>dspFileHtml(d,f)).join('')}</div>`:'<p class="muted m0">Файлов нет.</p>';
   const deal=d.dealId?(S.deals||[]).find(x=>x.id===d.dealId):null;
@@ -226,9 +226,9 @@ function dspItemsHtml(x){
   if(!x.items.length) return '<p class="muted m0">Список пуст: найдите товар в каталоге или добавьте свою строку.</p>';
   return `<ul class="dsp-its">${x.items.map((it,i)=>{
     const name=it.productId?(product(it.productId)||{}).name||'нет данных: товар':it.text;
-    if(it.locked) return `<li class="dsp-it"><div class="dsp-it-n"><b>${esc(name)}</b><small>списано при продаже — строку не изменить и не удалить</small></div><input class="inp dsp-q" type="number" value="${esc(it.qty)}" disabled aria-label="Количество: ${esc(name)} (списано)"></li>`;
+    if(it.locked) return `<li class="dsp-it"><div class="dsp-it-n"><b>${esc(name)}</b>${it.productId&&product(it.productId)?skuTag(product(it.productId)):''}<small>списано при продаже — строку не изменить и не удалить</small></div><input class="inp dsp-q" type="number" value="${esc(it.qty)}" disabled aria-label="Количество: ${esc(name)} (списано)"></li>`;
     const sale=x.purpose==='sale'&&it.productId;
-    return `<li class="dsp-it"><div class="dsp-it-n"><b>${esc(name)}</b><small>${it.productId?esc(sale?dspCellsText(it.productId):dspFreeText(it.productId)):'своя строка — склад не трогает'}</small>${sale?dspSrcHtml(x,it,i,name):''}</div><input class="inp dsp-q" type="number" min="1" step="1" inputmode="numeric" value="${esc(it.qty)}" data-on="dsp-qty" data-i="${i}" aria-label="Количество: ${esc(name)}"><button type="button" class="btn ghost icon" data-act="dsp-line-del" data-i="${i}" aria-label="Убрать строку: ${esc(name)}">${ic('x')}</button></li>`;
+    return `<li class="dsp-it"><div class="dsp-it-n"><b>${esc(name)}</b>${it.productId&&product(it.productId)?skuTag(product(it.productId)):''}<small>${it.productId?esc(sale?dspCellsText(it.productId):dspFreeText(it.productId)):'своя строка — склад не трогает'}</small>${sale?dspSrcHtml(x,it,i,name):''}</div><input class="inp dsp-q" type="number" min="1" step="1" inputmode="numeric" value="${esc(it.qty)}" data-on="dsp-qty" data-i="${i}" aria-label="Количество: ${esc(name)}"><button type="button" class="btn ghost icon" data-act="dsp-line-del" data-i="${i}" aria-label="Убрать строку: ${esc(name)}">${ic('x')}</button></li>`;
   }).join('')}</ul>`;
 }
 // Откуда берём товар строки «Продажи»: клетки со свободным (Stock.cells); сохранённая клетка, где свободного уже нет, остаётся
@@ -248,7 +248,7 @@ function dspPresHtml(q){
   const hits=Catalog.query(S,{q}).slice(0,6);
   if(!hits.length) return '<p class="hint">В каталоге такого нет — добавьте свою строку.</p>';
   const sale=(dspDraft()||{}).purpose==='sale';
-  return `<ul class="dsp-pres">${hits.map(p=>`<li><button type="button" class="dpr" data-act="dsp-add" data-pid="${esc(p.id)}"><span class="dpr-n">${esc(p.name)}</span><small>${esc(sale?dspCellsText(p.id):dspFreeText(p.id))}</small>${ic('plus')}</button></li>`).join('')}</ul>`;
+  return `<ul class="dsp-pres">${hits.map(p=>`<li><button type="button" class="dpr" data-act="dsp-add" data-pid="${esc(p.id)}"><span class="dpr-n">${esc(p.name)}</span><small>${esc(skuText(p))} · ${esc(sale?dspCellsText(p.id):dspFreeText(p.id))}</small>${ic('plus')}</button></li>`).join('')}</ul>`;
 }
 function dspFilesEditHtml(x){return attEditHtml(x.files,'dsp-file-del')}
 MODALS.dispatchForm=()=>{
@@ -288,7 +288,7 @@ MODALS.dspSell=o=>{
   const inFrom=f&&src.find(x=>{const r=x[0][0]==='r'&&S.reserves.find(y=>'r:'+y.id===x[0]);return r&&(r.entityId||Stock.ANY)===f.entityId&&(r.cityId||Stock.ANY)===f.cityId});
   const fromKey=f?`c:${f.entityId}|${f.cityId}`:'';
   const want=inFrom?inFrom[0]:fromKey&&src.some(x=>x[0]===fromKey)?fromKey:dealRs?dealRs[0]:`c:${best.entityId}|${best.cityId}`,cur=src.some(x=>x[0]===want)?want:src[0][0];
-  return `<form data-form="dsp-sell" data-id="${esc(d.id)}" data-i="${esc(o.i)}" novalidate>${mHead('Списать при продаже: '+esc(p.name))}<div class="modal-b">
+  return `<form data-form="dsp-sell" data-id="${esc(d.id)}" data-i="${esc(o.i)}" novalidate>${mHead('Списать при продаже: '+esc(Catalog.label(p)))}<div class="modal-b">
     <p class="m0">Заявка ${esc(d.number)}, ${esc(d.to.name)}. Списывается вся строка: ${esc(qtyOf(it.qty,p))}.${d.dealId?` Сделка ${esc(d.dealId)}.`:''} В журнале движений появится «Отгрузка».</p>
     <div class="field"><label for="ps-src">Откуда</label><select id="ps-src" class="inp" data-on="sellsrc" data-pid="${esc(p.id)}">${optionsHtml(src,cur)}</select></div>
     <p class="hint" id="ps-max">${esc(sellMaxText(p.id,cur))}</p>
