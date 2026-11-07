@@ -131,7 +131,7 @@ function srcPill(r){
 // Всё считает Stock.table; здесь только показ.
 function gridHtml(p){
   const t=Stock.table(S,p.id);
-  const cell=(v,cls='')=>`<td class="num${cls}"><b>${num(v.have)}</b><small>резерв ${num(v.held)}</small><small class="${v.free<0?'bad-t':''}">свободно ${num(v.free)}</small></td>`;
+  const cell=(v,cls='')=>`<td class="num${cls}"><b>${num(v.have)}</b><small>${v.held>0?`<button type="button" class="rlink" data-act="reserves-jump" title="Показать список резервов">резерв ${num(v.held)}</button>`:`резерв ${num(v.held)}`}</small><small class="${v.free<0?'bad-t':''}">свободно ${num(v.free)}</small></td>`;
   const all=t.all;
   return `<div class="xs"><table class="tbl mx"><thead><tr><th>Юрлицо / склад</th>${t.cols.map(c=>`<th class="num">${esc(c.name)}</th>`).join('')}<th class="num">Итого</th></tr></thead><tbody>${t.rows.map(r=>`<tr><th scope="row">${esc(r.name)}</th>${t.cols.map(c=>cell(t.cell(r.id,c.id))).join('')}${cell(t.row(r.id),' tot')}</tr>`).join('')}</tbody><tfoot><tr><th scope="row">Итого</th>${t.cols.map(c=>cell(t.col(c.id),' tot')).join('')}<td class="num tot all"><span>Свободно всего</span><b class="${all.free<0?'bad-t':''}">${num(all.free)}</b><small>по факту на складах ${num(all.have)}</small><small>в резерве ${num(all.held)}</small></td></tr></tfoot></table></div>`;
 }
@@ -300,6 +300,8 @@ FORMS['stock-sell']=f=>{
   toast(`Списано при продаже: ${what}. Запись в журнале есть.`);
 };
 // Бейдж «N резервов» в номенклатуре — карточка товара сразу на списке резервов
+// Клик по «резерв N» в таблице карточки: прокрутить эту же карточку к списку резервов (карточку заново не открываем)
+A['reserves-jump']=()=>{const t=byId('p-reserves');if(t&&t.scrollIntoView) t.scrollIntoView({block:'start',behavior:'smooth'})};
 A['product-reserves']=el=>{openDrawer('product',el.dataset.id);const t=byId('p-reserves');if(t&&t.scrollIntoView) t.scrollIntoView({block:'start'})};
 ON.change.rskind=t=>{const free=t.value==='free',a=byId('rs-deal-f'),b=byId('rs-for-f');if(a) a.hidden=free;if(b) b.hidden=!free};
 A['stock-watch']=el=>{const r=Stock.watch(S,el.dataset.pid,S.me,new Date());if(!r.ok) return toast(r.reason,'warn');render();toast('Сообщу, когда товар появится: уведомление придёт один раз.')};

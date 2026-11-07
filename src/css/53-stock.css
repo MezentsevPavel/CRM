@@ -67,3 +67,5 @@ td.free b{font-weight:700}
 .rhist summary{cursor:pointer;color:var(--ink-2)}
 .rhist ol{margin:4px 0 0;padding-left:16px;display:grid;gap:2px}
 .rhist li small{display:block;color:var(--ink-3)}
+
+.rlink{padding:0;border:0;background:none;color:var(--primary);font:inherit;text-decoration:underline;text-underline-offset:2px;cursor:pointer}

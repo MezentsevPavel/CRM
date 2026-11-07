@@ -31,7 +31,7 @@ function parse(body) {
   assert.ok(tbl, 'в карточке нет таблицы «юрлицо × склады»');
   for (const tr of tbl[0].matchAll(/<tr><th scope="row">(.*?)<\/th>(.*?)<\/tr>/g)) {
     out[tr[1]] = [...tr[2].matchAll(/<td[^>]*>(.*?)<\/td>/g)].map(td => {
-      const m = td[1].match(new RegExp(`<b[^>]*>${N}</b><small>резерв ${N}</small><small[^>]*>свободно ${N}</small>`));
+      const m = td[1].match(new RegExp(`<b[^>]*>${N}</b><small>(?:<button[^>]*>)?резерв ${N}(?:</button>)?</small><small[^>]*>свободно ${N}</small>`));
       return m ? { have: int(m[1]), held: int(m[2]), free: int(m[3]) } : td[1];
     });
   }

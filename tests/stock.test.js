@@ -875,3 +875,12 @@ test('отказ в резерве подсказывает, в какой кл�
   assert.match(r.reason, /Есть: ИП · нет данных: город — 1/, 'в отказе нет подсказки, где товар лежит');
   assert.equal(app.Stock.canReserve(app.S, { productId: p.id, qty: 1, entityId: 'ip', cityId: '_' }).ok, true);
 });
+
+test('в таблице карточки «резерв N» — ссылка на список резервов, у клетки без резерва — просто текст', () => {
+  const app = load();
+  const withRes = app.S.reserves.find(r => r.src === 'stock') || app.S.reserves[0];
+  const p = app.S.products.find(x => x.id === withRes.productId);
+  assert.match(app.gridHtml(p), /data-act="reserves-jump"[^>]*>резерв \d+</, 'у клетки с резервом нет ссылки на список резервов');
+  const none = app.S.products.find(x => !app.S.reserves.some(r => r.productId === x.id));
+  assert.ok(!app.gridHtml(none).includes('reserves-jump'), 'ссылка есть у товара без резервов');
+});
