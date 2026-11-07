@@ -550,13 +550,15 @@ const rowsIn = html => (html.match(/data-pid="/g) || []).length;
 // событие поля data-on="<key>" так, как его шлёт браузер
 const fire = (app, type, key, value, extra = {}) => app.document.dispatchEvent({ type, target: { dataset: { on: key, ...extra }, value, checked: value } });
 const region = (app, id) => app.document.getElementById(id).innerHTML;
+// «Страница [N] из M»: поле номера страницы подменяется его значением, как его видит человек
+const pageTxt = html => plain(html.replace(/<input[^>]*class="inp pgi"[^>]*value="(\d+)"[^>]*>/, '$1'));
 const money = n => n.toLocaleString('ru-RU').replace(/ | /g, ' ') + ' ₽';
 const stockView = (app, tab) => { app.S.view = 'stock'; if (tab) app.S.ui.stockTab = tab; app.render(); return region(app, 'view'); };
 const freeCell = (app, pid) => plain(app.stockTable().split('<tr ').find(r => r.includes(`data-pid="${pid}"`)).match(/<td class="num free">.*?<\/td>/)[0]);
 
 test('«Товары»: число позиций видно, список идёт по страницам; поиск и фильтры сужают его и пересчитывают «показано N из M»', () => {
   const app = load();
-  const view = plain(stockView(app));
+  const view = pageTxt(stockView(app));
   assert.match(view, /Показано 434 из 434 /, 'число позиций не видно');
   assert.match(view, /Страница 1 из 9/, 'список не разбит на страницы');
   assert.ok(rowsIn(region(app, 'view')) <= 50, 'на странице больше 50 строк — 434 строки сразу');
@@ -564,24 +566,24 @@ test('«Товары»: число позиций видно, список ид�
   const first = html => html.match(/data-pid="([^"]+)"/)[1];
   const p1 = first(app.stockTable());
   app.A['stock-page']({ dataset: { page: '1' } });
-  assert.match(plain(app.stockTable()), /Страница 2 из 9/);
+  assert.match(pageTxt(app.stockTable()), /Страница 2 из 9/);
   assert.notEqual(first(app.stockTable()), p1);
   // «Показать ещё» дописывает следующую страницу под видимыми, «Показать всё» — все 434 строки, кнопки пропадают
   app.A['stock-more']();
-  assert.match(plain(app.stockTable()), /Страницы 2–3 из 9/);
+  assert.match(pageTxt(app.stockTable()), /Страница 2 из 9 \(раскрыто до 3\)/);
   assert.equal(rowsIn(app.stockTable()), 100, '«Показать ещё» не добавил страницу');
   assert.match(app.stockTable(), /data-page="3"\s*>Вперёд/, '«Вперёд» после «ещё» не ведёт за раскрытые страницы');
   // номер страницы вводится руками; за краем — ближайшая крайняя
   app.ON.change['stock-goto']({ value: '5' });
-  assert.match(plain(app.stockTable()), /Страница 5 из 9/, 'ввод номера страницы не сработал');
+  assert.match(pageTxt(app.stockTable()), /Страница 5 из 9/, 'ввод номера страницы не сработал');
   app.ON.change['stock-goto']({ value: '99' });
-  assert.match(plain(app.stockTable()), /Страница 9 из 9/, 'номер за краем не прижат к последней странице');
+  assert.match(pageTxt(app.stockTable()), /Страница 9 из 9/, 'номер за краем не прижат к последней странице');
   app.ON.change['stock-goto']({ value: '0' });
-  assert.match(plain(app.stockTable()), /Страница 1 из 9/, 'нулевой номер не прижат к первой странице');
+  assert.match(pageTxt(app.stockTable()), /Страница 1 из 9/, 'нулевой номер не прижат к первой странице');
   app.A['stock-more']();
   app.A['stock-all']();
   assert.equal(rowsIn(app.stockTable()), 434, '«Показать всё» показал не все строки');
-  assert.match(plain(app.stockTable()), /Страницы 1–9 из 9/);
+  assert.match(pageTxt(app.stockTable()), /Страница 1 из 9 \(раскрыто до 9\)/);
   assert.ok(!app.stockTable().includes('stock-more'), 'после «Показать всё» осталась кнопка «Показать ещё»');
   app.A['stock-page']({ dataset: { page: '1' } });
   const shown = () => plain(region(app, 'stock-tbl'));
@@ -592,7 +594,7 @@ test('«Товары»: число позиций видно, список ид�
   assert.ok(panels > 0 && panels < 434);
   assert.match(plain(app.stockTable()), new RegExp(`Показано ${panels} из 434`));
   assert.ok(!app.stockTable().includes('GD6248SMH'), 'в категории «Панели» остался инвертор');
-  assert.match(plain(app.stockTable()), /Страница 1 из/, 'смена фильтра не вернула на первую страницу');
+  assert.match(pageTxt(app.stockTable()), /Страница 1 из/, 'смена фильтра не вернула на первую страницу');
   app.A['stock-cat']({ dataset: { cat: 'Все' } });
   // бренд, наличие, «нет в каталоге» — полями data-on, как в браузере
   const deye = app.CATALOG.rows.filter(r => r.brand === 'DEYE').length;

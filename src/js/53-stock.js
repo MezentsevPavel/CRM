@@ -56,8 +56,9 @@ function stockRows(){
 function pagerHtml(page,pages,span){
   if(pages<2) return '';
   const last=page+span-1,end=last>=pages-1;
-  const label=span>1?`Страницы <b>${page+1}–${last+1}</b> из <b>${pages}</b>`:`Страница <b>${page+1}</b> из <b>${pages}</b>`;
-  return `<div class="pager"><button type="button" class="btn sm" data-act="stock-page" data-page="${page-1}" ${page<1?'disabled':''}>← Назад</button><span class="muted sm">${label}</span><button type="button" class="btn sm" data-act="stock-page" data-page="${last+1}" ${end?'disabled':''}>Вперёд →</button><label class="pgo muted sm">Перейти на <input class="inp" type="number" min="1" max="${pages}" value="${page+1}" inputmode="numeric" data-on="stock-goto" aria-label="Номер страницы"></label>${end?'':`<button type="button" class="btn sm ghost" data-act="stock-more">Показать ещё</button><button type="button" class="btn sm ghost" data-act="stock-all">Показать всё</button>`}</div>`;
+  // «Страница [N] из M»: N — поле ввода (первая из раскрытых страниц), M — текст; кнопки одного вида и размера
+  const label=`Страница <input class="inp pgi" type="number" min="1" max="${pages}" value="${page+1}" inputmode="numeric" data-on="stock-goto" aria-label="Номер страницы"> из <b>${pages}</b>${span>1?` <span class="muted">(раскрыто до ${last+1})</span>`:''}`;
+  return `<div class="pager"><button type="button" class="btn sm" data-act="stock-page" data-page="${page-1}" ${page<1?'disabled':''}>← Назад</button><span class="pgl muted sm">${label}</span><button type="button" class="btn sm" data-act="stock-page" data-page="${last+1}" ${end?'disabled':''}>Вперёд →</button>${end?'':`<span class="pgm"><button type="button" class="btn sm" data-act="stock-more">Показать ещё</button><button type="button" class="btn sm" data-act="stock-all">Показать всё</button></span>`}</div>`;
 }
 // Бейдж «N резервов» в строке номенклатуры: кнопка открывает карточку товара сразу на списке резервов
 const resBadge=p=>{const n=resOf(p.id).length;return n?`<button type="button" class="rbadge" data-act="product-reserves" data-id="${esc(p.id)}" title="Кто, что и когда зарезервировал">${ic('lock')}${n} ${pl(n,'резерв','резерва','резервов')}</button>`:''};
