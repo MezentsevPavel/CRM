@@ -214,14 +214,16 @@ test('карточка: без права «Добавлять товары» (c
   assert.doesNotMatch(a.dProduct(q).body, /Добавить фото/);
 });
 
-test('список «Товары и остатки»: миниатюра 40 px с loading="lazy" только у товара с фото; без фото — никаких заглушек', () => {
+test('список «Товары и остатки»: миниатюра 40 px с loading="lazy" у товара с фото; без фото — серый квадрат со значком', () => {
   const { a, p } = world();
   const bare = a.Catalog.add(a.S, { name: 'Тест без фото в списке', cat: 'Тест' }).product;
   a.Attach.addPhotos(p, [photo('главное.png'), photo('второе.png')], 'p1', NOW);
   const withRow = a.stockRow(p, true), bareRow = a.stockRow(bare, true);
   assert.match(withRow, /<div class="pcell"><img class="pthumb" src="data:image\/png;base64,[^"]+" alt="Фото: Тест Инвертор с фото" width="40" height="40" loading="lazy" decoding="async">/);
   assert.equal((withRow.match(/<img /g) || []).length, 1, 'в строке одна миниатюра — главное фото');
-  assert.doesNotMatch(bareRow, /pthumb|pcell|<img|photo/i, 'у товара без фото в строке что-то нарисовано');
+  // без фото слева тот же квадрат — серая рамка со значком, без картинки (слово директора: список должен быть ровным)
+  assert.match(bareRow, /<div class="pcell"><span class="pthumb pph" aria-hidden="true"><svg/, 'у товара без фото нет серого квадрата');
+  assert.doesNotMatch(bareRow, /<img/, 'у товара без фото нарисована картинка');
   // порядок: главным стало второе — в списке именно оно
   a.Attach.mainPhoto(p, p.photos[1].id);
   const png2 = url('image/png', png, 3);
@@ -393,4 +395,18 @@ test('photoPrepare: как есть — маленькое фото, GIF, оши
   // без подмены: тестовая страница без холста и декодера отдаёт файл как есть
   const g = src('просто.png', 'image/png', 10);
   assert.equal(await a.photoPrepare(g), g);
+});
+
+test('наведение на миниатюру: окошко с крупным фото ставится справа от неё, у края окна — слева, всегда целиком в окне', () => {
+  const { a } = world();
+  const at = (r, vw = 1000, vh = 800, w = 260, h = 200) => JSON.parse(JSON.stringify(a.photoPreviewPos(r, vw, vh, w, h)));
+  // места справа хватает: правее миниатюры на 12 px, по центру её высоты
+  assert.deepEqual(at({ left: 100, right: 140, top: 300, height: 40 }), { x: 152, y: 220 });
+  // у правого края — слева от миниатюры
+  assert.deepEqual(at({ left: 900, right: 940, top: 300, height: 40 }), { x: 628, y: 220 });
+  // у верхнего и нижнего края — не выходит за окно
+  assert.equal(at({ left: 100, right: 140, top: 2, height: 40 }).y, 8);
+  assert.equal(at({ left: 100, right: 140, top: 790, height: 40 }).y, 592);
+  // окно слишком узкое для обеих сторон — не уходит левее 8 px
+  assert.equal(at({ left: 20, right: 60, top: 300, height: 40 }, 300).x, 8);
 });

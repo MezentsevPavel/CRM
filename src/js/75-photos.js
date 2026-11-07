@@ -18,12 +18,13 @@ function photoSrc(f){
 const photoList=p=>Array.isArray(p&&p.photos)?p.photos.filter(f=>f&&typeof f==='object'):[];
 
 // ——— список: маленькое главное фото рядом с названием ———
-// Нет фото — ничего не рисуется (без заглушек). Картинка грузится лениво: список в сотни строк не тянет их все сразу.
+// Нет фото — миниатюры нет (рамку-заглушку рисует photoCell). Картинка грузится лениво: список в сотни строк не тянет их все сразу.
 function photoThumb(p){
   const f=photoList(p)[0],src=photoSrc(f);
   return src?`<img class="pthumb" src="${esc(src)}" alt="Фото: ${esc(p.name)}" width="40" height="40" loading="lazy" decoding="async">`:'';
 }
-const photoCell=(p,inner)=>{const t=photoThumb(p);return t?`<div class="pcell">${t}${inner}</div>`:inner};
+// Слева от названия всегда квадрат, чтобы список был ровным: есть фото — оно, нет — серая рамка со значком (слово директора)
+const photoCell=(p,inner)=>{const t=photoThumb(p)||`<span class="pthumb pph" aria-hidden="true">${ic('photo')}</span>`;return `<div class="pcell">${t}${inner}</div>`};
 
 // ——— карточка товара: блок «Фото» ———
 const photoOf=(pid,fid)=>{const p=product(pid);return {p,f:p?photoList(p).find(x=>x.id===fid):undefined}};
@@ -193,3 +194,35 @@ FORMS['photo-del']=f=>{
   if(!r.ok) return toast(r.reason,'warn');
   render();toast(`Фото «${r.file.name}» удалено.`);
 };
+
+// ——— наведение на миниатюру в списке: фото крупно во всплывающем окошке («баббл») ———
+// Куда поставить окошко w×h рядом с миниатюрой r (прямоугольник на экране): справа, а если не помещается — слева;
+// по вертикали по центру миниатюры, но целиком в окне. Чистая функция — проверена тестом.
+function photoPreviewPos(r,vw,vh,w,h){
+  let x=r.right+12;
+  if(x+w>vw-8) x=Math.max(8,r.left-12-w);
+  const y=Math.min(Math.max(8,r.top+r.height/2-h/2),Math.max(8,vh-h-8));
+  return {x,y};
+}
+const PPREV_W=260;
+let pprevEl=null;
+function pprevHide(){if(pprevEl){pprevEl.remove();pprevEl=null}}
+function pprevShow(img){
+  pprevHide();
+  const el=document.createElement('div');
+  el.className='pprev';el.setAttribute('aria-hidden','true');
+  const big=document.createElement('img');
+  big.src=img.src;big.alt='';
+  el.appendChild(big);document.body.appendChild(el);
+  const r=img.getBoundingClientRect(),pos=photoPreviewPos(r,window.innerWidth,window.innerHeight,PPREV_W,el.offsetHeight||PPREV_W);
+  el.style.left=pos.x+'px';el.style.top=pos.y+'px';
+  pprevEl=el;
+}
+// Только там, где есть наведение (мышь); на телефоне фото открывается нажатием, как раньше
+const hoverOk=()=>typeof matchMedia==='function'&&matchMedia('(hover:hover)').matches;
+document.addEventListener('mouseover',e=>{
+  const t=e.target&&e.target.closest?e.target.closest('img.pthumb'):null;
+  if(t&&hoverOk()) pprevShow(t);
+});
+document.addEventListener('mouseout',e=>{if(e.target&&e.target.closest&&e.target.closest('img.pthumb')) pprevHide()});
+document.addEventListener('scroll',pprevHide,true);
