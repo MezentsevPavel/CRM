@@ -53,7 +53,8 @@ test('демо и пустая рабочая база: дерево собра�
     assert.ok(st.categories.length > 0, `${what}: дерева нет`);
     assert.equal(new Set(st.categories.map(c => c.id)).size, st.categories.length, `${what}: id узлов повторяются`);
     for (const p of st.products) assert.equal(a.Catalog.hasPath(st, p.cat), true, `${what}: у «${p.name}» категории «${p.cat}» нет в дереве`);
-    deq(st.categories.filter(c => !c.parentId).map(c => c.name).slice(0, 3), ['Панели', 'Инверторы', 'Аккумуляторы'], `${what}: порядок верхнего уровня`);
+    // слово директора 2026-11-08: после инверторов — новая категория «ИБП»
+    deq(st.categories.filter(c => !c.parentId).map(c => c.name).slice(0, 4), ['Панели', 'Инверторы', 'ИБП', 'Аккумуляторы'], `${what}: порядок верхнего уровня`);
   }
   // число товаров в узлах сходится с числом товаров
   const rows = a.Catalog.rows(a.S);

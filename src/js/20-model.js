@@ -219,7 +219,7 @@ const stockOf=pid=>Stock.summary(S,pid,new Date());
 const qtyOf=(n,p)=>num(n)+(p&&p.unit?' '+p.unit:'');
 const byDeal=rs=>{const m=new Map();rs.forEach(r=>{if(!m.has(r.dealId)) m.set(r.dealId,[]);m.get(r.dealId).push(r)});return m};
 const itemsText=list=>list.map(r=>{const p=product(r.productId);return `${low(p.name)} — ${qtyOf(r.qty,p)}`}).join('; ');
-function shortItems(s){const c=[...new Set(s.items.map(i=>product(i.productId)?.cat).filter(Boolean))].map(low);return c.length>2?c.slice(0,2).join(', ')+` и ещё ${c.length-2}`:c.join(', ')}
+function shortItems(s){const c=[...new Set(s.items.map(i=>product(i.productId)?.cat).filter(Boolean).map(c=>Catalog.topOf(c)))].map(low);return c.length>2?c.slice(0,2).join(', ')+` и ещё ${c.length-2}`:c.join(', ')}
 
 // ——— задачи ———
 // «Моя» и «видна» — правила Visible.taskMine и Visible.task (46-visible.js), здесь — для текущего человека

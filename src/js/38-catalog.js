@@ -10,7 +10,7 @@ const Catalog = (() => {
     .replace(/\s+/g, ' ').trim();
 
   // Категории товаров: подписи на экране. Вид позиции каталога (колонка «Вид») и раздел таблицы менеджеров сводятся к ним.
-  const CATS = ['Панели', 'Инверторы', 'Аккумуляторы', 'Контроллеры', 'Защита и соединения', 'Кабель'];
+  const CATS = ['Панели', 'Инверторы', 'ИБП', 'Аккумуляторы', 'Контроллеры', 'Защита и соединения', 'Кабель'];
   const KIND_CAT = { 'панель': 'Панели', 'инвертор': 'Инверторы', 'АКБ': 'Аккумуляторы', 'защита и соединения': 'Защита и соединения', 'кабель': 'Кабель' };
   const SECTION_CAT = {
     'солнечные панели': 'Панели',
@@ -21,6 +21,8 @@ const Catalog = (() => {
   };
   // Раздел листа остатков («Корень › Подраздел») → категория. Крепёж лежит в разделе панелей, но в каталоге
   // сайта он — «защита и соединения». Незнакомый раздел остаётся как в таблице: ничего не теряется.
+  // Верхняя категория по виду позиции каталога («инвертор») или по уже записанному пути («Инверторы › Гибридные»)
+  const topOf = c => KIND_CAT[c] || String(c ?? '').split(' › ')[0];
   function sectionCat(section) {
     const [root, ...sub] = String(section ?? '').split(' › ');
     if (sub.some(s => norm(s).includes('крепеж'))) return 'Защита и соединения';
@@ -28,6 +30,99 @@ const Catalog = (() => {
   }
 
   const isNum = v => typeof v === 'number' && isFinite(v);
+
+  // ——— вид внутри категории (слова директора 2026-11-08) ———
+  // Инверторы → Сетевые / Гибридные / Автономные; ИБП — отдельная категория; Аккумуляторы → по химии и конструкции; Контроллеры → MPPT / PWM (ШИМ);
+  // Защита и соединения → по назначению; Панели — без видов. Вид определяется по данным позиции в таком порядке: столбцы таблицы каталога
+  // (spec: «Гибрид (с АКБ)» да/нет, «Химия»), потом ссылка на сайте (его раздел), потом слова в названии. Нигде не сказано — «Без подкатегории»,
+  // ничего не выдумывается. Это чистая функция: её берут и tools/catalog-snapshot.js (путь пишется в снимок), и Catalog.build/merge.
+  const SUB_NONE = 'Без подкатегории';
+  const SUBS = {
+    'Инверторы': ['Сетевые', 'Гибридные', 'Автономные'],
+    'Аккумуляторы': ['Литий-железофосфат (LiFePO4)', 'АГМ', 'Гель', 'АГМ+Гель', 'Гель-карбон', 'АГМ-карбон'],
+    'Контроллеры': ['MPPT', 'PWM (ШИМ)'],
+    'Защита и соединения': ['Автоматические выключатели', 'Предохранители', 'УЗИП', 'Контакторы', 'Коннекторы MC4', 'Наконечники', 'Кабель и провода',
+      'Щиты, корпуса и боксы', 'Крепёж и монтаж', 'Измерительные приборы'],
+  };
+  // Узлы, которые есть в дереве всегда (даже пустые): верхний уровень в привычном порядке, у каждого — виды. «Без подкатегории» сюда не входит:
+  // он появляется, когда в него попадает товар.
+  const STRUCT = CATS.filter(c => c !== 'Кабель').map(c => [c, SUBS[c] || []]);
+  const STRUCT_PATHS = STRUCT.flatMap(([top, subs]) => [top, ...subs.map(s => top + ' › ' + s)]);
+  const has = (t, re) => re.test(t);
+  // слово целиком (в JS \b для кириллицы не работает)
+  const word = w => new RegExp('(^|[^a-zа-я0-9])(' + w + ')($|[^a-zа-я0-9])');
+  const UPS = word('ибп|ups|источник бесперебойного питания');
+  const first = (t, rules) => { for (const [re, sub] of rules) if (re.test(t)) return sub; return null; };
+  const inverterSub = (t, url, spec) => {
+    const h = norm(spec.hybrid);
+    if (/автоном/.test(t)) return 'Автономные';
+    if (h === 'да') return 'Гибридные';
+    if (h === 'нет') return 'Сетевые';
+    if (/hybrid/i.test(url)) return 'Гибридные';
+    if (/on-grid/i.test(url)) return 'Сетевые';
+    return first(t, [[/гибрид|hybrid/, 'Гибридные'], [/сетев|микроинвертор/, 'Сетевые']]);
+  };
+  const BAT_NOT = /зарядн|charger|балансир|equalizer|развязк|(^|[^а-я])ура($|[^а-я])/;
+  const batteryText = t => first(t, [
+    [/agm\s*[+\-\/]?\s*carbon|агм\s*[+\-\/]?\s*карбон/, 'АГМ-карбон'],
+    [/gel\s*[+\-\/]?\s*carbon|гель\s*[+\-\/]?\s*карбон/, 'Гель-карбон'],
+    [/agm\s*[+\/]\s*gel|gel\s*[+\/]\s*agm|агм\s*[+\/]\s*гель|гель\s*[+\/]\s*агм/, 'АГМ+Гель'],
+    [word('agm|агм'), 'АГМ'],
+    [word('gel|гель'), 'Гель'],
+    [/lifepo4|lfp|литий-?железо/, 'Литий-железофосфат (LiFePO4)'],
+  ]);
+  const batterySub = (t, url, spec) => {
+    if (BAT_NOT.test(t)) return null;
+    return batteryText(norm(spec.chem)) || batteryText(String(url).toLowerCase()) || batteryText(t);
+  };
+  const controllerSub = t => {
+    const m = /mppt/.test(t), p = /pwm|(^|[^а-я])шим($|[^а-я])/.test(t);
+    return m === p ? null : (m ? 'MPPT' : 'PWM (ШИМ)');
+  };
+  const protectionSub = t => first(t, [
+    [/крепл|кронштейн|зажим(?! для провод)|рейлинг|профиль|профтруб|опора|опоры|стыков|уголки|стоек|монтаж|clamp|держатель под кабель/, 'Крепёж и монтаж'],
+    [/предохранител|fuse|муляж/, 'Предохранители'],
+    [/узип|перенапряжен|устройство защиты|(^|[^a-z])spd($|[^a-z])|surge/, 'УЗИП'],
+    [/авт(оматический)?\.? ?выключател|дифференциальный автомат|(^|[^а-я])автомат($|[^а-я])/, 'Автоматические выключатели'],
+    [/контактор/, 'Контакторы'],
+    [/диод/, null],
+    [/коннектор|mc-?4|разъем|разъём/, 'Коннекторы MC4'],
+    [/наконечник/, 'Наконечники'],
+    [/кабель|провод|solar cable/, 'Кабель и провода'],
+    [/корпус|щрн|бокс|щит|блок распределительный/, 'Щиты, корпуса и боксы'],
+    [/измеритель|токоизмерительн|счетчик|счётчик/, 'Измерительные приборы'],
+  ]);
+  const SUB_FN = { 'Инверторы': inverterSub, 'Аккумуляторы': batterySub, 'Контроллеры': controllerSub, 'Защита и соединения': (t) => protectionSub(t) };
+  // top — верхняя категория позиции (Инверторы, Аккумуляторы…); o = {name, url?, spec?: {hybrid: 'да'|'нет', chem}}.
+  // → путь категории: «Инверторы › Гибридные», «ИБП», «Аккумуляторы › АГМ», «Панели» (у категории нет видов) или «Инверторы › Без подкатегории».
+  function classify(top, o = {}) {
+    const t = norm(o.name), fn = SUB_FN[top];
+    if (!fn) return top;
+    if (top === 'Инверторы' && has(t, UPS)) return 'ИБП';
+    const sub = fn(t, o.url || '', o.spec || {});
+    return top + SEP + (sub || SUB_NONE);
+  }
+  // Название без регистра, пробелов и знаков: для поиска кода модели внутри другого названия
+  const codeKey = s => norm(s).replace(/[^a-zа-я0-9]+/g, '');
+  const hasLetterAndDigit = k => /[a-zа-я]/.test(k) && /\d/.test(k);
+  // Позиция листа остатков без пары в каталоге: вид по её названию (classify); если он не назван — пара «по коду модели»: код модели позиции
+  // каталога (артикул) целиком внутри названия листа или название листа целиком внутри названия каталога (не короче 6 знаков, буквы и цифры),
+  // и все такие позиции каталога в одном виде. Не нашлось или виды разные — «Без подкатегории». pool — позиции каталога (inCatalog).
+  function classifyLoose(top, name, pool) {
+    const own = classify(top, { name });
+    if (own !== top && !own.endsWith(SEP + SUB_NONE)) return own;
+    if (!SUB_FN[top]) return own;
+    const k = codeKey(name);
+    if (k.length < 6 || !hasLetterAndDigit(k)) return own;
+    const kinds = new Set();
+    for (const c of pool) {
+      if (c.cat !== top && !String(c.cat).startsWith(top + SEP)) continue;
+      const m = codeKey(c.name), s = codeKey(c.sku);
+      if ((m.length >= 6 && m.includes(k)) || (s.length >= 6 && hasLetterAndDigit(s) && k.includes(s))) kinds.add(c.cat);
+    }
+    const [one] = kinds;
+    return kinds.size === 1 && !one.endsWith(SEP + SUB_NONE) ? one : own;
+  }
 
   // Снимки → {products, stock, aside, unmatched}.
   // products: все позиции каталога (id = ключ каталога, inCatalog:true), затем строки остатков, не нашедшие пару
@@ -54,6 +149,7 @@ const Catalog = (() => {
       if (r.priceDate) p.priceDate = r.priceDate;
       return p;
     });
+    const pool = products.slice();   // позиции каталога: по ним ищется вид у позиций листа остатков без пары
     const byName = new Map();
     for (const p of products) { const k = norm(p.name); byName.set(k, [...(byName.get(k) || []), p.id]); }
     const rowsPerName = new Map();
@@ -66,7 +162,7 @@ const Catalog = (() => {
       if (same && same.length === 1 && rowsPerName.get(k) === 1) id = same[0];
       else {
         id = opts.named ? namedId(k, used) : 'sheet-' + String(i + 1).padStart(3, '0');
-        products.push({ id, name: r.name, brand: null, cat: sectionCat(r.cat), price: null, avail: null, url: null, src: 'sheet', inCatalog: false });
+        products.push({ id, name: r.name, brand: null, cat: classifyLoose(sectionCat(r.cat), r.name, pool), price: null, avail: null, url: null, src: 'sheet', inCatalog: false });
         unmatched.push({ productId: id, name: r.name });
       }
       ids.push(id);
@@ -112,12 +208,16 @@ const Catalog = (() => {
   // они пусты. Введённое вручную, название, цена продажи и категория не меняются. Путь товара снимка, которого нет в дереве категорий,
   // заводится в дерево. Товары снимка и так приходят в каждую базу из кода (Docs.join), документом лежит только правленый товар, поэтому
   // «добавлено» бывает редко, а «допишет» — у правленых; дерево — документы базы, само не растёт.
-  // skip — id, которые не возвращать (снятые из списка). → {added: [id], filled: [id], skuSet, categories: [id новых узлов дерева]};
-  // st меняется на месте, записать надо перечисленное.
+  // Вид внутри категории (шаг 22): товар, чья категория — прежняя верхняя («Инверторы», не правленная руками), получает вид из снимка
+  // («Инверторы › Гибридные»; ИБП из «Инверторов» уходят в «ИБП»). Товар, которому директор поставил другую категорию, не меняется.
+  // Позиции листа остатков (не из снимка) получают вид по названию — recat.
+  // skip — id, которые не возвращать (снятые из списка). → {added: [id], filled: [id], recat: [id], skuSet, categories: [id новых узлов дерева]};
+  // filled включает и перекатегоризованные. st меняется на месте, записать надо перечисленное.
   function merge(st, snapshot, skip = []) {
     if (!Array.isArray(st.products)) st.products = [];
     const had = new Set(nodes(st).map(c => c.id)), byId = new Map(st.products.map(p => [p.id, p]));
-    const out = { added: [], filled: [], skuSet: 0, categories: [] };
+    const out = { added: [], filled: [], recat: [], skuSet: 0, categories: [] };
+    ensureStruct(st);
     for (const b of build(snapshot, { rows: [] }).products) {
       let p = byId.get(b.id);
       if (!p && skip.includes(b.id)) continue;
@@ -133,10 +233,28 @@ const Catalog = (() => {
           if (f === 'sku') out.skuSet++;
         }
       }
+      if (plainTop(p.cat, b.cat)) { p.cat = ensure(st, b.cat); out.recat.push(p.id); got = true; }
       if (got) out.filled.push(p.id);
       if (!hasPath(st, p.cat)) ensure(st, p.cat);
     }
+    for (const id of recat(st)) { out.recat.push(id); if (!out.filled.includes(id)) out.filled.push(id); }
     out.categories = nodes(st).filter(c => !had.has(c.id)).map(c => c.id);
+    return out;
+  }
+
+  // Категория, которая до видов была верхней (теперь у неё есть подкатегории)
+  const LEGACY_TOPS = ['Инверторы', 'Аккумуляторы', 'Контроллеры', 'Защита и соединения'];
+  // old — категория товара сейчас, now — категория по снимку: old была прежней верхней, а now — её вид (или ИБП из «Инверторов»)
+  const plainTop = (old, now) => LEGACY_TOPS.includes(old) && old !== now && (String(now).startsWith(old + ' › ') || (old === 'Инверторы' && now === 'ИБП'));
+  // Позиции листа остатков (src 'sheet', не из снимка) с прежней верхней категорией получают вид по названию (classifyLoose; пара по коду
+  // модели ищется среди позиций каталога). → id изменённых; дерево дополняется.
+  function recat(st) {
+    const pool = (st.products || []).filter(p => p.inCatalog), out = [];
+    for (const p of st.products || []) {
+      if (p.inCatalog || p.src !== 'sheet' || !LEGACY_TOPS.includes(p.cat)) continue;
+      const now = classifyLoose(p.cat, p.name, pool);
+      if (now !== p.cat) { p.cat = ensure(st, now); out.push(p.id); }
+    }
     return out;
   }
 
@@ -192,12 +310,15 @@ const Catalog = (() => {
   // Дерево по товарам: верхний уровень — привычный порядок CATS, потом по алфавиту; внутри — по алфавиту. Для базы, демо и миграции.
   function treeFrom(products) {
     const st = { categories: [] };
+    ensureStruct(st);
     const top = c => String(c).split(SEP)[0], rank = c => { const i = CATS.indexOf(top(c)); return i < 0 ? CATS.length : i; };
     const paths = [...new Set((products || []).map(p => p.cat).filter(c => !isNoCat(c)))]
       .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b, 'ru'));
     for (const p of paths) ensure(st, p);
     return st.categories;
   }
+  // Постоянные узлы дерева (STRUCT): верхний уровень в привычном порядке и виды внутри; недостающие заводятся, лишнего не трогаем
+  function ensureStruct(st) { for (const path of STRUCT_PATHS) ensure(st, path); }
   // Привести дерево в порядок после того, как товары пришли снаружи (перенос остатков): недостающие узлы заводятся, путь товара
   // становится таким, как в дереве
   function syncTree(st) {
@@ -326,6 +447,19 @@ const Catalog = (() => {
     const list = all ? st.products : st.products.filter(p => (cat === NO_CAT ? isNoCat(p.cat) : under(p.cat, cat)));
     return [...new Set(list.map(p => p.brand).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ru'));
   }
+  // Бренды категории (с подкатегориями) с числом товаров: [{brand, n}] по алфавиту; товары без бренда — «Без бренда» в конце, но только когда
+  // у других товаров бренд есть (если брендов нет совсем, уровня «фирма» нет). Один источник для узлов дерева и списка «Бренд» — они согласованы.
+  const NO_BRAND = 'Без бренда';
+  function brandRows(st, cat) {
+    const all = !cat || cat === 'Все';
+    const list = all ? st.products : st.products.filter(p => (cat === NO_CAT ? isNoCat(p.cat) : under(p.cat, cat)));
+    const count = new Map();
+    let none = 0;
+    for (const p of list) { if (p.brand) count.set(p.brand, (count.get(p.brand) || 0) + 1); else none++; }
+    const out = [...count].sort((a, b) => a[0].localeCompare(b[0], 'ru')).map(([brand, n]) => ({ brand, n }));
+    if (out.length && none) out.push({ brand: NO_BRAND, n: none });
+    return out;
+  }
 
   // ——— артикул ———
   // Артикул (product.sku) — строка, необязательная: у товара без артикула поля нет или оно пусто («Артикул: нет данных»). Не ключ каталога
@@ -366,7 +500,7 @@ const Catalog = (() => {
   function query(st, { q, cat, brand, avail, inCatalog } = {}) {
     const words = norm(q).split(' ').filter(Boolean), qKey = skuKey(q);
     const out = st.products.filter(p =>
-      (!cat || (cat === NO_CAT ? isNoCat(p.cat) : under(p.cat, cat))) && (!brand || p.brand === brand) && (!avail || p.avail === avail) &&
+      (!cat || (cat === NO_CAT ? isNoCat(p.cat) : under(p.cat, cat))) && (!brand || (brand === NO_BRAND ? !p.brand : p.brand === brand)) && (!avail || p.avail === avail) &&
       (inCatalog === undefined || inCatalog === null || p.inCatalog === inCatalog) &&
       (!words.length || matchText(p, words, qKey)));
     // точное совпадение артикула — первым (порядок остальных не меняется)
@@ -421,7 +555,7 @@ const Catalog = (() => {
     return st;
   }
 
-  return { norm, CATS, NO_CAT, SEP, build, merge, isSupplier, add, cats, brands, query, sectionCat, base, pack, unpack,
+  return { norm, CATS, NO_CAT, SEP, SUB_NONE, topOf, STRUCT, STRUCT_PATHS, classify, classifyLoose, recat, NO_BRAND, brandRows, build, merge, isSupplier, add, cats, brands, query, sectionCat, base, pack, unpack,
     SKU_MAX, skuClean, skuOf, skuKey, bySku, label, setSku, pathOf, nodeOf, hasPath, ensure, treeFrom, syncTree, busy, catAdd, catEdit, catDelete, setCat, rows, nameProblem };
 })();
 
@@ -453,8 +587,9 @@ BASES.push(st => {
 SEEDS.push(st => {
   const built = Catalog.build(CATALOG, STOCK_SNAPSHOT);
   Object.assign(st, { products: built.products, categories: Catalog.treeFrom(built.products), stock: built.stock, aside: built.aside });
-  const pick = ({ cat, name }) => st.products.find(p => p.cat === cat && Catalog.norm(p.name) === Catalog.norm(name))
-    || st.products.find(p => p.cat === cat);
+  const inCat = (p, cat) => p.cat === cat || String(p.cat).startsWith(cat + Catalog.SEP);   // вид внутри категории (Инверторы › Гибридные) — та же категория
+  const pick = ({ cat, name }) => st.products.find(p => inCat(p, cat) && Catalog.norm(p.name) === Catalog.norm(name))
+    || st.products.find(p => inCat(p, cat));
   const link = Object.fromEntries(Object.entries(DEMO_LINKS).map(([sku, rule]) => [sku, pick(rule).id]));
   const fix = id => link[id] || id;
   // поставки: юрлицо и город (демо), позиции — настоящие товары

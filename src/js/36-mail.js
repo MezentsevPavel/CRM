@@ -141,7 +141,8 @@ SEEDS.push(st => {
   const DAY = new Date(2026, 9, 31); // фиксированная дата демо — день снимков каталога и остатков
   const at = (back, h, m) => new Date(DAY.getFullYear(), DAY.getMonth(), DAY.getDate() - back, h, m);
   const products = Catalog.build(CATALOG, STOCK_SNAPSHOT).products;
-  const pick = (cat, i) => { const list = products.filter(p => p.cat === cat); return list[i % list.length] || products[0]; };
+  // вид внутри категории («Инверторы › Гибридные») — та же категория
+  const pick = (cat, i) => { const list = products.filter(p => Catalog.topOf(p.cat) === cat); return list[i % list.length] || products[0]; };
   const short = p => p.name.split(/\s[\[(]/)[0];
   const inv = [0, 1, 2].map(i => pick('Инверторы', i));
   const akb = [0, 1, 2].map(i => pick('Аккумуляторы', i));

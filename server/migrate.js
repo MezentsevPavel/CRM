@@ -59,19 +59,26 @@ const MIGRATIONS = {
   // (их документы — полные записи), заполняется только пустое (артикул, данные поставщика), в дерево категорий заводятся пути «Электрика ›
   // Автоматы» и другие новые. Считает Catalog.merge тем же снимком, что у новой базы; введённое вручную, названия и цены продажи не меняются,
   // снятые из списка товары не возвращаются. Это же делает кнопка «Обновить каталог из снимка».
-  21: ({ db, docs, core }) => {
-    const seq = Number((db.prepare("SELECT v FROM meta WHERE k = 'seq'").get() || {}).v) || 0;
-    const all = {}, removed = [];
-    for (const r of docs.all()) {
-      all[core.Docs.docId(r.key, r.id)] = JSON.parse(r.data);
-      if (r.key === 'products' && all[core.Docs.docId(r.key, r.id)] === null) removed.push(r.id);
-    }
-    const st = core.Docs.join(all);
-    const done = core.Catalog.merge(st, core.api.CATALOG, removed);
-    for (const id of [...done.added, ...done.filled]) docs.put('products', id, JSON.stringify(st.products.find(p => p.id === id)), seq);
-    for (const id of done.categories) docs.put('categories', id, JSON.stringify(st.categories.find(c => c.id === id)), seq);
-  },
+  21: mergeCatalog,
+  // 22: виды внутри категорий (слова директора 2026-11-08): «Инверторы › Гибридные», «ИБП», «Аккумуляторы › АГМ», «Контроллеры › MPPT», виды
+  // «Защиты и соединений». Нетронутые товары снимка приходят в базу из кода сами (Docs.join) уже с новым путём, поэтому шаг доводит то, что само
+  // не приходит: постоянные узлы дерева (Catalog.STRUCT) и товары, у которых в базе есть документ: товар каталога с прежней верхней категорией
+  // получает вид из снимка, позиция листа остатков — вид по названию. Товар, которому категорию меняли руками (в документе другая категория),
+  // не меняется; то же делает Catalog.merge, он же — кнопка «Обновить каталог из снимка». Повторный запуск ничего не меняет.
+  22: mergeCatalog,
 };
+function mergeCatalog({ db, docs, core }) {
+  const seq = Number((db.prepare("SELECT v FROM meta WHERE k = 'seq'").get() || {}).v) || 0;
+  const all = {}, removed = [];
+  for (const r of docs.all()) {
+    all[core.Docs.docId(r.key, r.id)] = JSON.parse(r.data);
+    if (r.key === 'products' && all[core.Docs.docId(r.key, r.id)] === null) removed.push(r.id);
+  }
+  const st = core.Docs.join(all);
+  const done = core.Catalog.merge(st, core.api.CATALOG, removed);
+  for (const id of [...done.added, ...done.filled]) docs.put('products', id, JSON.stringify(st.products.find(p => p.id === id)), seq);
+  for (const id of done.categories) docs.put('categories', id, JSON.stringify(st.categories.find(c => c.id === id)), seq);
+}
 
 // → null, если всё в порядке; иначе текст отказа запуска. Данные при отказе не меняются.
 function migrate(store, rev, target, registry = MIGRATIONS, core = null) {

@@ -8,9 +8,12 @@
 // Выгрузка (JSON; в git её не кладут — в ней лежат цены и ссылки поставщиков на день выгрузки):
 //   { "date": "2026-11-07",
 //     "sheets": { "<лист>": [["<ключ каталога>", "<артикул с сайта или пусто>"], …], … },   — последний столбец «Артикул (с сайта)»
-//     "electrics": { "header": [заголовки листа «Электрика»], "rows": [[ячейки строки], …] } }
+//     "electrics": { "header": [заголовки листа «Электрика»], "rows": [[ячейки строки], …] },
+//     "specs": { "<ключ каталога>": { "hybrid": "да"|"нет", "chem": "LiFePO4" }, … } }   — необязательно: столбцы «Гибрид (с АКБ)» листа «Инверторы»
+//                                                                                         и «Химия (справочно)» листа «Аккумуляторы»
 // Столбцы листа «Электрика» ищутся по заголовку, а не по номеру. Позиции остальных листов (строки CATALOG.rows) берутся из прежнего
-// снимка как есть: меняются только артикул (sku) и позиции листа «Электрика» (sheet:'Электрика'); повторный прогон даёт тот же файл.
+// снимка как есть: меняются только артикул (sku), категория (cat — путь вида «Инверторы › Гибридные», его выбирает Catalog.classify по столбцам
+// таблицы, ссылке на сайте и названию) и позиции листа «Электрика» (sheet:'Электрика'); повторный прогон той же выгрузки даёт тот же файл.
 //
 // Что кладётся в строку «Электрики»: key = код позиции, model = название, sku = артикул, unit = «Ед.», cat = путь категории
 // («Электрика › Автоматы»), supplier = «Сибэлком» | «Энергосфера» (по домену ссылки), supplierPrice = цена поставщика, priceDate = дата цены,
@@ -19,6 +22,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { loadCode } = require('./vm-load.js');
 
 const FILE = path.join(__dirname, '..', 'src', 'js', '10-catalog-data.js');
 const SHEET = 'Электрика';
@@ -81,11 +85,16 @@ function build(prev, dump) {
   const bySheetKey = new Map();
   for (const [sheet, pairs] of Object.entries(dump.sheets || {})) for (const [k, sku] of pairs) bySheetKey.set(String(k), { sheet, sku: text(sku) });
   for (const k of bySheetKey.keys()) if (!rows.some(r => String(r.key) === k)) report.skuUnknownKeys.push(k);
+  const { Catalog } = loadCode().api, specs = dump.specs || {};
+  report.cats = {}; report.noSub = [];
   const withSku = rows.map(r => {
     const hit = bySheetKey.get(String(r.key));
     const sku = hit ? hit.sku : null;
     if (sku) report.skuSet++; else report.skuEmpty.push(r.model);
-    return { ...r, sku };
+    const cat = Catalog.classify(Catalog.topOf(r.cat), { name: r.model, url: r.url, spec: specs[String(r.key)] });
+    report.cats[cat] = (report.cats[cat] || 0) + 1;
+    if (cat.endsWith(Catalog.SEP + Catalog.SUB_NONE)) report.noSub.push(r.model);
+    return { ...r, cat, sku };
   });
   report.total = withSku.length;
   const col = columns(dump.electrics.header);
@@ -105,7 +114,8 @@ function build(prev, dump) {
 function render(src, catalog, date) {
   const eol = src.includes('\r\n') ? '\r\n' : '\n';
   const head = src.split(/\r?\n/).filter(l => l.startsWith('//') && !l.startsWith('// Артикулы (sku)') && !l.startsWith('// Лист «Электрика»') && !l.startsWith('//   price (наша цена продажи) у них'));
-  head.forEach((l, i) => { if (/^\/\/ Листы: .*Исключено\.$/.test(l)) head[i] = l.replace(/Исключено\.$/, 'Исключено, Электрика.'); });
+  head.forEach((l, i) => { if (l.startsWith('// cat — ')) head[i] = '// cat — категория: путь вида «Инверторы › Гибридные» (его выбирает Catalog.classify по столбцам таблицы, ссылке на сайте и названию; не назван — «… › Без подкатегории»); sheet — лист таблицы, откуда она взята.'; });
+  head.forEach((l, i) => { if (/^\/\/ Листы:.*Исключено\.$/.test(l)) head[i] = l.replace(/Исключено\.$/, 'Исключено, Электрика.'); });
   head.push(`// Артикулы (sku) — столбец «Артикул (с сайта)» листов таблицы, выгрузка ${date}; пусто в таблице — null («Артикул: нет данных»). Дубли артикулов не убираются.`);
   head.push('// Лист «Электрика» (Сибэлком, Энергосфера): товары поставщиков, не обязательно лежащие на складе; supplierPrice/priceDate — цена поставщика и её дата;');
   head.push('//   price (наша цена продажи) у них null. Снимок пишет tools/catalog-snapshot.js из выгрузки таблицы, руками не правится.');
@@ -130,6 +140,6 @@ if (require.main === module) {
   if (flag !== '--dry') fs.writeFileSync(FILE, render(src, catalog, dump.date || '?'), 'utf8');
   console.log(JSON.stringify({
     позиций: report.total, артикул_проставлен: report.skuSet, артикул_пуст: report.skuEmpty.length, электрика: report.electrics,
-    ключи_выгрузки_без_позиции: report.skuUnknownKeys, дубли_артикулов: report.dupes, электрика_пропуски: report.electricGaps,
+    по_категориям: report.cats, без_подкатегории: report.noSub, ключи_выгрузки_без_позиции: report.skuUnknownKeys, дубли_артикулов: report.dupes, электрика_пропуски: report.electricGaps,
   }, null, 1));
 }

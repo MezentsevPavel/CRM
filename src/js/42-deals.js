@@ -479,7 +479,7 @@ SEEDS.push(st => {
   const nextMgr = type => { const m = mgrs(type); return m[rot[type]++ % m.length]; };
   const priced = p => p.inCatalog && typeof p.price === 'number';
   // позиция каталога: по куску названия, а если такой нет — первая с ценой сайта в категории
-  const pick = (like, cat) => st.products.find(p => priced(p) && p.name.includes(like)) || st.products.find(p => priced(p) && p.cat === cat);
+  const pick = (like, cat) => st.products.find(p => priced(p) && p.name.includes(like)) || st.products.find(p => priced(p) && Catalog.topOf(p.cat) === cat);
 
   // Пройти сделку по воронке до этапа stage теми же move/win: шаг по времени равномерный, последнее событие — до сегодняшней полуночи.
   const walk = (d, stage, ago) => {

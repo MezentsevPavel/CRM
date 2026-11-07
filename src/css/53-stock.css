@@ -97,7 +97,12 @@ td.free b{font-weight:700}
 .ct-show{display:none;width:100%;justify-content:space-between}
 .ct-list,.ct-mlist{list-style:none;margin:0;padding:0}
 .ct-row{display:flex;align-items:center;gap:2px;padding-left:calc(var(--d,0)*16px)}
-.ct-tg{flex:none;width:26px;height:30px;padding:0;border:0;background:none;color:var(--ink-3);font-size:12px;cursor:pointer}
+.ct-tg{flex:none;width:28px;height:32px;padding:0;border:0;border-radius:8px;background:none;color:var(--ink-3);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+button.ct-tg:hover{background:var(--sunken);color:var(--ink-2)}
+.ct-tg .ic{width:15px;height:15px;transition:transform .15s}
+.ct-tg[aria-expanded="true"] .ic{transform:rotate(90deg)}
+@media (prefers-reduced-motion:reduce){.ct-tg .ic{transition:none}}
+.ct-brand .ct-name{font-size:13px;color:var(--ink-3)}
 span.ct-tg{cursor:default}
 .ct-name{flex:1 1 auto;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px;border:0;border-radius:10px;background:none;color:var(--ink-2);font-size:13.5px;text-align:left;cursor:pointer}
 .ct-name span{min-width:0;overflow-wrap:anywhere}

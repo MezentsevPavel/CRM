@@ -119,9 +119,9 @@ test('Catalog.build: склеивается только точное совпа
   assert.equal(b.products.length, 4 + 4, 'позиции каталога не теряются и не удваиваются');
   assert.equal(b.stock['101'], undefined, 'SUN-10K похож на SUN-12K, но остаток ему не достался');
   assert.equal(b.stock['103'], undefined, 'при двух строках с одним названием склейка неоднозначна — не склеивать');
-  // категория несклеенной строки — по разделу таблицы; id уникальны
-  assert.ok(extra.some(p => p.name.includes('SUN-8K') && p.cat === 'Инверторы'));
-  assert.ok(extra.some(p => p.name.includes('VEKTOR 12,8-200') && p.cat === 'Аккумуляторы'));
+  // категория несклеенной строки — по разделу таблицы и виду из названия (слово директора 2026-11-08: виды внутри категории); id уникальны
+  assert.ok(extra.some(p => p.name.includes('SUN-8K') && p.cat === 'Инверторы › Гибридные'));
+  assert.ok(extra.some(p => p.name.includes('VEKTOR 12,8-200') && p.cat === 'Аккумуляторы › Без подкатегории'), 'в названии вида нет — не угадывается');
   assert.equal(new Set(b.products.map(p => p.id)).size, b.products.length);
   const v = extra.find(p => p.name.includes('VEKTOR 12,8-200'));
   assert.deepEqual(JSON.parse(JSON.stringify(b.stock[v.id])), { npp: { _: 7 } });
@@ -385,7 +385,8 @@ test('демо-ссылки v2 переведены на позиции того
     assert.equal(link.cat, cat);
     const p = st.products.find(x => app.Catalog.norm(x.name) === app.Catalog.norm(link.name));
     assert.ok(p, `${sku}: позиции «${link.name}» нет среди товаров — ссылки ушли бы на запасную`);
-    assert.equal(p.cat, cat, `${sku}: позиция другого вида`);
+    // слово директора 2026-11-08: внутри категории есть виды («Инверторы › Гибридные») — позиция той же категории
+    assert.ok(p.cat === cat || p.cat.startsWith(cat + ' › '), `${sku}: позиция другого вида: ${p.cat}`);
   }
   for (const sku of Object.keys(app.DEMO_LINKS)) assert.ok(!st.products.some(p => p.id === sku || p.sku === sku), `выдуманный товар ${sku} остался`);
   // записи v2 стоят на настоящих товарах, и резерв со склада не больше остатка в его клетке

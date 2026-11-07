@@ -311,7 +311,8 @@ test('демо: в письмах названы настоящие позици
   assert.ok(named.length >= 15, `писем с настоящими позициями: ${named.length}`);
   // у каждого вида товара — хотя бы одно письмо
   for (const cat of ['Инверторы', 'Аккумуляторы', 'Панели']) {
-    assert.ok(named.some(l => st.products.some(p => p.cat === cat && l.body.includes(p.name))), `нет письма про «${cat}»`);
+    // слово директора 2026-11-08: у категории есть виды («Инверторы › Гибридные») — товары видов тоже её
+    assert.ok(named.some(l => st.products.some(p => (p.cat === cat || p.cat.startsWith(cat + ' › ')) && l.body.includes(p.name))), `нет письма про «${cat}»`);
   }
   // выдуманные товары прототипа v2 не просочились
   for (const bad of ['PV-550M', 'INV-H6', 'BAT-LFP-100', 'WND-3K']) {

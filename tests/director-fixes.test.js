@@ -87,7 +87,8 @@ test('Catalog.brands: у выбранной категории — бренды 
   const of = cat => Catalog.brands(S, cat);
   const all = of('');
   const inv = of('Инверторы'), pan = of('Панели');
-  const brandsOf = cat => new Set(S.products.filter(p => p.cat === cat && p.brand).map(p => p.brand));
+  // слово директора 2026-11-08: у инверторов есть виды («Инверторы › Гибридные») — бренды берутся вместе с подкатегориями
+  const brandsOf = cat => new Set(S.products.filter(p => (p.cat === cat || p.cat.startsWith(cat + ' › ')) && p.brand).map(p => p.brand));
   assert.deepEqual([...inv].sort(), [...brandsOf('Инверторы')].sort());
   assert.deepEqual([...pan].sort(), [...brandsOf('Панели')].sort());
   const onlyPanel = [...pan].find(b => !inv.includes(b)), onlyInv = [...inv].find(b => !pan.includes(b));
@@ -109,9 +110,11 @@ test('«Товары и остатки»: список брендов следу
   const options = () => [...region(a, 'view').matchAll(/<select id="f-brand"[^>]*>([\s\S]*?)<\/select>/g)][0][1].match(/<option value="([^"]*)"/g).map(o => o.slice(15, -1)).filter(Boolean);
   const dec = s => s.replace(/&amp;/g, '&').replace(/&#39;/g, "'");
   a.S.view = 'stock'; a.render();
+  // слово директора 2026-11-08: в списке «Бренд» есть и «Без бренда» (там, где у части товаров бренда нет) — тот же список, что узлы-фирмы в дереве
+  const names = cat => a.Catalog.brandRows(a.S, cat).map(b => b.brand);
   const everything = options().map(dec);
-  assert.deepEqual(everything.sort(), [...a.Catalog.brands(a.S)].sort(), '«Все» — все бренды');
-  const inv = a.Catalog.brands(a.S, 'Инверторы'), pan = a.Catalog.brands(a.S, 'Панели');
+  assert.deepEqual(everything.sort(), [...names()].sort(), '«Все» — все бренды');
+  const inv = names('Инверторы'), pan = names('Панели');
   const onlyPanel = pan.find(b => !inv.includes(b)), onlyInv = inv.find(b => !pan.includes(b));
   a.A['stock-cat']({ dataset: { cat: 'Инверторы' } });
   const got = options().map(dec);
@@ -126,12 +129,13 @@ test('«Товары и остатки»: список брендов следу
   const shown = () => text(a.stockTable());
   assert.match(shown(), /Показано \d+ из \d+/);
   assert.ok(!/Показано 0 из/.test(shown()), 'после сброса список инверторов пуст');
-  // бренд, который есть и в новой категории, остаётся
+  // слово директора 2026-11-08: выбор названия категории в дереве — вся категория, фирма сбрасывается (фирма выбирается своим узлом под
+  // категорией: A['stock-brand']); раньше бренд, который есть и в новой категории, оставался
   const both = inv.find(b => pan.includes(b));
-  if (both) { fire(a, 'change', 'brand', both); a.A['stock-cat']({ dataset: { cat: 'Панели' } }); assert.equal(a.S.ui.brand, both); }
+  if (both) { fire(a, 'change', 'brand', both); a.A['stock-cat']({ dataset: { cat: 'Панели' } }); assert.equal(a.S.ui.brand, ''); }
   // «Все» — снова все бренды
   a.A['stock-cat']({ dataset: { cat: 'Все' } });
-  assert.deepEqual(options().map(dec).sort(), [...a.Catalog.brands(a.S)].sort());
+  assert.deepEqual(options().map(dec).sort(), [...names()].sort());
   // счётчики и поиск не менялись: бренд выбран — число строк по нему как раньше
   fire(a, 'change', 'brand', onlyInv);
   assert.equal(a.stockRows().length, a.S.products.filter(p => p.brand === onlyInv).length);

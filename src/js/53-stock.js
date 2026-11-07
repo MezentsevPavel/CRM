@@ -27,15 +27,16 @@ function vStock(){
 
 // ——— вкладка «Товары» ———
 // Выбранный бренд, которого нет среди брендов выбранной категории (ушли в другую), сбрасывается
+const brandNames=cat=>Catalog.brandRows(S,cat).map(b=>b.brand);
 function fixBrand(){
   const u=S.ui;
-  if(u.brand&&!Catalog.brands(S,u.cat).includes(u.brand)) u.brand='';
+  if(u.brand&&!brandNames(u.cat).includes(u.brand)) u.brand='';
 }
 function goodsPane(tabs){
   const u=S.ui;
   fixBrand();
   const filters=[
-    selField('f-brand','brand','Бренд',[['','Все бренды'],...Catalog.brands(S,u.cat).map(b=>[b,b])],u.brand||''),
+    selField('f-brand','brand','Бренд',[['','Все бренды'],...brandNames(u.cat).map(b=>[b,b])],u.brand||''),
     selField('f-avail','avail','Наличие',[['','Любое наличие'],...[...new Set(S.products.map(p=>p.avail).filter(Boolean))].map(a=>[a,a])],u.avail||''),
     selField('f-catf','catf','Каталог',[['','В каталоге и нет'],['in','Только в каталоге'],['out','Только «нет в каталоге»']],u.catf||'')
   ].join('');
@@ -47,16 +48,37 @@ function goodsPane(tabs){
 }
 // ——— дерево категорий слева от списка ———
 // Строки — Catalog.rows (порядок дерева, число товаров с подкатегориями). Выбранная категория показывает и свои товары, и товары всех
-// подкатегорий (Catalog.query). Раскрытое запоминается в S.ui.catOpen (личное, на сервер не уходит). На узком экране дерево — под кнопкой.
+// подкатегорий (Catalog.query). Стрелка слева раскрывает и сворачивает подкатегории, название выбирает категорию. Под каждой категорией,
+// в которой товары лежат сами (нет подкатегорий), дописаны бренды её товаров — уровень «фирма», производный: он берётся из поля «Бренд»
+// (Catalog.brandRows) и нигде не хранится; выбор бренда = категория + бренд, тот же фильтр, что список «Бренд». Раскрытое запоминается
+// в S.ui.catOpen (личное, на сервер не уходит; нет записи — раскрыта ветка выбранной категории). На узком экране дерево — под кнопкой.
 const CAT_ALL='Все';
 const catParent=path=>path.includes(Catalog.SEP)?path.slice(0,path.lastIndexOf(Catalog.SEP)):'';
 const catAncestors=path=>{const out=[];for(let p=catParent(path);p;p=catParent(p)) out.push(p);return out};
+// Раскрыт ли узел: выбор человека, а без выбора — раскрыты выбранная категория и её предки
+function catIsOpen(path){
+  const o=(S.ui.catOpen||{})[path];
+  if(o!==undefined) return !!o;
+  const cur=S.ui.cat||CAT_ALL;
+  return cur===path||cur.startsWith(path+Catalog.SEP);
+}
+// Выбрали категорию: её ветка раскрыта (без записи — по умолчанию раскрыта выбранная ветка), прежние ручные «свернуть» этой ветки сняты
+function catOpenBranch(path){
+  const o=S.ui.catOpen;
+  if(!o||path===CAT_ALL) return;
+  delete o[path];for(const a of catAncestors(path)) delete o[a];
+}
 function catTree(){
-  const cur=S.ui.cat||CAT_ALL,open=S.ui.catOpen||{},rows=Catalog.rows(S),parents=new Set(rows.map(r=>catParent(r.path)).filter(Boolean));
+  const cur=S.ui.cat||CAT_ALL,curBrand=S.ui.brand||'',rows=Catalog.rows(S),parents=new Set(rows.map(r=>catParent(r.path)).filter(Boolean));
   const noCat=S.products.filter(p=>!p.cat||p.cat===Catalog.NO_CAT).length;
-  const item=(path,name,n,depth,kids)=>`<li class="ct-row${cur===path?' on':''}" style="--d:${depth}">${kids?`<button type="button" class="ct-tg" data-act="cat-toggle" data-cat="${esc(path)}" aria-expanded="${!!open[path]}" aria-label="${open[path]?'Свернуть':'Раскрыть'} «${esc(name)}»">${open[path]?'▾':'▸'}</button>`:'<span class="ct-tg"></span>'}<button type="button" class="ct-name" data-act="stock-cat" data-cat="${esc(path)}"${cur===path?' aria-current="true"':''}><span>${esc(name)}</span><small>${num(n)}</small></button></li>`;
-  const list=rows.filter(r=>catAncestors(r.path).every(a=>open[a])).map(r=>item(r.path,r.name,r.total,r.depth,parents.has(r.path))).join('');
-  const label=cur===CAT_ALL?'все товары':cur;
+  const chev=(path,name,kids)=>kids?`<button type="button" class="ct-tg" data-act="cat-toggle" data-cat="${esc(path)}" aria-expanded="${catIsOpen(path)}" aria-label="${catIsOpen(path)?'Свернуть':'Раскрыть'} «${esc(name)}»">${ic('chevR')}</button>`:'<span class="ct-tg"></span>';
+  const item=(path,name,n,depth,kids)=>`<li class="ct-row${cur===path&&!curBrand?' on':''}" style="--d:${depth}">${chev(path,name,kids)}<button type="button" class="ct-name" data-act="stock-cat" data-cat="${esc(path)}"${cur===path&&!curBrand?' aria-current="true"':''}><span>${esc(name)}</span><small>${num(n)}</small></button></li>`;
+  const brandItem=(path,b,depth)=>{const on=cur===path&&curBrand===b.brand;return `<li class="ct-row ct-brand${on?' on':''}" style="--d:${depth}"><span class="ct-tg"></span><button type="button" class="ct-name" data-act="stock-brand" data-cat="${esc(path)}" data-brand="${esc(b.brand)}"${on?' aria-current="true"':''}><span>${esc(b.brand)}</span><small>${num(b.n)}</small></button></li>`};
+  const list=rows.filter(r=>catAncestors(r.path).every(catIsOpen)).map(r=>{
+    const leaf=!parents.has(r.path),brands=leaf?Catalog.brandRows(S,r.path):[];
+    return item(r.path,r.name,r.total,r.depth,!leaf||brands.length>0)+(brands.length&&catIsOpen(r.path)?brands.map(b=>brandItem(r.path,b,r.depth+1)).join(''):'');
+  }).join('');
+  const label=(cur===CAT_ALL?'все товары':cur)+(curBrand?' · '+curBrand:'');
   return `<aside class="ct-box card${S.ui.catPane?' open':''}" aria-label="Категории товаров"><button type="button" class="btn ct-show" data-act="cat-pane" aria-expanded="${!!S.ui.catPane}">Категория: ${esc(label)} <span aria-hidden="true">▾</span></button>
     <div class="ct-body"><ul class="ct-list">${item(CAT_ALL,'Все',S.products.length,0,false)}${list}${noCat?item(Catalog.NO_CAT,Catalog.NO_CAT,noCat,0,false):''}</ul>${can('catalog')?'<button type="button" class="btn sm ghost ct-mng" data-act="cat-manage">Добавить и изменить категории</button>':''}</div></aside>`;
 }
@@ -583,13 +605,21 @@ FORMS['reserve-until']=f=>{
 };
 A['stock-tab']=el=>{S.ui.stockTab=el.dataset.tab;render()};
 // Выбрали категорию: она раскрывается вместе с родителями, на узком экране дерево сворачивается обратно под кнопку
+// Выбор категории в дереве — вся категория, бренд сбрасывается (бренд узла выбирается своей строкой: stock-brand)
 A['stock-cat']=el=>{
-  const c=el.dataset.cat,o=S.ui.catOpen||(S.ui.catOpen={});
-  S.ui.cat=c;S.ui.page=0;S.ui.span=1;S.ui.catPane=false;fixBrand();
-  if(c!==CAT_ALL){o[c]=true;for(const a of catAncestors(c)) o[a]=true}
+  const c=el.dataset.cat;
+  S.ui.cat=c;S.ui.brand='';S.ui.page=0;S.ui.span=1;S.ui.catPane=false;
+  catOpenBranch(c);
   render();
 };
-A['cat-toggle']=el=>{const o=S.ui.catOpen||(S.ui.catOpen={}),c=el.dataset.cat;o[c]=!o[c];render()};
+// Узел-бренд: категория + бренд — то же, что выбрать их в списке «Бренд»
+A['stock-brand']=el=>{
+  const c=el.dataset.cat;
+  S.ui.cat=c;S.ui.brand=el.dataset.brand;S.ui.page=0;S.ui.span=1;S.ui.catPane=false;fixBrand();
+  catOpenBranch(c);
+  render();
+};
+A['cat-toggle']=el=>{const o=S.ui.catOpen||(S.ui.catOpen={}),c=el.dataset.cat;o[c]=!catIsOpen(c);render()};
 A['cat-pane']=()=>{S.ui.catPane=!S.ui.catPane;render()};
 
 // ——— «Категории»: добавить, переименовать, перенести, удалить пустую ———

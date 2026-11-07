@@ -350,18 +350,18 @@ SEEDS.push(st => {
 
   const products = Catalog.build(CATALOG, STOCK_SNAPSHOT).products;
   const SUPPLIERS = [
-    { n: 1, cats: ['Инверторы'] }, { n: 2, cats: ['Аккумуляторы'] }, { n: 3, cats: ['Панели'] },
+    { n: 1, cats: ['Инверторы', 'ИБП'] }, { n: 2, cats: ['Аккумуляторы'] }, { n: 3, cats: ['Панели'] },
     { n: 4, cats: ['Кабель', 'Защита и соединения'] }, { n: 5, cats: ['Контроллеры'] }, { n: 6, cats: ['Защита и соединения'] },
     { n: 7, cats: null }, // смешанный: любые товары
-  ].map(s => ({ ...s, name: `Поставщик-пример ${s.n}`, pool: s.cats ? products.filter(p => s.cats.includes(p.cat)) : products }));
+  ].map(s => ({ ...s, name: `Поставщик-пример ${s.n}`, pool: s.cats ? products.filter(p => s.cats.includes(Catalog.topOf(p.cat))) : products }));
   const sup = n => SUPPLIERS[n - 1];
-  const QTY = { 'Панели': [10, 120], 'Инверторы': [1, 10], 'Аккумуляторы': [2, 24], 'Контроллеры': [1, 12], 'Защита и соединения': [5, 100], 'Кабель': [100, 600] };
+  const QTY = { 'Панели': [10, 120], 'Инверторы': [1, 10], 'ИБП': [1, 10], 'Аккумуляторы': [2, 24], 'Контроллеры': [1, 12], 'Защита и соединения': [5, 100], 'Кабель': [100, 600] };
   const pickItems = (supplier, n) => {
     const pool = supplier.pool.slice();
     const out = [];
     for (let k = 0; k < Math.min(n, pool.length); k++) {
       const p = pool.splice(Math.floor(rnd() * pool.length), 1)[0];
-      const [lo, hi] = QTY[p.cat] || [1, 20];
+      const [lo, hi] = QTY[Catalog.topOf(p.cat)] || [1, 20];
       out.push({ productId: p.id, qty: int(lo, hi) });
     }
     return out;
