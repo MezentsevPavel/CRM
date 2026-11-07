@@ -212,4 +212,29 @@ test('таблица: «В пути» по юрлицам — сколько е�
     assert.ok(/\bin\b/.test(cls.at(-2)) && !/\bin\b/.test(cls.at(-1)), 'в строке «В пути» не перед последним столбцом «Итого»');
   }
   assert.match(plain(html), new RegExp(`продано ${tb.transitAll.sold}`), 'в таблице не видно проданного из пути');
+  // «продано N» и «ждёт покупателя N» ведут к списку «В пути» своего юрлица (кто купил, менеджер, когда; что ждёт); нуль — текст
+  assert.match(html, /data-act="transit-jump" data-e="[^"]+"[^>]*>продано \d+</, '«продано» не ссылка на список «В пути»');
+  const body = app.DRAWERS.product(p.id).body;
+  for (const g of by) assert.ok(body.includes(`id="p-transit-${g.entityId}"`), `нет блока «В пути» юрлица ${g.name}`);
+  if (tb.transitAll.free > 0) assert.match(html, /data-act="transit-jump" data-e="[^"]+"[^>]*>ждёт покупателя \d+</, '«ждёт покупателя» не ссылка');
+  assert.ok(!/data-act="transit-jump"[^>]*>ждёт покупателя 0</.test(html), 'у нуля есть ссылка');
+});
+
+test('«В пути»: у проданного видно, кто купил (сделка и клиент), какой менеджер, когда продано; у непроданного — «ждёт покупателя» и когда приедет', () => {
+  const app = asDirector(load());
+  const p = app.S.products.find(x => app.Stock.transitBy(app.S, x.id).some(a => a.sold > 0 && a.qty > a.sold));
+  assert.ok(p, 'в демо нет товара, где часть пути продана, а часть ждёт');
+  const groups = js(app.Stock.transitDetail(app.S, p.id, app.S.me));
+  const g = groups.find(x => x.sold > 0 && x.free > 0);
+  assert.ok(g, 'нет юрлица, где и продано, и ждёт');
+  assert.equal(g.sold + g.free, g.qty);
+  const ship = g.ships.find(x => x.buyers.length && x.free > 0) || g.ships.find(x => x.buyers.length);
+  assert.ok(ship.buyers.every(b => b.at && b.qty > 0), 'у покупателя нет даты или количества');
+  const block = app.DRAWERS.product(p.id).body.match(new RegExp(`<div class="tgrp" id="p-transit-${g.entityId}">[\\s\\S]*?</ul></div>`))[0];
+  const txt = plain(block);
+  assert.match(txt, /менеджер/, 'в списке не указан менеджер');
+  assert.match(txt, /продано (?:сегодня|вчера|завтра|\d+ [а-я]+), \d+:\d+/, 'не указано, когда продано (дата и время)');
+  for (const b of ship.buyers) if (b.deal) assert.ok(txt.includes(b.deal.id) && txt.includes(b.deal.client), 'нет сделки или клиента покупателя');
+  if (g.ships.some(x => x.free > 0)) assert.match(txt, /ждёт покупателя \d+/);
+  assert.match(txt, /приедет \d+ \S+/, 'не указано, когда приедет то, что ждёт покупателя');
 });

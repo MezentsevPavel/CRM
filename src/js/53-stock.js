@@ -132,8 +132,8 @@ function srcPill(r){
 function gridHtml(p){
   const t=Stock.table(S,p.id);
   const cell=(v,cls='')=>`<td class="num${cls}"><b>${num(v.have)}</b><small>${v.held>0?`<button type="button" class="rlink" data-act="reserves-jump" title="Показать список резервов">резерв ${num(v.held)}</button>`:`резерв ${num(v.held)}`}</small><small class="${v.free<0?'bad-t':''}">свободно ${num(v.free)}</small></td>`;
-  const all=t.all,tcell=(v,cls='')=>`<td class="num in${cls}"><b>${num(v.qty)}</b><small>продано ${num(v.sold)}</small><small>ждёт покупателя ${num(v.free)}</small></td>`;
-  return `<div class="xs"><table class="tbl mx"><thead><tr><th>Юрлицо / склад</th>${t.cols.map(c=>`<th class="num">${esc(c.name)}</th>`).join('')}<th class="num">В пути</th><th class="num">Итого</th></tr></thead><tbody>${t.rows.map(r=>`<tr><th scope="row">${esc(r.name)}</th>${t.cols.map(c=>cell(t.cell(r.id,c.id))).join('')}${tcell(t.transit(r.id))}${cell(t.row(r.id),' tot')}</tr>`).join('')}</tbody><tfoot><tr><th scope="row">Итого</th>${t.cols.map(c=>cell(t.col(c.id),' tot')).join('')}${tcell(t.transitAll,' tot')}<td class="num tot all"><span>Свободно всего</span><b class="${all.free<0?'bad-t':''}">${num(all.free)}</b><small>по факту на складах ${num(all.have)}</small><small>в резерве ${num(all.held)}</small></td></tr></tfoot></table></div>`;
+  const all=t.all,tcell=(v,cls='',e='')=>`<td class="num in${cls}"><b>${num(v.qty)}</b><small>${v.sold>0?`<button type="button" class="rlink" data-act="transit-jump" data-e="${esc(e)}" title="Кто купил, какой менеджер, когда продано">продано ${num(v.sold)}</button>`:`продано ${num(v.sold)}`}</small><small>${v.free>0?`<button type="button" class="rlink" data-act="transit-jump" data-e="${esc(e)}" title="Какие поставки едут и когда ждём">ждёт покупателя ${num(v.free)}</button>`:`ждёт покупателя ${num(v.free)}`}</small></td>`;
+  return `<div class="xs"><table class="tbl mx"><thead><tr><th>Юрлицо / склад</th>${t.cols.map(c=>`<th class="num">${esc(c.name)}</th>`).join('')}<th class="num">В пути</th><th class="num">Итого</th></tr></thead><tbody>${t.rows.map(r=>`<tr><th scope="row">${esc(r.name)}</th>${t.cols.map(c=>cell(t.cell(r.id,c.id))).join('')}${tcell(t.transit(r.id),'',r.id)}${cell(t.row(r.id),' tot')}</tr>`).join('')}</tbody><tfoot><tr><th scope="row">Итого</th>${t.cols.map(c=>cell(t.col(c.id),' tot')).join('')}${tcell(t.transitAll,' tot')}<td class="num tot all"><span>Свободно всего</span><b class="${all.free<0?'bad-t':''}">${num(all.free)}</b><small>по факту на складах ${num(all.have)}</small><small>в резерве ${num(all.held)}</small></td></tr></tfoot></table></div>`;
 }
 // Блок «Списать при продаже»: каждая клетка «юрлицо × город» с остатком — строка с кнопкой (право sell). Сколько можно списать
 // без резерва — Stock.sellMax; зарезервированное списывают по резерву (кнопка в таблице «Резервы»).
@@ -165,6 +165,26 @@ function iRow(x,p){
   if(x.dispatchId) return `<li><span class="pill sm info">перемещение</span><span>в пути: ${qtyOf(x.qty,p)}, <button type="button" class="link" data-act="open-dispatch" data-id="${esc(x.dispatchId)}">${esc(x.shipId)}</button></span><small>на склад ${esc(cellText(x.entityId,x.cityId))} · ожидается ${fD(x.eta)}</small></li>`;
   const s=ship(x.shipId),late=isLate(s);
   return `<li><b class="mono">${esc(x.shipId)}</b><span>${qtyOf(x.qty,p)}</span><span class="pill sm ${late?'bad':'info'}">${late?'задерживается':esc(stageName(s).toLowerCase())}</span><small>ожидается ${fD(x.eta)}</small></li>`;
+}
+// «В пути»: по юрлицам — какие поставки едут и когда ждём, кому из них продано (сделка и клиент, менеджер, когда продано,
+// до какого числа держим резерв) и сколько ещё ждёт покупателя. Считает Stock.transitDetail; здесь только показ.
+function transitBuyer(b,p){
+  const who=b.deal?`${can('clients')?`<button class="link" data-act="open-deal" data-id="${esc(b.deal.id)}">${esc(b.deal.id)}</button>`:esc(b.deal.id)} <span class="muted">${esc(b.deal.client||'')}</span>`:b.hasDeal?`<span class="muted">${Stock.HIDDEN_DEAL}</span>`:b.forWho?esc(b.forWho):b.note?esc(b.note):noData('для кого');
+  const mgr=b.managerId?esc(whoName(b.managerId)):b.by?esc(whoName(b.by))+' <span class="muted">(поставил резерв)</span>':noData('менеджер');
+  return `<li class="tbuy"><span>${who}</span><b>${qtyOf(b.qty,p)}</b><small>менеджер ${mgr} · продано ${b.at?fWhen(b.at):noData('когда')}${b.until?` · резерв до ${fD(b.until)}`:''}</small></li>`;
+}
+function transitShip(sh,p){
+  if(sh.dispatchId) return iRow({shipId:sh.shipId,dispatchId:sh.dispatchId,qty:sh.qty,eta:sh.eta,entityId:sh.entityId,cityId:sh.cityId},p);
+  const buyers=sh.buyers.map(b=>transitBuyer(b,p)).join('');
+  const unseen=sh.sold-sh.buyers.reduce((n,b)=>n+b.qty,0);
+  const hidden=unseen>0?`<li class="tbuy"><span class="muted">продано ${num(unseen)} — детали скрыты</span></li>`:'';
+  const wait=sh.free>0?`<li class="tfree"><span>ждёт покупателя</span><b>${qtyOf(sh.free,p)}</b><small>приедет ${fD(sh.eta)}</small></li>`:'';
+  return iRow({shipId:sh.shipId,qty:sh.qty,eta:sh.eta},p)+buyers+hidden+wait;
+}
+function transitHtml(p){
+  const groups=Stock.transitDetail(S,p.id,S.me);
+  if(!groups.length) return '<p class="muted m0">Поставок с этим товаром нет.</p>';
+  return groups.map(g=>`<div class="tgrp" id="p-transit-${esc(g.entityId)}"><h5 class="tg-h">${esc(g.name)}<small class="muted">едет ${num(g.qty)} · продано ${num(g.sold)} · ждёт покупателя ${num(g.free)}</small></h5><ul class="mv">${g.ships.map(sh=>transitShip(sh,p)).join('')}</ul></div>`).join('');
 }
 // История резерва (Stock.history): поставлен, срок, снято / списано, срок вышел — кем и когда; раскрывается по нажатию
 function histHtml(v){
@@ -218,7 +238,7 @@ function dProduct(p){
     <div id="p-reserves"><h4 class="sh">Резервы</h4>${rTbl}</div>
     ${removedHtml(p)}
     ${sellCells(p)}
-    <div><h4 class="sh">В пути</h4>${inc.length&&transitLine(p.id)?`<p class="m0">${esc(transitLine(p.id))}</p>`:''}${iList}</div>
+    <div id="p-transit"><h4 class="sh">В пути</h4>${transitHtml(p)}</div>
     <div><h4 class="sh">Журнал движений</h4>${mList}</div>`};
 }
 
@@ -301,6 +321,8 @@ FORMS['stock-sell']=f=>{
 };
 // Бейдж «N резервов» в номенклатуре — карточка товара сразу на списке резервов
 // Клик по «резерв N» в таблице карточки: прокрутить эту же карточку к списку резервов (карточку заново не открываем)
+// «Ждёт покупателя N» в таблице: прокрутить карточку к списку поставок в пути (какая едет, когда ждём)
+A['transit-jump']=el=>{const e=el&&el.dataset?el.dataset.e:'',t=(e&&byId('p-transit-'+e))||byId('p-transit');if(t&&t.scrollIntoView) t.scrollIntoView({block:'start',behavior:'smooth'})};
 A['reserves-jump']=()=>{const t=byId('p-reserves');if(t&&t.scrollIntoView) t.scrollIntoView({block:'start',behavior:'smooth'})};
 A['product-reserves']=el=>{openDrawer('product',el.dataset.id);const t=byId('p-reserves');if(t&&t.scrollIntoView) t.scrollIntoView({block:'start'})};
 ON.change.rskind=t=>{const free=t.value==='free',a=byId('rs-deal-f'),b=byId('rs-for-f');if(a) a.hidden=free;if(b) b.hidden=!free};

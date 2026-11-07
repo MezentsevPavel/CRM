@@ -527,6 +527,38 @@ const Stock = (() => {
     return [...acc.values()].sort((a, b) => rank(a.entityId) - rank(b.entityId))
       .map(a => ({ entityId: a.entityId, name: entityName(st, a.entityId) ?? a.entityId, qty: a.qty, sold: a.sold }));
   }
+  // Что едет и кому продано, глазами человека: [{entityId, name, qty, sold, free, ships:[{shipId, dispatchId, eta, qty, sold, free,
+  // buyers:[{reserveId, qty, deal, hasDeal, forWho, note, by, at, until, managerId}]}]}]. buyers — резервы под эту поставку
+  // (reserveView: сделку и клиента видит только тот, кому сделка видна); managerId — менеджер видимой сделки. sold и free
+  // считаются по всем резервам, как в transitBy; перемещения между складами — поставки без покупателей.
+  function transitDetail(st, productId, personId) {
+    const ships = new Map();
+    for (const x of incomingOf(st, productId)) {
+      const a = ships.get(x.shipId) || { shipId: x.shipId, dispatchId: x.dispatchId || null, eta: x.eta, entityId: x.entityId || ANY, cityId: x.cityId, qty: 0, sold: 0, free: 0, buyers: [] };
+      a.qty += x.qty;
+      ships.set(x.shipId, a);
+    }
+    for (const r of st.reserves || []) {
+      if (r.productId !== productId || !r.src || r.src === 'stock') continue;
+      const a = ships.get(r.src);
+      if (!a || a.dispatchId) continue;
+      a.sold += r.qty;
+      const v = reserveView(st, r, personId);
+      if (!v) continue;
+      const d = v.deal ? (st.deals || []).find(x => x.id === v.deal.id) : null;
+      a.buyers.push({ reserveId: r.id, qty: v.qty, deal: v.deal, hasDeal: v.hasDeal, forWho: v.forWho, note: v.note, by: v.by, at: v.at, until: v.until, managerId: d ? d.managerId || null : null });
+    }
+    const groups = new Map();
+    for (const a of ships.values()) {
+      a.free = a.qty - a.sold;
+      const g = groups.get(a.entityId) || { entityId: a.entityId, name: entityName(st, a.entityId) ?? a.entityId, qty: 0, sold: 0, free: 0, ships: [] };
+      g.qty += a.qty; g.sold += a.sold; g.free += a.free; g.ships.push(a);
+      groups.set(a.entityId, g);
+    }
+    const order = (st.entities || []).map(x => x.id);
+    const rank = id => { const i = order.indexOf(id); return i < 0 ? order.length + (id === ANY ? 1 : 0) : i; };
+    return [...groups.values()].sort((a, b) => rank(a.entityId) - rank(b.entityId));
+  }
   // «ВС 20 (продано 15) · НПП 5» — одна подпись на таблицу номенклатуры и карточку товара; ничего не едет — ''
   const transitText = (st, productId) => transitBy(st, productId).map(a => `${a.name} ${num(a.qty)}${a.sold ? ` (продано ${num(a.sold)})` : ''}`).join(' · ');
 
@@ -598,7 +630,7 @@ const Stock = (() => {
 
   return {
     ANY, RESERVE_DAYS, KINDS, NO_ENTITY, NO_CITY, HIDDEN_DEAL, HIDDEN_ID, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, table, canReserve, bestCell, cells, move, reserve, unreserve, release, expired, sellMax, sell, cellText, dealRef, reserveView, docView,
-    reserveFor, extend, forText, placed, history, removed, transitBy, transitText, watchOf, watch, unwatch, notifyAppeared, remindExpiring, due, tick };
+    reserveFor, extend, forText, placed, history, removed, transitBy, transitDetail, transitText, watchOf, watch, unwatch, notifyAppeared, remindExpiring, due, tick };
 })();
 
 // Пустая база: подписок «Сообщить, когда появится» нет
