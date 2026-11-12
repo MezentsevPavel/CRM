@@ -108,9 +108,47 @@ test('установка: код заменён (в том числе удале
   assert.equal(read(dataDir, 'update-backup/server/main.js'), 'OLD main', 'прежний код не отложен');
   assert.equal(read(dataDir, 'update-backup/server/old-only.js'), 'OLD only');
   assert.equal(JSON.parse(read(appDir, '.crm-version')).sha, SHA(5));
-  assert.equal(await u.check().then(c => c.upToDate), true, 'после установки версия не считается последней');
+  // сервер без присмотра не перезапустился: работает прежняя версия, новая лежит в папке — так и сказано, второй раз не качается
+  const after = await u.check();
+  assert.equal(after.upToDate, false, 'новая версия считается работающей, хотя сервер не перезапускали');
+  assert.equal(after.downloaded, true);
+  assert.equal(u.info().restartNeeded, true);
+  assert.equal(u.info().current.sha, SHA(2));
   assert.ok(fetchFn.seen.some(x => x.includes('/tar.gz/' + SHA(5))), 'архив взят не по номеру коммита');
-  await assert.rejects(u.apply(), /Уже стоит последняя версия/);
+  await assert.rejects(u.apply(), /перезапустите/i);
+  assert.throws(() => u.restartNow(), /без start\.cmd/);
+  // после перезапуска (новый процесс — новый createUpdater) работает новая
+  const fresh = createUpdater({ appDir, dataDir, backups, fetch: fetchFn, supervised: false });
+  assert.equal(fresh.info().restartNeeded, false);
+  assert.equal((await fresh.check()).upToDate, true);
+  await assert.rejects(fresh.apply(), /Уже стоит последняя версия/);
+});
+
+// Случай с компьютера директора 2026-11-12: папку обновили (git pull) при работающем сервере. Раньше кнопка смотрела на файлы
+// в папке и говорила «это последняя версия», а сервер так и работал на старой — нового было не видно.
+test('в папке новая версия, сервер на прежней: «нужен перезапуск», кнопка перезапускает (код 75), ничего не скачивая', async () => {
+  const appDir = installed(SHA(2)), exits = [], backups = stubBackups(), fetchFn = fakeFetch(Buffer.alloc(0));
+  const u = createUpdater({ appDir, dataDir: tmpdir(), backups, fetch: fetchFn, supervised: true, restart: c => exits.push(c) });
+  assert.equal(u.info().restartNeeded, false);
+  assert.throws(() => u.restartNow(), /перезапуск не нужен/);
+  put(appDir, '.crm-version', JSON.stringify({ sha: SHA(5), at: '2026-11-12T10:00:00Z', message: 'кнопка обновления' }));
+  const i = u.info();
+  assert.equal(i.current.sha, SHA(2), 'работающей названа версия из папки, а не та, с которой запущен сервер');
+  assert.equal(i.onDisk.sha, SHA(5));
+  assert.equal(i.restartNeeded, true);
+  const c = await u.check();
+  assert.equal(c.upToDate, false);
+  assert.equal(c.downloaded, true);
+  const r = await u.apply();
+  assert.equal(r.restarting, true);
+  assert.equal(r.to, SHA(5));
+  assert.ok(!fetchFn.seen.some(x => x.includes('/tar.gz/')), 'скачивал архив, хотя версия уже в папке');
+  assert.deepEqual(backups.made, []);
+  await wait(1100);
+  assert.deepEqual(exits, [75]);
+  assert.deepEqual(u.restartNow(), { ok: true, restarting: true, to: SHA(5) });
+  await wait(1100);
+  assert.deepEqual(exits, [75, 75]);
 });
 
 test('перезапуск: под присмотром (systemd, start.cmd) сервер выходит с кодом 75 после ответа; без присмотра — не выходит', async () => {
@@ -143,7 +181,7 @@ test('маршруты /api/update: только директор; провер�
   try {
     const boss = await director(srv);
     const ivan = await employee(srv, boss, { id: 'p5', name: 'Иван Кладовщиков (тест)', role: 'warehouse', dept: 'stock' });
-    for (const [m, route] of [['GET', '/api/update'], ['POST', '/api/update/check'], ['POST', '/api/update/apply']]) {
+    for (const [m, route] of [['GET', '/api/update'], ['POST', '/api/update/check'], ['POST', '/api/update/apply'], ['POST', '/api/update/restart']]) {
       assert.equal((await call(srv, m, route, { cookie: ivan.cookie })).status, 403, `${route} открыт сотруднику`);
     }
     const info = await call(srv, 'GET', '/api/update', { cookie: boss.cookie });
@@ -167,6 +205,9 @@ test('маршруты /api/update: только директор; провер�
     assert.match(app.body.backup, /^crm-.*\.db$/);
     const again = await call(srv, 'POST', '/api/update/apply', { cookie: boss.cookie });
     assert.equal(again.status, 409);
+    const stale = await call(srv, 'GET', '/api/update', { cookie: boss.cookie });
+    assert.equal(stale.body.restartNeeded, true, 'после установки без перезапуска экран не говорит, что нужен перезапуск');
+    assert.equal((await call(srv, 'POST', '/api/update/restart', { cookie: boss.cookie })).status, 409, 'без start.cmd перезапуск не должен обещаться');
   } finally { await srv.stop(); }
 });
 

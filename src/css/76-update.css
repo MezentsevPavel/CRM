@@ -7,3 +7,5 @@
 .upd-ov-box .spin{width:28px;height:28px;margin:0 0 12px;border-width:3px;color:var(--primary)}
 .upd-ov-t{margin:0 0 4px;font-size:14.5px;line-height:1.45}
 .upd-ov-box .btn{margin-top:12px}
+/* В папке новая версия, а сервер на прежней: заметный блок с кнопкой «Перезапустить сервер» */
+.upd-stale{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border:1px solid var(--line-2);border-radius:12px;background:var(--sunken)}

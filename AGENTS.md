@@ -12,7 +12,7 @@
 | Команда | Что делает |
 |---|---|
 | `node tools/build.js` | собирает `crm-wind-solar.html` из `src/` и `assets/` |
-| `node --test tests/` | все тесты (802), около 310 с |
+| `node --test tests/` | все тесты (803), около 330 с |
 | `node --test tests/stock.test.js` | один файл тестов (любой `tests/*.test.js`), около 4 с |
 | `node tools/catalog-snapshot.js <выгрузка.json>` | переписывает `src/js/10-catalog-data.js` выгрузкой из Google-таблицы PVCalc (артикулы и лист «Электрика»; формат выгрузки — в шапке скрипта; `--dry` — только отчёт); снимок руками не правят |
 | `node server/admin.js import-photos <папка с фото> <файл связки .json/.js>` | прикрепляет готовые фото к товарам по ключу каталога (у кого фото ещё нет; повтор ничего не удваивает; сервер может работать); связка PVCalc — `…/app/js/data/equipment-photos.js` |

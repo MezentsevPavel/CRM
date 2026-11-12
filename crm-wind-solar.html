@@ -1364,6 +1364,8 @@ html[data-mode="server"] .as,html[data-mode="server"] .demo,html[data-mode="serv
 .upd-ov-box .spin{width:28px;height:28px;margin:0 0 12px;border-width:3px;color:var(--primary)}
 .upd-ov-t{margin:0 0 4px;font-size:14.5px;line-height:1.45}
 .upd-ov-box .btn{margin-top:12px}
+/* В папке новая версия, а сервер на прежней: заметный блок с кнопкой «Перезапустить сервер» */
+.upd-stale{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border:1px solid var(--line-2);border-radius:12px;background:var(--sunken)}
 
 /* Таблицы с сортировкой и изменяемой шириной столбцов (77-tables.js): ширину берёт <colgroup>, ручка — правый край заголовка */
 .tbl.rsz{table-layout:fixed;width:auto;min-width:100%}
@@ -15895,20 +15897,24 @@ const upVer=v=>v?`${esc(v.message||v.title||'без названия')} <small c
 function vUpdate(){
   if(!up.info&&!up.err) upLoad();
   const i=up.info,c=up.check;
-  const cur=i?`<p class="m0">Установлена: <b>${upVer(i.current)}</b></p>`:`<p class="m0 muted">${esc(up.err||'загрузка…')}</p>`;
+  const cur=i?`<p class="m0">Работает: <b>${upVer(i.current)}</b></p>`:`<p class="m0 muted">${esc(up.err||'загрузка…')}</p>`;
+  // В папке уже другая версия, а сервер на прежней (обновили без перезапуска): нужна только кнопка «Перезапустить»
+  const stale=i&&i.restartNeeded&&!up.waiting?`<div class="upd-stale"><p class="m0"><span class="pill sm warn">Нужен перезапуск</span> В папке уже лежит версия ${upVer(i.onDisk)}, а сервер работает на прежней — поэтому нового не видно.</p>${i.supervised?`<p class="m0"><button type="button" class="btn pri" data-act="upd-restart"${up.busy?' disabled':''}>${up.busy?SPIN+'Перезапускаю…':'Перезапустить сервер'}</button> <small class="muted">CRM у всех не будет отвечать несколько секунд</small></p>`:'<p class="m0">Сервер запущен без start.cmd и сам не встанет: закройте его окно и запустите start.cmd.</p>'}</div>`:'';
   let found='';
-  if(c){
+  if(c&&c.downloaded){
+    found=`<p class="m0"><span class="pill sm info">Новая версия уже скачана</span> ${upVer(c.latest)} — осталось перезапустить сервер.</p>`;
+  }else if(c){
     const news=(c.news||[]).length?`<ul class="m0">${c.news.map(n=>`<li>${esc(n.title)}${n.at?` <small class="muted">${esc(fWhen(Date.parse(n.at)))}</small>`:''}</li>`).join('')}</ul>`:'<p class="m0 muted">Список изменений пуст.</p>';
     found=c.upToDate===true?'<p class="m0"><span class="pill sm ok">Это последняя версия</span></p>'
       :`<p class="m0"><span class="pill sm info">Есть новая версия</span> ${upVer(c.latest)}</p><p class="m0"><b>Что нового</b>${c.farBehind?' <small class="muted">(показаны последние изменения; ваша версия сильно отстаёт)</small>':c.upToDate===null?' <small class="muted">(версия на этом компьютере неизвестна — показаны последние изменения)</small>':''}</p>${news}`;
   }
-  const show=!!c&&c.upToDate!==true&&!!i;
+  const show=!!c&&c.upToDate!==true&&!!i&&!(i.restartNeeded&&c.downloaded);
   const dev=i&&i.git?'<p class="hint">Папка подключена к git: обновление идёт командой git pull с ветки master. Если в папке есть несохранённые правки кода или она стоит на другой ветке, кнопка остановится и ничего не тронет.</p>':'';
   const manual=i&&!i.supervised?'<p class="hint">Сервер запущен без start.cmd (на Ubuntu — без службы): после установки он сам не перезапустится, и новую версию придётся запустить вручную. Запускайте CRM через start.cmd — тогда обновление проходит само.</p>':'';
   const wait=up.waiting?'<p class="m0"><b>Идёт перезапуск сервера…</b> Страница обновится сама, когда сервер поднимется.</p>':up.manual?'<p class="m0"><b>Новая версия установлена, но сервер сам не перезапустится.</b> Остановите его (Ctrl+C) и запустите заново, лучше через start.cmd.</p>':'';
   return `<section class="card"><div class="card-h"><h3>Обновить ПО</h3></div><div class="card-b stack-s">
     <p class="m0">Новые версии CRM берутся с GitHub (${esc(i?i.repo:'MezentsevPavel/CRM')}). Перед установкой сервер делает копию базы; данные, сотрудники и файлы не меняются. На время перезапуска (около минуты) CRM у всех не отвечает.</p>
-    ${cur}${found}${wait}
+    ${cur}${stale}${found}${wait}
     <div><button type="button" class="btn${show?'':' pri'}" data-act="upd-check"${up.busy||up.waiting||!i?' disabled':''}>${up.busy&&!c?SPIN+'Проверяю…':'Проверить обновления'}</button>
     ${show?`<button type="button" class="btn pri" data-act="upd-apply"${up.busy||up.waiting?' disabled':''}>${up.busy?SPIN+'Устанавливаю…':'Обновить ПО'}</button>`:''}</div>
     ${dev}${manual}
@@ -15959,6 +15965,19 @@ A['upd-check']=async()=>{
   up.busy=false;render();
 };
 A['upd-apply']=()=>{if(can('admin')&&up.check) openModal('updApply')};
+// «Перезапустить сервер»: версия уже в папке — сервер выходит с кодом 75, start.cmd поднимает его с новым кодом, страница ждёт и обновляется
+A['upd-restart']=async()=>{
+  if(up.busy||!can('admin')||!up.info) return;
+  up.busy=true;render();
+  try{
+    const r=await srvApi('POST','/api/update/restart');
+    up.busy=false;
+    if(srvStatus(r)){render();return}
+    if(r.status!==200){toast(r.body.error||'Перезапустить не получилось.','warn');render();return}
+    up.waiting=true;up.check=null;render();
+    upWaitRestart(r.body.to);
+  }catch(_){up.busy=false;toast('Нет связи с сервером — перезапустить не получилось.','warn');render()}
+};
 FORMS['upd-apply']=async f=>{
   if(up.busy) return;
   up.busy=true;

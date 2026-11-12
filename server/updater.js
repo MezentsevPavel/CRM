@@ -56,16 +56,31 @@ function createUpdater({ appDir, dataDir, backups, restart, supervised = false, 
     const [sha, at, subject] = String(r.stdout).trim().split(/\r?\n/);
     return /^[0-9a-f]{40}$/.test(sha) ? { sha, at: at || null, message: titleOf(subject) } : null;
   }
-  function current() {
+  // Версия кода, который лежит в папке сейчас (git — HEAD, иначе .crm-version)
+  function onDisk() {
     if (gitMode()) return gitCurrent();
     try {
       const v = JSON.parse(fs.readFileSync(versionFile, 'utf8'));
       return v && typeof v.sha === 'string' && /^[0-9a-f]{7,40}$/.test(v.sha) ? { sha: v.sha, at: v.at || null, message: v.message || '' } : null;
     } catch { return null; }
   }
+  // Версия, с которой сервер запущен. Код и страница читаются один раз при старте, поэтому работает именно она, даже если файлы
+  // в папке уже новее (обновили git pull, скопировали руками, кнопкой без перезапуска). Случай с рабочего ПК директора 2026-11-12:
+  // в папке новая версия, сервер на старой, а кнопка говорила «последняя версия» — новое так и не появлялось.
+  const running = onDisk();
+  const current = () => running || onDisk();
+  // В папке другая версия, чем запущена: нужен только перезапуск
+  const restartNeeded = () => { const d = onDisk(); return !!(running && d && d.sha !== running.sha); };
   // Что показать на экране без запроса к GitHub
   function info() {
-    return { current: current(), supervised: !!supervised, git: gitMode(), repo: REPO_, branch: BRANCH_ };
+    return { current: current(), onDisk: onDisk(), restartNeeded: restartNeeded(), supervised: !!supervised, git: gitMode(), repo: REPO_, branch: BRANCH_ };
+  }
+  // Перезапустить сервер, чтобы заработала версия из папки (только под присмотром start.cmd / systemd: иначе он сам не встанет)
+  function restartNow() {
+    if (!restartNeeded()) throw new UpdateError(409, 'Сервер уже работает на версии из папки — перезапуск не нужен.');
+    if (!supervised) throw new UpdateError(409, 'Сервер запущен без start.cmd и сам не встанет. Перезапустите его вручную: закройте окно сервера и запустите start.cmd.');
+    if (typeof restart === 'function') setTimeout(() => restart(EXIT_CODE), 800);
+    return { ok: true, restarting: true, to: onDisk().sha };
   }
 
   async function get(url, what) {
@@ -89,12 +104,14 @@ function createUpdater({ appDir, dataDir, backups, restart, supervised = false, 
     if (!Array.isArray(list) || !list.length || typeof list[0].sha !== 'string') throw new UpdateError(502, 'GitHub вернул непонятный ответ о версиях.');
     const row = c => ({ sha: c.sha, title: titleOf(c.commit && c.commit.message), at: (c.commit && c.commit.committer && c.commit.committer.date) || null, service: SERVICE.test(String((c.commit && c.commit.message) || '')) });
     const rows = list.map(row);
-    const cur = current();
+    const cur = current(), disk = onDisk();
     const idx = cur ? rows.findIndex(r => r.sha === cur.sha) : -1;
     const fresh = cur ? (idx >= 0 ? rows.slice(0, idx) : rows) : rows.slice(0, 5);
     return {
       latest: rows[0],
       current: cur,
+      // последняя версия уже лежит в папке, сервер работает на прежней — скачивать нечего, нужен только перезапуск
+      downloaded: !!(cur && disk && disk.sha === rows[0].sha && cur.sha !== rows[0].sha),
       // true — стоит последняя; false — есть новее; null — установленную версию определить нельзя
       upToDate: cur ? cur.sha === rows[0].sha : null,
       news: fresh.filter(r => !r.service).map(r => ({ sha: r.sha, title: r.title, at: r.at })),
@@ -138,6 +155,11 @@ function createUpdater({ appDir, dataDir, backups, restart, supervised = false, 
     try {
       const target = await check();
       if (target.upToDate) throw new UpdateError(409, 'Уже стоит последняя версия.');
+      if (target.downloaded) {
+        if (!supervised) throw new UpdateError(409, 'Новая версия уже в папке, но сервер работает на прежней. Перезапустите его вручную: закройте окно сервера и запустите start.cmd.');
+        if (typeof restart === 'function') setTimeout(() => restart(EXIT_CODE), 800);
+        return { ok: true, from: target.current.sha, to: target.latest.sha, title: target.latest.title, backup: null, restarting: true };
+      }
       if (gitMode()) return await applyGit(target);
       const sha = target.latest.sha;
       if (!/^[0-9a-f]{40}$/.test(sha)) throw new UpdateError(502, 'GitHub вернул непонятный номер версии.');
@@ -202,7 +224,7 @@ function createUpdater({ appDir, dataDir, backups, restart, supervised = false, 
     }
   }
 
-  return { info, check, apply, EXIT_CODE };
+  return { info, check, apply, restartNow, EXIT_CODE };
 }
 
 module.exports = { createUpdater, UpdateError, EXIT_CODE, titleOf };

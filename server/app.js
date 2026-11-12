@@ -342,6 +342,9 @@ async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCooki
     if (route === '/api/update/apply' && method === 'POST') {
       try { return send(res, 200, await updater.apply(), extra); } catch (e) { return send(res, e.status || 500, { error: e.message }, extra); }
     }
+    if (route === '/api/update/restart' && method === 'POST') {
+      try { return send(res, 200, updater.restartNow(), extra); } catch (e) { return send(res, e.status || 500, { error: e.message }, extra); }
+    }
     if (route === '/api/backups' && method === 'GET') return send(res, 200, { backups: backups.list(), keep: backups.keep, hour: backups.hour }, extra);
     if (route === '/api/backups' && method === 'POST') {
       try { return send(res, 200, { backup: backups.make('manual') }, extra); } catch (e) { return send(res, e.status || 500, { error: e.message }, extra); }
