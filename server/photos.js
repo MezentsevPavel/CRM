@@ -39,11 +39,11 @@ function status(st, { dir, mapFile }) {
   try { map = readMap(mapFile); } catch { /* связки нет — готовых фото нет */ }
   const keys = Object.keys(map);
   const products = new Map((st.products || []).map(p => [String(p.id), p]));
-  const free = keys.filter(k => {
-    const p = products.get(k);
-    return p && !(Array.isArray(p.photos) && p.photos.length) && fs.existsSync(path.join(dir, map[k]));
-  });
-  return { total: keys.length, available: free.length };
+  const found = keys.filter(k => products.has(k));
+  const hasPhoto = p => Array.isArray(p.photos) && p.photos.length > 0;
+  const free = found.filter(k => !hasPhoto(products.get(k)) && fs.existsSync(path.join(dir, map[k])));
+  // total — готовых фото в программе; matched — для скольких из них в базе есть товар; withPhoto — из них уже с фото; available — можно прикрепить
+  return { total: keys.length, matched: found.length, withPhoto: found.filter(k => hasPhoto(products.get(k))).length, available: free.length };
 }
 
 // ctx — openCore(); dir — папка с фото; by — id человека, от чьего имени фото (директор).

@@ -54,7 +54,8 @@ function vReadyPhotos(){
   const what=!p?'<p class="m0 muted">нет данных: готовые фото (сервер не ответил)</p>'
     :!p.total?'<p class="m0 muted">В этой версии программы готовых фото нет.</p>'
     :p.available?`<p class="m0">В программе есть готовые фото товаров (${num(p.total)} шт.). Сейчас их можно прикрепить к <b>${num(p.available)}</b> товарам, у которых фото ещё нет. Фото, которые вы добавили сами, не меняются.</p>`
-    :`<p class="m0"><span class="pill sm ok">Все готовые фото уже у товаров</span> (${num(p.total)} шт. в программе).</p>`;
+    :!p.matched?`<p class="m0"><span class="pill sm warn">Прикреплять некуда</span> В вашей базе нет ни одного товара, для которого есть готовое фото (${num(p.total)} шт. в программе). Нет данных: каталог в этой базе не загружен или это другие товары.</p>`
+    :`<p class="m0"><span class="pill sm ok">Нечего прикреплять</span> У ${num(p.withPhoto)} из ${num(p.matched)} подходящих товаров фото уже есть${p.total>p.matched?`; для ещё ${num(p.total-p.matched)} готовых фото в вашей базе нет товара`:''}.</p>`;
   return `<section class="card"><div class="card-h"><h3>Готовые фото товаров</h3></div><div class="card-b stack-s">${what}
     <div><button type="button" class="btn pri" data-act="photos-bundled"${!p||!p.available||up.phBusy?' disabled':''}>${up.phBusy?'Загружаю…':'Загрузить готовые фото'}</button></div>
     <p class="hint">Новые готовые фото приходят вместе с обновлением («Обновить ПО» выше). Остальные фото добавляются в карточке товара.</p>

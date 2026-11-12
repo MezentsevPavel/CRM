@@ -95,11 +95,13 @@ test('готовые фото из поставки: только директо
 
     const st0 = await call(srv, 'GET', '/api/photos/bundled', { cookie: boss.cookie });
     assert.deepEqual([st0.body.total, st0.body.available], [3, 2], 'нет товара 123456 — не считается доступным');
+    assert.deepEqual([st0.body.matched, st0.body.withPhoto], [2, 0]);
 
     const done = await call(srv, 'POST', '/api/photos/bundled', { cookie: boss.cookie });
     assert.equal(done.status, 200);
     assert.equal(done.body.attached, 2);
     assert.equal(done.body.available, 0);
+    assert.deepEqual([done.body.matched, done.body.withPhoto], [2, 2], 'после загрузки у обоих товаров есть фото');
     const st = await state(srv, boss.cookie);
     assert.equal(st.products.find(x => x.id === KEY_A).photos.length, 1);
     const again = await call(srv, 'POST', '/api/photos/bundled', { cookie: boss.cookie });
