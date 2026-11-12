@@ -219,6 +219,7 @@ const Deals = (() => {
     const from = Pipes.stage(st, d.pipeId, d.stageId);
     d.stageId = to.id;
     delete d.wonAt;
+    delete d.wonFrom;
     log(st, d, 'stage', `Этап: «${from ? from.name : 'нет данных: этап'}» → «${to.name}»`, by, now, { from: from ? from.id : null, to: to.id });
     return { ok: true, reason: '' };
   }
@@ -232,10 +233,24 @@ const Deals = (() => {
     if (!fin) return fail('В воронке нет этапа «Успешно».');
     if (d.stageId === fin.id) return fail('Сделка уже успешно закрыта.');
     const from = stageName(st, d, d.stageId);
+    d.wonFrom = d.stageId;
     d.stageId = fin.id;
     d.wonAt = now;
     log(st, d, 'win', `Успешно: сделка закрыта («${from}» → «${fin.name}»)`, by, now);
     return { ok: true, reason: '' };
+  }
+
+  // Вернуть успешно закрытую сделку в работу: на этап, с которого её закрыли (wonFrom);
+  // у закрытых раньше, где этап не запомнен, — на этап перед «Успешно». Дальше — обычный move (запись в ленте, wonAt снимается).
+  function unwin(st, id, by, now) {
+    const { d, err } = open(st, id, by);
+    if (err) return err;
+    if (state(st, d) !== 'won') return fail('Сделка не закрыта успешно.');
+    const pipe = (st.pipelines || []).find(p => p.id === d.pipeId), stages = pipe ? pipe.stages : [];
+    const fi = stages.findIndex(s => s.flag === 'final');
+    const back = stages.find(s => s.id === d.wonFrom && s.flag !== 'final') || stages.slice(0, fi < 0 ? stages.length : fi).filter(s => s.flag !== 'final').pop();
+    if (!back) return fail('В воронке нет этапа, куда вернуть сделку.');
+    return move(st, id, back.id, by, now);
   }
 
   // «Провалена» с причиной: без причины — отказ. Этап остаётся, где сделка сорвалась. Успешно закрытую не проваливают.
@@ -456,7 +471,7 @@ const Deals = (() => {
 
   return {
     defaultReasons, reasons, lineSum, total, sumOf, noPrice, state, canEdit, itemName, itemLabel, reserved, lined, left, reservesOf, byId,
-    create, update, move, win, lose, reopen, RELEASED_NOTE, addItem, setItem, removeItem, reserve, reserveItem, keepTrail, noteRelease, unreserve, query, columns,
+    create, update, move, win, unwin, lose, reopen, RELEASED_NOTE, addItem, setItem, removeItem, reserve, reserveItem, keepTrail, noteRelease, unreserve, query, columns,
   };
 })();
 

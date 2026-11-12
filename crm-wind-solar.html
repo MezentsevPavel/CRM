@@ -285,6 +285,8 @@ button.chip:disabled{opacity:.5;cursor:not-allowed}
 .dh-t h2{margin:4px 0 0;font:800 18px/1.25 var(--f-display);letter-spacing:-.015em;text-wrap:balance}
 .dh-t p{margin:6px 0 0;font-size:13px;color:var(--ink-3)}
 .drawer-b{flex:1;display:flex;flex-direction:column;gap:22px;overflow-y:auto;padding:18px 20px 32px}
+/* в листаемой карточке блоки не сжимаются: иначе полоса этапов и вкладки (у них своя горизонтальная прокрутка) при длинной ленте схлопывались до нуля */
+.drawer-b>*{flex-shrink:0}
 .kv{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:8px 18px;margin:0;font-size:13.5px}
 .kv dt{color:var(--ink-3)}
 .kv dd{margin:0}
@@ -7084,6 +7086,7 @@ const Deals = (() => {
     const from = Pipes.stage(st, d.pipeId, d.stageId);
     d.stageId = to.id;
     delete d.wonAt;
+    delete d.wonFrom;
     log(st, d, 'stage', `Этап: «${from ? from.name : 'нет данных: этап'}» → «${to.name}»`, by, now, { from: from ? from.id : null, to: to.id });
     return { ok: true, reason: '' };
   }
@@ -7097,10 +7100,24 @@ const Deals = (() => {
     if (!fin) return fail('В воронке нет этапа «Успешно».');
     if (d.stageId === fin.id) return fail('Сделка уже успешно закрыта.');
     const from = stageName(st, d, d.stageId);
+    d.wonFrom = d.stageId;
     d.stageId = fin.id;
     d.wonAt = now;
     log(st, d, 'win', `Успешно: сделка закрыта («${from}» → «${fin.name}»)`, by, now);
     return { ok: true, reason: '' };
+  }
+
+  // Вернуть успешно закрытую сделку в работу: на этап, с которого её закрыли (wonFrom);
+  // у закрытых раньше, где этап не запомнен, — на этап перед «Успешно». Дальше — обычный move (запись в ленте, wonAt снимается).
+  function unwin(st, id, by, now) {
+    const { d, err } = open(st, id, by);
+    if (err) return err;
+    if (state(st, d) !== 'won') return fail('Сделка не закрыта успешно.');
+    const pipe = (st.pipelines || []).find(p => p.id === d.pipeId), stages = pipe ? pipe.stages : [];
+    const fi = stages.findIndex(s => s.flag === 'final');
+    const back = stages.find(s => s.id === d.wonFrom && s.flag !== 'final') || stages.slice(0, fi < 0 ? stages.length : fi).filter(s => s.flag !== 'final').pop();
+    if (!back) return fail('В воронке нет этапа, куда вернуть сделку.');
+    return move(st, id, back.id, by, now);
   }
 
   // «Провалена» с причиной: без причины — отказ. Этап остаётся, где сделка сорвалась. Успешно закрытую не проваливают.
@@ -7321,7 +7338,7 @@ const Deals = (() => {
 
   return {
     defaultReasons, reasons, lineSum, total, sumOf, noPrice, state, canEdit, itemName, itemLabel, reserved, lined, left, reservesOf, byId,
-    create, update, move, win, lose, reopen, RELEASED_NOTE, addItem, setItem, removeItem, reserve, reserveItem, keepTrail, noteRelease, unreserve, query, columns,
+    create, update, move, win, unwin, lose, reopen, RELEASED_NOTE, addItem, setItem, removeItem, reserve, reserveItem, keepTrail, noteRelease, unreserve, query, columns,
   };
 })();
 
@@ -12039,10 +12056,11 @@ function dealActions(d,edit){
   let h='';
   if(edit&&st==='open') h+=b('deal-win',ic('check')+'Успешно','pri')+b('deal-lose',ic('x')+'Провалена');
   if(edit&&st==='lost') h+=b('deal-reopen','Вернуть в работу','pri');
+  if(edit&&st==='won') h+=b('deal-unwin',ic('back')+'Вернуть в работу','pri');
   if(can('prices')) h+=b('deal-kp',ic('print')+'КП');
   if(st!=='lost') h+=b('deal-dispatch',ic('truck')+'Создать отправку');
   const note=st==='lost'?`<p class="lock bad-t">${ic('alert')}Провалена: ${esc(d.lostReason)}${d.lostAt?' · '+esc(fWhen(d.lostAt)):''}. Этап не меняется, пока сделку не вернут в работу.</p>`
-    :st==='won'?`<p class="lock ok-t">${ic('check')}Успешно закрыта${d.wonAt?' · '+esc(fWhen(d.wonAt)):''}. Чтобы вернуть в работу, выберите другой этап.</p>`:'';
+    :st==='won'?`<p class="lock ok-t">${ic('check')}Успешно закрыта${d.wonAt?' · '+esc(fWhen(d.wonAt)):''}.${edit?' Вернуть в работу — кнопкой выше или нажатием на другой этап.':''}</p>`:'';
   return `${h?`<div class="dact">${h}</div>`:''}${note}${edit?'':`<p class="lock">${ic('lock')}Сделка открыта на просмотр: двигать по этапам и править её могут те, у кого есть право «Заводить и править сделки».</p>`}`;
 }
 // Ссылка на клиента: на карточку клиента (DRAWERS.client — раздел «Клиенты»), пока её нет — просто имя
@@ -12210,6 +12228,7 @@ A['deal-lose']=el=>{
   if(Deals.state(S,d)==='won'){toast('Сделка успешно закрыта — провалить её нельзя, сначала верните на другой этап.','warn');return}
   openModal('dealLose',d.id);
 };
+A['deal-unwin']=el=>dealRun(Deals.unwin(S,el.dataset.id,S.me,new Date()),`Сделка ${el.dataset.id} возвращена в работу. Запись в ленте есть.`);
 A['deal-reopen']=el=>{
   const r=Deals.reopen(S,el.dataset.id,S.me,new Date());
   dealRun(r,`Сделка ${el.dataset.id} возвращена в работу. Запись в ленте есть.${r.released?' '+Deals.RELEASED_NOTE:''}`);

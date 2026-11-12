@@ -163,6 +163,8 @@ button.chip:disabled{opacity:.5;cursor:not-allowed}
 .dh-t h2{margin:4px 0 0;font:800 18px/1.25 var(--f-display);letter-spacing:-.015em;text-wrap:balance}
 .dh-t p{margin:6px 0 0;font-size:13px;color:var(--ink-3)}
 .drawer-b{flex:1;display:flex;flex-direction:column;gap:22px;overflow-y:auto;padding:18px 20px 32px}
+/* в листаемой карточке блоки не сжимаются: иначе полоса этапов и вкладки (у них своя горизонтальная прокрутка) при длинной ленте схлопывались до нуля */
+.drawer-b>*{flex-shrink:0}
 .kv{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:8px 18px;margin:0;font-size:13.5px}
 .kv dt{color:var(--ink-3)}
 .kv dd{margin:0}

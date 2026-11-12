@@ -149,10 +149,11 @@ function dealActions(d,edit){
   let h='';
   if(edit&&st==='open') h+=b('deal-win',ic('check')+'Успешно','pri')+b('deal-lose',ic('x')+'Провалена');
   if(edit&&st==='lost') h+=b('deal-reopen','Вернуть в работу','pri');
+  if(edit&&st==='won') h+=b('deal-unwin',ic('back')+'Вернуть в работу','pri');
   if(can('prices')) h+=b('deal-kp',ic('print')+'КП');
   if(st!=='lost') h+=b('deal-dispatch',ic('truck')+'Создать отправку');
   const note=st==='lost'?`<p class="lock bad-t">${ic('alert')}Провалена: ${esc(d.lostReason)}${d.lostAt?' · '+esc(fWhen(d.lostAt)):''}. Этап не меняется, пока сделку не вернут в работу.</p>`
-    :st==='won'?`<p class="lock ok-t">${ic('check')}Успешно закрыта${d.wonAt?' · '+esc(fWhen(d.wonAt)):''}. Чтобы вернуть в работу, выберите другой этап.</p>`:'';
+    :st==='won'?`<p class="lock ok-t">${ic('check')}Успешно закрыта${d.wonAt?' · '+esc(fWhen(d.wonAt)):''}.${edit?' Вернуть в работу — кнопкой выше или нажатием на другой этап.':''}</p>`:'';
   return `${h?`<div class="dact">${h}</div>`:''}${note}${edit?'':`<p class="lock">${ic('lock')}Сделка открыта на просмотр: двигать по этапам и править её могут те, у кого есть право «Заводить и править сделки».</p>`}`;
 }
 // Ссылка на клиента: на карточку клиента (DRAWERS.client — раздел «Клиенты»), пока её нет — просто имя
@@ -320,6 +321,7 @@ A['deal-lose']=el=>{
   if(Deals.state(S,d)==='won'){toast('Сделка успешно закрыта — провалить её нельзя, сначала верните на другой этап.','warn');return}
   openModal('dealLose',d.id);
 };
+A['deal-unwin']=el=>dealRun(Deals.unwin(S,el.dataset.id,S.me,new Date()),`Сделка ${el.dataset.id} возвращена в работу. Запись в ленте есть.`);
 A['deal-reopen']=el=>{
   const r=Deals.reopen(S,el.dataset.id,S.me,new Date());
   dealRun(r,`Сделка ${el.dataset.id} возвращена в работу. Запись в ленте есть.${r.released?' '+Deals.RELEASED_NOTE:''}`);
