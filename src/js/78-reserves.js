@@ -1,12 +1,11 @@
-// Раздел «Резервы»: всё, что сейчас в резерве, и постановка резерва сразу на много товаров — выбрать из списка, указать
-// количество и нажать одну кнопку. Слова директора 2026-11-12: «отдельно пункт Резервы, где можно просто выбрать из списка всё,
+// Раздел «Резервы»: всё, что сейчас в резерве, и постановка резерва сразу на много товаров — подобрать их в окне-каталоге
+// («Подбор товаров», 79-picker.js: как подбор в 1С), поправить количество и нажать одну кнопку. Слова директора 2026-11-12: «отдельно пункт Резервы, где можно просто выбрать из списка всё,
 // что нужно поставить в резерв».
 // Ставит то же ядро, что карточка товара: под сделку — Deals.reserve (не больше, чем осталось по строкам сделки), без сделки —
 // Stock.reserveFor (с текстом «для кого»). Берётся со склада; не хватает в одной клетке «юрлицо × город» — количество
 // набирается из нескольких (rsvSplit), по резерву на клетку. Резерв под поставку в пути — по-прежнему в карточке товара.
 // Выбор (что и сколько) — S.ui.rsv, личное, как фильтры: на сервер не уходит.
 
-const RSV_PAGE=50;
 const rsvU=()=>{
   const u=S.ui.rsv||(S.ui.rsv={kind:'free',deal:'',forWho:'',until:'',q:'',lq:'',lf:'all',more:0,pick:{}});
   if(!u.pick||typeof u.pick!=='object'||Array.isArray(u.pick)) u.pick={};
@@ -50,7 +49,7 @@ function rsvPlace(st,items,o,by,now){
   const day0=x=>{const t=new Date(x);t.setHours(0,0,0,0);return +t};
   if(!o.until||day0(o.until)<day0(now)) return fail('Дата окончания резерва не может быть в прошлом.');
   const list=(items||[]).filter(x=>x&&x.productId);
-  if(!list.length) return fail('Ничего не выбрано: укажите количество у нужных товаров.');
+  if(!list.length) return fail('Ничего не выбрано: нажмите «Подобрать товары» и выберите нужное.');
   for(const it of list){
     const p=(st.products||[]).find(x=>x.id===it.productId),q=Number(it.qty);
     if(!p){errs[it.productId]='Такого товара нет в каталоге.';continue}
@@ -78,37 +77,23 @@ function rsvPlace(st,items,o,by,now){
 
 // ——— экран ———
 const rsvProd=pid=>S.products.find(p=>p.id===pid);
-// Строки списка для выбора: под сделку — её товары, ещё не весь зарезервированные; без сделки — товары со свободным
-// остатком на складах (поиск по названию и артикулу — Catalog.query)
-function rsvCandidates(u){
-  if(u.kind==='deal'){
-    const d=deal(u.deal);
-    return d?rsvDealItems(d).map(rsvProd).filter(Boolean):[];
-  }
-  return Catalog.query(S,{q:u.q||''}).filter(p=>rsvFree(S,p.id)>0);
-}
-function rsvRow(p,u,d){
-  const free=rsvFree(S,p.id),rest=d?Deals.left(S,d,p.id):null,max=d?Math.min(free,rest):free,v=u.pick[p.id]||'',err=rsvErrs[p.id];
-  const dealTd=d?`<td class="num">${num(rest)}</td>`:'';
-  return `<tr class="${v?'on':''}"><td><button type="button" class="link" data-act="open-product" data-pid="${esc(p.id)}">${esc(p.name)}</button><small class="muted">${esc(skuText(p))}</small>${err?`<small class="bad-t">${esc(err)}</small>`:''}</td>${dealTd}<td class="num">${free>0?num(free):'<span class="muted">0</span>'}</td><td class="num"><input class="inp sm rsv-n" type="number" min="0" max="${max}" step="1" inputmode="numeric" value="${esc(v)}" data-on="rsv-n" data-pid="${esc(p.id)}" placeholder="0" aria-label="Сколько зарезервировать: ${esc(p.name)}"${max>0?'':' disabled'}></td></tr>`;
-}
+// Что выбрано под резерв: таблица с количеством у каждой строки и причиной, если строка не прошла. Товары добавляются окном
+// «Подбор товаров» (79-picker.js) — как подбор в 1С; под сделку в окне только её товары, ещё не весь зарезервированные.
 function rsvPickHtml(u){
   const d=u.kind==='deal'?deal(u.deal):null;
-  if(u.kind==='deal'&&!d) return '<p class="muted m0">Выберите сделку — здесь появятся её товары.</p>';
-  const all=rsvCandidates(u),lim=RSV_PAGE*((u.more||0)+1),list=all.slice(0,lim);
+  if(u.kind==='deal'&&!d) return '<p class="muted m0">Выберите сделку — тогда можно будет подобрать её товары.</p>';
   // «нет свободного» и «остатки не загружены» — разные вещи: во втором случае чисел нет ни у одного товара
-  const noStock=!d&&!S.products.some(p=>Stock.summary(S,p.id).known);
-  if(!all.length) return `<p class="muted m0">${d?'В этой сделке нет товаров, которые можно ещё зарезервировать.':noStock?'Нет данных: остатки на складах. Их загружают в «Настройки → Перенос» (таблица остатков) или «Товары и остатки → Оприходовать товар».':u.q?'По поиску ничего нет среди товаров со свободным остатком.':'Свободного товара на складах нет.'}</p>`;
-  const head=`<tr><th>Товар</th>${d?'<th class="num">Можно ещё по сделке</th>':''}<th class="num">Свободно на складах</th><th class="num">Сколько</th></tr>`;
-  const more=all.length>list.length?`<p class="m0"><button type="button" class="btn sm" data-act="rsv-more">Показать ещё (всего ${num(all.length)})</button></p>`:'';
-  return `<div class="xs"><table class="tbl rsv-tbl"><thead>${head}</thead><tbody>${list.map(p=>rsvRow(p,u,d)).join('')}</tbody></table></div>${more}`;
-}
-// «Выбрано»: что и сколько уйдёт в резерв по нажатию кнопки; у строки с ошибкой — причина
-function rsvBasketHtml(u){
+  const noStock=!S.products.some(p=>Stock.summary(S,p.id).known);
+  const warn=noStock?'<p class="hint warn-t m0">Нет данных: остатки на складах. Пока их нет, резерв со склада не поставится — их загружают в «Настройки → Перенос» (таблица остатков) или «Товары и остатки → Оприходовать товар».</p>':'';
   const ids=Object.keys(u.pick).filter(pid=>rsvProd(pid));
-  if(!ids.length) return '<p class="muted m0">Пока ничего не выбрано: укажите количество у нужных товаров в списке.</p>';
+  const btns=`<div class="rsv-btns"><button type="button" class="btn${ids.length?'':' pri'}" data-act="rsv-picker">${ic('plus')}Подобрать товары</button>${d?'<button type="button" class="btn" data-act="rsv-all">Взять всё по сделке</button>':''}${ids.length?'<button type="button" class="btn ghost" data-act="rsv-clear">Очистить</button>':''}</div>`;
+  if(!ids.length) return `${warn}<p class="muted m0">Пока ничего не выбрано. Нажмите «Подобрать товары» — откроется каталог: нажимайте на нужные товары, справа укажите количество и нажмите «Готово».</p>${btns}`;
   const total=ids.reduce((s,pid)=>s+(Number(u.pick[pid])||0),0);
-  return `<p class="m0"><b>Выбрано: ${num(ids.length)} ${pl(ids.length,'товар','товара','товаров')}, всего ${num(total)} шт.</b> <button type="button" class="link" data-act="rsv-clear">Очистить</button></p><ul class="rsv-chips">${ids.map(pid=>{const p=rsvProd(pid),e=rsvErrs[pid];return `<li class="${e?'bad':''}"><span>${esc(p.name)}</span><b>× ${num(u.pick[pid])}</b><button type="button" class="rsv-x" data-act="rsv-unpick" data-pid="${esc(pid)}" aria-label="Убрать «${esc(p.name)}»" title="Убрать">×</button>${e?`<small>${esc(e)}</small>`:''}</li>`}).join('')}</ul>`;
+  const row=pid=>{
+    const p=rsvProd(pid),free=rsvFree(S,pid),known=Stock.summary(S,pid).known,rest=d?Deals.left(S,d,pid):null,err=rsvErrs[pid],v=u.pick[pid];
+    return `<tr><td><button type="button" class="link" data-act="open-product" data-pid="${esc(pid)}">${esc(p.name)}</button><small class="muted">${esc(skuText(p))}</small>${err?`<small class="bad-t">${esc(err)}</small>`:''}</td>${d?`<td class="num">${num(rest)}</td>`:''}<td class="num">${known?num(free):'<span class="muted">нет данных</span>'}</td><td class="num"><input class="inp sm rsv-n" type="number" min="0" step="1" inputmode="numeric" value="${esc(v)}" data-on="rsv-n" data-pid="${esc(pid)}" aria-label="Сколько зарезервировать: ${esc(p.name)}"></td><td class="num"><button type="button" class="rsv-x" data-act="rsv-unpick" data-pid="${esc(pid)}" aria-label="Убрать «${esc(p.name)}»" title="Убрать">×</button></td></tr>`;
+  };
+  return `${warn}<div class="xs"><table class="tbl rsv-tbl"><thead><tr><th>Товар</th>${d?'<th class="num">Можно ещё по сделке</th>':''}<th class="num">Свободно на складах</th><th class="num">Сколько</th><th></th></tr></thead><tbody>${ids.map(row).join('')}</tbody></table></div><p class="m0" id="rsv-sum"><b>Выбрано: ${num(ids.length)} ${pl(ids.length,'товар','товара','товаров')}, всего ${num(total)} шт.</b></p>${btns}`;
 }
 function rsvFormHtml(u){
   if(!can('reserve')) return `<section class="card"><div class="card-b rsv-pad"><p class="lock m0">${ic('lock')}Ставить резервы может менеджер или директор. Ниже — всё, что сейчас в резерве.</p></div></section>`;
@@ -119,13 +104,10 @@ function rsvFormHtml(u){
   const who=u.kind==='deal'
     ?`<div class="field"><label for="rsv-deal">Сделка</label>${deals.length?`<select id="rsv-deal" class="inp" data-on="rsv-deal">${deals.map(d=>`<option value="${esc(d.id)}"${d.id===u.deal?' selected':''}>${esc(d.id)} · ${esc(d.client||'')}</option>`).join('')}</select>`:'<p class="muted m0">Нет ваших открытых сделок, где есть товар без резерва. Добавьте товар в сделку или выберите «Без сделки — для кого».</p>'}</div>`
     :`<div class="field"><label for="rsv-for">Для кого</label><input id="rsv-for" class="inp" maxlength="200" value="${esc(u.forWho||'')}" placeholder="под Иванова, монтаж в Шелехове" data-on="rsv-for" autocomplete="off"></div>`;
-  const search=u.kind==='deal'?(deal(u.deal)?`<p class="m0"><button type="button" class="btn sm" data-act="rsv-all">Взять всё по сделке</button> <small class="muted">сколько осталось по строкам, но не больше свободного</small></p>`:'')
-    :`<input id="rsv-q" class="inp" type="search" value="${esc(u.q||'')}" placeholder="Найти товар: название или артикул" data-on="rsv-q" autocomplete="off" aria-label="Поиск товара">`;
   return `<section class="card rsv-new"><div class="card-h"><h3>Поставить резерв</h3></div><form class="card-b" data-form="rsv" novalidate>
     ${seg}
     <div class="grid2">${who}<div class="field"><label for="rsv-until">Резерв до</label><input id="rsv-until" class="inp" type="date" value="${esc(until)}" data-on="rsv-until"></div></div>
-    <div class="stack-s">${search}<div id="rsv-pick">${rsvPickHtml(u)}</div></div>
-    <div id="rsv-basket" class="rsv-basket">${rsvBasketHtml(u)}</div>
+    <div id="rsv-pick" class="stack-s">${rsvPickHtml(u)}</div>
     <p class="err" id="rsv-err" hidden></p>
     <div class="rsv-go"><button class="btn pri" type="submit">${ic('lock')}Зарезервировать выбранное</button><small class="muted">Со склада, где свободного больше. Резерв под поставку в пути — в карточке товара.</small></div>
   </form></section>`;
@@ -156,12 +138,11 @@ function rsvListHtml(u){
 function vReserves(){const u=rsvU();return `<div class="rsv stack">${rsvFormHtml(u)}${rsvListHtml(u)}</div>`}
 
 // ——— действия ———
-const rsvRefresh=()=>{const u=rsvU(),a=byId('rsv-pick'),b=byId('rsv-basket');if(a) a.innerHTML=rsvPickHtml(u);if(b) b.innerHTML=rsvBasketHtml(u)};
+const rsvRefresh=()=>{const a=byId('rsv-pick');if(a) a.innerHTML=rsvPickHtml(rsvU())};
 // Сменили «под что» или сделку — выбор начинается заново: товары и пределы у сделки свои
 const rsvReset=u=>{u.pick={};u.more=0;rsvErrs={}};
 A['rsv-kind']=el=>{const u=rsvU();if(u.kind===el.dataset.k) return;u.kind=el.dataset.k;rsvReset(u);render()};
 A['rsv-lf']=el=>{rsvU().lf=el.dataset.k;render()};
-A['rsv-more']=()=>{const u=rsvU();u.more=(u.more||0)+1;rsvRefresh()};
 A['rsv-clear']=()=>{rsvReset(rsvU());rsvRefresh()};
 A['rsv-unpick']=el=>{delete rsvU().pick[el.dataset.pid];delete rsvErrs[el.dataset.pid];rsvRefresh()};
 A['rsv-all']=()=>{
@@ -172,15 +153,24 @@ A['rsv-all']=()=>{
 ON.change['rsv-deal']=t=>{const u=rsvU();u.deal=t.value;rsvReset(u);render()};
 ON.input['rsv-for']=t=>{rsvU().forWho=t.value};
 ON.change['rsv-until']=t=>{rsvU().until=t.value};
-ON.input['rsv-q']=t=>{const u=rsvU();u.q=t.value;u.more=0;const a=byId('rsv-pick');if(a) a.innerHTML=rsvPickHtml(u)};
 ON.input['rsv-lq']=t=>{const u=rsvU();u.lq=t.value;const a=byId('rsv-list');if(a) a.innerHTML=rsvTableHtml(u)};
 // Количество у строки: больше нуля — товар в «Выбрано», пусто или 0 — убран
 ON.input['rsv-n']=t=>{
   const u=rsvU(),pid=t.dataset.pid,n=parseInt(t.value,10);
   if(n>0) u.pick[pid]=n;else delete u.pick[pid];
   delete rsvErrs[pid];
-  const tr=t.closest&&t.closest('tr');if(tr&&tr.classList) tr.classList.toggle('on',n>0);
-  const b=byId('rsv-basket');if(b) b.innerHTML=rsvBasketHtml(u);
+  // строка не перерисовывается, чтобы не сбить ввод; пересчитывается только «Выбрано: …»; 0 — строка уйдёт при следующей перерисовке
+  const ids=Object.keys(u.pick).filter(pid=>rsvProd(pid)),sum=byId('rsv-sum');
+  if(sum) sum.innerHTML=`<b>Выбрано: ${num(ids.length)} ${pl(ids.length,'товар','товара','товаров')}, всего ${num(ids.reduce((s,x)=>s+u.pick[x],0))} шт.</b>`;
+};
+ON.change['rsv-n']=()=>rsvRefresh();
+// «Подобрать товары»: окно-каталог (79-picker.js) с тем, что уже выбрано; «Готово» заменяет выбор. Под сделку — только её товары
+A['rsv-picker']=()=>{
+  const u=rsvU(),d=u.kind==='deal'?deal(u.deal):null;
+  if(u.kind==='deal'&&!d) return toast('Сначала выберите сделку.','warn');
+  pickerOpen({title:d?'Подбор товаров под резерв: '+d.id:'Подбор товаров под резерв',sel:u.pick,only:d?rsvDealItems(d):null,stockToggle:!d,done:'Готово',
+    note:d?'Здесь только товары этой сделки, которые ещё не весь в резерве.':'Нажимайте на товары — справа появится выбранное, там же меняется количество.',
+    onDone:sel=>{u.pick=sel;rsvErrs={};rsvRefresh()}});
 };
 FORMS.rsv=()=>{
   const u=rsvU(),until=byId('rsv-until').value||u.until||iso(day(Stock.RESERVE_DAYS));
@@ -196,5 +186,5 @@ FORMS.rsv=()=>{
   toast(res.ok?`Зарезервировано ${num(n)} ${pl(n,'товар','товара','товаров')} ${whom} до ${fD(fromIso(until))}. Склад и директор получили уведомление.`:res.reason,res.ok?undefined:'warn');
 };
 
-NAV.push({id:'reserves',label:'Резервы',icon:'lock',group:'Товар',order:15,hint:'Что сейчас в резерве и для кого. Чтобы поставить резерв, укажите количество у нужных товаров и нажмите одну кнопку.',ok:()=>can('stock')});
+NAV.push({id:'reserves',label:'Резервы',icon:'lock',group:'Товар',order:15,hint:'Что сейчас в резерве и для кого. Чтобы поставить резерв, нажмите «Подобрать товары», выберите нужное в каталоге и нажмите «Зарезервировать выбранное».',ok:()=>can('stock')});
 VIEWS.reserves=vReserves;

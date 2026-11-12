@@ -227,7 +227,7 @@ function dealFound(d,q){
 }
 function dealItems(d,edit){
   const pr=can('prices'),items=d.items||[],id=esc(d.id);
-  const add=edit?`<div class="stack-s"><div class="field"><label for="deal-ps">Добавить товар из каталога</label><input id="deal-ps" class="inp" type="search" placeholder="Название, бренд или артикул" data-on="deal-ps" data-id="${id}" autocomplete="off"></div><div id="deal-pres" class="dpres">${dealFound(d,'')}</div>
+  const add=edit?`<div class="stack-s"><div><button type="button" class="btn pri" data-act="deal-picker" data-id="${id}">${ic('plus')}Подбор из каталога</button> <small class="muted">окно каталога: выбрать сразу много товаров и количество, как подбор в 1С</small></div><div class="field"><label for="deal-ps">Добавить товар из каталога</label><input id="deal-ps" class="inp" type="search" placeholder="Название, бренд или артикул" data-on="deal-ps" data-id="${id}" autocomplete="off"></div><div id="deal-pres" class="dpres">${dealFound(d,'')}</div>
     <form class="rform" data-form="deal-own" data-id="${id}" novalidate><p class="sh">Своя строка — не из каталога</p><div class="grid2"><div class="field span2"><label for="do-name">Название</label><input id="do-name" class="inp" placeholder="Например: монтаж и пусконаладка" autocomplete="off"></div><div class="field"><label for="do-qty">Кол-во</label><input id="do-qty" class="inp" type="number" min="0" step="any" value="1" inputmode="decimal"></div>${pr?'<div class="field"><label for="do-price">Цена, ₽</label><input id="do-price" class="inp" type="number" min="0" step="any" placeholder="нет данных: цена" inputmode="decimal"></div>':''}</div><p class="err" id="do-err" hidden></p><div><button type="submit" class="btn">${ic('plus')}Добавить строку</button></div></form></div>`:'';
   const total=pr?`<div class="dtot"><span>Итого</span><b id="di-total">${rub(Deals.total(d))}</b></div><p class="hint" id="di-warn">${esc(dealTotalText(d))}</p>`:`<p class="lock">${ic('lock')}Цены и суммы скрыты для вашей роли.</p>`;
   return `<div class="stack-s">${items.length?`<ul class="dlines">${items.map((it,i)=>dealLine(d,it,i,edit,pr)).join('')}</ul>`:'<p class="muted m0">Товаров в сделке пока нет.</p>'}${total}${add}
@@ -343,6 +343,32 @@ A['deal-add-p']=el=>{
   const id=el.dataset.id,r=Deals.addItem(S,id,{productId:el.dataset.pid},S.me,new Date());
   if(!r.ok){toast(r.reason,'warn');return}
   render();toast(`В сделку ${id} добавлено: ${Deals.itemLabel(S,dealById(id).items[r.idx])}. Количество и цену можно поправить в строке.`);
+};
+// Подбор в сделку (окно 79-picker.js): выбранное ложится строками сделки — тем же Deals.addItem, что поиск выше; товар, который
+// уже есть одной строкой, не дублируется — у строки прибавляется количество (Deals.setItem). Из строк собирается и КП.
+// → {added, merged, failed:[текст]}
+function dealAddPicked(id,sel,by,now){
+  const out={added:0,merged:0,failed:[]};
+  for(const [pid,n] of Object.entries(sel||{})){
+    const d=dealById(id);if(!d){out.failed.push('Сделки нет.');break}
+    const same=(d.items||[]).map((it,i)=>[it,i]).filter(([it])=>it.productId===pid);
+    const r=same.length===1?Deals.setItem(S,id,same[0][1],{qty:(Number(same[0][0].qty)||0)+n},by,now):Deals.addItem(S,id,{productId:pid,qty:n},by,now);
+    if(!r.ok){out.failed.push(`${Catalog.label(product(pid))}: ${r.reason}`);continue}
+    same.length===1?out.merged++:out.added++;
+  }
+  return out;
+}
+A['deal-picker']=el=>{
+  const id=el.dataset.id,d=dealById(id);if(!d) return;
+  pickerOpen({title:'Подбор товаров в сделку '+id,done:'Добавить в сделку',note:'Нажимайте на товары — справа появится выбранное, там же меняется количество. Цена берётся из каталога, её можно поправить в строке сделки.',
+    onDone:sel=>{
+      if(!Object.keys(sel).length) return;
+      const r=dealAddPicked(id,sel,S.me,new Date());
+      render();
+      const n=r.added+r.merged;
+      if(r.failed.length) toast(`Добавлено ${num(n)}, не добавлено ${num(r.failed.length)}: ${r.failed.join('; ')}`,'warn');
+      else toast(`В сделку ${id} добавлено товаров: ${num(n)}${r.merged?` (у ${num(r.merged)} уже бывших строк прибавлено количество)`:''}. КП собирается из этих строк.`);
+    }});
 };
 A['deal-del-i']=el=>{
   const id=el.dataset.id,d=dealById(id),it=d&&(d.items||[])[+el.dataset.i];

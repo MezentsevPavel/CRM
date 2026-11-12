@@ -1380,26 +1380,64 @@ html[data-mode="server"] .as,html[data-mode="server"] .demo,html[data-mode="serv
 .tbl th .rz::after{content:"";position:absolute;top:22%;bottom:22%;right:4px;width:2px;border-radius:1px;background:var(--line-2);transition:background .12s}
 .tbl th .rz:hover::after{background:var(--primary)}
 
-/* Раздел «Резервы» (78-reserves.js): выбор товаров списком и все текущие резервы */
+/* Раздел «Резервы» (78-reserves.js): выбранные товары с количеством и все текущие резервы */
 .rsv-new form{display:flex;flex-direction:column;gap:14px}
 /* переключатель — по своей ширине, а не во всю строку; поля — не шире, чем нужно для текста и даты */
 .rsv-new .seg,.rsv-flt .seg{align-self:flex-start;flex:0 0 auto}
 .rsv-new .grid2{max-width:760px}
-.rsv-new #rsv-q{max-width:520px}
 .rsv-pad{padding-top:16px}
 .rsv-tbl td small{display:block}
-.rsv-tbl tr.on td{background:var(--primary-soft)}
 .rsv-n{width:90px;text-align:right}
-.rsv-basket{padding:12px 14px;border:1px dashed var(--line-2);border-radius:12px;background:var(--sunken)}
-.rsv-chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0;padding:0;list-style:none}
-.rsv-chips li{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px;padding:4px 6px 4px 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface-2);font-size:13px}
-.rsv-chips li.bad{border-color:var(--bad)}
-.rsv-chips li small{flex-basis:100%;color:var(--bad);padding-right:8px}
+.rsv-btns{display:flex;flex-wrap:wrap;gap:8px}
 .rsv-x{border:0;background:transparent;color:var(--ink-3);font-size:16px;line-height:1;padding:2px 6px;border-radius:999px;cursor:pointer}
 .rsv-x:hover{background:var(--line);color:var(--ink)}
 .rsv-go{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
 .rsv-flt{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:12px}
 .rsv-flt .inp{flex:1 1 220px;max-width:360px}
+
+/* «Подбор товаров» (79-picker.js): широкое окно в три колонки — категории, каталог, выбранное. На узком экране — одна колонка */
+.modal:has(.pk-wrap){width:min(1320px,100%);height:min(860px,100%);overflow:hidden}
+.pk-wrap{display:flex;flex-direction:column;height:100%;min-height:0}
+.pk{flex:1;min-height:0;display:grid;grid-template-columns:230px minmax(0,1fr) 320px}
+.pk-side,.pk-main,.pk-right{min-height:0;overflow-y:auto;padding:14px 16px}
+.pk-side{border-right:1px solid var(--line);background:var(--sunken)}
+.pk-right{border-left:1px solid var(--line)}
+.pk-main{display:flex;flex-direction:column;gap:10px}
+.pk-catsel{display:none}
+.pk-tree{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1px}
+.pk-cat{display:block;width:100%;text-align:left;border:0;background:transparent;color:var(--ink-2);font-size:13px;padding:6px 8px 6px calc(8px + var(--d,0) * 14px);border-radius:8px;cursor:pointer}
+.pk-cat:hover{background:var(--line)}
+.pk-cat.on{background:var(--primary-soft);color:var(--ink);font-weight:600}
+.pk-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.pk-bar .inp{flex:1 1 260px}
+.pk-chk{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-2);white-space:nowrap;cursor:pointer}
+.pk-list{min-height:0}
+.pk-tbl td small{display:block}
+.pk-row{cursor:pointer}
+.pk-row:hover td{background:var(--sunken)}
+.pk-row.on td{background:var(--primary-soft)}
+.pk-n{font-weight:500}
+.pk-in{width:72px;color:var(--primary)}
+.pk-in b{color:var(--ink)}
+.pk-empty,.pk-more{margin:8px 0}
+.pk-sel{list-style:none;margin:0 0 10px;padding:0;display:flex;flex-direction:column;gap:8px}
+.pk-sel li{display:grid;grid-template-columns:minmax(0,1fr) 72px 28px;align-items:center;gap:8px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.pk-sn{min-width:0;font-size:13px}
+.pk-sn span{display:block;overflow-wrap:anywhere}
+.pk-sn small{display:block}
+.pk-q{width:72px;text-align:right}
+.pk-x{border:0;background:transparent;color:var(--ink-3);font-size:18px;line-height:1;padding:2px 6px;border-radius:999px;cursor:pointer}
+.pk-x:hover{background:var(--line);color:var(--ink)}
+.pk-sum{font-size:13px}
+@media (max-width:900px){
+  .modal:has(.pk-wrap){height:100%}
+  .pk{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto;overflow-y:auto}
+  .pk-side{border-right:0;border-bottom:1px solid var(--line);overflow:visible}
+  .pk-catsel{display:block}
+  #pk-tree{display:none}
+  .pk-main,.pk-right{overflow:visible}
+  .pk-right{border-left:0;border-top:1px solid var(--line)}
+}
 </style>
 
 <div class="app" id="app">
@@ -12079,7 +12117,7 @@ function dealFound(d,q){
 }
 function dealItems(d,edit){
   const pr=can('prices'),items=d.items||[],id=esc(d.id);
-  const add=edit?`<div class="stack-s"><div class="field"><label for="deal-ps">Добавить товар из каталога</label><input id="deal-ps" class="inp" type="search" placeholder="Название, бренд или артикул" data-on="deal-ps" data-id="${id}" autocomplete="off"></div><div id="deal-pres" class="dpres">${dealFound(d,'')}</div>
+  const add=edit?`<div class="stack-s"><div><button type="button" class="btn pri" data-act="deal-picker" data-id="${id}">${ic('plus')}Подбор из каталога</button> <small class="muted">окно каталога: выбрать сразу много товаров и количество, как подбор в 1С</small></div><div class="field"><label for="deal-ps">Добавить товар из каталога</label><input id="deal-ps" class="inp" type="search" placeholder="Название, бренд или артикул" data-on="deal-ps" data-id="${id}" autocomplete="off"></div><div id="deal-pres" class="dpres">${dealFound(d,'')}</div>
     <form class="rform" data-form="deal-own" data-id="${id}" novalidate><p class="sh">Своя строка — не из каталога</p><div class="grid2"><div class="field span2"><label for="do-name">Название</label><input id="do-name" class="inp" placeholder="Например: монтаж и пусконаладка" autocomplete="off"></div><div class="field"><label for="do-qty">Кол-во</label><input id="do-qty" class="inp" type="number" min="0" step="any" value="1" inputmode="decimal"></div>${pr?'<div class="field"><label for="do-price">Цена, ₽</label><input id="do-price" class="inp" type="number" min="0" step="any" placeholder="нет данных: цена" inputmode="decimal"></div>':''}</div><p class="err" id="do-err" hidden></p><div><button type="submit" class="btn">${ic('plus')}Добавить строку</button></div></form></div>`:'';
   const total=pr?`<div class="dtot"><span>Итого</span><b id="di-total">${rub(Deals.total(d))}</b></div><p class="hint" id="di-warn">${esc(dealTotalText(d))}</p>`:`<p class="lock">${ic('lock')}Цены и суммы скрыты для вашей роли.</p>`;
   return `<div class="stack-s">${items.length?`<ul class="dlines">${items.map((it,i)=>dealLine(d,it,i,edit,pr)).join('')}</ul>`:'<p class="muted m0">Товаров в сделке пока нет.</p>'}${total}${add}
@@ -12195,6 +12233,32 @@ A['deal-add-p']=el=>{
   const id=el.dataset.id,r=Deals.addItem(S,id,{productId:el.dataset.pid},S.me,new Date());
   if(!r.ok){toast(r.reason,'warn');return}
   render();toast(`В сделку ${id} добавлено: ${Deals.itemLabel(S,dealById(id).items[r.idx])}. Количество и цену можно поправить в строке.`);
+};
+// Подбор в сделку (окно 79-picker.js): выбранное ложится строками сделки — тем же Deals.addItem, что поиск выше; товар, который
+// уже есть одной строкой, не дублируется — у строки прибавляется количество (Deals.setItem). Из строк собирается и КП.
+// → {added, merged, failed:[текст]}
+function dealAddPicked(id,sel,by,now){
+  const out={added:0,merged:0,failed:[]};
+  for(const [pid,n] of Object.entries(sel||{})){
+    const d=dealById(id);if(!d){out.failed.push('Сделки нет.');break}
+    const same=(d.items||[]).map((it,i)=>[it,i]).filter(([it])=>it.productId===pid);
+    const r=same.length===1?Deals.setItem(S,id,same[0][1],{qty:(Number(same[0][0].qty)||0)+n},by,now):Deals.addItem(S,id,{productId:pid,qty:n},by,now);
+    if(!r.ok){out.failed.push(`${Catalog.label(product(pid))}: ${r.reason}`);continue}
+    same.length===1?out.merged++:out.added++;
+  }
+  return out;
+}
+A['deal-picker']=el=>{
+  const id=el.dataset.id,d=dealById(id);if(!d) return;
+  pickerOpen({title:'Подбор товаров в сделку '+id,done:'Добавить в сделку',note:'Нажимайте на товары — справа появится выбранное, там же меняется количество. Цена берётся из каталога, её можно поправить в строке сделки.',
+    onDone:sel=>{
+      if(!Object.keys(sel).length) return;
+      const r=dealAddPicked(id,sel,S.me,new Date());
+      render();
+      const n=r.added+r.merged;
+      if(r.failed.length) toast(`Добавлено ${num(n)}, не добавлено ${num(r.failed.length)}: ${r.failed.join('; ')}`,'warn');
+      else toast(`В сделку ${id} добавлено товаров: ${num(n)}${r.merged?` (у ${num(r.merged)} уже бывших строк прибавлено количество)`:''}. КП собирается из этих строк.`);
+    }});
 };
 A['deal-del-i']=el=>{
   const id=el.dataset.id,d=dealById(id),it=d&&(d.items||[])[+el.dataset.i];
@@ -16105,15 +16169,14 @@ document.addEventListener('dblclick',e=>{
 // Клик по ручке (после перетаскивания) не должен сортировать: ручка стоит внутри названия столбца
 A['rz-noop']=()=>{};
 
-// Раздел «Резервы»: всё, что сейчас в резерве, и постановка резерва сразу на много товаров — выбрать из списка, указать
-// количество и нажать одну кнопку. Слова директора 2026-11-12: «отдельно пункт Резервы, где можно просто выбрать из списка всё,
+// Раздел «Резервы»: всё, что сейчас в резерве, и постановка резерва сразу на много товаров — подобрать их в окне-каталоге
+// («Подбор товаров», 79-picker.js: как подбор в 1С), поправить количество и нажать одну кнопку. Слова директора 2026-11-12: «отдельно пункт Резервы, где можно просто выбрать из списка всё,
 // что нужно поставить в резерв».
 // Ставит то же ядро, что карточка товара: под сделку — Deals.reserve (не больше, чем осталось по строкам сделки), без сделки —
 // Stock.reserveFor (с текстом «для кого»). Берётся со склада; не хватает в одной клетке «юрлицо × город» — количество
 // набирается из нескольких (rsvSplit), по резерву на клетку. Резерв под поставку в пути — по-прежнему в карточке товара.
 // Выбор (что и сколько) — S.ui.rsv, личное, как фильтры: на сервер не уходит.
 
-const RSV_PAGE=50;
 const rsvU=()=>{
   const u=S.ui.rsv||(S.ui.rsv={kind:'free',deal:'',forWho:'',until:'',q:'',lq:'',lf:'all',more:0,pick:{}});
   if(!u.pick||typeof u.pick!=='object'||Array.isArray(u.pick)) u.pick={};
@@ -16157,7 +16220,7 @@ function rsvPlace(st,items,o,by,now){
   const day0=x=>{const t=new Date(x);t.setHours(0,0,0,0);return +t};
   if(!o.until||day0(o.until)<day0(now)) return fail('Дата окончания резерва не может быть в прошлом.');
   const list=(items||[]).filter(x=>x&&x.productId);
-  if(!list.length) return fail('Ничего не выбрано: укажите количество у нужных товаров.');
+  if(!list.length) return fail('Ничего не выбрано: нажмите «Подобрать товары» и выберите нужное.');
   for(const it of list){
     const p=(st.products||[]).find(x=>x.id===it.productId),q=Number(it.qty);
     if(!p){errs[it.productId]='Такого товара нет в каталоге.';continue}
@@ -16185,37 +16248,23 @@ function rsvPlace(st,items,o,by,now){
 
 // ——— экран ———
 const rsvProd=pid=>S.products.find(p=>p.id===pid);
-// Строки списка для выбора: под сделку — её товары, ещё не весь зарезервированные; без сделки — товары со свободным
-// остатком на складах (поиск по названию и артикулу — Catalog.query)
-function rsvCandidates(u){
-  if(u.kind==='deal'){
-    const d=deal(u.deal);
-    return d?rsvDealItems(d).map(rsvProd).filter(Boolean):[];
-  }
-  return Catalog.query(S,{q:u.q||''}).filter(p=>rsvFree(S,p.id)>0);
-}
-function rsvRow(p,u,d){
-  const free=rsvFree(S,p.id),rest=d?Deals.left(S,d,p.id):null,max=d?Math.min(free,rest):free,v=u.pick[p.id]||'',err=rsvErrs[p.id];
-  const dealTd=d?`<td class="num">${num(rest)}</td>`:'';
-  return `<tr class="${v?'on':''}"><td><button type="button" class="link" data-act="open-product" data-pid="${esc(p.id)}">${esc(p.name)}</button><small class="muted">${esc(skuText(p))}</small>${err?`<small class="bad-t">${esc(err)}</small>`:''}</td>${dealTd}<td class="num">${free>0?num(free):'<span class="muted">0</span>'}</td><td class="num"><input class="inp sm rsv-n" type="number" min="0" max="${max}" step="1" inputmode="numeric" value="${esc(v)}" data-on="rsv-n" data-pid="${esc(p.id)}" placeholder="0" aria-label="Сколько зарезервировать: ${esc(p.name)}"${max>0?'':' disabled'}></td></tr>`;
-}
+// Что выбрано под резерв: таблица с количеством у каждой строки и причиной, если строка не прошла. Товары добавляются окном
+// «Подбор товаров» (79-picker.js) — как подбор в 1С; под сделку в окне только её товары, ещё не весь зарезервированные.
 function rsvPickHtml(u){
   const d=u.kind==='deal'?deal(u.deal):null;
-  if(u.kind==='deal'&&!d) return '<p class="muted m0">Выберите сделку — здесь появятся её товары.</p>';
-  const all=rsvCandidates(u),lim=RSV_PAGE*((u.more||0)+1),list=all.slice(0,lim);
+  if(u.kind==='deal'&&!d) return '<p class="muted m0">Выберите сделку — тогда можно будет подобрать её товары.</p>';
   // «нет свободного» и «остатки не загружены» — разные вещи: во втором случае чисел нет ни у одного товара
-  const noStock=!d&&!S.products.some(p=>Stock.summary(S,p.id).known);
-  if(!all.length) return `<p class="muted m0">${d?'В этой сделке нет товаров, которые можно ещё зарезервировать.':noStock?'Нет данных: остатки на складах. Их загружают в «Настройки → Перенос» (таблица остатков) или «Товары и остатки → Оприходовать товар».':u.q?'По поиску ничего нет среди товаров со свободным остатком.':'Свободного товара на складах нет.'}</p>`;
-  const head=`<tr><th>Товар</th>${d?'<th class="num">Можно ещё по сделке</th>':''}<th class="num">Свободно на складах</th><th class="num">Сколько</th></tr>`;
-  const more=all.length>list.length?`<p class="m0"><button type="button" class="btn sm" data-act="rsv-more">Показать ещё (всего ${num(all.length)})</button></p>`:'';
-  return `<div class="xs"><table class="tbl rsv-tbl"><thead>${head}</thead><tbody>${list.map(p=>rsvRow(p,u,d)).join('')}</tbody></table></div>${more}`;
-}
-// «Выбрано»: что и сколько уйдёт в резерв по нажатию кнопки; у строки с ошибкой — причина
-function rsvBasketHtml(u){
+  const noStock=!S.products.some(p=>Stock.summary(S,p.id).known);
+  const warn=noStock?'<p class="hint warn-t m0">Нет данных: остатки на складах. Пока их нет, резерв со склада не поставится — их загружают в «Настройки → Перенос» (таблица остатков) или «Товары и остатки → Оприходовать товар».</p>':'';
   const ids=Object.keys(u.pick).filter(pid=>rsvProd(pid));
-  if(!ids.length) return '<p class="muted m0">Пока ничего не выбрано: укажите количество у нужных товаров в списке.</p>';
+  const btns=`<div class="rsv-btns"><button type="button" class="btn${ids.length?'':' pri'}" data-act="rsv-picker">${ic('plus')}Подобрать товары</button>${d?'<button type="button" class="btn" data-act="rsv-all">Взять всё по сделке</button>':''}${ids.length?'<button type="button" class="btn ghost" data-act="rsv-clear">Очистить</button>':''}</div>`;
+  if(!ids.length) return `${warn}<p class="muted m0">Пока ничего не выбрано. Нажмите «Подобрать товары» — откроется каталог: нажимайте на нужные товары, справа укажите количество и нажмите «Готово».</p>${btns}`;
   const total=ids.reduce((s,pid)=>s+(Number(u.pick[pid])||0),0);
-  return `<p class="m0"><b>Выбрано: ${num(ids.length)} ${pl(ids.length,'товар','товара','товаров')}, всего ${num(total)} шт.</b> <button type="button" class="link" data-act="rsv-clear">Очистить</button></p><ul class="rsv-chips">${ids.map(pid=>{const p=rsvProd(pid),e=rsvErrs[pid];return `<li class="${e?'bad':''}"><span>${esc(p.name)}</span><b>× ${num(u.pick[pid])}</b><button type="button" class="rsv-x" data-act="rsv-unpick" data-pid="${esc(pid)}" aria-label="Убрать «${esc(p.name)}»" title="Убрать">×</button>${e?`<small>${esc(e)}</small>`:''}</li>`}).join('')}</ul>`;
+  const row=pid=>{
+    const p=rsvProd(pid),free=rsvFree(S,pid),known=Stock.summary(S,pid).known,rest=d?Deals.left(S,d,pid):null,err=rsvErrs[pid],v=u.pick[pid];
+    return `<tr><td><button type="button" class="link" data-act="open-product" data-pid="${esc(pid)}">${esc(p.name)}</button><small class="muted">${esc(skuText(p))}</small>${err?`<small class="bad-t">${esc(err)}</small>`:''}</td>${d?`<td class="num">${num(rest)}</td>`:''}<td class="num">${known?num(free):'<span class="muted">нет данных</span>'}</td><td class="num"><input class="inp sm rsv-n" type="number" min="0" step="1" inputmode="numeric" value="${esc(v)}" data-on="rsv-n" data-pid="${esc(pid)}" aria-label="Сколько зарезервировать: ${esc(p.name)}"></td><td class="num"><button type="button" class="rsv-x" data-act="rsv-unpick" data-pid="${esc(pid)}" aria-label="Убрать «${esc(p.name)}»" title="Убрать">×</button></td></tr>`;
+  };
+  return `${warn}<div class="xs"><table class="tbl rsv-tbl"><thead><tr><th>Товар</th>${d?'<th class="num">Можно ещё по сделке</th>':''}<th class="num">Свободно на складах</th><th class="num">Сколько</th><th></th></tr></thead><tbody>${ids.map(row).join('')}</tbody></table></div><p class="m0" id="rsv-sum"><b>Выбрано: ${num(ids.length)} ${pl(ids.length,'товар','товара','товаров')}, всего ${num(total)} шт.</b></p>${btns}`;
 }
 function rsvFormHtml(u){
   if(!can('reserve')) return `<section class="card"><div class="card-b rsv-pad"><p class="lock m0">${ic('lock')}Ставить резервы может менеджер или директор. Ниже — всё, что сейчас в резерве.</p></div></section>`;
@@ -16226,13 +16275,10 @@ function rsvFormHtml(u){
   const who=u.kind==='deal'
     ?`<div class="field"><label for="rsv-deal">Сделка</label>${deals.length?`<select id="rsv-deal" class="inp" data-on="rsv-deal">${deals.map(d=>`<option value="${esc(d.id)}"${d.id===u.deal?' selected':''}>${esc(d.id)} · ${esc(d.client||'')}</option>`).join('')}</select>`:'<p class="muted m0">Нет ваших открытых сделок, где есть товар без резерва. Добавьте товар в сделку или выберите «Без сделки — для кого».</p>'}</div>`
     :`<div class="field"><label for="rsv-for">Для кого</label><input id="rsv-for" class="inp" maxlength="200" value="${esc(u.forWho||'')}" placeholder="под Иванова, монтаж в Шелехове" data-on="rsv-for" autocomplete="off"></div>`;
-  const search=u.kind==='deal'?(deal(u.deal)?`<p class="m0"><button type="button" class="btn sm" data-act="rsv-all">Взять всё по сделке</button> <small class="muted">сколько осталось по строкам, но не больше свободного</small></p>`:'')
-    :`<input id="rsv-q" class="inp" type="search" value="${esc(u.q||'')}" placeholder="Найти товар: название или артикул" data-on="rsv-q" autocomplete="off" aria-label="Поиск товара">`;
   return `<section class="card rsv-new"><div class="card-h"><h3>Поставить резерв</h3></div><form class="card-b" data-form="rsv" novalidate>
     ${seg}
     <div class="grid2">${who}<div class="field"><label for="rsv-until">Резерв до</label><input id="rsv-until" class="inp" type="date" value="${esc(until)}" data-on="rsv-until"></div></div>
-    <div class="stack-s">${search}<div id="rsv-pick">${rsvPickHtml(u)}</div></div>
-    <div id="rsv-basket" class="rsv-basket">${rsvBasketHtml(u)}</div>
+    <div id="rsv-pick" class="stack-s">${rsvPickHtml(u)}</div>
     <p class="err" id="rsv-err" hidden></p>
     <div class="rsv-go"><button class="btn pri" type="submit">${ic('lock')}Зарезервировать выбранное</button><small class="muted">Со склада, где свободного больше. Резерв под поставку в пути — в карточке товара.</small></div>
   </form></section>`;
@@ -16263,12 +16309,11 @@ function rsvListHtml(u){
 function vReserves(){const u=rsvU();return `<div class="rsv stack">${rsvFormHtml(u)}${rsvListHtml(u)}</div>`}
 
 // ——— действия ———
-const rsvRefresh=()=>{const u=rsvU(),a=byId('rsv-pick'),b=byId('rsv-basket');if(a) a.innerHTML=rsvPickHtml(u);if(b) b.innerHTML=rsvBasketHtml(u)};
+const rsvRefresh=()=>{const a=byId('rsv-pick');if(a) a.innerHTML=rsvPickHtml(rsvU())};
 // Сменили «под что» или сделку — выбор начинается заново: товары и пределы у сделки свои
 const rsvReset=u=>{u.pick={};u.more=0;rsvErrs={}};
 A['rsv-kind']=el=>{const u=rsvU();if(u.kind===el.dataset.k) return;u.kind=el.dataset.k;rsvReset(u);render()};
 A['rsv-lf']=el=>{rsvU().lf=el.dataset.k;render()};
-A['rsv-more']=()=>{const u=rsvU();u.more=(u.more||0)+1;rsvRefresh()};
 A['rsv-clear']=()=>{rsvReset(rsvU());rsvRefresh()};
 A['rsv-unpick']=el=>{delete rsvU().pick[el.dataset.pid];delete rsvErrs[el.dataset.pid];rsvRefresh()};
 A['rsv-all']=()=>{
@@ -16279,15 +16324,24 @@ A['rsv-all']=()=>{
 ON.change['rsv-deal']=t=>{const u=rsvU();u.deal=t.value;rsvReset(u);render()};
 ON.input['rsv-for']=t=>{rsvU().forWho=t.value};
 ON.change['rsv-until']=t=>{rsvU().until=t.value};
-ON.input['rsv-q']=t=>{const u=rsvU();u.q=t.value;u.more=0;const a=byId('rsv-pick');if(a) a.innerHTML=rsvPickHtml(u)};
 ON.input['rsv-lq']=t=>{const u=rsvU();u.lq=t.value;const a=byId('rsv-list');if(a) a.innerHTML=rsvTableHtml(u)};
 // Количество у строки: больше нуля — товар в «Выбрано», пусто или 0 — убран
 ON.input['rsv-n']=t=>{
   const u=rsvU(),pid=t.dataset.pid,n=parseInt(t.value,10);
   if(n>0) u.pick[pid]=n;else delete u.pick[pid];
   delete rsvErrs[pid];
-  const tr=t.closest&&t.closest('tr');if(tr&&tr.classList) tr.classList.toggle('on',n>0);
-  const b=byId('rsv-basket');if(b) b.innerHTML=rsvBasketHtml(u);
+  // строка не перерисовывается, чтобы не сбить ввод; пересчитывается только «Выбрано: …»; 0 — строка уйдёт при следующей перерисовке
+  const ids=Object.keys(u.pick).filter(pid=>rsvProd(pid)),sum=byId('rsv-sum');
+  if(sum) sum.innerHTML=`<b>Выбрано: ${num(ids.length)} ${pl(ids.length,'товар','товара','товаров')}, всего ${num(ids.reduce((s,x)=>s+u.pick[x],0))} шт.</b>`;
+};
+ON.change['rsv-n']=()=>rsvRefresh();
+// «Подобрать товары»: окно-каталог (79-picker.js) с тем, что уже выбрано; «Готово» заменяет выбор. Под сделку — только её товары
+A['rsv-picker']=()=>{
+  const u=rsvU(),d=u.kind==='deal'?deal(u.deal):null;
+  if(u.kind==='deal'&&!d) return toast('Сначала выберите сделку.','warn');
+  pickerOpen({title:d?'Подбор товаров под резерв: '+d.id:'Подбор товаров под резерв',sel:u.pick,only:d?rsvDealItems(d):null,stockToggle:!d,done:'Готово',
+    note:d?'Здесь только товары этой сделки, которые ещё не весь в резерве.':'Нажимайте на товары — справа появится выбранное, там же меняется количество.',
+    onDone:sel=>{u.pick=sel;rsvErrs={};rsvRefresh()}});
 };
 FORMS.rsv=()=>{
   const u=rsvU(),until=byId('rsv-until').value||u.until||iso(day(Stock.RESERVE_DAYS));
@@ -16303,8 +16357,99 @@ FORMS.rsv=()=>{
   toast(res.ok?`Зарезервировано ${num(n)} ${pl(n,'товар','товара','товаров')} ${whom} до ${fD(fromIso(until))}. Склад и директор получили уведомление.`:res.reason,res.ok?undefined:'warn');
 };
 
-NAV.push({id:'reserves',label:'Резервы',icon:'lock',group:'Товар',order:15,hint:'Что сейчас в резерве и для кого. Чтобы поставить резерв, укажите количество у нужных товаров и нажмите одну кнопку.',ok:()=>can('stock')});
+NAV.push({id:'reserves',label:'Резервы',icon:'lock',group:'Товар',order:15,hint:'Что сейчас в резерве и для кого. Чтобы поставить резерв, нажмите «Подобрать товары», выберите нужное в каталоге и нажмите «Зарезервировать выбранное».',ok:()=>can('stock')});
 VIEWS.reserves=vReserves;
+
+// «Подбор товаров» — окно как подбор в 1С: слева категории, в середине каталог с поиском (нажатие на строку добавляет 1 шт.,
+// ещё нажатие — ещё одну), справа «Выбрано» с количеством; «Готово» отдаёт выбор тому, кто открыл окно.
+// Слова директора 2026-11-12: «нажимаю добавить резерв, и сразу выпадает каталог, где я могу выбрать, как в 1С, справа кучу
+// товара, количество, всё, готово. Примерно то же самое должно быть в сделках».
+// Открывают: «Резервы» (78-reserves.js) и товары сделки (56-deals.js). Окно ничего не записывает само — только отдаёт выбор.
+// Состояние окна — этой вкладки (PK), в S не попадает.
+
+const PK_PAGE=60;
+const PK={title:'',cat:'',q:'',more:0,sel:{},order:[],only:null,inStock:false,stockToggle:false,done:'Готово',note:'',onDone:null};
+// o: {title, sel:{productId: кол-во}, only:[productId] — показывать только эти, stockToggle — флажок «Только в наличии»,
+//     done — надпись кнопки, note — подсказка под заголовком, onDone(sel) — что сделать с выбором}
+function pickerOpen(o){
+  const sel={};for(const [pid,n] of Object.entries(o.sel||{})) if(Number(n)>0&&product(pid)) sel[pid]=Number(n);
+  // флажок «Только в наличии» включён, если остатки вообще загружены (иначе список был бы пуст)
+  const known=!!o.stockToggle&&S.products.some(p=>stockOf(p.id).known);
+  Object.assign(PK,{title:o.title||'Подбор товаров',cat:'',q:'',more:0,sel,order:Object.keys(sel),only:o.only?new Set(o.only):null,
+    inStock:known,stockToggle:!!o.stockToggle,done:o.done||'Готово',note:o.note||'',onDone:o.onDone||null});
+  openModal('picker');
+}
+// Свободно сейчас по товару: число или null — «нет данных»
+const pkFree=pid=>{const k=stockOf(pid);return k.known?Math.max(0,k.free):null};
+function pkRows(){
+  let list=Catalog.query(S,{q:PK.q,cat:PK.cat||''});
+  if(PK.only) list=list.filter(p=>PK.only.has(p.id));
+  if(PK.inStock) list=list.filter(p=>(pkFree(p.id)||0)>0);
+  return list;
+}
+// Категории для левой колонки: дерево каталога с отступами; только те, где есть товары (с учётом «только эти»)
+function pkCats(){
+  const has=PK.only?[...PK.only].map(product).filter(Boolean):null;
+  return Catalog.rows(S).filter(r=>r.total>0&&(!has||has.some(p=>p.cat===r.path||String(p.cat||'').startsWith(r.path+Catalog.SEP))));
+}
+function pkTreeHtml(){
+  const item=(path,name,depth)=>`<li><button type="button" class="pk-cat${PK.cat===path?' on':''}" style="--d:${depth}" data-act="pk-cat" data-cat="${esc(path)}"${PK.cat===path?' aria-current="true"':''}>${esc(name)}</button></li>`;
+  return `<ul class="pk-tree">${item('','Все товары',0)}${pkCats().map(r=>item(r.path,r.name,r.depth)).join('')}</ul>`;
+}
+function pkListHtml(){
+  const all=pkRows(),list=all.slice(0,PK_PAGE*(PK.more+1)),pr=can('prices');
+  if(!all.length) return `<p class="muted pk-empty">${PK.inStock?'В наличии ничего не нашлось. Снимите флажок «Только в наличии», чтобы видеть весь каталог.':'Ничего не нашлось. Попробуйте другое слово или выберите «Все товары».'}</p>`;
+  const rows=list.map(p=>{
+    const f=pkFree(p.id),n=PK.sel[p.id]||0;
+    return `<tr class="pk-row${n?' on':''}" data-act="pk-add" data-pid="${esc(p.id)}" title="Нажмите, чтобы добавить 1 шт."><td><span class="pk-n">${esc(p.name)}</span><small class="muted">${esc(skuText(p))}${p.brand?' · '+esc(p.brand):''}</small></td><td class="num">${f===null?'<span class="muted">нет данных</span>':num(f)}</td>${pr?`<td class="num nowrap">${typeof p.price==='number'?rub(p.price):'<span class="muted">нет данных</span>'}</td>`:''}<td class="num pk-in">${n?`<b>${num(n)}</b>`:ic('plus')}</td></tr>`;
+  }).join('');
+  const more=all.length>list.length?`<p class="pk-more"><button type="button" class="btn sm" data-act="pk-more">Показать ещё (найдено ${num(all.length)})</button></p>`:'';
+  return `<table class="tbl pk-tbl"><thead><tr><th>Товар</th><th class="num">Свободно</th>${pr?'<th class="num">Цена</th>':''}<th class="num">Выбрано</th></tr></thead><tbody>${rows}</tbody></table>${more}`;
+}
+function pkSelHtml(){
+  const ids=PK.order.filter(pid=>PK.sel[pid]>0&&product(pid));
+  if(!ids.length) return '<p class="muted m0">Пока пусто. Нажимайте на товары слева — они появятся здесь.</p>';
+  const total=ids.reduce((s,pid)=>s+PK.sel[pid],0);
+  return `<ul class="pk-sel">${ids.map(pid=>{const p=product(pid),f=pkFree(pid),over=f!==null&&PK.sel[pid]>f;
+    return `<li><div class="pk-sn"><span>${esc(p.name)}</span><small class="${over?'bad-t':'muted'}">${f===null?'остаток: нет данных':'свободно '+num(f)}</small></div><input class="inp sm pk-q" type="number" min="0" step="1" inputmode="numeric" value="${PK.sel[pid]}" data-on="pk-n" data-pid="${esc(pid)}" aria-label="Количество: ${esc(p.name)}"><button type="button" class="pk-x" data-act="pk-del" data-pid="${esc(pid)}" aria-label="Убрать «${esc(p.name)}»" title="Убрать">×</button></li>`}).join('')}</ul><p class="m0 pk-sum">Позиций: <b>${num(ids.length)}</b>, всего <b>${num(total)}</b> шт.</p>`;
+}
+const pkCount=()=>PK.order.filter(pid=>PK.sel[pid]>0).length;
+MODALS.picker=()=>{
+  const cats=pkCats();
+  return `<div class="pk-wrap">${mHead(esc(PK.title))}<div class="pk">
+    <aside class="pk-side"><select class="inp pk-catsel" data-on="pk-catsel" aria-label="Категория"><option value="">Все товары</option>${cats.map(r=>`<option value="${esc(r.path)}"${PK.cat===r.path?' selected':''}>${'— '.repeat(r.depth)}${esc(r.name)}</option>`).join('')}</select><div id="pk-tree">${pkTreeHtml()}</div></aside>
+    <section class="pk-main"><div class="pk-bar"><input id="pk-q" class="inp" type="search" value="${esc(PK.q)}" placeholder="Найти: название, бренд или артикул" data-on="pk-q" autocomplete="off" aria-label="Поиск товара">${PK.stockToggle?`<label class="pk-chk"><input type="checkbox" data-on="pk-stock"${PK.inStock?' checked':''}> Только в наличии</label>`:''}</div>${PK.note?`<p class="hint m0">${esc(PK.note)}</p>`:''}<div id="pk-list" class="pk-list">${pkListHtml()}</div></section>
+    <aside class="pk-right"><h4 class="sh">Выбрано</h4><div id="pk-sel">${pkSelHtml()}</div></aside>
+  </div><div class="modal-f"><button type="button" class="btn ghost" data-act="close-modal">Отмена</button><button type="button" class="btn pri" data-act="pk-done" id="pk-done">${esc(PK.done)}${pkCount()?` (${num(pkCount())})`:''}</button></div></div>`;
+};
+// Перерисовать части окна, не трогая поле поиска (фокус и курсор остаются)
+function pkRefresh(parts){
+  const set=(id,h)=>{const e=byId(id);if(e) e.innerHTML=h};
+  if(parts.includes('list')) set('pk-list',pkListHtml());
+  if(parts.includes('tree')) set('pk-tree',pkTreeHtml());
+  if(parts.includes('sel')) set('pk-sel',pkSelHtml());
+  const b=byId('pk-done');if(b) b.textContent=PK.done+(pkCount()?` (${num(pkCount())})`:'');
+}
+function pkSet(pid,n){
+  n=Math.max(0,Math.floor(Number(n)||0));
+  if(n>0){if(!PK.order.includes(pid)) PK.order.push(pid);PK.sel[pid]=n}
+  else{delete PK.sel[pid];PK.order=PK.order.filter(x=>x!==pid)}
+}
+A['pk-add']=el=>{const pid=el.dataset.pid;if(!product(pid)) return;pkSet(pid,(PK.sel[pid]||0)+1);pkRefresh(['list','sel'])};
+A['pk-del']=el=>{pkSet(el.dataset.pid,0);pkRefresh(['list','sel'])};
+A['pk-cat']=el=>{PK.cat=el.dataset.cat||'';PK.more=0;const s=document.querySelector&&document.querySelector('.pk-catsel');if(s) s.value=PK.cat;pkRefresh(['list','tree'])};
+A['pk-more']=()=>{PK.more++;pkRefresh(['list'])};
+A['pk-done']=()=>{
+  const sel={};for(const pid of PK.order) if(PK.sel[pid]>0) sel[pid]=PK.sel[pid];
+  const cb=PK.onDone;closeModal();
+  if(cb) cb(sel);
+};
+ON.input['pk-q']=t=>{PK.q=t.value;PK.more=0;pkRefresh(['list'])};
+ON.change['pk-catsel']=t=>{PK.cat=t.value;PK.more=0;pkRefresh(['list','tree'])};
+ON.change['pk-stock']=t=>{PK.inStock=!!t.checked;PK.more=0;pkRefresh(['list'])};
+// Количество в «Выбрано»: 0 или пусто — товар убран (строка исчезнет при следующей перерисовке, чтобы не мешать вводу)
+ON.input['pk-n']=t=>{const pid=t.dataset.pid,n=parseInt(t.value,10);if(n>0){PK.sel[pid]=n}else delete PK.sel[pid];pkRefresh(['list']);const b=byId('pk-done');if(b) b.textContent=PK.done+(pkCount()?` (${num(pkCount())})`:'')};
+ON.change['pk-n']=()=>{PK.order=PK.order.filter(pid=>PK.sel[pid]>0);pkRefresh(['sel'])};
 
 // Запуск. Демо: состояние из браузера (localStorage[Store.KEY]); нет или битое — демо seed(), затем первая отрисовка.
 // Серверный режим: вход и состояние с сервера — serverBoot() (72-server.js).

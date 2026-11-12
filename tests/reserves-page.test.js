@@ -67,15 +67,25 @@ test('резерв списком под сделку: не больше, чем
   assert.equal(a.Deals.left(S, d, pid), 0);
 });
 
-test('раздел «Резервы» в меню группы «Товар»; экран: выбор товаров со свободным остатком и список резервов; без права — только список', () => {
+test('раздел «Резервы» в меню группы «Товар»; кнопка «Подобрать товары» открывает каталог, «Готово» кладёт выбор в форму; без права — только список', () => {
   const { a, S, pa, pb } = setup();
   const n = a.NAV.find(x => x.id === 'reserves');
   assert.ok(n && n.group === 'Товар' && a.VIEWS.reserves, 'раздела «Резервы» нет');
-  a.rsvU().pick[pa] = 2;
+  assert.match(a.vReserves(), /data-act="rsv-picker"/);
+  // подбор: открыть окно, два нажатия на А (2 шт.), одно на Б, Б убрать, «Готово»
+  a.A['rsv-picker']();
+  assert.equal(S.ui.modal.type, 'picker');
+  const win = a.MODALS.picker();
+  assert.match(win, new RegExp(`data-act="pk-add" data-pid="${pa}"`), 'товара со свободным остатком нет в каталоге окна');
+  a.A['pk-add']({ dataset: { pid: pa } }); a.A['pk-add']({ dataset: { pid: pa } }); a.A['pk-add']({ dataset: { pid: pb } });
+  assert.match(a.pkSelHtml(), /всего <b>3<\/b> шт\./);
+  a.A['pk-del']({ dataset: { pid: pb } });
+  a.A['pk-done']();
+  assert.equal(S.ui.modal, null, 'окно не закрылось');
+  assert.deepEqual(js(a.rsvU().pick), { [pa]: 2 });
   const html = a.vReserves();
   assert.match(html, /data-form="rsv"/);
   assert.match(html, /Выбрано: 1 товар, всего 2 шт\./);
-  assert.match(html, new RegExp(`data-pid="${pb}"`), 'товара со свободным остатком нет в списке');
   // через форму: выбор → кнопка → резерв поставлен, выбор очищен
   a.byId('rsv-until').value = '';
   a.byId('rsv-for').value = 'под Сидорова';
@@ -94,12 +104,43 @@ test('раздел «Резервы» в меню группы «Товар»; �
   }
 });
 
+test('окно подбора: поиск и категория сужают каталог, «Только в наличии» прячет товары без остатка, «только эти» — товары сделки', () => {
+  const { a, S, pa } = setup();
+  a.pickerOpen({ title: 'т', stockToggle: true });
+  assert.equal(a.PK.inStock, true, 'остатки есть — флажок «Только в наличии» должен быть включён');
+  assert.deepEqual(js(a.pkRows().map(p => p.id).sort()), js(S.products.slice(0, 2).map(p => p.id).sort()), 'в наличии только два товара теста');
+  a.ON.change['pk-stock']({ checked: false });
+  assert.equal(a.pkRows().length, S.products.length);
+  const p = S.products.find(x => x.id === pa);
+  a.ON.input['pk-q']({ value: p.name });
+  assert.ok(a.pkRows().some(x => x.id === pa) && a.pkRows().length < S.products.length);
+  a.ON.input['pk-q']({ value: '' });
+  const cat = p.cat;
+  a.A['pk-cat']({ dataset: { cat } });
+  assert.ok(a.pkRows().every(x => x.cat === cat || String(x.cat).startsWith(cat + a.Catalog.SEP)));
+  a.pickerOpen({ title: 'т', only: [pa] });
+  assert.deepEqual(js(a.pkRows().map(x => x.id)), [pa]);
+  a.closeModal();
+});
+
+test('подбор в сделку: новые товары — новыми строками, уже бывший товар — прибавка количества, без лишней строки', () => {
+  const { a, S } = setup();
+  const d = S.deals.find(x => a.Deals.state(S, x) === 'open' && (x.items || []).filter(i => i.productId).length);
+  const had = d.items.find(i => i.productId), before = d.items.length, qty0 = Number(had.qty);
+  const fresh = S.products.find(p => !d.items.some(i => i.productId === p.id));
+  const r = a.dealAddPicked(d.id, { [had.productId]: 3, [fresh.id]: 2 }, S.me, new Date());
+  assert.deepEqual(js(r), { added: 1, merged: 1, failed: [] });
+  assert.equal(d.items.length, before + 1, 'бывший товар добавлен второй строкой');
+  assert.equal(Number(had.qty), qty0 + 3);
+  assert.equal(d.items[d.items.length - 1].productId, fresh.id);
+  assert.equal(Number(d.items[d.items.length - 1].qty), 2);
+});
+
 test('остатки не загружены — «нет данных: остатки», а не «свободного нет»; блоки в карточках с отступами (card-h / card-b)', () => {
   const { a, S } = setup();
   S.stock = {};
   const html = a.vReserves();
   assert.match(html, /Нет данных: остатки на складах/);
-  assert.doesNotMatch(html, /Свободного товара на складах нет/);
   assert.equal((html.match(/class="card-h"/g) || []).length, 2, 'заголовки карточек без своей разметки — текст прилипнет к краю');
   assert.match(html, /<form class="card-b" data-form="rsv"/);
 });
