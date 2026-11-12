@@ -34,11 +34,11 @@ function vUpdate(){
   const dev=i&&i.devCopy?'<p class="hint">Это рабочая копия для разработки (рядом есть папка .git): здесь код обновляют через git, а не кнопкой.</p>':'';
   const manual=i&&!i.devCopy&&!i.supervised?'<p class="hint">Сервер запущен без start.cmd (на Ubuntu — без службы): после установки он сам не перезапустится, и новую версию придётся запустить вручную. Запускайте CRM через start.cmd — тогда обновление проходит само.</p>':'';
   const wait=up.waiting?'<p class="m0"><b>Идёт перезапуск сервера…</b> Страница обновится сама, когда сервер поднимется.</p>':up.manual?'<p class="m0"><b>Новая версия установлена, но сервер сам не перезапустится.</b> Остановите его (Ctrl+C) и запустите заново, лучше через start.cmd.</p>':'';
-  return `<section class="card"><div class="card-h"><h3>Обновление CRM</h3></div><div class="card-b stack-s">
+  return `<section class="card"><div class="card-h"><h3>Обновить ПО</h3></div><div class="card-b stack-s">
     <p class="m0">Новые версии CRM берутся с GitHub (${esc(i?i.repo:'MezentsevPavel/CRM')}). Перед установкой сервер делает копию базы; данные, сотрудники и файлы не меняются. На время перезапуска (около минуты) CRM у всех не отвечает.</p>
     ${cur}${found}${wait}
     <div><button type="button" class="btn${show?'':' pri'}" data-act="upd-check"${up.busy||up.waiting||!i?' disabled':''}>${up.busy&&!c?'Проверяю…':'Проверить обновления'}</button>
-    ${show?`<button type="button" class="btn pri" data-act="upd-apply"${up.busy||up.waiting?' disabled':''}>${up.busy?'Устанавливаю…':'Обновить'}</button>`:''}</div>
+    ${show?`<button type="button" class="btn pri" data-act="upd-apply"${up.busy||up.waiting?' disabled':''}>${up.busy?'Устанавливаю…':'Обновить ПО'}</button>`:''}</div>
     ${dev}${manual}
     <p class="hint">Если новая версия работает не так, прежний код лежит в папке data/update-backup рядом с базой, а копия базы до обновления — в списке «Настройки → Копии».</p>
   </div></section>`;
@@ -46,10 +46,10 @@ function vUpdate(){
 
 MODALS.updApply=()=>{
   const c=up.check;
-  return `<form data-form="upd-apply" novalidate>${mHead('Обновить CRM')}<div class="modal-b">
+  return `<form data-form="upd-apply" novalidate>${mHead('Обновить ПО')}<div class="modal-b">
     <p class="m0">Установить версию «${esc(c?c.latest.title:'')}» (код ${esc(c?upSha(c.latest.sha):'')})?</p>
     <p class="m0">Сервер сделает копию базы, скачает новую версию и ${up.info&&up.info.supervised?'перезапустится: <b>CRM у всех сотрудников не будет отвечать около минуты</b>, потом их страницы обновятся сами.':'установит её; после этого его нужно перезапустить вручную.'} Данные не пропадут.</p>
-    <p class="err" id="upd-err" hidden></p></div>${mFoot('Обновить')}</form>`;
+    <p class="err" id="upd-err" hidden></p></div>${mFoot('Обновить ПО')}</form>`;
 };
 
 A['upd-check']=async()=>{
@@ -92,4 +92,4 @@ async function upWaitRestart(sha){
   if(S&&S.view==='settings') render();
 }
 
-if(SERVER) SETTINGS_TABS.push({id:'update',label:'Обновление',order:89,ok:()=>SERVER&&can('admin'),render:vUpdate});
+if(SERVER) SETTINGS_TABS.push({id:'update',label:'Обновить ПО',order:89,ok:()=>SERVER&&can('admin'),render:vUpdate});
