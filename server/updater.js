@@ -9,7 +9,7 @@
 // Перезапуск: сервер выходит с кодом 75, а поднимает его снова systemd (на Ubuntu) или start.cmd / start.sh (на компьютере).
 // Без такой обвязки сервер сам не встанет, поэтому он только ставит код и просит перезапустить его вручную.
 // Если папка скачана через git (рядом есть .git), обновление идёт командой git pull --ff-only с ветки master: версию тогда говорит
-// сам git, файл .crm-version не нужен. Папка не на master или с несохранёнными правками кода не обновляется (чтобы ничего не потерять).
+// сам git, файл .crm-version не нужен. Нет команды git (папку скопировали вместе с .git на компьютер без git) — обновление архивом. Папка не на master или с несохранёнными правками кода не обновляется (чтобы ничего не потерять).
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -38,15 +38,18 @@ function titleOf(message) {
   return first.replace(WORK, '');
 }
 
-function createUpdater({ appDir, dataDir, backups, restart, supervised = false, repo, branch, fetch: fetchFn, now = Date.now, timeoutMs = 20000 } = {}) {
+function createUpdater({ appDir, dataDir, backups, restart, supervised = false, repo, branch, fetch: fetchFn, now = Date.now, timeoutMs = 20000, gitCmd } = {}) {
   const REPO_ = repo || process.env.CRM_UPDATE_REPO || REPO;
   const BRANCH_ = branch || process.env.CRM_UPDATE_BRANCH || BRANCH;
   const http = fetchFn || ((url, opts) => fetch(url, opts));
   const versionFile = path.join(appDir, '.crm-version');
   let busy = false;
 
-  const gitMode = () => fs.existsSync(path.join(appDir, '.git'));
-  const git = args => cp.spawnSync('git', args, { cwd: appDir, encoding: 'utf8', timeout: 120000, windowsHide: true, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
+  // Режим git — только если рядом есть .git И команда git работает: у скопированной папки .git остаётся, а git на компьютере может не стоять —
+  // тогда обновление идёт архивом, как у папки без .git
+  const GIT = gitCmd || 'git';
+  const gitMode = () => fs.existsSync(path.join(appDir, '.git')) && !cp.spawnSync(GIT, ['--version'], { windowsHide: true }).error;
+  const git = args => cp.spawnSync(GIT, args, { cwd: appDir, encoding: 'utf8', timeout: 120000, windowsHide: true, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
   function gitCurrent() {
     const r = git(['log', '-1', '--format=%H%n%cI%n%s']);
     if (r.error || r.status !== 0) return null;
@@ -112,8 +115,6 @@ function createUpdater({ appDir, dataDir, backups, restart, supervised = false, 
 
   // Папка скачана через git: код обновляет сам git (быстрая перемотка, без слияний и перезаписи чужих правок)
   async function applyGit(target) {
-    const v = git(['--version']);
-    if (v.error || v.status !== 0) throw new UpdateError(500, 'Папка подключена к git, но команды git на этом компьютере нет — обновить нечем.');
     const branch = String(git(['rev-parse', '--abbrev-ref', 'HEAD']).stdout).trim();
     if (branch !== BRANCH_) throw new UpdateError(409, `Папка стоит на ветке «${branch}», а не «${BRANCH_}»: кнопка её не трогает, обновляйте через git вручную.`);
     if (String(git(['status', '--porcelain', '--untracked-files=no']).stdout).trim()) throw new UpdateError(409, 'В папке есть несохранённые правки кода — обновление остановлено, чтобы их не потерять.');

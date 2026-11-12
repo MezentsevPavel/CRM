@@ -217,3 +217,15 @@ test('папка через git: код обновляет git pull --ff-only; �
   await wait(1100);
   assert.deepEqual(exits, [75]);
 });
+
+test('в папке остался .git, а команды git на компьютере нет: обновление идёт архивом, а не отказом', async () => {
+  const appDir = installed(SHA(2));
+  fs.mkdirSync(path.join(appDir, '.git'));
+  const u = createUpdater({ appDir, dataDir: tmpdir(), backups: stubBackups(), fetch: fakeFetch(archive(NEW_FILES)), gitCmd: 'git-такой-команды-нет' });
+  assert.equal(u.info().git, false);
+  assert.equal(u.info().current.sha, SHA(2), 'версия должна браться из .crm-version');
+  const r = await u.apply();
+  assert.equal(r.to, SHA(5));
+  assert.equal(read(appDir, 'server/main.js'), 'NEW main');
+  assert.equal(fs.existsSync(path.join(appDir, '.git')), true, 'чужая .git затёрта');
+});
