@@ -298,7 +298,7 @@ test('свободный остаток и сумма резервов на де
   // (резерв стоит только под поставку), там свободное неизвестно — null, а не «0» (G03)
   const expected = { 'sheet-004': 40, 'sheet-065': 16, '472925258': null, 'sheet-072': 0, 'sheet-107': 6, '342718442': 1520, 'sheet-164': 1572, '1763407769': null, 'sheet-207': 4 };
   for (const [pid, n] of Object.entries(expected)) assert.equal(free(pid), n, `свободно по ${pid}`);
-  assert.equal(S.products.reduce((a, p) => a + free(p.id), 0), 28631, 'сумма свободного по всем 471 позициям');
+  assert.equal(S.products.reduce((a, p) => a + free(p.id), 0), 28631, 'сумма свободного по всем 578 позициям');
   // сумма резервов: 22+36+54+2+1+1+3+2+2+1+80+20+1+2+1
   const total = S.products.reduce((a, p) => { const k = app.Stock.summary(S, p.id, NOW); return a + k.reservedStock + k.reservedIncoming; }, 0);
   assert.equal(total, 228);

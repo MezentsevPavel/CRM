@@ -4,6 +4,11 @@
 //
 //   node tools/catalog-snapshot.js <выгрузка.json>          — переписать снимок
 //   node tools/catalog-snapshot.js <выгрузка.json> --dry     — только отчёт, файл не трогать
+//   node tools/catalog-snapshot.js --extra <лист.json> [--dry] — добавить позиции листа «ИБП и контроллеры» (лист, который 2026-11-12 добавили в таблицу:
+//        ИБП и контроллеры заряда с сайта; скрипт синхронизации таблицы его не трогает). Остальные позиции снимка не меняются. Файл —
+//        { "date": "…", "header": [заголовки листа], "rows": [[ячейки строки], …] } (то, что отдаёт чтение листа); столбцы ищутся по заголовку:
+//        «Ключ», «Модель», «Бренд», «Вид» (ИБП | Контроллер…), «Цена сайта», «Наличие», «Ссылка», «Артикул». Позиция с ключом, который уже есть
+//        в снимке на другом листе, не дублируется. Повторный прогон того же листа даёт тот же файл.
 //
 // Выгрузка (JSON; в git её не кладут — в ней лежат цены и ссылки поставщиков на день выгрузки):
 //   { "date": "2026-11-07",
@@ -26,6 +31,7 @@ const { loadCode } = require('./vm-load.js');
 
 const FILE = path.join(__dirname, '..', 'src', 'js', '10-catalog-data.js');
 const SHEET = 'Электрика';
+const EXTRA_SHEET = 'ИБП и контроллеры';
 // код позиции → путь категории; незнакомый префикс — «Электрика»
 const CAT_BY_PREFIX = [
   ['supplier-breaker-', 'Электрика › Автоматы'],
@@ -71,6 +77,46 @@ function columns(header) {
   return { code: find('код позиции'), name: find('название'), sku: find('артикул'), unit: find('ед.'), price: find('цена'), date: find('дата цены'), url: find('ссылка') };
 }
 
+// ——— лист «ИБП и контроллеры» ———
+const TOP_BY_KIND = [[/^ибп/i, 'ИБП'], [/^контроллер/i, 'Контроллеры']];
+function extraColumns(header) {
+  const find = (...names) => {
+    const i = header.findIndex(h => names.some(n => String(h).trim().toLowerCase().startsWith(n)));
+    if (i < 0) throw new Error(`В листе «${EXTRA_SHEET}» нет столбца «${names[0]}»`);
+    return i;
+  };
+  return { key: find('ключ'), model: find('модель'), brand: find('бренд'), kind: find('вид'), price: find('цена'), avail: find('наличие'), url: find('ссылка'), sku: find('артикул') };
+}
+// → { catalog, report }: позиции этого листа заменяются целиком, остальные остаются как были
+function buildExtra(prev, extra) {
+  const { Catalog } = loadCode().api;
+  const col = extraColumns(extra.header);
+  const keep = prev.rows.filter(r => r.sheet !== EXTRA_SHEET);
+  const have = new Set(keep.map(r => String(r.key)));
+  const report = { added: 0, knownElsewhere: [], noKind: [], dupes: [], cats: {}, noSub: [], noPrice: 0, noSku: 0 };
+  const rows = [], seen = new Set();
+  for (const c of extra.rows) {
+    const key = text(c[col.key]), model = text(c[col.model]);
+    if (!key || !model) continue;
+    if (have.has(key)) { report.knownElsewhere.push(model); continue; }
+    if (seen.has(key)) { report.dupes.push(model); continue; }
+    const kind = text(c[col.kind]) || '';
+    const top = (TOP_BY_KIND.find(([re]) => re.test(kind)) || [])[1];
+    if (!top) { report.noKind.push(model); continue; }
+    seen.add(key);
+    const url = text(c[col.url]);
+    const cat = Catalog.classify(top, { name: model, url });
+    report.cats[cat] = (report.cats[cat] || 0) + 1;
+    if (cat.endsWith(Catalog.SEP + Catalog.SUB_NONE)) report.noSub.push(model);
+    const price = money(c[col.price]), sku = text(c[col.sku]);
+    if (!price) report.noPrice++;
+    if (!sku) report.noSku++;
+    rows.push({ key, model, brand: text(c[col.brand]), price: price || null, avail: text(c[col.avail]), url, from: null, cat, sheet: EXTRA_SHEET, sku });
+  }
+  report.added = rows.length;
+  return { catalog: { ...prev, rows: [...keep, ...rows] }, report };
+}
+
 // ——— запись в формате файла ———
 const lit = v => {
   if (v === null || v === undefined) return 'null';
@@ -113,10 +159,11 @@ function build(prev, dump) {
 
 function render(src, catalog, date) {
   const eol = src.includes('\r\n') ? '\r\n' : '\n';
-  const head = src.split(/\r?\n/).filter(l => l.startsWith('//') && !l.startsWith('// Артикулы (sku)') && !l.startsWith('// Лист «Электрика»') && !l.startsWith('//   price (наша цена продажи) у них'));
+  const head = src.split(/\r?\n/).filter(l => l.startsWith('//') && !l.startsWith('// Артикулы (sku)') && !l.startsWith('// Лист «ИБП и контроллеры»') &&!l.startsWith('// Лист «Электрика»') && !l.startsWith('//   price (наша цена продажи) у них'));
   head.forEach((l, i) => { if (l.startsWith('// cat — ')) head[i] = '// cat — категория: путь вида «Инверторы › Гибридные» (его выбирает Catalog.classify по столбцам таблицы, ссылке на сайте и названию; не назван — «… › Без подкатегории»); sheet — лист таблицы, откуда она взята.'; });
-  head.forEach((l, i) => { if (/^\/\/ Листы:.*Исключено\.$/.test(l)) head[i] = l.replace(/Исключено\.$/, 'Исключено, Электрика.'); });
+  head.forEach((l, i) => { if (/^\/\/ Листы:/.test(l)) head[i] = '// Листы: Инверторы, Аккумуляторы, Панели, Защита и соединения, Новые на сайте, Исключено, Электрика, ИБП и контроллеры.'; });
   head.push(`// Артикулы (sku) — столбец «Артикул (с сайта)» листов таблицы, выгрузка ${date}; пусто в таблице — null («Артикул: нет данных»). Дубли артикулов не убираются.`);
+  head.push('// Лист «ИБП и контроллеры» (добавлен в таблицу 2026-11-12: ИБП и контроллеры заряда с сайта wind-solar.ru; скрипт синхронизации таблицы его не трогает) — позиции с sheet ИБП и контроллеры.');
   head.push('// Лист «Электрика» (Сибэлком, Энергосфера): товары поставщиков, не обязательно лежащие на складе; supplierPrice/priceDate — цена поставщика и её дата;');
   head.push('//   price (наша цена продажи) у них null. Снимок пишет tools/catalog-snapshot.js из выгрузки таблицы, руками не правится.');
   const lines = catalog.rows.map(rowText);
@@ -129,9 +176,17 @@ function load(src) {
   return new Function(src.replace(/^const CATALOG\b/m, 'var CATALOG') + '\nreturn CATALOG;')();
 }
 
-module.exports = { build, render, load, money, supplierOf, catOf, electricRow, columns, FILE, SHEET };
+module.exports = { build, buildExtra, extraColumns, EXTRA_SHEET, render, load, money, supplierOf, catOf, electricRow, columns, FILE, SHEET };
 
-if (require.main === module) {
+if (require.main === module && process.argv.includes('--extra')) {
+  const args = process.argv.slice(2), file = args[args.indexOf('--extra') + 1];
+  if (!file || file.startsWith('--')) { console.error('Нужен файл листа: node tools/catalog-snapshot.js --extra <лист.json> [--dry]'); process.exit(2); }
+  const dump = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const src = fs.readFileSync(FILE, 'utf8');
+  const { catalog, report } = buildExtra(load(src), dump);
+  if (!args.includes('--dry')) fs.writeFileSync(FILE, render(src, catalog, dump.date || '?'), 'utf8');
+  console.log(JSON.stringify({ добавлено: report.added, по_категориям: report.cats, без_подкатегории: report.noSub, уже_есть_на_другом_листе: report.knownElsewhere, без_вида: report.noKind, дубли_в_листе: report.dupes, без_цены: report.noPrice, без_артикула: report.noSku }, null, 1));
+} else if (require.main === module) {
   const [file, flag] = process.argv.slice(2);
   if (!file) { console.error('Нужна выгрузка: node tools/catalog-snapshot.js <выгрузка.json> [--dry]'); process.exit(2); }
   const dump = JSON.parse(fs.readFileSync(file, 'utf8'));

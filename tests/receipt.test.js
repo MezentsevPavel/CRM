@@ -382,7 +382,7 @@ test('сервер: кладовщик оприходовал список че�
     const m = st.moves.find(x => x.productId === P.id);
     deq([m.kind, m.qty, m.by, m.entityId, m.cityId], ['Приход', 12, 'p5', 'ip', 'irk']);
     assert.match(m.doc, /^Оприходование \d\d\.\d\d\.\d{4}$/);
-    assert.equal(st.products.length, 279, 'новый товар не создан');
+    assert.equal(st.products.length, 388, 'новый товар не создан');
   } finally { await srv.stop(); }
 });
 

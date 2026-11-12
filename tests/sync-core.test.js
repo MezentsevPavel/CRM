@@ -248,8 +248,8 @@ test('seedBase(): 9 ролей с доборами РОП и водителя, �
   assert.equal(st.leadSource, 'both');
   assert.equal(st.leadWaitMin, 15);
   assert.equal(st.shipRules.length, 3);
-  // каталог: 279 позиций каталога (242 сайта и 37 электрики поставщиков) (notes.md, раздел 8), снимка остатков 31.10 нет
-  assert.equal(st.products.length, 279);
+  // каталог: 388 позиций каталога (242 сайта, 109 ИБП и контроллеров с сайта и 37 электрики поставщиков) (notes.md, раздел 8), снимка остатков 31.10 нет
+  assert.equal(st.products.length, 388);
   assert.ok(st.products.every(p => p.inCatalog && p.src === 'catalog'), 'в чистой базе товары листа остатков');
   assert.deepEqual(plain(st.stock), {});
   assert.deepEqual(plain(st.aside), {});

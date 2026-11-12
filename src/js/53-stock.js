@@ -13,6 +13,32 @@ const stockNote=()=>SERVER?(S.stockSheet&&S.stockSheet.at?`таблица мен
 const priceTxt=p=>p.price==null?noData('цена'):rub(p.price);
 // В таблице менеджеров числа по товару нет — свободное неизвестно (Stock.summary: free = null), а не нулевое и не отрицательное
 const stockUnknown=k=>k.free===null;
+// Столбцы таблицы товаров: ключ, название, ширина по умолчанию (px), число ли, сортируется ли; «Цена» — только у кого есть право prices
+const stockCols=pr=>[
+  {key:'name',label:'Товар',w:380,sort:true},{key:'onHand',label:'На складе',w:110,num:1,sort:true},{key:'reserved',label:'В резерве',w:130,num:1,sort:true},
+  {key:'free',label:'Свободно сейчас',w:130,num:1,sort:true},{key:'transit',label:'В пути',w:220,sort:true},{key:'freeAfter',label:'Свободно после прихода',w:150,num:1,sort:true},
+  ...(pr?[{key:'price',label:'Цена',w:110,num:1,sort:true}]:[]),{key:'pic',label:'Картина',w:130}
+];
+// Значение для сортировки по столбцу; null — «нет данных», такие строки всегда внизу
+function stockSortVal(p,col){
+  const k=stockOf(p.id);
+  switch(col){
+    case 'name': return p.name;
+    case 'onHand': return k.known?k.onHand:null;
+    case 'reserved': return k.reservedStock+k.reservedIncoming;
+    case 'free': return stockUnknown(k)?null:k.free;
+    case 'transit': return k.incoming;
+    case 'freeAfter': return stockUnknown(k)?null:k.freeAfter;
+    case 'price': return typeof p.price==='number'&&isFinite(p.price)?p.price:null;
+  }
+  return null;
+}
+// Пункты выпадающего списка «Сортировка»: «столбец:направление»; пусто — порядок каталога
+const STOCK_SORTS=pr=>[['','Как в каталоге'],['name:asc','Название: А → Я'],['name:desc','Название: Я → А'],['onHand:desc','На складе: больше'],['onHand:asc','На складе: меньше'],
+  ['reserved:desc','В резерве: больше'],['reserved:asc','В резерве: меньше'],['free:desc','Свободно сейчас: больше'],['free:asc','Свободно сейчас: меньше'],
+  ['transit:desc','В пути: больше'],['transit:asc','В пути: меньше'],['freeAfter:desc','Свободно после прихода: больше'],['freeAfter:asc','Свободно после прихода: меньше'],
+  ...(pr?[['price:asc','Цена: дешевле'],['price:desc','Цена: дороже']]:[])];
+const sortKey=s=>s&&s.col?s.col+':'+s.dir:'';
 // Юрлицо и город в одну подпись; неизвестный id показывается как есть
 const cellText=(e,c)=>Stock.cellText(S,e,c);
 const optionsHtml=(list,cur)=>list.map(([v,t])=>`<option value="${esc(v)}"${v===cur?' selected':''}>${esc(t)}</option>`).join('');
@@ -38,6 +64,7 @@ function goodsPane(tabs){
   const filters=[
     selField('f-brand','brand','Бренд',[['','Все бренды'],...brandNames(u.cat).map(b=>[b,b])],u.brand||''),
     selField('f-avail','avail','Наличие',[['','Любое наличие'],...[...new Set(S.products.map(p=>p.avail).filter(Boolean))].map(a=>[a,a])],u.avail||''),
+    selField('f-sort','sort','Сортировка',STOCK_SORTS(can('prices')),sortKey(u.sort)),
     selField('f-catf','catf','Каталог',[['','В каталоге и нет'],['in','Только в каталоге'],['out','Только «нет в каталоге»']],u.catf||'')
   ].join('');
   return `<div class="bar">${tabs}<span class="grow"></span>${can('receive')?`<button class="btn" data-act="rcpt-open">${ic('plus')}Оприходовать товар</button>`:''}${can('catalog')?`<button class="btn" data-act="cat-manage">${ic('box')}Категории</button><button class="btn" data-act="new-product">${ic('plus')}Новый товар</button>`:''}</div>
@@ -91,7 +118,8 @@ function stockRows(){
   const u=S.ui;
   const list=Catalog.query(S,{q:u.sq,cat:u.cat==='Все'?'':u.cat,brand:u.brand||'',avail:u.avail||'',inCatalog:u.catf==='in'?true:u.catf==='out'?false:undefined});
   // «не хватает»: с учётом поставок меньше нуля, либо остаток известен и свободного нет; без данных об остатке — не дефицит
-  return u.deficit?list.filter(p=>{const k=stockOf(p.id);return k.freeAfter<0||(k.known&&k.free<=0)}):list;
+  const shown=u.deficit?list.filter(p=>{const k=stockOf(p.id);return k.freeAfter<0||(k.known&&k.free<=0)}):list;
+  return sortRows(shown,u.sort,stockSortVal,p=>p.name);
 }
 // Переключатель страниц: span — сколько страниц подряд раскрыто с page («Показать ещё» +1, «Показать всё» — все)
 function pagerHtml(page,pages,span){
@@ -120,7 +148,8 @@ function stockTable(){
   const head=`<div class="count"><span>Показано <b>${rows.length}</b> из <b>${all}</b> позиций</span>${rows.length>PAGE_SIZE?`<span class="muted">строки ${from+1}–${from+part.length}</span>`:''}</div>`;
   if(!rows.length) return head+emptyState('Ничего не нашлось. Проверьте фильтр или строку поиска.','Сбросить фильтры','stock-reset');
   const pr=can('prices'),pg=pagerHtml(page,pages,span);
-  return `${head}<div class="xs"><table class="tbl"><thead><tr><th>Товар</th><th class="num">На складе</th><th class="num">В резерве</th><th class="num">Свободно сейчас</th><th>В пути</th><th class="num">Свободно после прихода</th>${pr?'<th class="num">Цена</th>':''}<th>Картина</th></tr></thead><tbody>${part.map(p=>stockRow(p,pr)).join('')}</tbody></table></div>${pg}`;
+  const cols=stockCols(pr),cg=colgroupHtml('goods',cols);
+  return `${head}<div class="xs"><table class="tbl rsz" style="${cg.style}">${cg.html}<thead><tr>${cols.map(c=>thHtml('goods',c,S.ui.sort)).join('')}</tr></thead><tbody>${part.map(p=>stockRow(p,pr)).join('')}</tbody></table></div>${pg}`;
 }
 const refreshStock=()=>{S.ui.page=0;S.ui.span=1;byId('stock-tbl').innerHTML=stockTable()};
 // Выпадающий список категорий: путь — значение, отступ — глубина. opts: top — первая строка «ничего» (значение ''), noCat — строка «Без раздела»,
@@ -552,6 +581,13 @@ ON.change.deficit=t=>{S.ui.deficit=t.checked;refreshStock()};
 ON.change.brand=t=>{S.ui.brand=t.value;refreshStock()};
 ON.change.avail=t=>{S.ui.avail=t.value;refreshStock()};
 ON.change.catf=t=>{S.ui.catf=t.value;refreshStock()};
+// Выпадающий список «Сортировка» и нажатие на название столбца меняют одно и то же — S.ui.sort
+ON.change.sort=t=>{const [col,dir]=String(t.value).split(':');S.ui.sort=col?{col,dir:dir==='desc'?'desc':'asc'}:null;S.ui.page=0;S.ui.span=1;refreshStock()};
+A['tbl-sort']=el=>{
+  if(el.dataset.tbl!=='goods') return;
+  S.ui.sort=sortToggle(S.ui.sort,el.dataset.cw);S.ui.page=0;S.ui.span=1;refreshStock();
+  const sel=byId('f-sort');if(sel) sel.value=sortKey(S.ui.sort);
+};
 ON.change.mvpid=t=>{S.ui.mvPid=t.value;byId('mv-tbl').innerHTML=movesTable()};
 ON.change.mvkind=t=>{S.ui.mvKind=t.value;byId('mv-tbl').innerHTML=movesTable()};
 // Выбрали другую клетку или поставку в форме резерва — подсказка «можно поставить» пересчитывается

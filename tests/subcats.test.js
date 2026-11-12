@@ -134,7 +134,7 @@ test('снимок: у каждой позиции каталога путь к�
   }
   const n = path => CATALOG.rows.filter(r => r.cat === path).length;
   assert.ok(n('Инверторы › Гибридные') > 40 && n('Инверторы › Сетевые') > 15, 'инверторы разобраны');
-  assert.equal(n('ИБП'), 0, 'в каталоге сайта ИБП нет');
+  assert.equal(n('ИБП'), 77, 'ИБП с сайта (лист «ИБП и контроллеров»): 77 позиций');
   assert.ok(n('Аккумуляторы › Литий-железофосфат (LiFePO4)') >= 40);
 });
 
@@ -161,7 +161,7 @@ test('tools/catalog-snapshot.js: путь категории пишется в �
 });
 
 // ——— дерево категорий ———
-test('дерево: постоянные узлы — Инверторы (3 вида), ИБП, Аккумуляторы (6 видов), Контроллеры (MPPT и PWM), Защита и соединения, Панели; ИБП пуст, если ИБП нет', () => {
+test('дерево: постоянные узлы — Инверторы (3 вида), ИБП, Аккумуляторы (6 видов), Контроллеры (MPPT и PWM), Защита и соединения, Панели; ИБП — 77 с сайта', () => {
   const a = load(), s = a.seedBase();
   for (const [what, st] of [['демо', a.S], ['seedBase', s]]) {
     const kids = top => plain(st.categories.filter(c => c.parentId === (a.Catalog.nodeOf(st, top) || {}).id).map(c => c.name));
@@ -174,10 +174,13 @@ test('дерево: постоянные узлы — Инверторы (3 ви
     assert.deepEqual(plain(st.categories.filter(c => !c.parentId).map(c => c.name).slice(0, 6)), ['Панели', 'Инверторы', 'ИБП', 'Аккумуляторы', 'Контроллеры', 'Защита и соединения'], what);
     for (const p of st.products) assert.equal(a.Catalog.hasPath(st, p.cat), true, `${what}: у «${p.name}» категории «${p.cat}» нет в дереве`);
   }
-  // в базе без остатков листа ИБП пуст: в каталоге сайта их нет
-  assert.equal(s.products.filter(p => p.cat === 'ИБП').length, 0);
-  // в демо два ИБП — из листа остатков, по названию
-  assert.deepEqual(plain(a.S.products.filter(p => p.cat === 'ИБП').map(p => p.name).sort()), ['Источник бесперебойного питания МАП SIN 9кВт 24В GHYBRID', 'ИБП MUST EP20-300 PRO Wall (12В / 300Вт / 10A / Настенный)'].sort());
+  // в базе без остатков листа ИБП — 77 с сайта (лист «ИБП и контроллеры»)
+  assert.equal(s.products.filter(p => p.cat === 'ИБП').length, 77);
+  // в демо к ним добавлен один ИБП из листа остатков, по названию («МАП SIN»); второй («MUST EP20-300 PRO Wall») склеился с позицией каталога
+  const ups = plain(a.S.products.filter(p => p.cat === 'ИБП').map(p => p.name));
+  assert.equal(ups.length, 78);
+  assert.ok(ups.includes('Источник бесперебойного питания МАП SIN 9кВт 24В GHYBRID'));
+  assert.equal(ups.filter(n => /MUST EP20-300 PRO WALL/i.test(n)).length, 1, 'ИБП MUST EP20-300 PRO Wall продублирован');
 });
 
 test('демо: позиции листа остатков разобраны по виду (в том числе по коду модели), аксессуары не попали в аккумуляторы по видам', () => {
@@ -260,7 +263,7 @@ test('сервер: база ревизии 21 доводится до 22 — н
   try {
     const db = new DatabaseSync(file, { readOnly: true });
     try {
-      assert.equal(db.prepare("SELECT v FROM meta WHERE k = 'rev'").get().v, '22');
+      assert.equal(db.prepare("SELECT v FROM meta WHERE k = 'rev'").get().v, String(a.Store.REV));
       const doc = (key, id) => { const r = db.prepare('SELECT data FROM docs WHERE key = ? AND id = ?').get(key, id); return r ? JSON.parse(r.data) : null; };
       assert.equal(doc('products', edited.id).cat, 'Инверторы › Гибридные'); assert.equal(doc('products', edited.id).price, 12345, 'цена правки не потеряна');
       assert.equal(doc('products', moved.id).cat, 'Панели', 'ручная категория не тронута');
@@ -320,7 +323,7 @@ test('экран: стрелка раскрывает и сворачивает 
   A['stock-cat']({ dataset: { cat: 'Инверторы › Сетевые' } });
   assert.equal(shown(a.stockTable()), S.products.filter(p => p.cat === 'Инверторы › Сетевые').length);
   assert.match(a.vStock(), /class="ct-row on"[^>]*>(?:(?!<\/li>).)*data-cat="Инверторы › Сетевые"/s);
-  assert.equal(shown((A['stock-cat']({ dataset: { cat: 'ИБП' } }), a.stockTable())), 2, 'ИБП из номенклатуры лежат в «ИБП»');
+  assert.equal(shown((A['stock-cat']({ dataset: { cat: 'ИБП' } }), a.stockTable())), 78, 'ИБП из номенклатуры лежат в «ИБП»');
 });
 
 test('экран: выбранная ветка раскрыта сама, остальные свёрнуты; свёрнутую вручную ветку выбор снова раскрывает', () => {
@@ -352,14 +355,14 @@ test('экран: под категорией без видов — фирмы �
   assert.equal(S.categories.length, before, 'фирмы в S.categories не хранятся');
   assert.ok(!JSON.stringify(S.categories).includes('ТЕСТФИРМА'));
   // у категории без единой фирмы уровня «фирма» нет
-  A['stock-cat']({ dataset: { cat: 'Контроллеры › PWM (ШИМ)' } });
-  assert.ok(!rowsOf(a.vStock()).some(r => r.brand !== null && r.cat === 'Контроллеры › PWM (ШИМ)'));
+  A['stock-cat']({ dataset: { cat: 'Аккумуляторы › АГМ' } });
+  assert.ok(!rowsOf(a.vStock()).some(r => r.brand !== null && r.cat === 'Аккумуляторы › АГМ'));
   // смешанная категория: «Без бренда» в конце
-  Catalog.add(S, { name: 'Контроллер без фирмы PWM', cat: 'Контроллеры › PWM (ШИМ)' });
-  S.products.find(p => p.name.startsWith('Контроллер заряда JUTA')).brand = 'JUTA';
+  Catalog.add(S, { name: 'АКБ без фирмы АГМ', cat: 'Аккумуляторы › АГМ' });
+  S.products.find(p => p.cat === 'Аккумуляторы › АГМ' && p.name !== 'АКБ без фирмы АГМ').brand = 'ТЕСТБРЕНД';
   a.render();
   const mixed = rowsOf(a.vStock()).filter(r => r.brand !== null);
-  assert.deepEqual(mixed.filter(r => r.cat === 'Контроллеры › PWM (ШИМ)').map(r => r.brand), ['JUTA', 'Без бренда']);
+  assert.deepEqual(mixed.filter(r => r.cat === 'Аккумуляторы › АГМ').map(r => r.brand), ['ТЕСТБРЕНД', 'Без бренда']);
 });
 
 test('экран: выбор фирмы в дереве = категория + бренд, ровно как список «Бренд»; список и дерево всегда согласованы', () => {

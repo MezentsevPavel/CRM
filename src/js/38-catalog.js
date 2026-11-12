@@ -75,10 +75,12 @@ const Catalog = (() => {
     if (BAT_NOT.test(t)) return null;
     return batteryText(norm(spec.chem)) || batteryText(String(url).toLowerCase()) || batteryText(t);
   };
-  const controllerSub = t => {
+  // Вид — по названию, а если в названии не сказано (DY1024DU, Epsolar LS 2024E) — по разделу сайта в ссылке (…/pwm-kontrollery-zaryada-2/…, …/mppt-…)
+  const controllerKind = t => {
     const m = /mppt/.test(t), p = /pwm|(^|[^а-я])шим($|[^а-я])/.test(t);
     return m === p ? null : (m ? 'MPPT' : 'PWM (ШИМ)');
   };
+  const controllerSub = (t, url) => controllerKind(t) || controllerKind(String(url || '').toLowerCase());
   const protectionSub = t => first(t, [
     [/крепл|кронштейн|зажим(?! для провод)|рейлинг|профиль|профтруб|опора|опоры|стыков|уголки|стоек|монтаж|clamp|держатель под кабель/, 'Крепёж и монтаж'],
     [/предохранител|fuse|муляж/, 'Предохранители'],

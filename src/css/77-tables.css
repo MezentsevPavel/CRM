@@ -1,0 +1,12 @@
+/* Таблицы с сортировкой и изменяемой шириной столбцов (77-tables.js): ширину берёт <colgroup>, ручка — правый край заголовка */
+.tbl.rsz{table-layout:fixed;width:auto;min-width:100%}
+.tbl.rsz th{position:relative;overflow:hidden;text-overflow:ellipsis;padding-right:16px}
+.tbl.rsz td{overflow-wrap:anywhere}
+.tbl.rsz td.num{overflow-wrap:normal}
+.tbl th.srt{cursor:pointer;user-select:none}
+.tbl th.srt:hover{color:var(--ink);background:var(--sunken)}
+.tbl th.srt:focus-visible{outline:2px solid var(--primary);outline-offset:-2px}
+.tbl th .srt-a{margin-left:5px;font-size:9px;color:var(--primary)}
+.tbl th .rz{position:absolute;top:0;right:0;bottom:0;width:10px;cursor:col-resize;touch-action:none}
+.tbl th .rz::after{content:"";position:absolute;top:22%;bottom:22%;right:4px;width:2px;border-radius:1px;background:var(--line-2);transition:background .12s}
+.tbl th .rz:hover::after{background:var(--primary)}

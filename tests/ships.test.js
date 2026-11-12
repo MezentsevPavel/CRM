@@ -900,7 +900,9 @@ test('имитация перевозчика: «Имитация: пришёл 
   assert.ok(app.S.notes[0].text.includes(s.id));
   // карточка поставки: кнопка и пометка в истории
   const d = app.DRAWERS.ship(s.id).body;
-  assert.ok(d.includes('data-act="ship-carrier"') && d.includes('Имитация: статус от перевозчика'));
+  // кнопка есть, пока поставке есть куда двигаться (после последнего шага — на «Прибыла» — её нет: shipCarrierCan)
+  assert.equal(d.includes('data-act="ship-carrier"'), !!app.shipCarrierCan(s), 'кнопка не согласована с shipCarrierCan');
+  if (app.shipCarrierCan(s)) assert.ok(d.includes('Имитация: статус от перевозчика'));
   assert.ok(d.includes('автоматически: перевозчик'));
   // у принятой и у ждущей приёмки кнопки нет
   const rec = app.S.shipments.find(x => x.received), arr = app.S.shipments.find(x => x.dir === 'in' && x.stageId === 'arrived');
