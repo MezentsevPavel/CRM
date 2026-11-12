@@ -15,6 +15,7 @@
 | `node --test tests/` | все тесты (707), около 270 с |
 | `node --test tests/stock.test.js` | один файл тестов (любой `tests/*.test.js`), около 4 с |
 | `node tools/catalog-snapshot.js <выгрузка.json>` | переписывает `src/js/10-catalog-data.js` выгрузкой из Google-таблицы PVCalc (артикулы и лист «Электрика»; формат выгрузки — в шапке скрипта; `--dry` — только отчёт); снимок руками не правят |
+| `node server/admin.js import-photos <папка с фото> <файл связки .json/.js>` | прикрепляет готовые фото к товарам по ключу каталога (у кого фото ещё нет; повтор ничего не удваивает; сервер может работать); связка PVCalc — `…/app/js/data/equipment-photos.js` |
 | `node tools/serve.js 5179` | демо-страница на `http://localhost:5179` (сам не собирает) |
 | `CRM_PORT=5181 node server/main.js` | серверная версия на `http://127.0.0.1:5181`; читает собранный файл один раз при старте — после `build.js` перезапустить |
 | `node server/admin.js create-director` | завести директора (имя, логин, пароль дважды); без него в пустую базу не войти |

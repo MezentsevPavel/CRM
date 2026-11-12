@@ -202,7 +202,26 @@ function createFiles({ store, dataDir, maxBytes, now }) {
     return n;
   }
 
-  return { upload, download, checkRefs, refresh, sweep, idsIn, TOO_BIG };
+  // Файл с диска (команда admin.js import-photos): та же запись в таблице files, что и у загрузки из браузера; ссылку на запись
+  // ставит commit (refresh). Фото проверяется по первым байтам, как при загрузке.
+  function addLocal(src, name, personId, { photo = false } = {}) {
+    let size;
+    try { size = fs.statSync(src).size; } catch { return { ok: false, error: `Нет файла ${src}` }; }
+    if (size > maxBytes) return { ok: false, error: TOO_BIG };
+    let type = 'application/octet-stream';
+    if (photo) {
+      const real = sniffFile(src);
+      if (!real) return { ok: false, error: PHOTO_ONLY };
+      type = real;
+    }
+    const id = 'fl' + crypto.randomBytes(12).toString('hex');
+    const clean = cleanName(name);
+    fs.copyFileSync(src, fileOf(id));
+    S.add.run(id, clean, type, size, personId, now(), null);
+    return { ok: true, file: { id, name: clean, type, size, url: '/api/files/' + id } };
+  }
+
+  return { upload, download, checkRefs, refresh, sweep, idsIn, addLocal, TOO_BIG };
 }
 
 module.exports = { createFiles, idsIn };

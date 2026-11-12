@@ -2,7 +2,8 @@
 // Команды директора на сервере (без браузера):
 //   node server/admin.js create-director          — завести директора: имя, логин, пароль (пароль вводится без эха)
 //   node server/admin.js reset-password <логин>   — выдать новый пароль; показывается один раз, при входе его надо сменить
-//   node server/admin.js backups                  — список копий базы (data/backups)
+//   node server/admin.js import-photos <папка> <файл связки> — прикрепить готовые фото к товарам по ключу каталога (у кого фото ещё нет)
+//   node server/admin.js backups                 — список копий базы (data/backups)
 //   node server/admin.js restore <файл> [--yes]   — восстановить базу из копии (имя из списка или путь к файлу); перед этим
 //                                                   снимается копия текущей базы; без --yes спрашивает подтверждение
 // Папка данных — CRM_DATA (по умолчанию ./data). Работает и при запущенном сервере: он перечитает базу сам.
@@ -10,8 +11,9 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { openCore, adminOf } = require('./app.js');
+const { importPhotos } = require('./photos.js');
 
-const HELP = 'Команды:\n  node server/admin.js create-director\n  node server/admin.js reset-password <логин>\n  node server/admin.js backups\n  node server/admin.js restore <файл> [--yes]';
+const HELP = 'Команды:\n  node server/admin.js create-director\n  node server/admin.js reset-password <логин>\n  node server/admin.js backups\n  node server/admin.js restore <файл> [--yes]\n  node server/admin.js import-photos <папка с фото> <файл связки .json или .js>';
 
 // Прочитанное из входа, но ещё не разобранное на строки (ввод через конвейер приходит одним куском)
 let rest = '';
@@ -60,8 +62,8 @@ const KIND = { nightly: 'ночная', manual: 'сделана вручную',
 
 async function main(argv) {
   const yes = argv.includes('--yes');
-  const [cmd, arg] = argv.filter(a => a !== '--yes');
-  if (!['create-director', 'reset-password', 'backups', 'restore'].includes(cmd)) { console.log(HELP); return cmd ? 1 : 0; }
+  const [cmd, arg, arg2] = argv.filter(a => a !== '--yes');
+  if (!['create-director', 'reset-password', 'backups', 'restore', 'import-photos'].includes(cmd)) { console.log(HELP); return cmd ? 1 : 0; }
   const dataDir = path.resolve(process.env.CRM_DATA || path.join(__dirname, '..', 'data'));
   const ctx = openCore({ dataDir });
   const admin = adminOf(ctx);
@@ -83,6 +85,18 @@ async function main(argv) {
       const r = await admin.restore(arg);
       console.log(`Готово. База восстановлена из «${r.from}». Копия прежней базы: ${r.before}.`);
       console.log('Если сервер запущен, перезапусти его (на сервере: systemctl restart crm), иначе открытые вкладки продолжат со старыми данными.');
+      return 0;
+    }
+    if (cmd === 'import-photos') {
+      if (!arg || !arg2) { console.error('Укажи папку с фото и файл связки: node server/admin.js import-photos <папка> <файл связки .json или .js>'); return 1; }
+      if (!fs.existsSync(arg) || !fs.existsSync(arg2)) { console.error('Нет такой папки или файла связки — проверь пути'); return 1; }
+      const boss = (ctx.sync.state.people || []).find(x => x.role === 'director');
+      if (!boss) { console.error('В базе нет директора — сначала: node server/admin.js create-director'); return 1; }
+      const r = importPhotos(ctx, { dir: path.resolve(arg), mapFile: path.resolve(arg2), by: boss.id });
+      console.log(`Прикреплено фото: ${r.attached.length}. Пропущено: ${r.skipped.length}.`);
+      for (const x of r.skipped.slice(0, 30)) console.log(`  ${x.key}: ${x.reason}`);
+      if (r.skipped.length > 30) console.log(`  … и ещё ${r.skipped.length - 30}`);
+      console.log('Работающий сервер подхватит фото сам; открытые вкладки покажут их после обновления страницы.');
       return 0;
     }
     if (cmd === 'create-director') {
