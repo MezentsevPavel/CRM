@@ -8,7 +8,8 @@
 // (папку скопировали руками), версия — «нет данных», а «Обновить» ставит последнюю.
 // Перезапуск: сервер выходит с кодом 75, а поднимает его снова systemd (на Ubuntu) или start.cmd / start.sh (на компьютере).
 // Без такой обвязки сервер сам не встанет, поэтому он только ставит код и просит перезапустить его вручную.
-// В рабочей копии для разработки (рядом есть .git) кнопка ничего не заменяет: там обновляют через git.
+// Если папка скачана через git (рядом есть .git), обновление идёт командой git pull --ff-only с ветки master: версию тогда говорит
+// сам git, файл .crm-version не нужен. Папка не на master или с несохранёнными правками кода не обновляется (чтобы ничего не потерять).
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -44,8 +45,16 @@ function createUpdater({ appDir, dataDir, backups, restart, supervised = false, 
   const versionFile = path.join(appDir, '.crm-version');
   let busy = false;
 
-  const devCopy = () => fs.existsSync(path.join(appDir, '.git'));
+  const gitMode = () => fs.existsSync(path.join(appDir, '.git'));
+  const git = args => cp.spawnSync('git', args, { cwd: appDir, encoding: 'utf8', timeout: 120000, windowsHide: true, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
+  function gitCurrent() {
+    const r = git(['log', '-1', '--format=%H%n%cI%n%s']);
+    if (r.error || r.status !== 0) return null;
+    const [sha, at, subject] = String(r.stdout).trim().split(/\r?\n/);
+    return /^[0-9a-f]{40}$/.test(sha) ? { sha, at: at || null, message: titleOf(subject) } : null;
+  }
   function current() {
+    if (gitMode()) return gitCurrent();
     try {
       const v = JSON.parse(fs.readFileSync(versionFile, 'utf8'));
       return v && typeof v.sha === 'string' && /^[0-9a-f]{7,40}$/.test(v.sha) ? { sha: v.sha, at: v.at || null, message: v.message || '' } : null;
@@ -53,7 +62,7 @@ function createUpdater({ appDir, dataDir, backups, restart, supervised = false, 
   }
   // Что показать на экране без запроса к GitHub
   function info() {
-    return { current: current(), supervised: !!supervised, devCopy: devCopy(), repo: REPO_, branch: BRANCH_ };
+    return { current: current(), supervised: !!supervised, git: gitMode(), repo: REPO_, branch: BRANCH_ };
   }
 
   async function get(url, what) {
@@ -101,14 +110,34 @@ function createUpdater({ appDir, dataDir, backups, restart, supervised = false, 
     }
   }
 
+  // Папка скачана через git: код обновляет сам git (быстрая перемотка, без слияний и перезаписи чужих правок)
+  async function applyGit(target) {
+    const v = git(['--version']);
+    if (v.error || v.status !== 0) throw new UpdateError(500, 'Папка подключена к git, но команды git на этом компьютере нет — обновить нечем.');
+    const branch = String(git(['rev-parse', '--abbrev-ref', 'HEAD']).stdout).trim();
+    if (branch !== BRANCH_) throw new UpdateError(409, `Папка стоит на ветке «${branch}», а не «${BRANCH_}»: кнопка её не трогает, обновляйте через git вручную.`);
+    if (String(git(['status', '--porcelain', '--untracked-files=no']).stdout).trim()) throw new UpdateError(409, 'В папке есть несохранённые правки кода — обновление остановлено, чтобы их не потерять.');
+    const from = gitCurrent();
+    const backup = backups.make('manual');
+    const pull = git(['pull', '--ff-only', 'origin', BRANCH_]);
+    if (pull.error || pull.status !== 0) {
+      const why = String(pull.stderr || pull.error || '').trim().split(/\r?\n/).filter(Boolean).slice(-1)[0] || 'без объяснения';
+      throw new UpdateError(500, 'git не смог обновить папку (' + why + '). Код не тронут.');
+    }
+    const now = gitCurrent();
+    const restarting = !!supervised;
+    if (restarting && typeof restart === 'function') setTimeout(() => restart(EXIT_CODE), 800);
+    return { ok: true, from: from ? from.sha : null, to: now ? now.sha : target.latest.sha, title: target.latest.title, backup: backup.name, restarting };
+  }
+
   async function apply() {
     if (busy) throw new UpdateError(409, 'Обновление уже идёт.');
-    if (devCopy()) throw new UpdateError(409, 'Это рабочая копия для разработки (рядом папка .git): здесь код обновляют через git, а не кнопкой.');
     busy = true;
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'crm-update-'));
     try {
       const target = await check();
       if (target.upToDate) throw new UpdateError(409, 'Уже стоит последняя версия.');
+      if (gitMode()) return await applyGit(target);
       const sha = target.latest.sha;
       if (!/^[0-9a-f]{40}$/.test(sha)) throw new UpdateError(502, 'GitHub вернул непонятный номер версии.');
 

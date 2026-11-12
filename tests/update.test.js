@@ -127,7 +127,7 @@ test('перезапуск: под присмотром (systemd, start.cmd) с�
   assert.deepEqual(await run(false), []);
 });
 
-test('кривой архив и рабочая копия: код не тронут, ничего не ставится', async () => {
+test('кривой архив: код не тронут, ничего не ставится', async () => {
   const bad = installed(SHA(2));
   const noMain = { ...NEW_FILES }; delete noMain['server/main.js'];
   await assert.rejects(createUpdater({ appDir: bad, dataDir: tmpdir(), backups: stubBackups(), fetch: fakeFetch(archive(noMain)) }).apply(), /нет файла server\/main\.js/);
@@ -135,13 +135,6 @@ test('кривой архив и рабочая копия: код не трон
   assert.equal(JSON.parse(read(bad, '.crm-version')).sha, SHA(2), 'версия переписана при неудаче');
   await assert.rejects(createUpdater({ appDir: installed(SHA(2)), dataDir: tmpdir(), backups: stubBackups(), fetch: fakeFetch(Buffer.from('это не архив, но длиннее ста байт '.repeat(5))) }).apply(), /распаковать архив/);
 
-  const dev = installed(SHA(2));
-  fs.mkdirSync(path.join(dev, '.git'));
-  const backups = stubBackups();
-  await assert.rejects(createUpdater({ appDir: dev, dataDir: tmpdir(), backups, fetch: fakeFetch(archive(NEW_FILES)) }).apply(), /рабочая копия для разработки/);
-  assert.equal(read(dev, 'server/main.js'), 'OLD main');
-  assert.deepEqual(backups.made, []);
-  assert.equal(createUpdater({ appDir: dev, dataDir: tmpdir(), backups }).info().devCopy, true);
 });
 
 test('маршруты /api/update: только директор; проверка и установка через сервер; вкладкам сообщается версия страницы', async () => {
@@ -157,7 +150,7 @@ test('маршруты /api/update: только директор; провер�
     assert.equal(info.status, 200);
     assert.equal(info.body.current.sha, SHA(2));
     assert.equal(info.body.supervised, false);
-    assert.equal(info.body.devCopy, false);
+    assert.equal(info.body.git, false);
     const chk = await call(srv, 'POST', '/api/update/check', { cookie: boss.cookie });
     assert.equal(chk.status, 200);
     assert.equal(chk.body.upToDate, false);
@@ -175,4 +168,52 @@ test('маршруты /api/update: только директор; провер�
     const again = await call(srv, 'POST', '/api/update/apply', { cookie: boss.cookie });
     assert.equal(again.status, 409);
   } finally { await srv.stop(); }
+});
+
+// Папка скачана через git (так стоит CRM на рабочем компьютере директора, 2026-11-12: «ничего не прилетело»): обновляет git pull --ff-only
+const git = (cwd, ...args) => {
+  const r = cp.spawnSync('git', args, { cwd, encoding: 'utf8', windowsHide: true });
+  assert.equal(r.status, 0, 'git ' + args.join(' ') + ': ' + r.stderr);
+  return r.stdout.trim();
+};
+function gitWorld() {
+  const root = tmpdir(), origin = path.join(root, 'origin.git'), author = path.join(root, 'author'), appDir = path.join(root, 'app');
+  fs.mkdirSync(origin); git(origin, 'init', '--bare', '-b', 'master');
+  fs.mkdirSync(author); git(author, 'init', '-b', 'master');
+  git(author, 'config', 'user.email', 't@example.test'); git(author, 'config', 'user.name', 'Тест');
+  put(author, 'server/main.js', 'OLD main'); put(author, 'data-note.txt', 'старое');
+  git(author, 'add', '-A'); git(author, 'commit', '-m', 'feat: первая версия'); git(author, 'remote', 'add', 'origin', origin); git(author, 'push', 'origin', 'master');
+  git(root, 'clone', '-b', 'master', origin, appDir);
+  const publish = text => { put(author, 'server/main.js', text); git(author, 'commit', '-am', 'feat: новая версия'); git(author, 'push', 'origin', 'master'); return git(author, 'rev-parse', 'HEAD'); };
+  return { appDir, publish };
+}
+
+test('папка через git: код обновляет git pull --ff-only; копия базы; перезапуск; на другой ветке и с несохранёнными правками — отказ без копии и без изменений', async () => {
+  const w = gitWorld(), backups = stubBackups(), exits = [];
+  const mk = () => createUpdater({ appDir: w.appDir, dataDir: tmpdir(), backups, fetch: fakeFetch(Buffer.alloc(0)), supervised: true, restart: c => exits.push(c) });
+  const u = mk();
+  assert.equal(u.info().git, true);
+  assert.equal(u.info().current.sha, git(w.appDir, 'rev-parse', 'HEAD'), 'версию должен называть сам git');
+  assert.equal(u.info().current.message, 'первая версия');
+
+  // несохранённая правка кода — не обновлять и не копировать базу
+  fs.writeFileSync(path.join(w.appDir, 'server/main.js'), 'МОЯ ПРАВКА');
+  await assert.rejects(u.apply(), /несохранённые правки/);
+  assert.deepEqual(backups.made, []);
+  git(w.appDir, 'checkout', '--', 'server/main.js');
+  // другая ветка
+  git(w.appDir, 'checkout', '-b', 'feature');
+  await assert.rejects(u.apply(), /стоит на ветке «feature»/);
+  git(w.appDir, 'checkout', 'master');
+  assert.deepEqual(backups.made, []);
+
+  const head = w.publish('NEW main');
+  const r = await u.apply();
+  assert.equal(r.ok, true);
+  assert.equal(r.to, head, 'версия после обновления — не та, что на сервере git');
+  assert.equal(read(w.appDir, 'server/main.js'), 'NEW main');
+  assert.deepEqual(backups.made, ['manual']);
+  assert.equal(r.restarting, true);
+  await wait(1100);
+  assert.deepEqual(exits, [75]);
 });

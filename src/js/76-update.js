@@ -34,9 +34,9 @@ function vUpdate(){
     found=c.upToDate===true?'<p class="m0"><span class="pill sm ok">Это последняя версия</span></p>'
       :`<p class="m0"><span class="pill sm info">Есть новая версия</span> ${upVer(c.latest)}</p><p class="m0"><b>Что нового</b>${c.farBehind?' <small class="muted">(показаны последние изменения; ваша версия сильно отстаёт)</small>':c.upToDate===null?' <small class="muted">(версия на этом компьютере неизвестна — показаны последние изменения)</small>':''}</p>${news}`;
   }
-  const show=!!c&&c.upToDate!==true&&!!i&&!i.devCopy;
-  const dev=i&&i.devCopy?'<p class="hint">Это рабочая копия для разработки (рядом есть папка .git): здесь код обновляют через git, а не кнопкой.</p>':'';
-  const manual=i&&!i.devCopy&&!i.supervised?'<p class="hint">Сервер запущен без start.cmd (на Ubuntu — без службы): после установки он сам не перезапустится, и новую версию придётся запустить вручную. Запускайте CRM через start.cmd — тогда обновление проходит само.</p>':'';
+  const show=!!c&&c.upToDate!==true&&!!i;
+  const dev=i&&i.git?'<p class="hint">Папка подключена к git: обновление идёт командой git pull с ветки master. Если в папке есть несохранённые правки кода или она стоит на другой ветке, кнопка остановится и ничего не тронет.</p>':'';
+  const manual=i&&!i.supervised?'<p class="hint">Сервер запущен без start.cmd (на Ubuntu — без службы): после установки он сам не перезапустится, и новую версию придётся запустить вручную. Запускайте CRM через start.cmd — тогда обновление проходит само.</p>':'';
   const wait=up.waiting?'<p class="m0"><b>Идёт перезапуск сервера…</b> Страница обновится сама, когда сервер поднимется.</p>':up.manual?'<p class="m0"><b>Новая версия установлена, но сервер сам не перезапустится.</b> Остановите его (Ctrl+C) и запустите заново, лучше через start.cmd.</p>':'';
   return `<section class="card"><div class="card-h"><h3>Обновить ПО</h3></div><div class="card-b stack-s">
     <p class="m0">Новые версии CRM берутся с GitHub (${esc(i?i.repo:'MezentsevPavel/CRM')}). Перед установкой сервер делает копию базы; данные, сотрудники и файлы не меняются. На время перезапуска (около минуты) CRM у всех не отвечает.</p>
