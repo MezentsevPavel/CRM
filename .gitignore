@@ -7,3 +7,4 @@ __pycache__/
 .autopilot/serve.*
 data/
 .crm-version
+/фото-с-сайта/
