@@ -840,7 +840,7 @@ test('вкладка «Товары»: «свободно N» из Stock.summary
     if (k.known) assert.ok(b.includes('свободно ' + fmt(Math.max(0, k.free))), `нет «свободно ${k.free}»`);
   }
   assert.ok(b.includes('нет данных: цена'), 'строка без цены не названа');
-  assert.equal((b.match(/<li class="dline">/g) || []).length, d.items.length);
+  assert.equal((b.match(/<tr class="dline">/g) || []).length, d.items.length);
   assert.equal(/id="di-total">([^<]+)</.exec(b)[1], money(byHand(d)), 'итог не равен сумме строк');
   assert.ok(b.includes('В итог не вошли строки без цены: ' + d.items.filter(i => i.price === null).length));
   // цена строки без цены: вписали — итог вырос на qty × цена
@@ -888,7 +888,7 @@ test('резерв из сделки: окно показывает остато
   assert.ok(pick, 'в демо нет строки, где заказано больше, чем свободно');
   const { d, i, it, free } = pick;
   app.A['deal-tab']({ dataset: { tab: 'items' } });
-  assert.ok(app.DRAWERS.deal(d.id).body.includes(`data-act="deal-res" data-id="${d.id}" data-i="${i}"`), 'нет кнопки «Зарезервировать»');
+  assert.ok(app.DRAWERS.deal(d.id).body.includes(`data-on="deal-rsv" data-id="${d.id}" data-pid="${it.productId}"`), 'нет галочки «Резерв»');
   const modal = app.MODALS.dealReserve(`${d.id}:${i}`);
   assert.ok(modal.includes('Свободно на складе: ' + fmt(free)) && modal.includes('Можно поставить:'), 'окно не показывает остаток');
   const cell = Stock.bestCell(S, it.productId);
@@ -907,7 +907,7 @@ test('резерв из сделки: окно показывает остато
   assert.deepEqual([S.reserves[n].dealId, S.reserves[n].productId, S.reserves[n].qty], [d.id, it.productId, 2]);
   assert.equal(Stock.summary(S, it.productId, new Date()).free, free - 2, 'свободный остаток не уменьшился');
   const body = app.DRAWERS.deal(d.id).body;
-  assert.ok(body.includes('data-act="deal-unres"') && body.includes('в резерве по сделке: 2'));
+  assert.ok(body.includes('в резерве по сделке: 2'));
   app.A['deal-unres']({ dataset: { id: d.id, rid: S.reserves[n].id } });
   assert.equal(S.reserves.length, n);
   assert.equal(Stock.summary(S, it.productId, new Date()).free, free);

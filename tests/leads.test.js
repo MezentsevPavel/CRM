@@ -1183,20 +1183,24 @@ test('сделка: две строки одного товара — «Заре
   assert.ok(Deals.addItem(S, d.id, { productId: prod.id, qty: 1 }, S.me, now).ok);
   assert.ok(Deals.addItem(S, d.id, { productId: prod.id, qty: 1 }, S.me, now).ok);
   app.A['deal-tab']({ dataset: { tab: 'items' } });
-  const btn = i => `data-act="deal-res" data-id="${d.id}" data-i="${i}"`;
+  // галочка «Резерв» у строки (таблица товаров сделки): стоит, только когда по товару зарезервировано всё
+  const box = `data-on="deal-rsv" data-id="${d.id}" data-pid="${prod.id}"`;
+  const on = b => (b.match(new RegExp(box + ' checked', 'g')) || []).length, all = b => (b.split(box).length - 1);
   let body = DRAWERS.deal(d.id).body;
-  assert.ok(body.includes(btn(0)) && body.includes(btn(1)));
-  // резервируем 1 (одну штуку из двух): по товару ещё можно 1, поэтому кнопка есть у обеих строк
+  assert.equal(all(body), 2);
+  assert.equal(on(body), 0);
+  // резервируем 1 (одну штуку из двух): по товару ещё можно 1, поэтому галочки нет ни у одной строки, подпись «1 из 2»
   const cell = Stock.bestCell(S, prod.id);
   const r = Deals.reserveItem(S, d.id, 0, { entityId: cell.entityId, cityId: cell.cityId, qty: 1 }, S.me, now);
   assert.equal(r.ok, true, r.reason);
   body = DRAWERS.deal(d.id).body;
-  assert.ok(body.includes(btn(0)) && body.includes(btn(1)), 'после резерва одной штуки из двух кнопка пропала');
+  assert.equal(on(body), 0, 'после резерва одной штуки из двух галочка встала');
+  assert.ok(body.includes('<small class="dl-part">1 из 2</small>'));
   const modal = MODALS.dealReserve(`${d.id}:1`);
   assert.ok(modal.includes('В сделке по этому товару') && modal.includes('осталось'), modal.slice(0, 600));
   assert.ok(modal.includes('id="dr-qty" class="inp" type="number" min="1" step="any" value="1"'), 'в окне предложено не 1 штука');
-  // зарезервировали всё — кнопок нет
+  // зарезервировали всё — галочки у обеих строк
   assert.equal(Deals.reserveItem(S, d.id, 1, { entityId: cell.entityId, cityId: cell.cityId, qty: 1 }, S.me, now).ok, true);
   body = DRAWERS.deal(d.id).body;
-  assert.ok(!body.includes(btn(0)) && !body.includes(btn(1)), 'кнопка осталась при полном резерве');
+  assert.equal(on(body), 2, 'при полном резерве галочки не встали');
 });

@@ -1245,12 +1245,12 @@ test('сделка: у строки товара «Списать при про�
   const pid = rs.productId;
   S.me = S.people.find(p => p.role === 'managerB2b').id;
   const items = () => app.dealItems(deal, true);
-  assert.ok(items().includes(`data-act="stock-sell" data-pid="${pid}" data-did="Д-311"`), 'нет «Списать при продаже» у строки товара');
+  assert.ok(items().includes(`data-on="deal-sell" data-id="Д-311" data-pid="${pid}"`), 'нет галочки «Списать» у строки товара');
   const own = deal.items.find(i => !i.productId);
-  assert.ok(own && (items().match(/data-act="stock-sell"/g) || []).length === deal.items.filter(i => i.productId).length, 'кнопка есть и у своей строки, или не у каждого товара каталога');
+  assert.ok(own && (items().match(/data-on="deal-sell"/g) || []).length === deal.items.filter(i => i.productId).length, 'кнопка есть и у своей строки, или не у каждого товара каталога');
   // без права sell (главный инженер видит сделки, но не списывает) кнопки нет
   S.me = S.people.find(p => p.role === 'chiefEngineer').id;
-  assert.ok(!items().includes('stock-sell'), 'кнопка есть без права sell');
+  assert.ok(!items().includes('deal-sell'), 'галочка есть без права sell');
   S.me = S.people.find(p => p.role === 'managerB2b').id;
   // окно: первым выбран резерв этой сделки, документ — номер сделки
   app.A['stock-sell']({ dataset: { pid, did: 'Д-311' } });

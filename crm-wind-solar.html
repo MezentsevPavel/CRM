@@ -863,19 +863,23 @@ fieldset.ss-f legend{padding:0;margin-bottom:6px;font-size:12.5px;font-weight:50
 .dform .field>span:not(.lbl){font-size:14px}
 
 /* вкладка «Товары» */
-.dlines{display:flex;flex-direction:column;gap:10px;margin:0;padding:0;list-style:none}
-.dline{display:flex;flex-direction:column;gap:10px;min-width:0;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
-.dl-h{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
-.dl-n{display:flex;flex-direction:column;gap:2px;min-width:0;font-size:13.5px}
-.dl-n b{font-weight:600;overflow-wrap:anywhere}
+/* товары сделки — таблица: всё в одну строку, на узком экране листается вбок */
+.dl-wrap{border:1px solid var(--line);border-radius:14px}
+.dl-tbl th,.dl-tbl td{padding:8px 10px}
+.dl-tbl td{vertical-align:top}
+.dl-tbl td.dl-n{min-width:240px;font-size:13.5px}
+.dl-tbl .dl-n>*{display:block;margin-top:2px}
+.dl-tbl .dl-n>b:first-child{margin-top:0;font-weight:600;overflow-wrap:anywhere}
+.dl-src{margin-top:4px}
+.dl-num{width:96px;text-align:right}
+.dl-tbl td.num .dl-sum{justify-content:flex-end;white-space:nowrap}
+.dl-tbl .dl-c{text-align:center;white-space:nowrap}
+.dl-chk{display:inline-flex;align-items:center;justify-content:center;min-width:32px;min-height:32px;cursor:pointer}
+.dl-chk input{width:18px;height:18px;margin:0;accent-color:var(--primary);cursor:pointer}
+.dl-chk input:disabled{cursor:default}
+.dl-part{display:block;font-size:11.5px;color:var(--ink-3)}
 .dl-st{font-size:12px;color:var(--ink-3)}
-.dl-in{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
-.dl-in .field>label,.dl-in .lbl{font-size:11.5px}
 .dl-sum{display:flex;align-items:center;min-height:32px;font:700 13.5px/1.2 var(--f-body);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
-.dl-f{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
-.dl-f:empty{display:none}
-.dl-r{flex-wrap:wrap}
-.dl-r .btn.sm{height:24px;padding:0 8px}
 .dtot{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:12px 14px;border-radius:14px;background:var(--surface-2)}
 .dtot span{font-size:13px;color:var(--ink-2)}
 .dtot b{font:800 20px/1.1 var(--f-display);letter-spacing:-.01em;font-variant-numeric:tabular-nums}
@@ -915,7 +919,6 @@ fieldset.ss-f legend{padding:0;margin-bottom:6px;font-size:12.5px;font-weight:50
   /* телефон: колонки листаются пальцем, по одной на экран */
   .dkan{grid-template-columns:repeat(var(--n),minmax(78vw,1fr));min-width:calc(var(--n) * 78vw + (var(--n) - 1) * 12px)}
   .dform{grid-template-columns:minmax(0,1fr)}
-  .dl-in{grid-template-columns:repeat(2,minmax(0,1fr))}
   .dtabs{margin:0 -16px;padding:0 16px}
   .dtot b{font-size:18px}
   .kp-top{flex-direction:column;align-items:flex-start}
@@ -12107,21 +12110,29 @@ const dealTotalText=d=>{
 };
 // Сколько товара сделки ещё можно зарезервировать — только Deals.left (строки сделки с этим товаром минус уже в резерве);
 // тем же числом ядро ограничивает резерв, своей копии формулы у экрана нет.
+// Сколько товара уже списано при продаже по этой сделке: «Отгрузки» журнала, где документ — номер сделки
+// (окно списания из сделки и по резерву сделки подставляет его само).
+const dealSold=(d,pid)=>(S.moves||[]).filter(m=>m.kind===Stock.KINDS.ship&&m.productId===pid&&String(m.doc||'')===d.id).reduce((s,m)=>s+(Number(m.qty)||0),0);
+// Строка товаров — строка таблицы: товар · кол-во · цена · скидка · сумма · галочки «Резерв» и «Списать» · убрать.
+// Галочка «Резерв» стоит, когда весь товар строки (по сделке) в резерве; часть — подпись «N из M». «Списать» — когда всё списано.
 function dealLine(d,it,i,edit,pr){
   const id=esc(d.id),p=it.productId?product(it.productId):null,name=Deals.itemName(S,it);
-  let info,res='',btn='';
+  let info,rsv='',sell='';
   if(p){
-    const k=stockOf(p.id),held=Deals.reserved(S,d,p.id),left=Deals.left(S,d,p.id);
+    const k=stockOf(p.id),held=Deals.reserved(S,d,p.id),all=Deals.lined(d,p.id),full=all>0&&held>=all;
     info=`<small class="dl-st">${k.known?`свободно ${qtyOf(Math.max(0,k.free),p)}`:'остаток: нет данных'}${held?` · в резерве по сделке: ${qtyOf(held,p)}`:''}</small>`;
-    res=S.reserves.filter(r=>r.dealId===d.id&&r.productId===p.id).map(r=>`<span class="chip dl-r">${srcPill(r)}<span>${qtyOf(r.qty,p)}${r.src==='stock'?' · '+esc(cellText(r.entityId,r.cityId)):''}${r.until?' · до '+fD(r.until):''}</span>${edit&&can('reserve')?`<button type="button" class="btn sm ghost" data-act="deal-unres" data-id="${id}" data-rid="${esc(r.id)}">Снять</button>`:''}</span>`).join('');
-    if(edit&&can('reserve')&&left>0) btn=`<button type="button" class="btn sm" data-act="deal-res" data-id="${id}" data-i="${i}">${ic('lock')}Зарезервировать</button>`;
-    // списание — окно склада (53-stock.js): сначала резерв этой сделки, если он есть; право sell
-    if(can('sell')) btn+=`<button type="button" class="btn sm" data-act="stock-sell" data-pid="${esc(p.id)}" data-did="${id}">Списать при продаже</button>`;
+    const rs=S.reserves.filter(r=>r.dealId===d.id&&r.productId===p.id).map(r=>`${qtyOf(r.qty,p)}${r.src==='stock'?' · '+cellText(r.entityId,r.cityId):' · под поставку'}${r.until?' · до '+fD(r.until):''}`).join('; ');
+    const canR=edit&&can('reserve');
+    rsv=`<label class="dl-chk" title="${esc(rs?'В резерве: '+rs:'Не в резерве')}"><input type="checkbox" data-on="deal-rsv" data-id="${id}" data-pid="${esc(p.id)}"${full?' checked':''}${canR?'':' disabled'} aria-label="Резерв: ${esc(name)}"></label>${held&&!full?`<small class="dl-part">${num(held)} из ${num(all)}</small>`:''}`;
+    if(can('sell')){
+      const sold=dealSold(d,p.id),done=all>0&&sold>=all;
+      sell=`<label class="dl-chk" title="${esc(sold?'Списано при продаже: '+qtyOf(sold,p):'Ещё не списано')}"><input type="checkbox" data-on="deal-sell" data-id="${id}" data-pid="${esc(p.id)}"${done?' checked disabled':''} aria-label="Списать при продаже: ${esc(name)}"></label>${sold&&!done?`<small class="dl-part">${num(sold)} из ${num(all)}</small>`:''}`;
+    }
   }else info='<small class="dl-st">своя строка — не из каталога, резерва нет</small>';
-  const numf=(f,label,val,ph)=>edit?`<div class="field"><label for="di-${f}-${i}">${label}</label><input id="di-${f}-${i}" class="inp sm" type="number" min="0" step="any" inputmode="decimal" data-on="deal-i" data-id="${id}" data-i="${i}" data-f="${f}" value="${val===null||val===undefined?'':esc(val)}"${ph?` placeholder="${ph}"`:''}></div>`:`<div class="field"><span class="lbl">${label}</span><span>${val===null||val===undefined||val===''?dealNoData('цена'):esc(val)}</span></div>`;
-  return `<li class="dline"><div class="dl-h"><div class="dl-n"><b>${esc(name)}</b>${p?skuTag(p):''}${info}</div>${edit?`<button type="button" class="btn ghost icon sm" data-act="deal-del-i" data-id="${id}" data-i="${i}" aria-label="Убрать строку «${esc(name)}»">${ic('x')}</button>`:''}</div>
-    <div class="dl-in">${numf('qty','Кол-во',it.qty)}${pr?`${numf('price','Цена, ₽',typeof it.price==='number'?it.price:null,'нет данных: цена')}${numf('disc','Скидка, %',it.disc||0)}<div class="field"><span class="lbl">Сумма</span><output class="dl-sum" id="di-sum-${i}">${esc(dealLineSum(it))}</output></div>`:''}</div>
-    <div class="dl-f">${pr?`<span id="di-src-${i}">${dealPriceSrc(it)}</span>`:''}${res}${btn}</div></li>`;
+  const numf=(f,label,val,ph)=>edit?`<input id="di-${f}-${i}" class="inp sm dl-num" type="number" min="0" step="any" inputmode="decimal" data-on="deal-i" data-id="${id}" data-i="${i}" data-f="${f}" value="${val===null||val===undefined?'':esc(val)}"${ph?` placeholder="${ph}"`:''} aria-label="${label}: ${esc(name)}">`:`${val===null||val===undefined||val===''?dealNoData('цена'):esc(val)}`;
+  return `<tr class="dline"><td class="dl-n"><b>${esc(name)}</b>${p?skuTag(p):''}${info}${pr?`<span id="di-src-${i}" class="dl-src">${dealPriceSrc(it)}</span>`:''}</td>
+    <td class="num">${numf('qty','Кол-во',it.qty)}</td>${pr?`<td class="num">${numf('price','Цена, ₽',typeof it.price==='number'?it.price:null,'нет данных')}</td><td class="num">${numf('disc','Скидка, %',it.disc||0)}</td><td class="num"><output class="dl-sum" id="di-sum-${i}">${esc(dealLineSum(it))}</output></td>`:''}
+    <td class="dl-c">${rsv}</td>${can('sell')?`<td class="dl-c">${sell}</td>`:''}${edit?`<td class="dl-c"><button type="button" class="btn ghost icon sm" data-act="deal-del-i" data-id="${id}" data-i="${i}" aria-label="Убрать строку «${esc(name)}»">${ic('x')}</button></td>`:''}</tr>`;
 }
 // Результаты поиска по каталогу: сначала то, что есть в каталоге; цена и свободный остаток видны сразу
 function dealFound(d,q){
@@ -12138,7 +12149,8 @@ function dealItems(d,edit){
   const add=edit?`<div class="stack-s"><div><button type="button" class="btn pri" data-act="deal-picker" data-id="${id}">${ic('plus')}Подбор из каталога</button> <small class="muted">окно каталога: выбрать сразу много товаров и количество, как подбор в 1С</small></div><div class="field"><label for="deal-ps">Добавить товар из каталога</label><input id="deal-ps" class="inp" type="search" placeholder="Название, бренд или артикул" data-on="deal-ps" data-id="${id}" autocomplete="off"></div><div id="deal-pres" class="dpres">${dealFound(d,'')}</div>
     <form class="rform" data-form="deal-own" data-id="${id}" novalidate><p class="sh">Своя строка — не из каталога</p><div class="grid2"><div class="field span2"><label for="do-name">Название</label><input id="do-name" class="inp" placeholder="Например: монтаж и пусконаладка" autocomplete="off"></div><div class="field"><label for="do-qty">Кол-во</label><input id="do-qty" class="inp" type="number" min="0" step="any" value="1" inputmode="decimal"></div>${pr?'<div class="field"><label for="do-price">Цена, ₽</label><input id="do-price" class="inp" type="number" min="0" step="any" placeholder="нет данных: цена" inputmode="decimal"></div>':''}</div><p class="err" id="do-err" hidden></p><div><button type="submit" class="btn">${ic('plus')}Добавить строку</button></div></form></div>`:'';
   const total=pr?`<div class="dtot"><span>Итого</span><b id="di-total">${rub(Deals.total(d))}</b></div><p class="hint" id="di-warn">${esc(dealTotalText(d))}</p>`:`<p class="lock">${ic('lock')}Цены и суммы скрыты для вашей роли.</p>`;
-  return `<div class="stack-s">${items.length?`<ul class="dlines">${items.map((it,i)=>dealLine(d,it,i,edit,pr)).join('')}</ul>`:'<p class="muted m0">Товаров в сделке пока нет.</p>'}${total}${add}
+  const head=`<tr><th>Товар</th><th class="num">Кол-во</th>${pr?'<th class="num">Цена, ₽</th><th class="num">Скидка, %</th><th class="num">Сумма</th>':''}<th class="dl-c">Резерв</th>${can('sell')?'<th class="dl-c">Списать</th>':''}${edit?'<th class="dl-c"><span class="sr">Убрать</span></th>':''}</tr>`;
+  return `<div class="stack-s">${items.length?`<div class="xs dl-wrap"><table class="tbl dl-tbl"><thead>${head}</thead><tbody>${items.map((it,i)=>dealLine(d,it,i,edit,pr)).join('')}</tbody></table></div>`:'<p class="muted m0">Товаров в сделке пока нет.</p>'}${total}${add}
     <p class="hint">Свободно — остаток за вычетом резервов, ${esc(stockNote())}. Цена по умолчанию — ${esc(priceNote())}; скидка считается от цены строки.</p></div>`;
 }
 
@@ -12289,6 +12301,54 @@ A['deal-res']=el=>{
   if(!can('reserve')){toast('У вашей роли нет права ставить резервы.','warn');return}
   openModal('dealReserve',el.dataset.id+':'+el.dataset.i);
 };
+// Галочка «Резерв» у строки: зарезервировать всё, что по сделке ещё не в резерве, — тем же Deals.reserve, что и окно резерва
+// (клетка склада, где свободного больше всего, срок по умолчанию). Не хватает в одной клетке — берёт из следующей;
+// не хватает всего — ставит сколько есть и говорит, сколько из скольких. → {got, why}
+function dealReserveAll(id,pid,by,now){
+  let got=0,why='';
+  for(let k=0;k<20;k++){
+    const d=Deals.byId(S,id),rest=d?Deals.left(S,d,pid):0;
+    if(!(rest>0)) break;
+    let r=Deals.reserve(S,id,{productId:pid,qty:rest},by,now);
+    if(!r.ok&&r.max>0&&r.max<rest) r=Deals.reserve(S,id,{productId:pid,qty:r.max},by,now);
+    if(!r.ok){why=r.reason;break}
+    got+=r.reserve.qty;
+  }
+  return {got,why};
+}
+// Сняли галочку «Резерв» — снимаются все резервы сделки на этот товар (Deals.unreserve: запись в ленте, товар снова свободен)
+function dealUnreserveAll(id,pid,by,now){
+  let n=0;
+  for(const r of S.reserves.filter(x=>x.dealId===id&&x.productId===pid)){
+    const x=Deals.unreserve(S,id,r.id,by,now);
+    if(!x.ok) return {n,why:x.reason};
+    n++;
+  }
+  return {n,why:''};
+}
+ON.change['deal-rsv']=t=>{
+  const id=t.dataset.id,pid=t.dataset.pid,d=dealById(id),p=product(pid),now=new Date();
+  if(!d||!p) return;
+  if(!can('reserve')){t.checked=!t.checked;toast('У вашей роли нет права ставить и снимать резервы.','warn');return}
+  if(!t.checked){
+    const r=dealUnreserveAll(id,pid,S.me,now);
+    render();
+    if(r.why) return toast(r.why,'warn');
+    return toast(`Резерв снят: ${low(Catalog.label(p))}. Товар снова свободен.`);
+  }
+  const k=stockOf(pid);
+  if(!k.known||!(k.free>0)){
+    t.checked=false;
+    return toast(k.known?`Свободного «${Catalog.label(p)}» на складах нет — резерв не поставлен.`:'Нет данных: остатки на складах — резерв не поставлен. Остатки загружает директор: «Настройки → Перенос».','warn');
+  }
+  const r=dealReserveAll(id,pid,S.me,now),all=Deals.lined(d,pid),held=Deals.reserved(S,d,pid);
+  render();
+  if(!r.got) return toast(r.why||'Резерв не поставлен.','warn');
+  if(held<all) return toast(`Зарезервировано ${qtyOf(r.got,p)}, всего в резерве ${num(held)} из ${num(all)}: больше свободного нет. ${r.why}`,'warn');
+  toast(`Резерв поставлен: ${low(Catalog.label(p))} — ${qtyOf(r.got,p)} для ${id}. Склад и директор получили уведомление.`);
+};
+// Галочка «Списать»: открывает окно списания со склада (53-stock.js) — откуда и сколько; галочка встанет, когда всё будет списано
+ON.change['deal-sell']=t=>{t.checked=false;A['stock-sell']({dataset:{pid:t.dataset.pid,did:t.dataset.id}})};
 A['deal-unres']=el=>{
   const id=el.dataset.id,rs=S.reserves.find(r=>r.id===el.dataset.rid),p=rs&&product(rs.productId);
   dealRun(Deals.unreserve(S,id,el.dataset.rid,S.me,new Date()),`Резерв снят${p?`: ${low(Catalog.label(p))} — ${qtyOf(rs.qty,p)}`:''}. Товар снова свободен.`);
