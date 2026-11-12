@@ -29,6 +29,23 @@ function readMap(file) {
   return out;
 }
 
+// Готовые фото, поставляемые вместе с программой: assets/photos (файлы + map.json «ключ → файл»); приходят с обновлением кода
+const BUNDLED = path.join(__dirname, '..', 'assets', 'photos');
+const bundled = (dir = BUNDLED) => ({ dir, mapFile: path.join(dir, 'map.json') });
+
+// Сколько готовых фото есть и сколько из них можно прикрепить сейчас (товар есть, фото у него ещё нет, файл на месте)
+function status(st, { dir, mapFile }) {
+  let map = {};
+  try { map = readMap(mapFile); } catch { /* связки нет — готовых фото нет */ }
+  const keys = Object.keys(map);
+  const products = new Map((st.products || []).map(p => [String(p.id), p]));
+  const free = keys.filter(k => {
+    const p = products.get(k);
+    return p && !(Array.isArray(p.photos) && p.photos.length) && fs.existsSync(path.join(dir, map[k]));
+  });
+  return { total: keys.length, available: free.length };
+}
+
 // ctx — openCore(); dir — папка с фото; by — id человека, от чьего имени фото (директор).
 // → { attached: [ключи], skipped: [{key, reason}] }; в базе всё меняется одной правкой.
 function importPhotos(ctx, { dir, mapFile, by }) {
@@ -50,4 +67,4 @@ function importPhotos(ctx, { dir, mapFile, by }) {
   return report;
 }
 
-module.exports = { importPhotos, readMap };
+module.exports = { importPhotos, readMap, status, bundled };

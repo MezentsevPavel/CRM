@@ -15663,7 +15663,7 @@ document.addEventListener('scroll',pprevHide,true);
 // вкладки перезагружаются сами (событие build в 72-server.js). Данные при обновлении не трогаются.
 
 // Состояние этой вкладки, не общей базы: S его не касается
-const up={info:null,check:null,err:'',loading:false,busy:false,waiting:false,manual:false};
+const up={info:null,check:null,err:'',loading:false,busy:false,waiting:false,manual:false,ph:null,phBusy:false};
 
 async function upLoad(){
   if(up.loading||!SERVER||!can('admin')) return;
@@ -15673,6 +15673,10 @@ async function upLoad(){
     if(r.status===200){up.info=r.body;up.err=''}
     else if(!srvStatus(r)) up.err=r.body.error||'нет данных: версия CRM';
   }catch(_){up.err='нет данных: версия CRM (нет связи с сервером)'}
+  try{
+    const p=await srvApi('GET','/api/photos/bundled');
+    if(p.status===200) up.ph=p.body;
+  }catch(_){/* блок про фото покажет «нет данных» */}
   up.loading=false;
   if(S&&S.view==='settings') render();
 }
@@ -15700,8 +15704,31 @@ function vUpdate(){
     ${show?`<button type="button" class="btn pri" data-act="upd-apply"${up.busy||up.waiting?' disabled':''}>${up.busy?'Устанавливаю…':'Обновить ПО'}</button>`:''}</div>
     ${dev}${manual}
     <p class="hint">Если новая версия работает не так, прежний код лежит в папке data/update-backup рядом с базой, а копия базы до обновления — в списке «Настройки → Копии».</p>
+  </div></section>${vReadyPhotos()}`;
+}
+
+// Готовые фото, которые приходят вместе с программой (assets/photos): кнопка прикрепляет их товарам, у которых фото ещё нет
+function vReadyPhotos(){
+  const p=up.ph;
+  const what=!p?'<p class="m0 muted">нет данных: готовые фото (сервер не ответил)</p>'
+    :!p.total?'<p class="m0 muted">В этой версии программы готовых фото нет.</p>'
+    :p.available?`<p class="m0">В программе есть готовые фото товаров (${num(p.total)} шт.). Сейчас их можно прикрепить к <b>${num(p.available)}</b> товарам, у которых фото ещё нет. Фото, которые вы добавили сами, не меняются.</p>`
+    :`<p class="m0"><span class="pill sm ok">Все готовые фото уже у товаров</span> (${num(p.total)} шт. в программе).</p>`;
+  return `<section class="card"><div class="card-h"><h3>Готовые фото товаров</h3></div><div class="card-b stack-s">${what}
+    <div><button type="button" class="btn pri" data-act="photos-bundled"${!p||!p.available||up.phBusy?' disabled':''}>${up.phBusy?'Загружаю…':'Загрузить готовые фото'}</button></div>
+    <p class="hint">Новые готовые фото приходят вместе с обновлением («Обновить ПО» выше). Остальные фото добавляются в карточке товара.</p>
   </div></section>`;
 }
+A['photos-bundled']=async()=>{
+  if(up.phBusy||!can('admin')) return;
+  up.phBusy=true;render();
+  try{
+    const r=await srvApi('POST','/api/photos/bundled');
+    if(r.status===200){up.ph=r.body;toast(r.body.attached?`Фото прикреплены: ${r.body.attached}.`:'Прикреплять было нечего.')}
+    else if(!srvStatus(r)) toast(r.body.error||'Фото не загружены.','warn');
+  }catch(_){toast('Нет связи с сервером — фото не загружены.','warn')}
+  up.phBusy=false;render();
+};
 
 MODALS.updApply=()=>{
   const c=up.check;

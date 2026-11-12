@@ -11,7 +11,7 @@ const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 const { openCore } = require('../server/app.js');
 const { readMap } = require('../server/photos.js');
-const { start, call, login, director, state } = require('./server-kit.js');
+const { start, call, login, director, employee, state } = require('./server-kit.js');
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d, 0x49, 0x48, 0x44, 0x52, 1, 2, 3]);
 const JPG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46, 0x49, 0x46, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0xff, 0xd9]);
@@ -81,4 +81,42 @@ test('import-photos: фото попадает товару, сервер отд
   } finally {
     fs.rmSync(photos.dir, { recursive: true, force: true });
   }
+});
+
+// Готовые фото из поставки программы (assets/photos): кнопка «Загрузить готовые фото» в «Обновить ПО» (слова директора 2026-11-12: «давай третий»)
+test('готовые фото из поставки: только директор; считает, сколько можно прикрепить; прикрепляет товарам без фото, повтор — ничего', async () => {
+  const bundled = folder({ 'a.jpg': PNG, 'b.jpg': JPG }, 'map.json', JSON.stringify({ [KEY_A]: 'a.jpg', [KEY_B]: 'b.jpg', 123456: 'a.jpg' }));
+  const srv = await start({ photosDir: bundled.dir });
+  try {
+    const boss = await director(srv);
+    const ivan = await employee(srv, boss, { id: 'p5', name: 'Иван Кладовщиков (тест)', role: 'warehouse', dept: 'stock' });
+    assert.equal((await call(srv, 'GET', '/api/photos/bundled', { cookie: ivan.cookie })).status, 403);
+    assert.equal((await call(srv, 'POST', '/api/photos/bundled', { cookie: ivan.cookie })).status, 403);
+
+    const st0 = await call(srv, 'GET', '/api/photos/bundled', { cookie: boss.cookie });
+    assert.deepEqual([st0.body.total, st0.body.available], [3, 2], 'нет товара 123456 — не считается доступным');
+
+    const done = await call(srv, 'POST', '/api/photos/bundled', { cookie: boss.cookie });
+    assert.equal(done.status, 200);
+    assert.equal(done.body.attached, 2);
+    assert.equal(done.body.available, 0);
+    const st = await state(srv, boss.cookie);
+    assert.equal(st.products.find(x => x.id === KEY_A).photos.length, 1);
+    const again = await call(srv, 'POST', '/api/photos/bundled', { cookie: boss.cookie });
+    assert.equal(again.body.attached, 0, 'повтор прикрепил ещё');
+    const db = new DatabaseSync(path.join(srv.dir, 'crm.db'), { readOnly: true });
+    try { assert.equal(db.prepare('SELECT COUNT(*) n FROM files').get().n, 2, 'повтор плодит файлы'); } finally { db.close(); }
+  } finally {
+    await srv.stop();
+    fs.rmSync(bundled.dir, { recursive: true, force: true });
+  }
+});
+
+test('готовые фото в самой программе: связка assets/photos/map.json указывает на существующие картинки, ключи — на товары каталога', () => {
+  const { bundled, readMap: read } = require('../server/photos.js');
+  const b = bundled();
+  const map = read(b.mapFile);
+  assert.ok(Object.keys(map).length >= 35);
+  for (const f of Object.values(map)) assert.ok(fs.existsSync(path.join(b.dir, f)), 'нет файла фото ' + f);
+  assert.ok(map[KEY_A] && map[KEY_B], 'нет фото DEYE SUN-12K или ASTERION');
 });

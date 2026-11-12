@@ -16,6 +16,7 @@ const { createSync, isEmpty } = require('./sync.js');
 const { createJobs } = require('./jobs.js');
 const { createBackups } = require('./backup.js');
 const { createUpdater } = require('./updater.js');
+const photos = require('./photos.js');
 const { migrate } = require('./migrate.js');
 const { build, stripGated, ROOT, OUT_NAME } = require('../tools/build.js');
 
@@ -182,7 +183,7 @@ function readJson(req) {
 }
 
 // passwordCostLog2 — только для тестов: степень двойки для N новых хешей паролей (в работе не задаётся — 17)
-async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCookie = false, now = Date.now, fileMaxMb = 20, backupHour, backupKeep, passwordCostLog2, update = {} } = {}) {
+async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCookie = false, now = Date.now, fileMaxMb = 20, backupHour, backupKeep, passwordCostLog2, update = {}, photosDir } = {}) {
   const page = serverPage(), pageLite = serverPage(true);
   // Признак версии страницы: после обновления кода он меняется, и открытые вкладки сами перезагружаются (событие build)
   const buildId = crypto.createHash('sha1').update(page).digest('hex').slice(0, 12);
@@ -313,8 +314,8 @@ async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCooki
 
     // ——— перенос и копии: только директор (право admin) ———
     const importRoute = /^\/api\/import\/(stock|clients)$/.exec(route);
-    if (importRoute || route === '/api/backups' || route.startsWith('/api/backups/') || route.startsWith('/api/update')) {
-      if (!can(ses.personId, 'admin')) return send(res, 403, { error: importRoute ? 'Нет прав: переносить данные' : route.startsWith('/api/update') ? 'Нет прав: обновлять CRM' : 'Нет прав: работать с копиями базы' }, extra);
+    if (importRoute || route === '/api/backups' || route.startsWith('/api/backups/') || route.startsWith('/api/update') || route.startsWith('/api/photos/')) {
+      if (!can(ses.personId, 'admin')) return send(res, 403, { error: importRoute ? 'Нет прав: переносить данные' : route.startsWith('/api/update') ? 'Нет прав: обновлять CRM' : route.startsWith('/api/photos/') ? 'Нет прав: загружать фото товаров' : 'Нет прав: работать с копиями базы' }, extra);
     }
     if (importRoute && method === 'POST') {
       const b = await readJson(req);
@@ -325,6 +326,14 @@ async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCooki
         const out = sync.system(work => (importRoute[1] === 'stock' ? Import.applyStock(work, rows, ses.personId, at) : Import.applyClients(work, rows, ses.personId, at)), ses.personId);
         return send(res, 200, out, extra);
       } catch (e) { return send(res, 400, { error: e.message }, extra); }
+    }
+    // Готовые фото из поставки программы (assets/photos): сколько их и сколько можно прикрепить; «загрузить» — прикрепить товарам без фото
+    if (route === '/api/photos/bundled' && method === 'GET') return send(res, 200, photos.status(sync.state, photos.bundled(photosDir)), extra);
+    if (route === '/api/photos/bundled' && method === 'POST') {
+      try {
+        const r = photos.importPhotos(ctx, { ...photos.bundled(photosDir), by: ses.personId });
+        return send(res, 200, { attached: r.attached.length, skipped: r.skipped.length, ...photos.status(sync.state, photos.bundled(photosDir)) }, extra);
+      } catch (e) { return send(res, 500, { error: 'Фото не загружены: ' + e.message }, extra); }
     }
     if (route === '/api/update' && method === 'GET') return send(res, 200, updater.info(), extra);
     if (route === '/api/update/check' && method === 'POST') {
