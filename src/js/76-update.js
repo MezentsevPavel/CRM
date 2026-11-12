@@ -21,6 +21,9 @@ async function upLoad(){
   up.loading=false;
   if(S&&S.view==='settings') render();
 }
+// Крутилка и «прошло N с»: пока сервер работает, на экране видно, что нажатие принято и всё идёт
+const SPIN='<span class="spin" aria-hidden="true"></span>';
+const upSecs=t0=>Math.max(0,Math.round((Date.now()-t0)/1000));
 const upSha=s=>String(s||'').slice(0,7);
 const upVer=v=>v?`${esc(v.message||v.title||'без названия')} <small class="muted">(от ${esc(v.at?fWhen(Date.parse(v.at)):'нет данных: дата')}, код ${esc(upSha(v.sha))})</small>`:'нет данных: версия не записана (папку с CRM скопировали вручную)';
 
@@ -41,8 +44,8 @@ function vUpdate(){
   return `<section class="card"><div class="card-h"><h3>Обновить ПО</h3></div><div class="card-b stack-s">
     <p class="m0">Новые версии CRM берутся с GitHub (${esc(i?i.repo:'MezentsevPavel/CRM')}). Перед установкой сервер делает копию базы; данные, сотрудники и файлы не меняются. На время перезапуска (около минуты) CRM у всех не отвечает.</p>
     ${cur}${found}${wait}
-    <div><button type="button" class="btn${show?'':' pri'}" data-act="upd-check"${up.busy||up.waiting||!i?' disabled':''}>${up.busy&&!c?'Проверяю…':'Проверить обновления'}</button>
-    ${show?`<button type="button" class="btn pri" data-act="upd-apply"${up.busy||up.waiting?' disabled':''}>${up.busy?'Устанавливаю…':'Обновить ПО'}</button>`:''}</div>
+    <div><button type="button" class="btn${show?'':' pri'}" data-act="upd-check"${up.busy||up.waiting||!i?' disabled':''}>${up.busy&&!c?SPIN+'Проверяю…':'Проверить обновления'}</button>
+    ${show?`<button type="button" class="btn pri" data-act="upd-apply"${up.busy||up.waiting?' disabled':''}>${up.busy?SPIN+'Устанавливаю…':'Обновить ПО'}</button>`:''}</div>
     ${dev}${manual}
     <p class="hint">Если новая версия работает не так, прежний код лежит в папке data/update-backup рядом с базой, а копия базы до обновления — в списке «Настройки → Копии».</p>
   </div></section>${vReadyPhotos()}`;
@@ -57,7 +60,7 @@ function vReadyPhotos(){
     :!p.matched?`<p class="m0"><span class="pill sm warn">Прикреплять некуда</span> В вашей базе нет ни одного товара, для которого есть готовое фото (${num(p.total)} шт. в программе). Нет данных: каталог в этой базе не загружен или это другие товары.</p>`
     :`<p class="m0"><span class="pill sm ok">Нечего прикреплять</span> У ${num(p.withPhoto)} из ${num(p.matched)} подходящих товаров фото уже есть${p.total>p.matched?`; для ещё ${num(p.total-p.matched)} готовых фото в вашей базе нет товара`:''}.</p>`;
   return `<section class="card"><div class="card-h"><h3>Готовые фото товаров</h3></div><div class="card-b stack-s">${what}
-    <div><button type="button" class="btn pri" data-act="photos-bundled"${!p||!p.available||up.phBusy?' disabled':''}>${up.phBusy?'Загружаю…':'Загрузить готовые фото'}</button></div>
+    <div><button type="button" class="btn pri" data-act="photos-bundled"${!p||!p.available||up.phBusy?' disabled':''}>${up.phBusy?SPIN+'Загружаю…':'Загрузить готовые фото'}</button></div>
     <p class="hint">Новые готовые фото приходят вместе с обновлением («Обновить ПО» выше). Остальные фото добавляются в карточке товара.</p>
   </div></section>`;
 }
@@ -91,33 +94,54 @@ A['upd-check']=async()=>{
   up.busy=false;render();
 };
 A['upd-apply']=()=>{if(can('admin')&&up.check) openModal('updApply')};
-FORMS['upd-apply']=async()=>{
+FORMS['upd-apply']=async f=>{
   if(up.busy) return;
   up.busy=true;
+  // сразу после нажатия: кнопки заблокированы, на месте «Обновить ПО» — крутилка, под текстом — что происходит и сколько прошло
+  const t0=Date.now(),btns=[...f.querySelectorAll('button')],ok=f.querySelector('button[type=submit]'),box=f.querySelector('.modal-b');
+  btns.forEach(x=>{x.disabled=true});
+  if(ok) ok.innerHTML=SPIN+'Устанавливаю…';
+  const prog=document.createElement('p');prog.className='upd-prog';prog.setAttribute('role','status');
+  const tick=()=>{prog.textContent='Делаю копию базы, скачиваю новую версию и заменяю файлы. Это занимает до минуты — не закрывайте страницу. Прошло '+upSecs(t0)+' с.'};
+  tick();if(box) box.appendChild(prog);
+  const timer=setInterval(tick,1000);
+  const undo=()=>{clearInterval(timer);prog.remove();btns.forEach(x=>{x.disabled=false});if(ok) ok.textContent='Обновить ПО'};
   try{
     const r=await srvApi('POST','/api/update/apply');
-    if(srvStatus(r)){up.busy=false;return}
-    if(r.status!==200){up.busy=false;return showErr('upd-err',r.body.error||'Обновление не установлено.')}
-    closeModal();up.busy=false;up.check=null;
-    if(!r.body.restarting){up.manual=true;toast('Новая версия установлена. Перезапустите сервер, чтобы она заработала.');render();return}
+    if(srvStatus(r)){up.busy=false;undo();return}
+    if(r.status!==200){up.busy=false;undo();return showErr('upd-err',r.body.error||'Обновление не установлено.')}
+    clearInterval(timer);closeModal();up.busy=false;up.check=null;
+    if(!r.body.restarting){up.manual=true;upOverlay(null);toast('Новая версия установлена. Перезапустите сервер, чтобы она заработала.');render();return}
     up.waiting=true;render();
     upWaitRestart(r.body.to);
-  }catch(_){up.busy=false;showErr('upd-err','Нет связи с сервером — повторите, когда связь вернётся.')}
+  }catch(_){up.busy=false;undo();showErr('upd-err','Нет связи с сервером — повторите, когда связь вернётся.')}
 };
+// Во весь экран: обновление установлено, сервер перезапускается — крутилка и секунды, чтобы не казалось, что всё зависло. null — убрать
+function upOverlay(text,onClose){
+  let el=document.getElementById('upd-ov');
+  if(text===null){if(el) el.remove();return}
+  if(!el){el=document.createElement('div');el.id='upd-ov';el.className='upd-ov';el.setAttribute('role','status');el.setAttribute('aria-live','polite');document.body.appendChild(el)}
+  el.innerHTML='<div class="upd-ov-box">'+(onClose?'':SPIN)+'<p class="upd-ov-t"></p>'+(onClose?'<button type="button" class="btn" id="upd-ov-x">Закрыть</button>':'')+'</div>';
+  el.querySelector('.upd-ov-t').textContent=text;
+  if(onClose) el.querySelector('#upd-ov-x').onclick=onClose;
+}
 // Ждёт, пока сервер поднимется с новой версией, и перезагружает страницу. Запросы идут мимо srvApi, чтобы обрыв связи не поднимал плашку «нет связи».
 async function upWaitRestart(sha){
-  const end=Date.now()+180000;
+  const t0=Date.now(),end=t0+180000;
+  const say=()=>upOverlay('Обновление установлено, сервер перезапускается. Страница обновится сама, обычно за полминуты. Прошло '+upSecs(t0)+' с.');
+  say();
+  const timer=setInterval(say,1000);
   await new Promise(ok=>setTimeout(ok,2500));
   while(Date.now()<end){
     try{
       const res=await fetch('/api/update',{credentials:'same-origin',cache:'no-store'});
-      if(res.ok){const b=await res.json();if(b.current&&b.current.sha===sha){srvReload();return}}
+      if(res.ok){const b=await res.json();if(b.current&&b.current.sha===sha){clearInterval(timer);upOverlay('Готово, открываю новую версию…');srvReload();return}}
     }catch(_){/* сервер ещё перезапускается */}
     await new Promise(ok=>setTimeout(ok,2000));
   }
+  clearInterval(timer);
   up.waiting=false;
-  toast('Сервер не поднялся за три минуты. Проверьте окно, где он запущен.','warn');
-  if(S&&S.view==='settings') render();
+  upOverlay('Сервер не поднялся за три минуты. Посмотрите окно, где он запущен (start.cmd): там написана причина. Новая версия установлена, прежний код лежит в data/update-backup.',()=>{upOverlay(null);if(S&&S.view==='settings') render()});
 }
 
 if(SERVER) SETTINGS_TABS.push({id:'update',label:'Обновить ПО',order:89,ok:()=>SERVER&&can('admin'),render:vUpdate});

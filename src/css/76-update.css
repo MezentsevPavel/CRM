@@ -1,0 +1,9 @@
+/* «Настройки → Обновить ПО» (76-update.js): крутилка, ход установки в окне и экран ожидания перезапуска */
+.spin{display:inline-block;width:14px;height:14px;margin-right:8px;vertical-align:-2px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:upd-spin .8s linear infinite}
+@keyframes upd-spin{to{transform:rotate(360deg)}}
+.upd-prog{margin:0;padding:10px 12px;border-radius:10px;background:var(--info-soft);color:var(--info);font-size:13px}
+.upd-ov{position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;padding:16px;background:var(--overlay);backdrop-filter:blur(6px)}
+.upd-ov-box{max-width:420px;padding:22px 24px;border-radius:16px;background:var(--surface);box-shadow:var(--shadow);text-align:center;color:var(--ink)}
+.upd-ov-box .spin{width:28px;height:28px;margin:0 0 12px;border-width:3px;color:var(--primary)}
+.upd-ov-t{margin:0 0 4px;font-size:14.5px;line-height:1.45}
+.upd-ov-box .btn{margin-top:12px}
