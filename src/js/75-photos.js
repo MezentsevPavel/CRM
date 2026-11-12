@@ -204,7 +204,13 @@ function photoPreviewPos(r,vw,vh,w,h){
   const y=Math.min(Math.max(8,r.top+r.height/2-h/2),Math.max(8,vh-h-8));
   return {x,y};
 }
-const PPREV_W=260;
+// Ширина окошка: втрое крупнее прежних 260 px (слова директора 2026-11-12), но не шире места рядом с миниатюрой (справа или слева)
+// и не выше окна (фото квадратное или альбомное, высота не больше ширины); меньше 260 px не бывает. Чистая функция — проверена тестом.
+const PPREV_BASE=260,PPREV_MAX=PPREV_BASE*3;
+function photoPreviewWidth(r,vw,vh){
+  const side=Math.max(vw-r.right,r.left)-24;
+  return Math.round(Math.max(PPREV_BASE,Math.min(PPREV_MAX,side,vh-40)));
+}
 let pprevEl=null;
 function pprevHide(){if(pprevEl){pprevEl.remove();pprevEl=null}}
 function pprevShow(img){
@@ -214,7 +220,9 @@ function pprevShow(img){
   const big=document.createElement('img');
   big.src=img.src;big.alt='';
   el.appendChild(big);document.body.appendChild(el);
-  const r=img.getBoundingClientRect(),pos=photoPreviewPos(r,window.innerWidth,window.innerHeight,PPREV_W,el.offsetHeight||PPREV_W);
+  const r=img.getBoundingClientRect(),w=photoPreviewWidth(r,window.innerWidth,window.innerHeight);
+  el.style.width=w+'px';
+  const pos=photoPreviewPos(r,window.innerWidth,window.innerHeight,w,el.offsetHeight||w);
   el.style.left=pos.x+'px';el.style.top=pos.y+'px';
   pprevEl=el;
 }
