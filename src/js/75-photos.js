@@ -211,8 +211,11 @@ function photoPreviewWidth(r,vw,vh){
   const side=Math.max(vw-r.right,r.left)-24;
   return Math.round(Math.max(PPREV_BASE,Math.min(PPREV_MAX,side,vh-40)));
 }
-let pprevEl=null;
-function pprevHide(){if(pprevEl){pprevEl.remove();pprevEl=null}}
+let pprevEl=null,pprevTimer=null;
+// Фото открывается не сразу, а когда мышь задержалась на миниатюре 1 с (слова директора 2026-11-12: «задержку хотя бы 1 секунду»):
+// провёл мышью мимо — ничего не всплывает
+const PPREV_DELAY=1000;
+function pprevHide(){clearTimeout(pprevTimer);pprevTimer=null;if(pprevEl){pprevEl.remove();pprevEl=null}}
 function pprevShow(img){
   pprevHide();
   const el=document.createElement('div');
@@ -230,7 +233,8 @@ function pprevShow(img){
 const hoverOk=()=>typeof matchMedia==='function'&&matchMedia('(hover:hover)').matches;
 document.addEventListener('mouseover',e=>{
   const t=e.target&&e.target.closest?e.target.closest('img.pthumb'):null;
-  if(t&&hoverOk()) pprevShow(t);
+  if(!t||!hoverOk()||pprevTimer||pprevEl) return;
+  pprevTimer=setTimeout(()=>{pprevTimer=null;if(t.isConnected) pprevShow(t)},PPREV_DELAY);
 });
 document.addEventListener('mouseout',e=>{if(e.target&&e.target.closest&&e.target.closest('img.pthumb')) pprevHide()});
 document.addEventListener('scroll',pprevHide,true);

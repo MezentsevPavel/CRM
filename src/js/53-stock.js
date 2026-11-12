@@ -271,6 +271,14 @@ function histHtml(v){
   if(!h.length) return '';
   return `<details class="rhist"><summary>История</summary><ol>${h.map(e=>`<li><span>${esc(e.text)}</span><small>${e.at?fWhen(e.at):'нет данных: когда'}${e.text.startsWith('Срок вышел')?'':' · '+esc(whoName(e.by)||'нет данных: кто')}</small></li>`).join('')}</ol></details>`;
 }
+// Строка резерва (Stock.reserveView) — одна на карточку товара и раздел «Резервы» (78-reserves.js).
+// «Для кого»: сделка (ссылка, если раздел сделок открыт), «сделка скрыта», текст «для кого» без сделки или примечание переноса.
+const resDealCell=v=>v.forWho&&!v.hasDeal?`${esc(v.forWho)}<small class="muted">без сделки</small>`:v.deal?`${can('clients')?`<button class="link" data-act="open-deal" data-id="${esc(v.deal.id)}">${esc(v.deal.id)}</button>`:esc(v.deal.id)}<small class="muted">${esc(v.deal.client||'')}</small>`:v.hasDeal?`<span class="muted">${Stock.HIDDEN_DEAL}</span>`:noData('сделка')+(v.note?`<small class="muted">${esc(v.note)}</small>`:'');
+// Кол-во, где товар, до (за 2 дня до конца — жёлтым), кто поставил, когда
+const resCells=v=>{const n=v.until?dd(v.until):null;return `<td class="num">${num(v.qty)}</td><td>${srcPill(v)}<small class="muted">${esc(v.where)}</small></td><td class="nowrap ${n!==null&&n<=2?'warn-t':''}">${v.until?fD(v.until):noData('срок')}</td><td>${v.by?esc(whoName(v.by)||'нет данных: кто'):noData('кто')}</td><td class="nowrap">${v.at?fWhen(v.at):noData('когда')}</td>`};
+const resActs=()=>can('reserve')||can('sell');
+// кнопки — не у резерва скрытой сделки; резерв без сделки (из переноса остатков) можно снять и списать
+const resBtns=v=>v.hasDeal&&!v.deal?'':`<div class="rbtns">${can('reserve')?`<button type="button" class="btn sm ghost" data-act="reserve-until" data-id="${esc(v.id)}">Срок</button>`:''}${!v.inTransit&&can('sell')?`<button type="button" class="btn sm" data-act="stock-sell" data-pid="${esc(v.productId)}" data-rid="${esc(v.id)}">Списать</button>`:''}${can('reserve')?`<button class="btn sm ghost" data-act="unreserve" data-id="${esc(v.id)}">Снять</button>`:''}</div>`;
 // «Снятые резервы» — последние 20 по журналу (Stock.removed): для кого, сколько, где, кто поставил и кто снял
 function removedHtml(p){
   const list=Stock.removed(S,p.id,20);
@@ -303,11 +311,8 @@ function dProduct(p){
   ].join('');
   // резерв видит каждый, у кого есть право на остатки: сколько, где и до какого числа. Сделку и клиента называет
   // Stock.reserveView только тому, кому сделка видна; остальным — «сделка скрыта», без ссылки и без кнопок «Снять» и «Списать»
-  const acts=can('reserve')||can('sell');
-  const dealCell=v=>v.forWho&&!v.hasDeal?`${esc(v.forWho)}<small class="muted">без сделки</small>`:v.deal?`${can('clients')?`<button class="link" data-act="open-deal" data-id="${esc(v.deal.id)}">${esc(v.deal.id)}</button>`:esc(v.deal.id)}<small class="muted">${esc(v.deal.client||'')}</small>`:v.hasDeal?`<span class="muted">${Stock.HIDDEN_DEAL}</span>`:noData('сделка')+(v.note?`<small class="muted">${esc(v.note)}</small>`:'');
-  // кнопки — не у резерва скрытой сделки; резерв без сделки (из переноса остатков) можно снять и списать
-  const rBtns=v=>v.hasDeal&&!v.deal?'':`<div class="rbtns">${can('reserve')?`<button type="button" class="btn sm ghost" data-act="reserve-until" data-id="${esc(v.id)}">Срок</button>`:''}${!v.inTransit&&can('sell')?`<button type="button" class="btn sm" data-act="stock-sell" data-pid="${esc(v.productId)}" data-rid="${esc(v.id)}">Списать</button>`:''}${can('reserve')?`<button class="btn sm ghost" data-act="unreserve" data-id="${esc(v.id)}">Снять</button>`:''}</div>`;
-  const rTbl=rs.length?`<div class="xs"><table class="tbl"><thead><tr><th>Для кого</th><th class="num">Кол-во</th><th>Где товар</th><th>До</th><th>Кто поставил</th><th>Когда</th>${acts?'<th></th>':''}</tr></thead><tbody>${rs.map(v=>{const n=v.until?dd(v.until):null;return `<tr><td>${dealCell(v)}${histHtml(v)}</td><td class="num">${num(v.qty)}</td><td>${srcPill(v)}<small class="muted">${esc(v.where)}</small></td><td class="nowrap ${n!==null&&n<=2?'warn-t':''}">${v.until?fD(v.until):noData('срок')}</td><td>${v.by?esc(whoName(v.by)||'нет данных: кто'):noData('кто')}</td><td class="nowrap">${v.at?fWhen(v.at):noData('когда')}</td>${acts?`<td class="num">${rBtns(v)}</td>`:''}</tr>`}).join('')}</tbody></table></div>`:'<p class="muted m0">Резервов нет.</p>';
+  const acts=resActs();
+  const rTbl=rs.length?`<div class="xs"><table class="tbl"><thead><tr><th>Для кого</th><th class="num">Кол-во</th><th>Где товар</th><th>До</th><th>Кто поставил</th><th>Когда</th>${acts?'<th></th>':''}</tr></thead><tbody>${rs.map(v=>`<tr><td>${resDealCell(v)}${histHtml(v)}</td>${resCells(v)}${acts?`<td class="num">${resBtns(v)}</td>`:''}</tr>`).join('')}</tbody></table></div>`:'<p class="muted m0">Резервов нет.</p>';
   const iList=inc.length?`<ul class="mv">${inc.map(x=>iRow(x,p)).join('')}</ul>`:'<p class="muted m0">Поставок с этим товаром нет.</p>';
   const mList=mv.length?`<ul class="mv">${mv.map(m=>`<li>${movePill(m)}<b>${moveSign(m)}${qtyOf(m.qty,p)}</b><span>${esc(moveWhere(m))}</span><span class="mono muted">${esc(moveDoc(m))}</span><small>${fWhen(m.at)} · ${esc(whoName(m.by)||'нет данных: кто')}</small></li>`).join('')}</ul><p class="m0"><button type="button" class="btn sm" data-act="stock-journal" data-pid="${esc(p.id)}">Весь журнал по товару${all.length>mv.length?` (${all.length})`:''}</button></p>`:'<p class="muted m0">Движений пока нет.</p>';
   return {kind:p.cat,title:esc(p.name),sub:[p.inCatalog?'':'нет в каталоге',p.brand?esc(p.brand):''].filter(Boolean).join(' · '),body:`

@@ -1,0 +1,15 @@
+/* Раздел «Резервы» (78-reserves.js): выбор товаров списком и все текущие резервы */
+.rsv-new form{display:flex;flex-direction:column;gap:14px}
+.rsv-tbl td small{display:block}
+.rsv-tbl tr.on td{background:var(--primary-soft)}
+.rsv-n{width:90px;text-align:right}
+.rsv-basket{padding:12px 14px;border:1px dashed var(--line-2);border-radius:12px;background:var(--sunken)}
+.rsv-chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0;padding:0;list-style:none}
+.rsv-chips li{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px;padding:4px 6px 4px 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface-2);font-size:13px}
+.rsv-chips li.bad{border-color:var(--bad)}
+.rsv-chips li small{flex-basis:100%;color:var(--bad);padding-right:8px}
+.rsv-x{border:0;background:transparent;color:var(--ink-3);font-size:16px;line-height:1;padding:2px 6px;border-radius:999px;cursor:pointer}
+.rsv-x:hover{background:var(--line);color:var(--ink)}
+.rsv-go{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+.rsv-flt{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:12px}
+.rsv-flt .inp{flex:1 1 220px;max-width:360px}
