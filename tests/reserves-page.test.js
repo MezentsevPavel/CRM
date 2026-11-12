@@ -94,6 +94,16 @@ test('раздел «Резервы» в меню группы «Товар»; �
   }
 });
 
+test('остатки не загружены — «нет данных: остатки», а не «свободного нет»; блоки в карточках с отступами (card-h / card-b)', () => {
+  const { a, S } = setup();
+  S.stock = {};
+  const html = a.vReserves();
+  assert.match(html, /Нет данных: остатки на складах/);
+  assert.doesNotMatch(html, /Свободного товара на складах нет/);
+  assert.equal((html.match(/class="card-h"/g) || []).length, 2, 'заголовки карточек без своей разметки — текст прилипнет к краю');
+  assert.match(html, /<form class="card-b" data-form="rsv"/);
+});
+
 test('фото при наведении: открывается через 1 с, а не сразу; увёл мышь раньше — не открывается', () => {
   const timers = [], cleared = [];
   const a = load({ globals: {

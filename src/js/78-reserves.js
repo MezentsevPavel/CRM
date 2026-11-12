@@ -96,7 +96,9 @@ function rsvPickHtml(u){
   const d=u.kind==='deal'?deal(u.deal):null;
   if(u.kind==='deal'&&!d) return '<p class="muted m0">Выберите сделку — здесь появятся её товары.</p>';
   const all=rsvCandidates(u),lim=RSV_PAGE*((u.more||0)+1),list=all.slice(0,lim);
-  if(!all.length) return `<p class="muted m0">${d?'В этой сделке нет товаров, которые можно ещё зарезервировать.':u.q?'По поиску ничего нет среди товаров со свободным остатком.':'Свободного товара на складах нет.'}</p>`;
+  // «нет свободного» и «остатки не загружены» — разные вещи: во втором случае чисел нет ни у одного товара
+  const noStock=!d&&!S.products.some(p=>Stock.summary(S,p.id).known);
+  if(!all.length) return `<p class="muted m0">${d?'В этой сделке нет товаров, которые можно ещё зарезервировать.':noStock?'Нет данных: остатки на складах. Их загружают в «Настройки → Перенос» (таблица остатков) или «Товары и остатки → Оприходовать товар».':u.q?'По поиску ничего нет среди товаров со свободным остатком.':'Свободного товара на складах нет.'}</p>`;
   const head=`<tr><th>Товар</th>${d?'<th class="num">Можно ещё по сделке</th>':''}<th class="num">Свободно на складах</th><th class="num">Сколько</th></tr>`;
   const more=all.length>list.length?`<p class="m0"><button type="button" class="btn sm" data-act="rsv-more">Показать ещё (всего ${num(all.length)})</button></p>`:'';
   return `<div class="xs"><table class="tbl rsv-tbl"><thead>${head}</thead><tbody>${list.map(p=>rsvRow(p,u,d)).join('')}</tbody></table></div>${more}`;
@@ -109,7 +111,7 @@ function rsvBasketHtml(u){
   return `<p class="m0"><b>Выбрано: ${num(ids.length)} ${pl(ids.length,'товар','товара','товаров')}, всего ${num(total)} шт.</b> <button type="button" class="link" data-act="rsv-clear">Очистить</button></p><ul class="rsv-chips">${ids.map(pid=>{const p=rsvProd(pid),e=rsvErrs[pid];return `<li class="${e?'bad':''}"><span>${esc(p.name)}</span><b>× ${num(u.pick[pid])}</b><button type="button" class="rsv-x" data-act="rsv-unpick" data-pid="${esc(pid)}" aria-label="Убрать «${esc(p.name)}»" title="Убрать">×</button>${e?`<small>${esc(e)}</small>`:''}</li>`}).join('')}</ul>`;
 }
 function rsvFormHtml(u){
-  if(!can('reserve')) return `<section class="card"><p class="lock m0">${ic('lock')}Ставить резервы может менеджер или директор. Ниже — всё, что сейчас в резерве.</p></section>`;
+  if(!can('reserve')) return `<section class="card"><div class="card-b rsv-pad"><p class="lock m0">${ic('lock')}Ставить резервы может менеджер или директор. Ниже — всё, что сейчас в резерве.</p></div></section>`;
   const deals=rsvDeals();
   if(u.kind==='deal'&&!deals.some(d=>d.id===u.deal)) u.deal=deals[0]?deals[0].id:'';
   const until=u.until||iso(day(Stock.RESERVE_DAYS));
@@ -119,7 +121,7 @@ function rsvFormHtml(u){
     :`<div class="field"><label for="rsv-for">Для кого</label><input id="rsv-for" class="inp" maxlength="200" value="${esc(u.forWho||'')}" placeholder="под Иванова, монтаж в Шелехове" data-on="rsv-for" autocomplete="off"></div>`;
   const search=u.kind==='deal'?(deal(u.deal)?`<p class="m0"><button type="button" class="btn sm" data-act="rsv-all">Взять всё по сделке</button> <small class="muted">сколько осталось по строкам, но не больше свободного</small></p>`:'')
     :`<input id="rsv-q" class="inp" type="search" value="${esc(u.q||'')}" placeholder="Найти товар: название или артикул" data-on="rsv-q" autocomplete="off" aria-label="Поиск товара">`;
-  return `<section class="card rsv-new"><form data-form="rsv" novalidate><h3 class="sh">Поставить резерв</h3>
+  return `<section class="card rsv-new"><div class="card-h"><h3>Поставить резерв</h3></div><form class="card-b" data-form="rsv" novalidate>
     ${seg}
     <div class="grid2">${who}<div class="field"><label for="rsv-until">Резерв до</label><input id="rsv-until" class="inp" type="date" value="${esc(until)}" data-on="rsv-until"></div></div>
     <div class="stack-s">${search}<div id="rsv-pick">${rsvPickHtml(u)}</div></div>
@@ -149,7 +151,7 @@ function rsvTableHtml(u){
 }
 function rsvListHtml(u){
   const seg=`<div class="seg" role="group" aria-label="Какие резервы">${RSV_LF.map(([k,l])=>`<button type="button" class="${u.lf===k?'on':''}" aria-pressed="${u.lf===k}" data-act="rsv-lf" data-k="${k}">${l}</button>`).join('')}</div>`;
-  return `<section class="card"><h3 class="sh">Сейчас в резерве</h3><div class="rsv-flt">${seg}<input class="inp" type="search" value="${esc(u.lq||'')}" placeholder="Найти: товар, для кого, сделка" data-on="rsv-lq" autocomplete="off" aria-label="Поиск по резервам"></div><div id="rsv-list">${rsvTableHtml(u)}</div></section>`;
+  return `<section class="card"><div class="card-h"><h3>Сейчас в резерве</h3></div><div class="card-b"><div class="rsv-flt">${seg}<input class="inp" type="search" value="${esc(u.lq||'')}" placeholder="Найти: товар, для кого, сделка" data-on="rsv-lq" autocomplete="off" aria-label="Поиск по резервам"></div><div id="rsv-list">${rsvTableHtml(u)}</div></div></section>`;
 }
 function vReserves(){const u=rsvU();return `<div class="rsv stack">${rsvFormHtml(u)}${rsvListHtml(u)}</div>`}
 
