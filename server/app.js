@@ -15,6 +15,7 @@ const { createFiles } = require('./files.js');
 const { createSync, isEmpty } = require('./sync.js');
 const { createJobs } = require('./jobs.js');
 const { createBackups } = require('./backup.js');
+const { createUpdater } = require('./updater.js');
 const { migrate } = require('./migrate.js');
 const { build, stripGated, ROOT, OUT_NAME } = require('../tools/build.js');
 
@@ -181,8 +182,10 @@ function readJson(req) {
 }
 
 // passwordCostLog2 — только для тестов: степень двойки для N новых хешей паролей (в работе не задаётся — 17)
-async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCookie = false, now = Date.now, fileMaxMb = 20, backupHour, backupKeep, passwordCostLog2 } = {}) {
+async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCookie = false, now = Date.now, fileMaxMb = 20, backupHour, backupKeep, passwordCostLog2, update = {} } = {}) {
   const page = serverPage(), pageLite = serverPage(true);
+  // Признак версии страницы: после обновления кода он меняется, и открытые вкладки сами перезагружаются (событие build)
+  const buildId = crypto.createHash('sha1').update(page).digest('hex').slice(0, 12);
   const pageHeaders = html => ({
     'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
     'X-Frame-Options': 'DENY', 'Referrer-Policy': 'same-origin', 'Content-Security-Policy': pageCsp(html),
@@ -204,6 +207,7 @@ async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCooki
   // После восстановления базы все вкладки перезагружаются, а потоки закрытых сеансов закрываются
   backups.onRestored = ({ closed }) => { broadcast('reload', {}); bye(closed); };
   const closed = list => { sync.sweepViews(list); bye(list); };
+  const updater = createUpdater({ appDir: path.join(__dirname, '..'), dataDir, backups, ...update });
   const jobs = createJobs({ sync, core, auth, files, now: clock, onClosed: bye });
   const can = (pid, right) => core.Perms.can(sync.state, pid, right);
   const personView = p => ({ id: p.id, name: p.name, role: p.role });
@@ -265,6 +269,7 @@ async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCooki
       res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no', 'Content-Security-Policy': API_CSP, ...extra });
       res.write('retry: 3000\n\n');
       write(res, 'seq', sync.seq);
+      write(res, 'build', buildId);
       const set = streams.get(ses.tokenHash) || new Set();
       streams.set(ses.tokenHash, set.add(res));
       req.on('close', () => { set.delete(res); if (!set.size && streams.get(ses.tokenHash) === set) streams.delete(ses.tokenHash); });
@@ -308,8 +313,8 @@ async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCooki
 
     // ——— перенос и копии: только директор (право admin) ———
     const importRoute = /^\/api\/import\/(stock|clients)$/.exec(route);
-    if (importRoute || route === '/api/backups' || route.startsWith('/api/backups/')) {
-      if (!can(ses.personId, 'admin')) return send(res, 403, { error: importRoute ? 'Нет прав: переносить данные' : 'Нет прав: работать с копиями базы' }, extra);
+    if (importRoute || route === '/api/backups' || route.startsWith('/api/backups/') || route.startsWith('/api/update')) {
+      if (!can(ses.personId, 'admin')) return send(res, 403, { error: importRoute ? 'Нет прав: переносить данные' : route.startsWith('/api/update') ? 'Нет прав: обновлять CRM' : 'Нет прав: работать с копиями базы' }, extra);
     }
     if (importRoute && method === 'POST') {
       const b = await readJson(req);
@@ -320,6 +325,13 @@ async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCooki
         const out = sync.system(work => (importRoute[1] === 'stock' ? Import.applyStock(work, rows, ses.personId, at) : Import.applyClients(work, rows, ses.personId, at)), ses.personId);
         return send(res, 200, out, extra);
       } catch (e) { return send(res, 400, { error: e.message }, extra); }
+    }
+    if (route === '/api/update' && method === 'GET') return send(res, 200, updater.info(), extra);
+    if (route === '/api/update/check' && method === 'POST') {
+      try { return send(res, 200, { ...updater.info(), ...(await updater.check()) }, extra); } catch (e) { return send(res, e.status || 500, { error: e.message }, extra); }
+    }
+    if (route === '/api/update/apply' && method === 'POST') {
+      try { return send(res, 200, await updater.apply(), extra); } catch (e) { return send(res, e.status || 500, { error: e.message }, extra); }
     }
     if (route === '/api/backups' && method === 'GET') return send(res, 200, { backups: backups.list(), keep: backups.keep, hour: backups.hour }, extra);
     if (route === '/api/backups' && method === 'POST') {

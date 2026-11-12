@@ -29,7 +29,7 @@ const SRV_HIDE={nav:['mail','messages','sims'],tabs:['mail','data']};
 const srv={
   confirmed:{},local:{},queue:[],view:'',seq:0,pools:{},refill:{},tag:'',tab:'',n:0,person:null,
   busy:false,wantPush:false,wantPull:false,gate:false,offline:false,retry:0,retryT:0,
-  es:null,waiters:[],openedAt:null,timer:0,users:null,usersBusy:false,usersErr:'',shown:null
+  es:null,build:'',waiters:[],openedAt:null,timer:0,users:null,usersBusy:false,usersErr:'',shown:null
 };
 
 if(SERVER){
@@ -301,6 +301,8 @@ function srvEvents(){
     if(n>srv.seq||srv.offline){srv.wantPull=true;if(srv.offline) srvRetryNow();else srvKick()}
   });
   es.addEventListener('reload',()=>srvReloadSoon());
+  // Версия страницы на сервере сменилась (код обновили) — эта вкладка устарела, перезагрузить
+  es.addEventListener('build',e=>{let b='';try{b=JSON.parse(e.data)}catch(_){}if(srv.build&&b&&srv.build!==b) srvReloadSoon();if(b) srv.build=b});
   es.addEventListener('bye',()=>{try{es.close()}catch(_){}if(srv.es===es) srv.es=null;srvGate(true)});
   es.onerror=()=>{
     // поток закрыт насовсем (401, сеанс кончился) — проверить вход; обрыв сети поток переподключает сам
