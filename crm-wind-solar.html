@@ -581,6 +581,10 @@ li .sku,.s-it .sku,.dsp-line .sku{display:inline}
 /* «Создать товар» поверх открытой формы (сделка, поставка, заявка на отправку) */
 .pq-wrap{z-index:60}
 .pq-link{margin-top:2px}
+/* остаток без города: напоминание над списком «Товары» */
+.nocity{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;margin:0 0 12px;padding:10px 14px;border:1px solid var(--line);border-radius:14px;background:var(--warn-soft,var(--surface-2));font-size:13.5px}
+.nocity>span{display:flex;align-items:flex-start;gap:8px;flex:1 1 360px;min-width:0}
+.nocity .ic{flex:none;width:17px;height:17px;margin-top:1px}
 
 /* ——— поставки и перевозки: таблица, воронка, шкала маршрута, позиции, карточка ——— */
 
@@ -3168,6 +3172,15 @@ const Stock = (() => {
     };
   }
 
+  // Город по умолчанию: куда приходит товар, если город не назван (перенос таблицы остатков, оприходование). Слово директора
+  // 2026-11-13: «все товары приходят в Иркутск». Город ищется в справочнике по названию; нет такого — «нет данных» (ANY),
+  // ничего не выдумывается. Единственное место, где это решается.
+  const DEFAULT_CITY_NAME = 'иркутск';
+  const defaultCityId = st => {
+    const c = ((st && st.cities) || []).find(x => x && String(x.name == null ? '' : x.name).trim().toLowerCase().replace(/ё/g, 'е') === DEFAULT_CITY_NAME);
+    return c ? c.id : ANY;
+  };
+
   const isNum = v => typeof v === 'number' && isFinite(v);
   const sum = (list, f) => list.reduce((a, x) => a + f(x), 0);
   const total = vals => { const n = vals.filter(isNum); return n.length ? sum(n, x => x) : null; };
@@ -3762,7 +3775,7 @@ const Stock = (() => {
   }
 
   return {
-    ANY, RESERVE_DAYS, KINDS, RECEIPT_DOC, NO_ENTITY, NO_CITY, HIDDEN_DEAL, HIDDEN_ID, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, table, canReserve, bestCell, cells, move, reserve, unreserve, release, expired, sellMax, sell, cellText, dealRef, reserveView, docView,
+    ANY, RESERVE_DAYS, KINDS, RECEIPT_DOC, NO_ENTITY, NO_CITY, HIDDEN_DEAL, HIDDEN_ID, defaultCityId, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, table, canReserve, bestCell, cells, move, reserve, unreserve, release, expired, sellMax, sell, cellText, dealRef, reserveView, docView,
     reserveFor, extend, forText, placed, history, removed, transitBy, transitDetail, transitText, watchOf, watch, unwatch, notifyAppeared, remindExpiring, due, tick };
 })();
 
@@ -9221,10 +9234,29 @@ const Import = (() => {
     let skus = 0;
     list.forEach((row, i) => { const p = byId.get(built.ids[i]); if (row.sku && p && !Catalog.skuOf(p)) { p.sku = row.sku; skus++; } });
     const was = st.stock || {}, wasAside = st.aside || {};
+    // Таблица даёт остаток по юрлицу, без города: он ложится в город по умолчанию (Stock.defaultCityId — Иркутск). Что директор перенёс
+    // в CRM в другие города, при новой загрузке остаётся: берётся из прежнего остатка, но не больше, чем у юрлица по таблице, остальное — в
+    // город по умолчанию. Остаток «без города» от прежних переносов в новом остатке не живёт: он весь в городе по умолчанию.
+    const dc = Stock.defaultCityId(st), cityIds = new Set((st.cities || []).map(c => c.id));
+    for (const pid of Object.keys(built.stock)) {
+      for (const e of Object.keys(built.stock[pid])) {
+        const total = built.stock[pid][e][Stock.ANY];
+        if (!isNum(total) || dc === Stock.ANY) continue;
+        const prev = (was[pid] || {})[e] || {}, cell = {};
+        let rest = total;
+        for (const city of Object.keys(prev)) {
+          if (city === Stock.ANY || city === dc || !cityIds.has(city) || !(isNum(prev[city]) && prev[city] > 0)) continue;
+          const take = Math.min(prev[city], rest);
+          if (take > 0) { cell[city] = take; rest -= take; }
+        }
+        cell[dc] = rest;
+        built.stock[pid][e] = cell;
+      }
+    }
     const changed = leafDiff(was, built.stock) + leafDiff(wasAside, built.aside);
     st.stock = built.stock;
     st.aside = built.aside;
-    const wasCell = (pid, e) => ((was[pid] || {})[e] || {})[Stock.ANY];
+    const cellOf = (stk, pid, e, city) => (((stk[pid] || {})[e]) || {})[city];
 
     const doc = `перенос, ${ru(at)}`, unparsed = [], wanted = [];
     let cells = 0, withStock = 0, moves = 0;
@@ -9235,12 +9267,7 @@ const Import = (() => {
         const n = isNum(row[e]) ? row[e] : null;
         if (n === null) continue;
         cells++;
-        if (n > 0) {
-          any = true;
-          if (wasCell(pid, e) === n) continue;
-          moves++;
-          logMove(st, { at, productId: pid, kind: INPUT, qty: n, entityId: e, cityId: Stock.ANY, doc, by: who });
-        }
+        if (n > 0) any = true;
       }
       if (any) withStock++;
       for (const j of row.junk) unparsed.push({ name: row.name, column: j.column, text: j.text });
@@ -9253,14 +9280,28 @@ const Import = (() => {
       if (pr.rest) unparsed.push({ name: row.name, column: 'Резерв', text: pr.rest });
     });
 
-    // клетка, где остаток был больше нуля, а стал 0 или пропал из файла (пустая клетка, текст, товара в файле больше нет), —
-    // тоже «Ввод остатков», с остатком 0; клетка, где и было нуль или пусто, журнал не трогает
+    // «Ввод остатков» — по каждой клетке (юрлицо × город), где остаток после переноса больше нуля и отличается от прежнего (тот же файл
+    // второй раз журнал не трогает), и с остатком 0 — по клетке, где остаток был больше нуля, а стал 0 или пропал из файла
+    // (пустая клетка, текст, товара в файле больше нет, остаток «без города» от прежних переносов); где и было нуль или пусто, журнала нет
+    for (const pid of Object.keys(built.stock)) {
+      for (const e of ['ip', 'npp', 'vs']) {
+        const now = ((built.stock[pid] || {})[e]) || {};
+        for (const city of Object.keys(now)) {
+          const n = now[city];
+          if (!(isNum(n) && n > 0) || cellOf(was, pid, e, city) === n) continue;
+          moves++;
+          logMove(st, { at, productId: pid, kind: INPUT, qty: n, entityId: e, cityId: city, doc, by: who });
+        }
+      }
+    }
     for (const pid of Object.keys(was)) {
       for (const e of ['ip', 'npp', 'vs']) {
-        const before = wasCell(pid, e), after = (((built.stock[pid] || {})[e]) || {})[Stock.ANY];
-        if (!(isNum(before) && before > 0) || !(after === undefined || after === null || after === 0)) continue;
-        moves++;
-        logMove(st, { at, productId: pid, kind: INPUT, qty: 0, entityId: e, cityId: Stock.ANY, doc, by: who });
+        for (const city of Object.keys((was[pid] || {})[e] || {})) {
+          const before = cellOf(was, pid, e, city), after = cellOf(built.stock, pid, e, city);
+          if (!(isNum(before) && before > 0) || !(after === undefined || after === null || after === 0)) continue;
+          moves++;
+          logMove(st, { at, productId: pid, kind: INPUT, qty: 0, entityId: e, cityId: city, doc, by: who });
+        }
       }
     }
 
@@ -10634,13 +10675,15 @@ function goodsPane(tabs){
   fixBrand();
   const filters=[
     selField('f-brand','brand','Бренд',[['','Все бренды'],...brandNames(u.cat).map(b=>[b,b])],u.brand||''),
-    selField('f-avail','avail','Наличие',[['','Любое наличие'],...[...new Set(S.products.map(p=>p.avail).filter(Boolean))].map(a=>[a,a])],u.avail||''),
+    selField('f-stk','stk','Остаток на складе',STOCK_STK,u.stk||''),
+    selField('f-avail','avail','Статус на сайте',[['','Любой статус на сайте'],...[...new Set(S.products.map(p=>p.avail).filter(Boolean))].map(a=>[a,a])],u.avail||''),
     selField('f-sort','sort','Сортировка',STOCK_SORTS(can('prices')),sortKey(u.sort)),
     selField('f-catf','catf','Каталог',[['','В каталоге и нет'],['in','Только в каталоге'],['out','Только «нет в каталоге»']],u.catf||'')
   ].join('');
   return `<div class="bar">${tabs}<span class="grow"></span>${can('receive')?`<button class="btn" data-act="rcpt-open">${ic('plus')}Оприходовать товар</button>`:''}${can('catalog')?`<button class="btn" data-act="cat-manage">${ic('box')}Категории</button><button class="btn" data-act="new-product">${ic('plus')}Новый товар</button>`:''}</div>
   <div class="bar"><div class="search-in">${ic('search')}<input id="sq" class="inp" type="search" placeholder="Название, артикул или бренд" value="${esc(u.sq)}" data-on="sq" aria-label="Поиск товара по названию, артикулу, бренду или ключу"></div>
   <label class="check"><input type="checkbox" id="deficit" data-on="deficit" ${u.deficit?'checked':''}> Только где не хватает</label></div>
+  ${noCityBanner()}
   <div class="stock-lay">${catTree()}<div class="stock-main"><div class="fgrid">${filters}</div>
   <section class="card clip"><div class="legend"><span><i class="lg f"></i>Свободно на складе</span><span><i class="lg r"></i>На складе в резерве</span><span><i class="lg w"></i>В пути</span><span>«Свободно после прихода» = склад + в пути − все резервы</span></div><div id="stock-tbl">${stockTable()}</div></section></div></div>`;
 }
@@ -10684,12 +10727,17 @@ function sbar(p,big){
   const k=stockOf(p.id),fn=Math.max(0,k.free),rs=Math.min(k.onHand,k.reservedStock),iq=k.incoming,tot=Math.max(1,fn+rs+iq),w=x=>(x/tot*100).toFixed(1)+'%';
   return `<div class="sbar ${big?'big':''}" title="Свободно ${num(fn)}, в резерве ${num(rs)}, в пути ${num(iq)}"><i class="f" style="width:${w(fn)}"></i><i class="r" style="width:${w(rs)}"></i><i class="w" style="width:${w(iq)}"></i></div>`;
 }
+// «Остаток на складе» — по Stock.summary (то, что лежит у нас), в отличие от «Статуса на сайте» (p.avail: «в наличии» / «предзаказ» с сайта).
+// Слова директора 2026-11-13: «указал «в наличии», а позиции без остатков показываются» — фильтр назывался «Наличие» и смотрел на сайт.
+const STOCK_STK=[['','Любой остаток'],['has','Есть на складе'],['none','Нет на складе (0)'],['unk','Нет данных об остатке']];
+const stkOk=(mode,k)=>mode==='has'?k.known&&k.onHand>0:mode==='none'?k.known&&!(k.onHand>0):mode==='unk'?!k.known:true;
 // Позиции под поиском и фильтрами экрана (Catalog.query), затем «не хватает» — по Stock.summary
 function stockRows(){
   const u=S.ui;
   const list=Catalog.query(S,{q:u.sq,cat:u.cat==='Все'?'':u.cat,brand:u.brand||'',avail:u.avail||'',inCatalog:u.catf==='in'?true:u.catf==='out'?false:undefined});
   // «не хватает»: с учётом поставок меньше нуля, либо остаток известен и свободного нет; без данных об остатке — не дефицит
-  const shown=u.deficit?list.filter(p=>{const k=stockOf(p.id);return k.freeAfter<0||(k.known&&k.free<=0)}):list;
+  const byStk=u.stk?list.filter(p=>stkOk(u.stk,stockOf(p.id))):list;
+  const shown=u.deficit?byStk.filter(p=>{const k=stockOf(p.id);return k.freeAfter<0||(k.known&&k.free<=0)}):byStk;
   return sortRows(shown,u.sort,stockSortVal,p=>p.name);
 }
 // Переключатель страниц: span — сколько страниц подряд раскрыто с page («Показать ещё» +1, «Показать всё» — все)
@@ -10796,6 +10844,89 @@ function sellCells(p){
     return `<li><span>${esc(cellText(r.id,c.id))}</span><b>${qtyOf(n,p)}</b><small>без резерва можно ${num(free)}</small><button type="button" class="btn sm" data-act="stock-sell" data-pid="${esc(p.id)}" data-e="${esc(r.id)}" data-c="${esc(c.id)}">Списать</button></li>`;
   }).join('')}</ul></div>`;
 }
+// ——— «Где лежит» и перемещение между складами (юрлицо × город) ———
+// Слово директора 2026-11-13: товар по умолчанию приходит в Иркутск (Stock.defaultCityId); перенести его на другой склад или указать город,
+// если он «нет данных», — кнопкой. Это запись «Перемещение» в журнале склада (Stock.move): откуда и куда — клетки юрлицо × город.
+// Двигается только свободное в клетке (Stock.sellMax): резервы остаются на месте. Право — как у перемещения между складами (Guard): logistics или dispatch.
+const canMove=()=>can('logistics')||can('dispatch');
+const cityName=id=>Stock.cityName(S,id);
+const noCityCells=()=>{
+  const out=[];
+  for(const pid of Object.keys(S.stock||{})) for(const e of Object.keys(S.stock[pid]||{})){
+    const n=(S.stock[pid][e]||{})[Stock.ANY];
+    if(typeof n==='number'&&n>0) out.push({pid,e,n});
+  }
+  return out;
+};
+function placeCells(p){
+  const g=Stock.grid(S,p.id),rows=g.rows.flatMap(r=>g.cols.map(c=>({r,c,n:g.cell(r.id,c.id)}))).filter(x=>x.n>0);
+  if(!rows.length) return '';
+  const mv=canMove();
+  return `<div id="p-place"><h4 class="sh">Где лежит</h4><ul class="mv sell-l">${rows.map(({r,c,n})=>{
+    const none=c.id===Stock.ANY,free=Stock.sellMax(S,{productId:p.id,entityId:r.id,cityId:c.id});
+    const btn=mv&&free>0?`<button type="button" class="btn sm${none?' pri':''}" data-act="stock-move" data-pid="${esc(p.id)}" data-e="${esc(r.id)}" data-c="${esc(c.id)}">${none?'Указать город':'Переместить'}</button>`:'';
+    return `<li><span>${esc(cellText(r.id,c.id))}${none?' <span class="pill sm warn">город не указан</span>':''}</span><b>${qtyOf(n,p)}</b><small>без резерва ${num(free)}</small>${btn}</li>`;
+  }).join('')}</ul><p class="hint m0">Товар по умолчанию приходит в ${esc(cityName(Stock.defaultCityId(S))||'город по умолчанию')}.${mv?' «Переместить» переносит свободный остаток на другой склад или город; резервы остаются на месте.':''}</p></div>`;
+}
+// Напоминание над списком: у скольких товаров остаток без города, и одной кнопкой — всё в город по умолчанию
+function noCityBanner(){
+  const list=noCityCells();
+  if(!list.length) return '';
+  const pids=new Set(list.map(x=>x.pid)),dc=Stock.defaultCityId(S),mv=canMove()&&dc!==Stock.ANY;
+  return `<div class="nocity"><span>${ic('alert')}У ${num(pids.size)} ${pids.size%10===1&&pids.size%100!==11?'товара':'товаров'} остаток без города (всего ${num(list.reduce((a,x)=>a+x.n,0))} шт.): не видно, на каком он складе. Откройте товар и нажмите «Указать город»${mv?', либо одной кнопкой отнесите всё в '+esc(cityName(dc)):''}.</span>${mv?`<button type="button" class="btn sm" data-act="nocity-all">Всё в ${esc(cityName(dc))}</button>`:''}</div>`;
+}
+MODALS.stockMove=o=>{
+  const p=product(o.pid),e=o.e,c=o.c,max=p?Stock.sellMax(S,{productId:o.pid,entityId:e,cityId:c}):0;
+  if(!p||!(max>0)) return `${mHead('Переместить')}<div class="modal-b"><p class="m0">Перемещать нечего: в этой клетке нет остатка без резерва.</p></div>`;
+  const dc=Stock.defaultCityId(S),none=c===Stock.ANY;
+  const toCity=none&&dc!==Stock.ANY?dc:((S.cities.find(x=>x.id!==c)||{}).id||c);
+  const ents=[...S.entities.map(x=>[x.id,x.name]),...(e===Stock.ANY?[[Stock.ANY,Stock.NO_ENTITY]]:[])];
+  const cities=[...S.cities.map(x=>[x.id,x.name]),...(none?[[Stock.ANY,Stock.NO_CITY]]:[])];
+  return `<form data-form="stock-move" data-pid="${esc(o.pid)}" data-e="${esc(e)}" data-c="${esc(c)}" novalidate>${mHead((none?'Указать город: ':'Переместить: ')+esc(Catalog.label(p)))}<div class="modal-b">
+    <p class="m0">Сейчас лежит: <b>${esc(cellText(e,c))}</b>, без резерва ${qtyOf(max,p)}. В журнале склада появится запись «Перемещение».</p>
+    <div class="grid2"><div class="field"><label for="mv-qty">Сколько${p.unit?', '+esc(p.unit):''}</label><input id="mv-qty" class="inp" type="number" min="1" max="${esc(max)}" step="1" value="${esc(max)}" inputmode="numeric"></div>
+      <div class="field"><label for="mv-doc">Причина или документ (необязательно)</label><input id="mv-doc" class="inp" placeholder="Например: привезли в Москву" autocomplete="off"></div>
+      <div class="field"><label for="mv-ent">Куда: юрлицо</label><select id="mv-ent" class="inp">${optionsHtml(ents,e)}</select></div>
+      <div class="field"><label for="mv-city">Куда: склад (город)</label><select id="mv-city" class="inp">${optionsHtml(cities,toCity)}</select></div></div>
+    <p class="err" id="mv-err" hidden></p></div>${mFoot(none?'Указать город':'Переместить')}</form>`;
+};
+A['stock-move']=el=>{
+  if(!canMove()){toast('У вашей роли нет права перемещать товар между складами.','warn');return}
+  const d=el.dataset;openModal('stockMove',{pid:d.pid,e:d.e,c:d.c});
+};
+FORMS['stock-move']=f=>{
+  const d=f.dataset,pid=d.pid,e=d.e,c=d.c,te=byId('mv-ent').value,tc=byId('mv-city').value,doc=byId('mv-doc').value.trim();
+  if(!canMove()) return showErr('mv-err','У вашей роли нет права перемещать товар между складами.');
+  if(te===e&&tc===c) return showErr('mv-err','Откуда и куда — одна и та же клетка: выберите другой склад или юрлицо.');
+  const qty=byId('mv-qty').value,max=Stock.sellMax(S,{productId:pid,entityId:e,cityId:c});
+  if(Number(qty)>max) return showErr('mv-err',`Без резерва можно переместить только ${num(max)}: резервы остаются на месте.`);
+  const r=Stock.move(S,{kind:Stock.KINDS.transfer,productId:pid,qty,entityId:e,cityId:c,toEntityId:te,toCityId:tc,doc:doc||'Перемещение вручную',by:S.me,at:new Date()});
+  if(!r.ok) return showErr('mv-err',r.reason);
+  const p=product(pid);closeModal();render();
+  toast(`${p?Catalog.label(p):'Товар'}: ${qtyOf(r.move.qty,p)} — ${cellText(e,c)} → ${cellText(te,tc)}. Запись в журнале склада есть.`);
+};
+// «Всё в Иркутск»: свободный остаток каждой клетки «без города» уходит в город по умолчанию тем же Stock.move; резервы остаются на месте
+MODALS.noCityAll=()=>{
+  const list=noCityCells(),dc=Stock.defaultCityId(S);
+  return `<form data-form="nocity-all" novalidate>${mHead('Отнести остаток без города в '+esc(cityName(dc)))}<div class="modal-b">
+    <p class="m0">Остаток без города есть у ${num(new Set(list.map(x=>x.pid)).size)} товаров (клеток: ${num(list.length)}). Свободная часть каждой клетки уйдёт в ${esc(cityName(dc))} — юрлицо останется то же. В журнале склада будет запись «Перемещение» по каждой клетке. Резервы остаются на месте.</p></div>${mFoot('Отнести в '+esc(cityName(dc)))}</form>`;
+};
+A['nocity-all']=()=>{
+  if(!canMove()||Stock.defaultCityId(S)===Stock.ANY){toast('Перемещать между складами нельзя или в справочнике нет города «Иркутск».','warn');return}
+  openModal('noCityAll');
+};
+FORMS['nocity-all']=()=>{
+  const dc=Stock.defaultCityId(S),at=new Date();
+  let done=0,left=0;
+  for(const x of noCityCells()){
+    const free=Stock.sellMax(S,{productId:x.pid,entityId:x.e,cityId:Stock.ANY});
+    if(!(free>0)){left++;continue}
+    const r=Stock.move(S,{kind:Stock.KINDS.transfer,productId:x.pid,qty:free,entityId:x.e,cityId:Stock.ANY,toEntityId:x.e,toCityId:dc,doc:'Город указан: '+cityName(dc),by:S.me,at});
+    if(r.ok) done++;else left++;
+  }
+  closeModal();render();
+  toast(`В ${cityName(dc)} отнесено клеток: ${num(done)}.${left?` Осталось без города: ${num(left)} (там всё под резервом).`:''}`,left?'warn':undefined);
+};
 // «Можно поставить» — тем же Stock.canReserve, что проверяет сама постановка
 const maxText=(pid,src,ent,city)=>`Можно поставить: ${num(Stock.canReserve(S,{productId:pid,qty:1,entityId:ent,cityId:city,src}).max)}`;
 // Сделки, под которые человек может поставить резерв этого товара: видимые ему (Leads.dealsVisible), открытые, он вправе их
@@ -10891,6 +11022,7 @@ function dProduct(p){
     <div class="pst">${st('На складе',k.known?qtyOf(k.onHand,p):'нет данных')}${st('В резерве',num(k.reservedStock+k.reservedIncoming),'',k.reservedIncoming?`со склада ${num(k.reservedStock)}, под поставки ${num(k.reservedIncoming)}`:'')}${st('Свободно сейчас',unk?'нет данных':num(k.free),unk?'':k.free<=0?'bad-t':'ok-t')}${st('Свободно после прихода',unk?'нет данных':num(k.freeAfter),k.freeAfter<0?'bad-t':'',k.incoming?`едет ${num(k.incoming)}`:'')}</div>
     ${sbar(p,true)}
     ${watchHtml(p,k)}
+    ${placeCells(p)}
     <div><h4 class="sh">Склады: юрлицо × город</h4>${gridHtml(p)}${k.known?'':'<p class="hint">По этому товару в таблице остатков чисел нет: в клетках стоят нули вместо «нет данных».</p>'}<p class="hint">Источник: ${stockNote()}. Резерв под поставку сюда не входит: товара на складе ещё нет. Движения в CRM после снимка — в журнале ниже.</p></div>
     <div><h4 class="sh">Не входит в свободный остаток</h4><div class="pst">${st('Ответхранение',aside(k.custody),'','считать ли в свободном — нет данных')}${st('В пути (из таблицы)',aside(k.transitNoShip),'','без поставки в CRM')}${st('Бой',aside(k.damaged))}</div></div>
     ${reserveForm(p,k,inc)}
@@ -10946,7 +11078,7 @@ MODALS.stockSell=o=>{
 // Import.receiptRows / receiptPlan / applyReceipt (48-import.js): здесь только показ. Список живёт в RCPT (не в S: не сохраняется).
 // Склад один на город; юрлица — из справочника. Новые товары создаёт только тот, у кого есть право catalog.
 let RCPT=null;
-const rcptNew=()=>({stage:'input',tab:'paste',text:'',rows:[],header:null,entityId:'',cityId:'',cat:'',done:null,manual:[{pid:'',q:'',isNew:false,newName:'',sku:'',qty:'',entity:'',city:''}]});
+const rcptNew=()=>({stage:'input',tab:'paste',text:'',rows:[],header:null,entityId:'',cityId:Stock.defaultCityId(S)===Stock.ANY?'':Stock.defaultCityId(S),cat:'',done:null,manual:[{pid:'',q:'',isNew:false,newName:'',sku:'',qty:'',entity:'',city:''}]});
 const rcptPlan=()=>Import.receiptPlan(S,RCPT.rows,{entityId:RCPT.entityId,cityId:RCPT.cityId,cat:RCPT.cat,canCreate:can('catalog')});
 const rcptOpts=(list,cur)=>`<option value="">выберите</option>`+list.map(x=>`<option value="${esc(x.id)}"${x.id===cur?' selected':''}>${esc(x.name)}</option>`).join('');
 // «Всё это приходит на»: подставляется строкам списка, у которых нет своих юрлица и склада
@@ -11155,6 +11287,7 @@ ON.input.sq=t=>{S.ui.sq=t.value;refreshStock()};
 ON.change.deficit=t=>{S.ui.deficit=t.checked;refreshStock()};
 ON.change.brand=t=>{S.ui.brand=t.value;refreshStock()};
 ON.change.avail=t=>{S.ui.avail=t.value;refreshStock()};
+ON.change.stk=t=>{S.ui.stk=t.value;S.ui.page=0;S.ui.span=1;refreshStock()};
 ON.change.catf=t=>{S.ui.catf=t.value;refreshStock()};
 // Выпадающий список «Сортировка» и нажатие на название столбца меняют одно и то же — S.ui.sort
 ON.change.sort=t=>{const [col,dir]=String(t.value).split(':');S.ui.sort=col?{col,dir:dir==='desc'?'desc':'asc'}:null;S.ui.page=0;S.ui.span=1;refreshStock()};
@@ -11396,7 +11529,7 @@ ON.change['stock-goto']=t=>{const rows=stockRows(),pages=Math.max(1,Math.ceil(ro
 A['stock-more']=()=>{S.ui.span=(Number(S.ui.span)||1)+1;byId('stock-tbl').innerHTML=stockTable()};
 A['stock-all']=()=>{S.ui.page=0;S.ui.span=Infinity;byId('stock-tbl').innerHTML=stockTable()};
 // Пустой список остатков: сбросить категорию, бренд, наличие, каталог, поиск и «только где не хватает»
-A['stock-reset']=()=>{Object.assign(S.ui,{cat:'Все',sq:'',brand:'',avail:'',catf:'',deficit:false,page:0,span:1});render()};
+A['stock-reset']=()=>{Object.assign(S.ui,{cat:'Все',sq:'',brand:'',avail:'',stk:'',catf:'',deficit:false,page:0,span:1});render()};
 // Из карточки товара — в журнал движений по этому товару
 A['stock-journal']=el=>{S.ui.stockTab='moves';S.ui.mvPid=el.dataset.pid||'';S.ui.mvKind='';S.ui.drawer=null;go('stock')};
 

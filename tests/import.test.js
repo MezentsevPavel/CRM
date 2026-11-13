@@ -135,10 +135,10 @@ test('Import.applyStock: остатки заменены, «Ввод остат�
   const r = plain(Import.applyStock(st, rows, 'p1', NOW));
   assert.deepEqual([r.products, r.matched, r.created, r.reserves], [5, 1, 4, 2]);
   // товар каталога получил остаток, остальные — товары «нет в каталоге» с id по названию
-  assert.equal(st.stock[String(model.key)].ip._, 40);
+  assert.equal(st.stock[String(model.key)].ip.irk, 40);
   const x = st.products.find(p => p.id === 'sheet:панель икс-100');
   assert.ok(x && x.inCatalog === false && x.name === 'Панель Икс-100' && x.cat === 'Панели');
-  assert.equal(st.stock['sheet:панель икс-100'].npp._, 5);
+  assert.equal(st.stock['sheet:панель икс-100'].npp.irk, 5);
   assert.deepEqual(plain(st.aside['sheet:панель игрек-200']), { damaged: 1, custody: 2, transitNoShip: 4 });
   assert.equal(Stock.summary(st, 'sheet:панель икс-100').onHand, 17);
   assert.equal(Stock.summary(st, 'sheet:инвертор омега').known, false, 'текстовая клетка — остаток неизвестен');
@@ -176,7 +176,7 @@ test('Import.applyStock: повторный перенос того же фай�
   // другой файл заменяет: товар, которого в нём нет, остаток теряет; чужой (не из переноса) резерв остаётся
   st.reserves.push({ id: 'r-мой', productId: 'sheet:панель икс-100', qty: 1, entityId: 'ip', cityId: '_', src: 'stock', dealId: 'Д-1' });
   Import.applyStock(st, plain(Import.stockRows(tableOf(app, 'Наименование;Склад ИП;НПП\nПанель Икс-100;3;')).rows), 'p1', NOW);
-  assert.deepEqual(plain(st.stock), { 'sheet:панель икс-100': { ip: { _: 3 } } });
+  assert.deepEqual(plain(st.stock), { 'sheet:панель икс-100': { ip: { irk: 3 } } });
   assert.deepEqual(plain(st.aside), {});
   assert.deepEqual([...st.reserves.map(q => q.id)], ['r-мой']);
 });
@@ -193,7 +193,7 @@ test('Import.applyStock: клетка, где остаток стал 0 или �
   assert.deepEqual(plain(fresh.map(m => [m.kind, m.productId, m.entityId, m.qty, m.by])).sort(),
     [[INPUT, 'sheet:панель икс-100', 'ip', 0, 'p1'], [INPUT, 'sheet:панель икс-100', 'npp', 0, 'p1'], [INPUT, 'sheet:крепление зет', 'ip', 0, 'p1']].sort(),
     'три клетки обнулились: ноль в файле, пустая клетка, товара в файле нет; Игрек-200 не тронут');
-  assert.ok(fresh.every(m => m.id && /^перенос.*05\.11\.2026/.test(m.doc) && m.cityId === '_'));
+  assert.ok(fresh.every(m => m.id && /^перенос.*05\.11\.2026/.test(m.doc) && m.cityId === 'irk'));
   assert.equal(r.moves, 3, 'в итоге переноса те же три движения');
   // тот же файл ещё раз: остатки те же, журнал не растёт
   const again = plain(Import.applyStock(st, plain(Import.stockRows(tableOf(app, next)).rows), 'p1', new Date(2026, 10, 6, 9, 0, 0)));
@@ -209,7 +209,7 @@ test('Import.applyStock: кривые строки не ломают базу (�
   assert.equal(JSON.stringify(plain({ stock: st.stock, reserves: st.reserves })), before);
   const r = Import.applyStock(st, [null, { name: '' }, { name: '  ', ip: 5 }, { name: 'Щит', ip: 7, npp: Infinity, vs: -2, reserve: 5 }], 'p1', NOW);
   assert.equal(r.products, 1);
-  assert.deepEqual(plain(st.stock), { 'sheet:щит': { ip: { _: 7 }, vs: { _: -2 } } }, 'Infinity — не число, пусто; минус остаётся как есть');
+  assert.deepEqual(plain(st.stock), { 'sheet:щит': { ip: { irk: 7 }, vs: { irk: -2 } } }, 'Infinity — не число, пусто; минус остаётся как есть');
   assert.equal(st.moves.filter(m => m.kind === INPUT).length, 1, 'отрицательное — не движение');
 });
 
@@ -525,7 +525,7 @@ test('сервер: перенос остатков — только дирек�
     assert.equal(r.status, 200);
     assert.deepEqual([r.body.products, r.body.reserves, r.body.created], [4, 2, 4]);
     const after = await state(srv, boss.cookie);
-    assert.equal(after.stock['sheet:панель икс-100'].ip._, 12);
+    assert.equal(after.stock['sheet:панель икс-100'].ip.irk, 12);
     assert.equal(after.moves.filter(m => m.kind === INPUT).length, 4, 'Икс: ИП и НПП, Игрек: ВС (ИП=0 — не движение), Зет: ИП');
     assert.equal(after.reserves.filter(x => x.imported).length, 2);
     assert.ok(after.stockSheet && after.stockSheet.rows.length === 4);
@@ -640,7 +640,7 @@ test('экран «Перенос»: «Загрузить» шлёт на сер
     assert.match(tab.render(), /Загружено/);
     assert.doesNotMatch(tab.render(), /data-form="tr-stock"/, 'после загрузки кнопки уже нет');
     const st = await state(srv, boss.cookie);
-    assert.equal(st.stock['sheet:панель икс-100'].npp._, 5);
+    assert.equal(st.stock['sheet:панель икс-100'].npp.irk, 5);
     assert.equal(st.moves.filter(m => m.kind === INPUT).length, 4);
     // клиенты: 2500 строк — три запроса, итог суммируется, повтор того же файла дублей не даёт
     const rows = Array.from({ length: 2500 }, (_, i) => ({ kind: 'person', name: 'Клиент ' + i, phones: ['+7 900 ' + String(1000000 + i)], email: '', inn: '', address: '', org: '', managerName: '', bitrixId: String(i) }));

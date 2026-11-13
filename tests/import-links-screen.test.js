@@ -58,8 +58,8 @@ test('экран «Перенос»: без пары → подсказка, «�
     app.A['tr-new']({ dataset: { k: odd } });
     await app.FORMS['tr-stock']();
     const st = await state(srv, boss.cookie);
-    assert.equal(st.stock[to[1]].ip._, 7, 'остаток лёг на позицию каталога, а не на новый товар');
-    assert.equal(st.stock[target.id].ip._, 2);
+    assert.equal(st.stock[to[1]].ip.irk, 7, 'остаток лёг на позицию каталога, а не на новый товар');
+    assert.equal(st.stock[target.id].ip.irk, 2);
     assert.equal(Object.keys(plain(st.stockSheet.links)).length, 3);
     assert.equal(st.products.filter(p => p.src === 'sheet').length, 1);
     // «Принять все подсказки»: одной кнопкой те, где подсказка есть

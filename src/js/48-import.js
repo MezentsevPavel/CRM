@@ -304,10 +304,29 @@ const Import = (() => {
     let skus = 0;
     list.forEach((row, i) => { const p = byId.get(built.ids[i]); if (row.sku && p && !Catalog.skuOf(p)) { p.sku = row.sku; skus++; } });
     const was = st.stock || {}, wasAside = st.aside || {};
+    // Таблица даёт остаток по юрлицу, без города: он ложится в город по умолчанию (Stock.defaultCityId — Иркутск). Что директор перенёс
+    // в CRM в другие города, при новой загрузке остаётся: берётся из прежнего остатка, но не больше, чем у юрлица по таблице, остальное — в
+    // город по умолчанию. Остаток «без города» от прежних переносов в новом остатке не живёт: он весь в городе по умолчанию.
+    const dc = Stock.defaultCityId(st), cityIds = new Set((st.cities || []).map(c => c.id));
+    for (const pid of Object.keys(built.stock)) {
+      for (const e of Object.keys(built.stock[pid])) {
+        const total = built.stock[pid][e][Stock.ANY];
+        if (!isNum(total) || dc === Stock.ANY) continue;
+        const prev = (was[pid] || {})[e] || {}, cell = {};
+        let rest = total;
+        for (const city of Object.keys(prev)) {
+          if (city === Stock.ANY || city === dc || !cityIds.has(city) || !(isNum(prev[city]) && prev[city] > 0)) continue;
+          const take = Math.min(prev[city], rest);
+          if (take > 0) { cell[city] = take; rest -= take; }
+        }
+        cell[dc] = rest;
+        built.stock[pid][e] = cell;
+      }
+    }
     const changed = leafDiff(was, built.stock) + leafDiff(wasAside, built.aside);
     st.stock = built.stock;
     st.aside = built.aside;
-    const wasCell = (pid, e) => ((was[pid] || {})[e] || {})[Stock.ANY];
+    const cellOf = (stk, pid, e, city) => (((stk[pid] || {})[e]) || {})[city];
 
     const doc = `перенос, ${ru(at)}`, unparsed = [], wanted = [];
     let cells = 0, withStock = 0, moves = 0;
@@ -318,12 +337,7 @@ const Import = (() => {
         const n = isNum(row[e]) ? row[e] : null;
         if (n === null) continue;
         cells++;
-        if (n > 0) {
-          any = true;
-          if (wasCell(pid, e) === n) continue;
-          moves++;
-          logMove(st, { at, productId: pid, kind: INPUT, qty: n, entityId: e, cityId: Stock.ANY, doc, by: who });
-        }
+        if (n > 0) any = true;
       }
       if (any) withStock++;
       for (const j of row.junk) unparsed.push({ name: row.name, column: j.column, text: j.text });
@@ -336,14 +350,28 @@ const Import = (() => {
       if (pr.rest) unparsed.push({ name: row.name, column: 'Резерв', text: pr.rest });
     });
 
-    // клетка, где остаток был больше нуля, а стал 0 или пропал из файла (пустая клетка, текст, товара в файле больше нет), —
-    // тоже «Ввод остатков», с остатком 0; клетка, где и было нуль или пусто, журнал не трогает
+    // «Ввод остатков» — по каждой клетке (юрлицо × город), где остаток после переноса больше нуля и отличается от прежнего (тот же файл
+    // второй раз журнал не трогает), и с остатком 0 — по клетке, где остаток был больше нуля, а стал 0 или пропал из файла
+    // (пустая клетка, текст, товара в файле больше нет, остаток «без города» от прежних переносов); где и было нуль или пусто, журнала нет
+    for (const pid of Object.keys(built.stock)) {
+      for (const e of ['ip', 'npp', 'vs']) {
+        const now = ((built.stock[pid] || {})[e]) || {};
+        for (const city of Object.keys(now)) {
+          const n = now[city];
+          if (!(isNum(n) && n > 0) || cellOf(was, pid, e, city) === n) continue;
+          moves++;
+          logMove(st, { at, productId: pid, kind: INPUT, qty: n, entityId: e, cityId: city, doc, by: who });
+        }
+      }
+    }
     for (const pid of Object.keys(was)) {
       for (const e of ['ip', 'npp', 'vs']) {
-        const before = wasCell(pid, e), after = (((built.stock[pid] || {})[e]) || {})[Stock.ANY];
-        if (!(isNum(before) && before > 0) || !(after === undefined || after === null || after === 0)) continue;
-        moves++;
-        logMove(st, { at, productId: pid, kind: INPUT, qty: 0, entityId: e, cityId: Stock.ANY, doc, by: who });
+        for (const city of Object.keys((was[pid] || {})[e] || {})) {
+          const before = cellOf(was, pid, e, city), after = cellOf(built.stock, pid, e, city);
+          if (!(isNum(before) && before > 0) || !(after === undefined || after === null || after === 0)) continue;
+          moves++;
+          logMove(st, { at, productId: pid, kind: INPUT, qty: 0, entityId: e, cityId: city, doc, by: who });
+        }
       }
     }
 

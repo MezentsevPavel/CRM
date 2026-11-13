@@ -136,3 +136,7 @@ li .sku,.s-it .sku,.dsp-line .sku{display:inline}
 /* «Создать товар» поверх открытой формы (сделка, поставка, заявка на отправку) */
 .pq-wrap{z-index:60}
 .pq-link{margin-top:2px}
+/* остаток без города: напоминание над списком «Товары» */
+.nocity{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;margin:0 0 12px;padding:10px 14px;border:1px solid var(--line);border-radius:14px;background:var(--warn-soft,var(--surface-2));font-size:13.5px}
+.nocity>span{display:flex;align-items:flex-start;gap:8px;flex:1 1 360px;min-width:0}
+.nocity .ic{flex:none;width:17px;height:17px;margin-top:1px}

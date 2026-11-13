@@ -38,6 +38,15 @@ const Stock = (() => {
     };
   }
 
+  // Город по умолчанию: куда приходит товар, если город не назван (перенос таблицы остатков, оприходование). Слово директора
+  // 2026-11-13: «все товары приходят в Иркутск». Город ищется в справочнике по названию; нет такого — «нет данных» (ANY),
+  // ничего не выдумывается. Единственное место, где это решается.
+  const DEFAULT_CITY_NAME = 'иркутск';
+  const defaultCityId = st => {
+    const c = ((st && st.cities) || []).find(x => x && String(x.name == null ? '' : x.name).trim().toLowerCase().replace(/ё/g, 'е') === DEFAULT_CITY_NAME);
+    return c ? c.id : ANY;
+  };
+
   const isNum = v => typeof v === 'number' && isFinite(v);
   const sum = (list, f) => list.reduce((a, x) => a + f(x), 0);
   const total = vals => { const n = vals.filter(isNum); return n.length ? sum(n, x => x) : null; };
@@ -632,7 +641,7 @@ const Stock = (() => {
   }
 
   return {
-    ANY, RESERVE_DAYS, KINDS, RECEIPT_DOC, NO_ENTITY, NO_CITY, HIDDEN_DEAL, HIDDEN_ID, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, table, canReserve, bestCell, cells, move, reserve, unreserve, release, expired, sellMax, sell, cellText, dealRef, reserveView, docView,
+    ANY, RESERVE_DAYS, KINDS, RECEIPT_DOC, NO_ENTITY, NO_CITY, HIDDEN_DEAL, HIDDEN_ID, defaultCityId, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, table, canReserve, bestCell, cells, move, reserve, unreserve, release, expired, sellMax, sell, cellText, dealRef, reserveView, docView,
     reserveFor, extend, forText, placed, history, removed, transitBy, transitDetail, transitText, watchOf, watch, unwatch, notifyAppeared, remindExpiring, due, tick };
 })();
 

@@ -40,7 +40,7 @@ test('сопоставление: указанная позиция приним
   const st = fresh();
   const out = Import.applyStock(st, rows, null, new Date(), links);
   assert.deepEqual([out.linked, out.asNew, out.unlinked.length], [2, 1, 0]);
-  assert.deepEqual(plain(st.stock[target.id]), { ip: { _: 5 }, npp: { _: 4 } }, 'остаток двух строк сложился: ИП 2+3, НПП 4');
+  assert.deepEqual(plain(st.stock[target.id]), { ip: { irk: 5 }, npp: { irk: 4 } }, 'остаток двух строк сложился: ИП 2+3, НПП 4');
   assert.deepEqual(plain(st.aside[target.id]), { damaged: 3, custody: null, transitNoShip: null }, 'бой сложился: 1+2');
   assert.equal(st.products.filter(p => !p.inCatalog).length, 1, 'товаром «нет в каталоге» стала только «новая позиция»');
   assert.equal(st.reserves.length, 1);
@@ -68,7 +68,7 @@ test('сервер: сопоставление приходит вместе с�
     assert.equal(r.status, 200);
     assert.deepEqual([r.body.linked, r.body.asNew, r.body.unlinked.length], [1, 1, 0]);
     const st = await state(srv, boss.cookie);
-    assert.equal(st.stock[target.id].ip._, 7, 'остаток лёг на позицию каталога');
+    assert.equal(st.stock[target.id].ip.irk, 7, 'остаток лёг на позицию каталога');
     assert.equal(st.products.filter(p => p.src === 'sheet').length, 1);
     assert.deepEqual(plain(st.stockSheet.links), links);
   } finally { await srv.stop(); }
