@@ -354,7 +354,8 @@ test('экран: под категорией без видов — фирмы �
   assert.ok(rowsOf(a.vStock()).some(r => r.brand === 'ТЕСТФИРМА' && r.n === 1), 'новая фирма видна');
   assert.equal(S.categories.length, before, 'фирмы в S.categories не хранятся');
   assert.ok(!JSON.stringify(S.categories).includes('ТЕСТФИРМА'));
-  // у категории без единой фирмы уровня «фирма» нет
+  // у категории без единой фирмы уровня «фирма» нет (у АГМ-батарей с сайта фирма теперь есть — для проверки они обезличены)
+  S.products.filter(p => p.cat === 'Аккумуляторы › АГМ').forEach(p => { p.brand = null; });
   A['stock-cat']({ dataset: { cat: 'Аккумуляторы › АГМ' } });
   assert.ok(!rowsOf(a.vStock()).some(r => r.brand !== null && r.cat === 'Аккумуляторы › АГМ'));
   // смешанная категория: «Без бренда» в конце

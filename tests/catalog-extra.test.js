@@ -57,12 +57,51 @@ test('повторный прогон того же листа даёт тот �
   const two = gen.buildExtra(gen.load(text1), extra).catalog;
   assert.equal(gen.render(text1, two, extra.date), text1, 'повторный прогон меняет файл');
   assert.deepEqual(js(gen.load(text1).rows.filter(r => r.sheet === gen.EXTRA_SHEET).map(r => r.key)), ['9000001', '9000002']);
-  assert.match(text1, /Листы: .*Электрика, ИБП и контроллеры\./);
+  assert.match(text1, /Листы: .*Электрика, ИБП и контроллеры, Из таблицы остатков\./);
   // в самой странице: товары нужных видов
   const a = load();
   const built = a.Catalog.build({ ...a.CATALOG, rows: gen.load(text1).rows }, { rows: [] }).products;
   assert.equal(built.find(p => p.id === '9000001').cat, 'ИБП');
   assert.equal(built.find(p => p.id === '9000002').cat, 'Контроллеры › MPPT');
+});
+
+// Директор 2026-11-13: «найди на сайте остальную информацию: артикул, бренд, цены» — товары, найденные по названиям из таблицы остатков
+test('лист «Из таблицы остатков»: вид — любой верхний раздел каталога; заменяется только этот лист, «ИБП и контроллеры» цел; чужой лист — отказ', () => {
+  const src = fs.readFileSync(gen.FILE, 'utf8'), base = gen.load(src);
+  const mine = base.rows.filter(r => r.sheet === gen.STOCK_EXTRA_SHEET);
+  const extra = { sheet: gen.STOCK_EXTRA_SHEET, header: HEADER, rows: [
+    ['9100001', 'Аккумуляторная батарея TEST GPL 12-65', 'VEKTOR ENERGY', 'Аккумуляторы', '16091', 'в наличии', W + 'x/product/test-gpl', 'VE-GPL-12-65'],
+    ['9100002', 'Автономный инвертор TEST ИС-12-300', 'СибКонтакт', 'Инверторы', '7700', 'в наличии', W + 'x/product/test-is', 'ИС-12-300'],
+    ['9100003', 'Шкаф TEST', 'WINDSOLAR', 'Защита и соединения', '', 'предзаказ', '', ''],
+    ['9100004', 'Что-то странное', '', 'Вид которого нет', '', '', '', ''],
+  ] };
+  const { catalog, report } = gen.buildExtra(base, extra);
+  assert.equal(report.added, 3);
+  assert.deepEqual(js(report.noKind), ['Что-то странное'], 'неизвестный вид — не берётся молча');
+  const now = catalog.rows.filter(r => r.sheet === gen.STOCK_EXTRA_SHEET);
+  assert.deepEqual(js(now.map(r => r.key)), ['9100001', '9100002', '9100003'], 'прежние позиции листа заменяются целиком');
+  assert.equal(mine.length === 0 || !now.some(r => mine.some(m => m.key === r.key)), true);
+  assert.equal(now[0].cat.split(' › ')[0], 'Аккумуляторы');
+  assert.equal(now[1].cat, 'Инверторы › Автономные');
+  assert.equal(now[2].price, null, 'пустая цена — null, не ноль');
+  assert.equal(now[2].sku, null, 'пустой артикул — null');
+  assert.equal(catalog.rows.filter(r => r.sheet === gen.EXTRA_SHEET).length, base.rows.filter(r => r.sheet === gen.EXTRA_SHEET).length, 'лист «ИБП и контроллеры» тронут');
+  assert.throws(() => gen.buildExtra(base, { ...extra, sheet: 'Чужой лист' }), /Неизвестный добавочный лист/);
+});
+
+test('ссылки на карточки сайта: проставляются только позициям без ссылки и только адреса wind-solar.ru; стоящая ссылка не меняется', () => {
+  const rows = [
+    { key: '1', model: 'А', url: null, sheet: 'Новые на сайте' },
+    { key: '2', model: 'Б', url: W + 'old/product/old', sheet: 'Новые на сайте' },
+    { key: '3', model: 'В', url: null, sheet: 'Новые на сайте' },
+    { key: '4', model: 'Г', url: null, sheet: 'Новые на сайте' },
+  ];
+  const { catalog, report } = gen.applyLinks({ rows }, { 1: W + 'a/product/a', 2: W.replace('www.', 'www.') + 'new/product/new', 3: 'https://evil.example/collection/x/product/y', 99: W + 'z/product/z' });
+  assert.equal(catalog.rows[0].url, W + 'a/product/a');
+  assert.equal(catalog.rows[1].url, W + 'old/product/old', 'ссылка, уже стоящая в снимке, изменена');
+  assert.equal(catalog.rows[2].url, null, 'чужой адрес принят');
+  assert.equal(catalog.rows[3].url, null);
+  assert.deepEqual([report.set, report.skipped.length], [1, 1]);
 });
 
 test('в снимке уже лежат ИБП и контроллеры с сайта: позиции листа есть, у всех вид и ссылка на сайт', () => {

@@ -4,6 +4,9 @@
 //
 //   node tools/catalog-snapshot.js <выгрузка.json>          — переписать снимок
 //   node tools/catalog-snapshot.js <выгрузка.json> --dry     — только отчёт, файл не трогать
+//   node tools/catalog-snapshot.js --links <_ссылки.json> [--dry] — проставить ссылку на страницу сайта позициям, у которых её нет в снимке
+//        (файл — { "<ключ>": "https://www.wind-solar.ru/collection/…/product/…" }, его пишет tools/site-photos.js). Ссылка, уже стоящая в снимке, не меняется;
+//        принимаются только адреса карточек wind-solar.ru.
 //   node tools/catalog-snapshot.js --extra <лист.json> [--dry] — добавить позиции листа «ИБП и контроллеры» (лист, который 2026-11-12 добавили в таблицу:
 //        ИБП и контроллеры заряда с сайта; скрипт синхронизации таблицы его не трогает). Остальные позиции снимка не меняются. Файл —
 //        { "date": "…", "header": [заголовки листа], "rows": [[ячейки строки], …] } (то, что отдаёт чтение листа); столбцы ищутся по заголовку:
@@ -32,6 +35,9 @@ const { loadCode } = require('./vm-load.js');
 const FILE = path.join(__dirname, '..', 'src', 'js', '10-catalog-data.js');
 const SHEET = 'Электрика';
 const EXTRA_SHEET = 'ИБП и контроллеры';
+// Второй добавочный лист: товары, которые нашлись на сайте по названиям из таблицы остатков (tools/site-lookup.js) и которых не было в каталоге.
+// Файл тот же формат, плюс поле "sheet": "Из таблицы остатков"; «Вид» — ИБП, Контроллер или любой верхний раздел каталога (Catalog.CATS).
+const STOCK_EXTRA_SHEET = 'Из таблицы остатков';
 // код позиции → путь категории; незнакомый префикс — «Электрика»
 const CAT_BY_PREFIX = [
   ['supplier-breaker-', 'Электрика › Автоматы'],
@@ -87,11 +93,13 @@ function extraColumns(header) {
   };
   return { key: find('ключ'), model: find('модель'), brand: find('бренд'), kind: find('вид'), price: find('цена'), avail: find('наличие'), url: find('ссылка'), sku: find('артикул') };
 }
-// → { catalog, report }: позиции этого листа заменяются целиком, остальные остаются как были
+// → { catalog, report }: позиции этого листа (extra.sheet, по умолчанию «ИБП и контроллеры») заменяются целиком, остальные остаются как были
 function buildExtra(prev, extra) {
   const { Catalog } = loadCode().api;
   const col = extraColumns(extra.header);
-  const keep = prev.rows.filter(r => r.sheet !== EXTRA_SHEET);
+  const sheet = extra.sheet || EXTRA_SHEET;
+  if (![EXTRA_SHEET, STOCK_EXTRA_SHEET].includes(sheet)) throw new Error(`Неизвестный добавочный лист «${sheet}»`);
+  const keep = prev.rows.filter(r => r.sheet !== sheet);
   const have = new Set(keep.map(r => String(r.key)));
   const report = { added: 0, knownElsewhere: [], noKind: [], dupes: [], cats: {}, noSub: [], noPrice: 0, noSku: 0 };
   const rows = [], seen = new Set();
@@ -101,7 +109,7 @@ function buildExtra(prev, extra) {
     if (have.has(key)) { report.knownElsewhere.push(model); continue; }
     if (seen.has(key)) { report.dupes.push(model); continue; }
     const kind = text(c[col.kind]) || '';
-    const top = (TOP_BY_KIND.find(([re]) => re.test(kind)) || [])[1];
+    const top = (TOP_BY_KIND.find(([re]) => re.test(kind)) || [])[1] || (Catalog.CATS.includes(kind) ? kind : undefined);
     if (!top) { report.noKind.push(model); continue; }
     seen.add(key);
     const url = text(c[col.url]);
@@ -111,10 +119,24 @@ function buildExtra(prev, extra) {
     const price = money(c[col.price]), sku = text(c[col.sku]);
     if (!price) report.noPrice++;
     if (!sku) report.noSku++;
-    rows.push({ key, model, brand: text(c[col.brand]), price: price || null, avail: text(c[col.avail]), url, from: null, cat, sheet: EXTRA_SHEET, sku });
+    rows.push({ key, model, brand: text(c[col.brand]), price: price || null, avail: text(c[col.avail]), url, from: null, cat, sheet, sku });
   }
   report.added = rows.length;
   return { catalog: { ...prev, rows: [...keep, ...rows] }, report };
+}
+
+// Ссылки на карточки сайта позициям без ссылки: { catalog, report: { set, skipped } }
+const SHOP_URL = /^https:\/\/www\.wind-solar\.ru\/collection\/[^/]+\/product\/[^/?#]+$/;
+function applyLinks(prev, links) {
+  const report = { set: 0, skipped: [] };
+  const rows = prev.rows.map(r => {
+    const u = links[String(r.key)];
+    if (u === undefined || r.url) return r;
+    if (!SHOP_URL.test(String(u))) { report.skipped.push(`${r.key}: не адрес карточки сайта`); return r; }
+    report.set++;
+    return { ...r, url: String(u) };
+  });
+  return { catalog: { ...prev, rows }, report };
 }
 
 // ——— запись в формате файла ———
@@ -159,11 +181,12 @@ function build(prev, dump) {
 
 function render(src, catalog, date) {
   const eol = src.includes('\r\n') ? '\r\n' : '\n';
-  const head = src.split(/\r?\n/).filter(l => l.startsWith('//') && !l.startsWith('// Артикулы (sku)') && !l.startsWith('// Лист «ИБП и контроллеры»') &&!l.startsWith('// Лист «Электрика»') && !l.startsWith('//   price (наша цена продажи) у них'));
+  const head = src.split(/\r?\n/).filter(l => l.startsWith('//') && !l.startsWith('// Артикулы (sku)') && !l.startsWith('// Лист «ИБП и контроллеры»') && !l.startsWith('// Лист «Из таблицы остатков»') && !l.startsWith('// Лист «Электрика»') && !l.startsWith('//   price (наша цена продажи) у них'));
   head.forEach((l, i) => { if (l.startsWith('// cat — ')) head[i] = '// cat — категория: путь вида «Инверторы › Гибридные» (его выбирает Catalog.classify по столбцам таблицы, ссылке на сайте и названию; не назван — «… › Без подкатегории»); sheet — лист таблицы, откуда она взята.'; });
-  head.forEach((l, i) => { if (/^\/\/ Листы:/.test(l)) head[i] = '// Листы: Инверторы, Аккумуляторы, Панели, Защита и соединения, Новые на сайте, Исключено, Электрика, ИБП и контроллеры.'; });
+  head.forEach((l, i) => { if (/^\/\/ Листы:/.test(l)) head[i] = '// Листы: Инверторы, Аккумуляторы, Панели, Защита и соединения, Новые на сайте, Исключено, Электрика, ИБП и контроллеры, Из таблицы остатков.'; });
   head.push(`// Артикулы (sku) — столбец «Артикул (с сайта)» листов таблицы, выгрузка ${date}; пусто в таблице — null («Артикул: нет данных»). Дубли артикулов не убираются.`);
   head.push('// Лист «ИБП и контроллеры» (добавлен в таблицу 2026-11-12: ИБП и контроллеры заряда с сайта wind-solar.ru; скрипт синхронизации таблицы его не трогает) — позиции с sheet ИБП и контроллеры.');
+  head.push('// Лист «Из таблицы остатков» (2026-11-13: товары с сайта wind-solar.ru, найденные по названиям из рабочей таблицы остатков; tools/site-lookup.js) — позиции с sheet Из таблицы остатков.');
   head.push('// Лист «Электрика» (Сибэлком, Энергосфера): товары поставщиков, не обязательно лежащие на складе; supplierPrice/priceDate — цена поставщика и её дата;');
   head.push('//   price (наша цена продажи) у них null. Снимок пишет tools/catalog-snapshot.js из выгрузки таблицы, руками не правится.');
   const lines = catalog.rows.map(rowText);
@@ -176,9 +199,18 @@ function load(src) {
   return new Function(src.replace(/^const CATALOG\b/m, 'var CATALOG') + '\nreturn CATALOG;')();
 }
 
-module.exports = { build, buildExtra, extraColumns, EXTRA_SHEET, render, load, money, supplierOf, catOf, electricRow, columns, FILE, SHEET };
+module.exports = { build, buildExtra, applyLinks, extraColumns, EXTRA_SHEET, STOCK_EXTRA_SHEET, render, load, money, supplierOf, catOf, electricRow, columns, FILE, SHEET };
 
-if (require.main === module && process.argv.includes('--extra')) {
+if (require.main === module && process.argv.includes('--links')) {
+  const args = process.argv.slice(2), file = args[args.indexOf('--links') + 1];
+  if (!file || file.startsWith('--')) { console.error('Нужен файл ссылок: node tools/catalog-snapshot.js --links <_ссылки.json> [--dry]'); process.exit(2); }
+  const links = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const src = fs.readFileSync(FILE, 'utf8');
+  const prev = load(src);
+  const { catalog, report } = applyLinks(prev, links);
+  if (!args.includes('--dry')) fs.writeFileSync(FILE, render(src, catalog, (/выгрузка (\d{4}-\d{2}-\d{2})/.exec(src) || [])[1] || '?'), 'utf8');
+  console.log(JSON.stringify({ ссылок_проставлено: report.set, пропущено: report.skipped }, null, 1));
+} else if (require.main === module && process.argv.includes('--extra')) {
   const args = process.argv.slice(2), file = args[args.indexOf('--extra') + 1];
   if (!file || file.startsWith('--')) { console.error('Нужен файл листа: node tools/catalog-snapshot.js --extra <лист.json> [--dry]'); process.exit(2); }
   const dump = JSON.parse(fs.readFileSync(file, 'utf8'));

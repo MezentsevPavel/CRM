@@ -21,6 +21,9 @@ function trStockText(text){
   try{
     const r=Import.stockRows(Import.parseCsv(text));
     if(r.problems.length){t.stock={problems:r.problems};return}
+    // справочник соответствий (13-sheet-aliases.js): строки без пары, которые он знает, сразу указаны — видны в «Указано вами», отменяются
+    const have=new Set(S.products.map(p=>p.id)),named=new Set(S.products.filter(p=>p.inCatalog).map(p=>Catalog.norm(p.name))),saved=(S.stockSheet&&S.stockSheet.links)||{};
+    for(const row of r.rows){const k=Catalog.norm(row.name),to=Catalog.aliasOf(row.name);if(to&&have.has(to)&&!named.has(k)&&!(k in saved)) t.links[k]=to}
     t.stock={rows:r.rows,skipped:r.skipped,pv:Import.preview('stock',S,r.rows,S.me,new Date(),t.links),busy:false,err:'',done:null};
   }catch(e){t.stock={problems:[trWhy(e)]}}
 }

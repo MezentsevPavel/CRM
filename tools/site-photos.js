@@ -1,6 +1,9 @@
 'use strict';
 // Скачивает фото товаров со страниц сайта wind-solar.ru (ссылки — в снимке каталога src/js/10-catalog-data.js).
-//   node tools/site-photos.js <папка> [--limit N]
+//   node tools/site-photos.js <папка> [--limit N] [--missing]
+//   У позиции без ссылки в каталоге, но с числовым ключом (ключ = id товара сайта), страница берётся по адресу /product_by_id/<ключ>, который сайт сам
+//   перенаправляет на карточку; найденные адреса пишутся в _ссылки.json (их вносит `node tools/catalog-snapshot.js --links`).
+//   --missing — только товары, у которых готового фото в assets/photos ещё нет (для докачки после появления новых позиций в каталоге).
 // В <папке> для каждого товара создаётся своя папка с названием товара, в ней фото по порядку галереи: 01.png, 02.png, …
 // Повторный запуск докачивает недостающее и ничего не качает дважды. Заодно пишутся:
 //   _связка.json — «ключ каталога → главное фото (папка/01.png)»: её берёт `node server/admin.js import-photos <папка> <папка>/_связка.json`;
@@ -20,6 +23,9 @@ const IMG_RE = /https?:\/\/cdn\.insales-shop\.ru\/images\/products\/(\d+\/\d+\/(
 const SIZED = /^(thumb|small|medium|large|compact|micro)_/i;
 
 const sleep = ms => new Promise(ok => setTimeout(ok, ms));
+const BASE = 'https://www.wind-solar.ru';
+const PRODUCT_PATH = /^\/collection\/[^/]+\/product\/[^/?#]+$/;
+let lastUrl = '';   // адрес, на котором оказалась последняя прочитанная страница (после перенаправлений)
 
 // Строки каталога (ключ, название, ссылка) из снимка; сам снимок исполняется в пустой песочнице
 function readCatalog(file = path.join(ROOT, 'src', 'js', '10-catalog-data.js')) {
@@ -57,6 +63,7 @@ async function get(url, what, asText) {
       const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (CRM wind-solar photo import)' }, signal: AbortSignal.timeout(30000) });
       if (res.status === 404) throw Object.assign(new Error('страницы нет (404)'), { final: true });
       if (!res.ok) throw new Error('ответ ' + res.status);
+      lastUrl = res.url;
       return asText ? await res.text() : { bytes: Buffer.from(await res.arrayBuffer()), type: res.headers.get('content-type') || '' };
     } catch (e) {
       last = e;
@@ -74,19 +81,30 @@ async function main(argv) {
   if (!out) { console.error('Укажи папку: node tools/site-photos.js <папка> [--limit N]'); return 1; }
   fs.mkdirSync(out, { recursive: true });
   const rows = readCatalog();
-  const used = new Set(), map = {}, report = [];
+  const have = new Set();
+  if (argv.includes('--missing')) {
+    try {
+      const ready = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets', 'photos', 'map.json'), 'utf8'));
+      for (const [k, file] of Object.entries(ready)) if (fs.existsSync(path.join(ROOT, 'assets', 'photos', file))) have.add(k);
+    } catch (e) { /* готовых фото ещё нет — берутся все */ }
+  }
+  const used = new Set(), map = {}, report = [], links = {};
   let pages = 0, photos = 0, withPhotos = 0;
   for (const r of rows) {
     const dir = folderName(r.model, r.key, used);
     if (pages >= lim) break;
-    if (!r.url) { report.push(`${r.key} ${r.model}: нет данных — в таблице нет ссылки на страницу сайта`); continue; }
+    if (have.has(r.key)) continue;
+    const byId = !r.url && /^\d+$/.test(r.key);
+    if (!r.url && !byId) { report.push(`${r.key} ${r.model}: нет данных — в таблице нет ссылки на страницу сайта`); continue; }
+    const pageUrl = r.url || `${BASE}/product_by_id/${r.key}`;
     let host;
-    try { host = new URL(r.url).hostname; } catch { host = ''; }
+    try { host = new URL(pageUrl).hostname; } catch { host = ''; }
     if (!SHOP_HOSTS.has(host)) { report.push(`${r.key} ${r.model}: ссылка не на сайт wind-solar.ru (${r.url}) — пропущено`); continue; }
     pages++;
     let urls;
     try {
-      urls = galleryOf(await get(r.url, 'страница товара', true));
+      urls = galleryOf(await get(pageUrl, 'страница товара', true));
+      if (byId) { const u = new URL(lastUrl); if (SHOP_HOSTS.has(u.hostname) && PRODUCT_PATH.test(u.pathname)) links[r.key] = BASE + u.pathname; }
     } catch (e) { report.push(`${r.key} ${r.model}: ${e.message}`); await sleep(PAUSE_MS); continue; }
     if (!urls.length) { report.push(`${r.key} ${r.model}: на странице нет фото`); await sleep(PAUSE_MS); continue; }
     const files = [];
@@ -111,6 +129,7 @@ async function main(argv) {
     await sleep(PAUSE_MS);
   }
   fs.writeFileSync(path.join(out, '_связка.json'), JSON.stringify(map, null, 1) + '\n');
+  fs.writeFileSync(path.join(out, '_ссылки.json'), JSON.stringify(links, null, 1) + '\n');
   fs.writeFileSync(path.join(out, '_отчёт.txt'), report.join('\n') + (report.length ? '\n' : ''));
   console.log(`\nГотово. Страниц открыто: ${pages}. Товаров с фото: ${withPhotos}. Новых фото скачано: ${photos}. Замечаний: ${report.length} (см. _отчёт.txt).`);
   return 0;

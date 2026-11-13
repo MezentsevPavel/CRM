@@ -183,6 +183,8 @@ const Catalog = (() => {
     return { products, stock, aside, unmatched, ids };
   }
   const LINK_NEW = 'new';
+  // Ключ позиции каталога по справочнику SHEET_ALIASES (13-sheet-aliases.js): название строки таблицы остатков → позиция, или null
+  const aliasOf = name => (typeof SHEET_ALIASES === 'object' && SHEET_ALIASES[norm(name)]) || null;
   // Подсказка «похоже на…» для строки листа без пары: позиция каталога с тем же кодом модели. Код — слово из букв и цифр
   // (кириллица, похожая на латиницу, читается латиницей: «ВЕ24M» = «BE24M»), без разделителей; единицы и характеристики
   // («1500Вт», «100Ah», «IP40», «1000V», «LiFePO4», «20A») и одни цифры («12-100») кодом не считаются — по ним сходятся разные
@@ -601,7 +603,7 @@ const Catalog = (() => {
     return st;
   }
 
-  return { norm, LINK_NEW, suggest, modelCodes, CATS, NO_CAT, SEP, SUB_NONE, topOf, STRUCT, STRUCT_PATHS, classify, classifyLoose, recat, NO_BRAND, brandRows, build, merge, isSupplier, add, cats, brands, query, sectionCat, base, pack, unpack,
+  return { norm, LINK_NEW, aliasOf, suggest, modelCodes, CATS, NO_CAT, SEP, SUB_NONE, topOf, STRUCT, STRUCT_PATHS, classify, classifyLoose, recat, NO_BRAND, brandRows, build, merge, isSupplier, add, cats, brands, query, sectionCat, base, pack, unpack,
     SKU_MAX, skuClean, skuOf, skuKey, bySku, label, setSku, pathOf, nodeOf, hasPath, ensure, treeFrom, syncTree, busy, catAdd, catEdit, catDelete, setCat, rows, nameProblem };
 })();
 
