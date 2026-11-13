@@ -183,7 +183,7 @@ function readJson(req) {
 }
 
 // passwordCostLog2 — только для тестов: степень двойки для N новых хешей паролей (в работе не задаётся — 17)
-async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCookie = false, now = Date.now, fileMaxMb = 20, backupHour, backupKeep, passwordCostLog2, update = {}, photosDir } = {}) {
+async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCookie = false, now = Date.now, fileMaxMb = 20, backupHour, backupKeep, passwordCostLog2, update = {}, photosDir, fetchSheet = (url, o) => fetch(url, o) } = {}) {
   const page = serverPage(), pageLite = serverPage(true);
   // Признак версии страницы: после обновления кода он меняется, и открытые вкладки сами перезагружаются (событие build)
   const buildId = crypto.createHash('sha1').update(page).digest('hex').slice(0, 12);
@@ -314,8 +314,8 @@ async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCooki
 
     // ——— перенос и копии: только директор (право admin) ———
     const importRoute = /^\/api\/import\/(stock|clients)$/.exec(route);
-    if (importRoute || route === '/api/backups' || route.startsWith('/api/backups/') || route.startsWith('/api/update') || route.startsWith('/api/photos/')) {
-      if (!can(ses.personId, 'admin')) return send(res, 403, { error: importRoute ? 'Нет прав: переносить данные' : route.startsWith('/api/update') ? 'Нет прав: обновлять CRM' : route.startsWith('/api/photos/') ? 'Нет прав: загружать фото товаров' : 'Нет прав: работать с копиями базы' }, extra);
+    if (importRoute || route === '/api/import/sheet' || route === '/api/backups' || route.startsWith('/api/backups/') || route.startsWith('/api/update') || route.startsWith('/api/photos/')) {
+      if (!can(ses.personId, 'admin')) return send(res, 403, { error: importRoute || route === '/api/import/sheet' ? 'Нет прав: переносить данные' : route.startsWith('/api/update') ? 'Нет прав: обновлять CRM' : route.startsWith('/api/photos/') ? 'Нет прав: загружать фото товаров' : 'Нет прав: работать с копиями базы' }, extra);
     }
     if (importRoute && method === 'POST') {
       const b = await readJson(req);
@@ -326,6 +326,26 @@ async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCooki
         const out = sync.system(work => (importRoute[1] === 'stock' ? Import.applyStock(work, rows, ses.personId, at) : Import.applyClients(work, rows, ses.personId, at)), ses.personId);
         return send(res, 200, out, extra);
       } catch (e) { return send(res, 400, { error: e.message }, extra); }
+    }
+    // Лист «Остатки» по ссылке на Google-таблицу: сервер забирает CSV и отдаёт текст экрану «Перенос»; дальше — тот же разбор,
+    // предпросмотр и «Загрузить», что у файла. Ошибки Google — 422, не 5xx: экран не должен счесть их «сервер не отвечает». Таблица должна быть открыта по ссылке (вход в Google у сервера нет); CSV не сохраняется.
+    if (route === '/api/import/sheet' && method === 'POST') {
+      const b = await readJson(req);
+      if (b.error) return send(res, b.error[0], { error: b.error[1] }, extra);
+      const url = core.api.Import.sheetCsvUrl((b.value || {}).url);
+      if (!url) return send(res, 400, { error: 'Это не ссылка на Google-таблицу. Скопируйте адрес из браузера, когда открыт лист «Остатки»: https://docs.google.com/spreadsheets/d/…' }, extra);
+      try {
+        const r = await fetchSheet(url, { redirect: 'follow', signal: AbortSignal.timeout(20000) });
+        const type = String((r.headers && r.headers.get && r.headers.get('content-type')) || '');
+        if (!r.ok || !/text\/csv/i.test(type)) {
+          return send(res, 422, { error: r.status === 404 ? 'Таблица или лист не найдены: проверьте ссылку.' : 'Google не отдал таблицу. Откройте доступ: в таблице «Настройки доступа → Все, у кого есть ссылка → Читатель».' }, extra);
+        }
+        const csv = await r.text();
+        if (csv.length > 10 * 1024 * 1024) return send(res, 413, { error: 'Лист больше 10 МБ — это не похоже на лист «Остатки».' }, extra);
+        return send(res, 200, { csv }, extra);
+      } catch (e) {
+        return send(res, 422, { error: 'Нет связи с Google — таблица не получена, повторите. (' + (e && e.name === 'TimeoutError' ? 'нет ответа 20 с' : e.message) + ')' }, extra);
+      }
     }
     // Готовые фото из поставки программы (assets/photos): сколько их и сколько можно прикрепить; «загрузить» — прикрепить товарам без фото
     if (route === '/api/photos/bundled' && method === 'GET') return send(res, 200, photos.status(sync.state, photos.bundled(photosDir)), extra);

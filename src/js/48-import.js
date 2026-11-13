@@ -746,5 +746,16 @@ const Import = (() => {
     throw new Error('Перенос: неизвестный вид переноса.');
   }
 
-  return { INPUT, decode, parseCsv, stockRows, parseReserve, applyStock, clientRows, twins, applyClients, receiptRows, manualRows, receiptQty, receiptPlan, applyReceipt, preview };
+  // ——— лист «Остатки» прямо из Google-таблицы ———
+  // Ссылка на таблицу (как её копируют из адресной строки: …/spreadsheets/d/<id>/edit?gid=<лист>#gid=<лист>) → адрес выгрузки
+  // листа в CSV. Берётся только id таблицы и номер листа: сервер ходит лишь на docs.google.com, что бы ни вставили. Лист не указан — первый.
+  // Не ссылка на Google-таблицу — null. Выгрузка export, а не gviz: gviz по типу колонки выбрасывает текст в числовых клетках.
+  function sheetCsvUrl(link) {
+    const s = str(link), m = /^(?:https?:\/\/)?docs\.google\.com\/spreadsheets\/d\/([A-Za-z0-9_-]{20,})(?:[/?#]|$)/.exec(s);
+    if (!m) return null;
+    const g = /[?#&]gid=(\d+)/.exec(s);
+    return `https://docs.google.com/spreadsheets/d/${m[1]}/export?format=csv&gid=${g ? g[1] : '0'}`;
+  }
+
+  return { INPUT, decode, parseCsv, stockRows, sheetCsvUrl, parseReserve, applyStock, clientRows, twins, applyClients, receiptRows, manualRows, receiptQty, receiptPlan, applyReceipt, preview };
 })();

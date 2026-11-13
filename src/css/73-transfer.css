@@ -12,3 +12,7 @@
 .tr-tw li{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 12px}
 .tr-tw li span{overflow-wrap:anywhere}
 .tr-tw select{width:auto}
+.tr-sheet{display:grid;gap:6px}
+.tr-sheet label{font-size:13px;font-weight:600}
+.tr-sheet-row{display:flex;flex-wrap:wrap;gap:8px}
+.tr-sheet-row .inp{flex:1 1 320px;min-width:0}

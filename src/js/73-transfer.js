@@ -12,9 +12,13 @@ const trWhy=e=>(e&&e.message)||'Файл не разобран.';
 // ——— остатки ———
 // Байты файла → разбор и предпросмотр в S.ui.transfer.stock; ошибка файла — problems, ничего не меняется
 function trStockRead(bytes){
+  try{trStockText(Import.decode(bytes))}catch(e){trUi().stock={problems:[trWhy(e)]}}
+}
+// Текст CSV (из файла или из Google-таблицы) → разбор и предпросмотр
+function trStockText(text){
   const t=trUi();
   try{
-    const r=Import.stockRows(Import.parseCsv(Import.decode(bytes)));
+    const r=Import.stockRows(Import.parseCsv(text));
     if(r.problems.length){t.stock={problems:r.problems};return}
     t.stock={rows:r.rows,skipped:r.skipped,pv:Import.preview('stock',S,r.rows,S.me,new Date()),busy:false,err:'',done:null};
   }catch(e){t.stock={problems:[trWhy(e)]}}
@@ -32,6 +36,30 @@ async function trStockSend(){
   }catch(_){s.err='Нет связи с сервером — остатки не загружены, повторите.'}
   s.busy=false;trRefresh();
 }
+// ——— остатки по ссылке на Google-таблицу ———
+// Ссылку запоминает этот браузер (удобство, не данные); таблицу забирает сервер (POST /api/import/sheet), CSV приходит сюда текстом
+// и идёт тем же разбором и предпросмотром, что файл. Остатки меняются только по «Загрузить».
+const TR_SHEET_KEY='crm-sheet-link';
+const trSheetLink=()=>{const t=trUi();if(typeof t.sheetUrl==='string') return t.sheetUrl;try{return localStorage.getItem(TR_SHEET_KEY)||''}catch(_){return ''}};
+async function trSheetFetch(){
+  const t=trUi();
+  if(t.sheetBusy) return;
+  const el=byId('tr-sheet-url');
+  t.sheetUrl=String(el&&el.value||'').trim();
+  if(!t.sheetUrl){t.stock={problems:['Вставьте ссылку на Google-таблицу с листом «Остатки».']};trRefresh();return}
+  t.sheetBusy=true;t.stock=null;trRefresh();
+  try{
+    const r=await srvApi('POST','/api/import/sheet',{url:t.sheetUrl});
+    if(!srvStatus(r)){
+      if(r.status===200&&r.body&&typeof r.body.csv==='string'){
+        trStockText(r.body.csv);
+        if(t.stock&&t.stock.rows) t.stock.from='sheet';
+        try{localStorage.setItem(TR_SHEET_KEY,t.sheetUrl)}catch(_){}
+      }else t.stock={problems:[(r.body&&r.body.error)||'Таблица не получена.']};
+    }
+  }catch(_){t.stock={problems:['Нет связи с сервером — таблица не получена, повторите.']}}
+  t.sheetBusy=false;trRefresh();
+}
 // Неразобранное: текст, который перенос не понял, с названием товара и колонкой
 const trUnparsed=list=>!list||!list.length?'':`<details class="tr-un"><summary>Что не разобралось (${num(list.length)})</summary><ul>${list.map(u=>`<li><b>${esc(u.name)}</b> · ${esc(u.column)}: «${esc(u.text)}»</li>`).join('')}</ul></details>`;
 const trStockNums=p=>`<ul class="tr-n">${trNum(p.products,'товаров в файле')}${trNum(p.matched,'склеено с каталогом')}${trNum(p.created,'новых товаров «нет в каталоге»')}${trNum(p.withStock,`товаров с остатком (клеток склада: ${num(p.cells)})`)}<li>Изменилось клеток: <b>${num(p.changed)}</b> (остаток стал другим против нынешнего)</li>${trNum(p.reserves,'резервов из колонки «Резерв»')}<li>Резервов поставлено или снято заново: <b>${num(p.reservesChanged)}</b></li>${trNum(p.unparsed.length,'неразобранных клеток и резервов')}</ul>`;
@@ -41,12 +69,16 @@ function trStockHtml(){
   let body='';
   if(s&&s.problems) body=s.problems.map(p=>`<p class="err">${esc(p)}</p>`).join('');
   else if(s&&s.done) body=`<p class="ok-t m0"><b>Загружено.</b> Остатки склада заменены; в журнале склада «Ввод остатков» — только по клеткам, где остаток изменился (записей: ${num(s.done.moves)}).</p>${trStockNums(s.done)}${trUnparsed(s.done.unparsed)}`;
-  else if(s&&s.rows) body=`<p class="m0">В файле найдено:</p>${trStockNums(s.pv)}${s.skipped?`<p class="hint">Строк с цифрами, но без названия: ${num(s.skipped)} — они пропущены.</p>`:''}${trUnparsed(s.pv.unparsed)}
+  else if(s&&s.rows) body=`<p class="m0">${s.from==='sheet'?'В таблице':'В файле'} найдено:</p>${trStockNums(s.pv)}${s.skipped?`<p class="hint">Строк с цифрами, но без названия: ${num(s.skipped)} — они пропущены.</p>`:''}${trUnparsed(s.pv.unparsed)}
     <form class="tr-go" data-form="tr-stock" novalidate><button type="submit" class="btn pri"${s.busy?' disabled':''}>${s.busy?'Загружаю…':'Загрузить'}</button><span class="hint">Остатки склада будут заменены этими.</span></form>${s.err?`<p class="err">${esc(s.err)}</p>`:''}`;
   return `<section class="card"><div class="card-h"><h3>Остатки склада</h3></div><div class="card-b stack-s">
     <p class="m0">Лист «Остатки» таблицы менеджеров, сохранённый как CSV (UTF-8 или Windows-1251, разделитель — запятая или точка с запятой).
       Загрузка <b>заменяет</b> остатки склада и пишет в журнал склада «Ввод остатков» по каждой клетке, где остаток изменился. Повторная загрузка того же файла остатки не удваивает и журнал не дополняет.</p>
     <p class="hint">Колонка «Резерв»: количество становится резервом, имя клиента — примечанием к нему, без привязки к сделке. До первой загрузки у товаров остаток — «нет данных».</p>
+    <form class="tr-sheet" data-form="tr-sheet" novalidate><label for="tr-sheet-url">Ссылка на Google-таблицу (открыт лист «Остатки»)</label>
+      <div class="tr-sheet-row"><input id="tr-sheet-url" class="inp" type="url" inputmode="url" placeholder="https://docs.google.com/spreadsheets/d/…" value="${esc(trSheetLink())}" autocomplete="off"><button type="submit" class="btn pri"${trUi().sheetBusy?' disabled':''}>${trUi().sheetBusy?'Беру из таблицы…':'Взять из таблицы'}</button></div>
+      <p class="hint">Таблица должна быть открыта по ссылке на просмотр. Сначала покажется, что изменится; остатки и резервы заменятся только по кнопке «Загрузить». Повторяйте, когда таблица обновится.</p></form>
+    <p class="hint m0">Или файлом CSV:</p>
     <div><label class="btn" for="tr-stock-file">${ic('plus')}Выбрать файл CSV</label><input id="tr-stock-file" class="sr" type="file" accept=".csv,.txt,text/csv,text/plain" data-on="tr-stock-file"></div>
     ${body}
   </div></section>`;
@@ -144,6 +176,7 @@ async function trPick(el,read){
 ON.change['tr-stock-file']=el=>trPick(el,trStockRead);
 ON.change['tr-clients-file']=el=>trPick(el,trClientsRead);
 FORMS['tr-stock']=()=>trStockSend();
+FORMS['tr-sheet']=()=>trSheetFetch();
 FORMS['tr-clients']=()=>trClientsSend();
 
 if(SERVER) SETTINGS_TABS.push({id:'transfer',label:'Перенос',order:85,ok:()=>SERVER&&can('admin'),render:()=>trStockHtml()+trClientsHtml()});
