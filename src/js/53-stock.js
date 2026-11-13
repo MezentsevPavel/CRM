@@ -316,8 +316,7 @@ function dProduct(p){
   const iList=inc.length?`<ul class="mv">${inc.map(x=>iRow(x,p)).join('')}</ul>`:'<p class="muted m0">Поставок с этим товаром нет.</p>';
   const mList=mv.length?`<ul class="mv">${mv.map(m=>`<li>${movePill(m)}<b>${moveSign(m)}${qtyOf(m.qty,p)}</b><span>${esc(moveWhere(m))}</span><span class="mono muted">${esc(moveDoc(m))}</span><small>${fWhen(m.at)} · ${esc(whoName(m.by)||'нет данных: кто')}</small></li>`).join('')}</ul><p class="m0"><button type="button" class="btn sm" data-act="stock-journal" data-pid="${esc(p.id)}">Весь журнал по товару${all.length>mv.length?` (${all.length})`:''}</button></p>`:'<p class="muted m0">Движений пока нет.</p>';
   return {kind:p.cat,title:esc(p.name),sub:[p.inCatalog?'':'нет в каталоге',p.brand?esc(p.brand):''].filter(Boolean).join(' · '),body:`
-    ${photoBlock(p)}
-    <div><h4 class="sh">Карточка каталога</h4><dl class="kv">${info}</dl></div>
+    <div class="pcard"><div class="pcard-photo">${photoBlock(p)}</div><div class="pcard-info"><h4 class="sh">Карточка каталога</h4><dl class="kv">${info}</dl></div></div>
     <div class="pst">${st('На складе',k.known?qtyOf(k.onHand,p):'нет данных')}${st('В резерве',num(k.reservedStock+k.reservedIncoming),'',k.reservedIncoming?`со склада ${num(k.reservedStock)}, под поставки ${num(k.reservedIncoming)}`:'')}${st('Свободно сейчас',unk?'нет данных':num(k.free),unk?'':k.free<=0?'bad-t':'ok-t')}${st('Свободно после прихода',unk?'нет данных':num(k.freeAfter),k.freeAfter<0?'bad-t':'',k.incoming?`едет ${num(k.incoming)}`:'')}</div>
     ${sbar(p,true)}
     ${watchHtml(p,k)}

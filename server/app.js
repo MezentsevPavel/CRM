@@ -322,8 +322,8 @@ async function createApp({ dataDir, port = 3000, host = '127.0.0.1', secureCooki
       if (b.error) return send(res, b.error[0], { error: b.error[1] });
       // Исполняет та же функция ядра, что считала предпросмотр на экране (Import.apply*); CSV сюда не приходит — только разобранные строки
       try {
-        const Import = core.api.Import, rows = (b.value || {}).rows, at = new Date(clock());
-        const out = sync.system(work => (importRoute[1] === 'stock' ? Import.applyStock(work, rows, ses.personId, at) : Import.applyClients(work, rows, ses.personId, at)), ses.personId);
+        const Import = core.api.Import, rows = (b.value || {}).rows, links = (b.value || {}).links, at = new Date(clock());
+        const out = sync.system(work => (importRoute[1] === 'stock' ? Import.applyStock(work, rows, ses.personId, at, links) : Import.applyClients(work, rows, ses.personId, at)), ses.personId);
         return send(res, 200, out, extra);
       } catch (e) { return send(res, 400, { error: e.message }, extra); }
     }

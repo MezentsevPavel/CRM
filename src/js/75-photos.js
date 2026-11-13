@@ -35,22 +35,35 @@ function photoAddHtml(p){
   return `<span class="pp-add"><label class="btn pp-pick" for="pp-add-in">${ic('plus')}Добавить фото<input id="pp-add-in" class="sr" type="file" multiple accept="${PHOTO_ACCEPT}" data-on="photo-add" data-pid="${id}"></label>`
     +`<label class="btn pp-cam" for="pp-cam-in">${ic('camera')}Снять на камеру<input id="pp-cam-in" class="sr" type="file" accept="image/*" capture="environment" data-on="photo-add" data-pid="${id}"></label></span>`;
 }
-function photoItem(p,f,i){
-  const src=photoSrc(f),edit=can('catalog'),big=i===0,pid=esc(p.id),fid=esc(f.id);
-  const img=src
-    ?`<button type="button" class="pp-img" data-act="photo-view" data-pid="${pid}" data-fid="${fid}" aria-label="Открыть крупно: ${esc(f.name)}"><img src="${esc(src)}" alt="Фото ${i+1}: ${esc(p.name)}" loading="lazy" decoding="async">${big?'<span class="pill ok sm pp-main">Главное</span>':''}</button>`
-    :`<div class="pp-img pp-lost">${ic('photo')}<small class="warn-t">${f.unsaved?PHOTO_NO_SPACE:'нет данных: файл'}</small>${big?'<span class="pill ok sm pp-main">Главное</span>':''}</div>`;
-  const btns=edit?`<div class="pp-btns">${big?'':`<button type="button" class="btn sm ghost" data-act="photo-main" data-pid="${pid}" data-fid="${fid}">Сделать главным</button>`}`
-    +`<label class="btn sm ghost" for="pp-r-${fid}">Заменить<input id="pp-r-${fid}" class="sr" type="file" accept="${PHOTO_ACCEPT}" data-on="photo-repl" data-pid="${pid}" data-fid="${fid}"></label>`
-    +`<button type="button" class="btn sm ghost" data-act="photo-del" data-pid="${pid}" data-fid="${fid}" aria-label="Удалить фото ${i+1}">Удалить</button></div>`:'';
-  return `<figure class="pp-it${big?' big':''}">${img}<figcaption class="sr">${esc(f.name)}</figcaption>${btns}</figure>`;
+// Фото в карточке — слева, узким блоком: главное небольшим квадратом и ряд миниатюр всех фото; нажатие на любое открывает его крупно
+// поверх карточки (MODALS.photoView). Править фото (главное, заменить, удалить, добавить) — в раскрывающемся «Изменить фото», только с правом catalog.
+function photoOpen(p,f,cls,inner,label){
+  return `<button type="button" class="${cls}" data-act="photo-view" data-pid="${esc(p.id)}" data-fid="${esc(f.id)}" aria-label="${label}">${inner}</button>`;
 }
-// Блок «Фото»: большое главное фото и ряд маленьких; без фото — рамка «Фото нет»
+function photoMainBox(p,f){
+  const src=photoSrc(f),tag='<span class="pill ok sm pp-main">Главное</span>';
+  return src
+    ?`<figure class="pp-it big">${photoOpen(p,f,'pp-img',`<img src="${esc(src)}" alt="Главное фото: ${esc(p.name)}" loading="lazy" decoding="async">${tag}`,'Открыть крупно: '+esc(f.name))}<figcaption class="sr">${esc(f.name)}</figcaption></figure>`
+    :`<figure class="pp-it big"><div class="pp-img pp-lost">${ic('photo')}<small class="warn-t">${f.unsaved?PHOTO_NO_SPACE:'нет данных: файл'}</small>${tag}</div></figure>`;
+}
+function photoThumbBtn(p,f,i){
+  const src=photoSrc(f);
+  return src
+    ?photoOpen(p,f,'pp-th'+(i===0?' on':''),`<img src="${esc(src)}" alt="Фото ${i+1}: ${esc(p.name)}" loading="lazy" decoding="async">`,`Открыть крупно фото ${i+1}: ${esc(f.name)}`)
+    :`<span class="pp-th pp-lost" title="${f.unsaved?PHOTO_NO_SPACE:'нет данных: файл'}">${ic('photo')}</span>`;
+}
+function photoManageRow(p,f,i){
+  const pid=esc(p.id),fid=esc(f.id),big=i===0;
+  return `<div class="pp-m"><span class="pp-mn">${i+1}. ${esc(f.name)}${big?' · главное':''}</span><span class="pp-btns">${big?'':`<button type="button" class="btn sm ghost" data-act="photo-main" data-pid="${pid}" data-fid="${fid}">Сделать главным</button>`}`
+    +`<label class="btn sm ghost" for="pp-r-${fid}">Заменить<input id="pp-r-${fid}" class="sr" type="file" accept="${PHOTO_ACCEPT}" data-on="photo-repl" data-pid="${pid}" data-fid="${fid}"></label>`
+    +`<button type="button" class="btn sm ghost" data-act="photo-del" data-pid="${pid}" data-fid="${fid}" aria-label="Удалить фото ${i+1}">Удалить</button></span></div>`;
+}
+// Блок «Фото»; без фото — рамка «Фото нет»
 function photoBlock(p){
   const list=photoList(p),add=photoAddHtml(p);
   if(!list.length) return `<div class="pp"><h4 class="sh">Фото</h4><div class="pp-empty">${ic('photo')}<b>Фото нет</b>${add}</div></div>`;
-  const rest=list.slice(1);
-  return `<div class="pp"><h4 class="sh">Фото · ${list.length}</h4>${photoItem(p,list[0],0)}${rest.length?`<div class="pp-row">${rest.map((f,i)=>photoItem(p,f,i+1)).join('')}</div>`:''}${add?`<div class="pp-foot">${add}</div>`:''}</div>`;
+  const manage=can('catalog')?`<details class="pp-manage"><summary>Изменить фото</summary><div class="pp-mlist">${list.map((f,i)=>photoManageRow(p,f,i)).join('')}</div>${add?`<div class="pp-foot">${add}</div>`:''}</details>`:'';
+  return `<div class="pp pp-side"><h4 class="sh">Фото · ${list.length}</h4>${photoMainBox(p,list[0])}<div class="pp-thumbs">${list.map((f,i)=>photoThumbBtn(p,f,i)).join('')}</div>${manage}</div>`;
 }
 
 // ——— просмотр крупно ———

@@ -264,10 +264,31 @@ const Import = (() => {
   // → { products, matched, created, cells, changed, withStock, reserves, reservesChanged, moves, unparsed: [{name, column, text}] }
   // cells — клеток с числом в файле; changed — клеток (склад и «в пути/ответхранение/бой»), чьё значение стало другим, включая
   // пропавшие из файла; reservesChanged — резервов снято плюс поставлено.
-  function applyStock(st, rows, by, now) {
+  // Сопоставление строк листа с каталогом, присланное экраном: {название строки: id позиции каталога | Catalog.LINK_NEW | null}.
+  // Ключ — нормализованное название (Catalog.norm); null — снять прежнее сопоставление; чужие значения отбрасываются.
+  function cleanLinks(links) {
+    const out = {};
+    if (!isObj(links)) return out;
+    for (const [k, v] of Object.entries(links).slice(0, ROWS_MAX)) {
+      const key = Catalog.norm(str(k).slice(0, NAME_MAX));
+      if (!key) continue;
+      out[key] = v === null ? null : typeof v === 'string' && v.trim() && v.length <= 200 ? v.trim() : undefined;
+      if (out[key] === undefined) delete out[key];
+    }
+    return out;
+  }
+  // Сопоставления прошлых переносов (st.stockSheet.links) и присланные сейчас: присланное сильнее, null — снять
+  function mergedLinks(st, links) {
+    const all = { ...((st.stockSheet && st.stockSheet.links) || {}) };
+    for (const [k, v] of Object.entries(cleanLinks(links))) { if (v === null) delete all[k]; else all[k] = v; }
+    return all;
+  }
+
+  function applyStock(st, rows, by, now, links) {
     const list = cleanStockRows(rows);
     const at = new Date(now), who = by || null;
-    const built = Catalog.build(CATALOG, { rows: list.map(r => ({ ...r, cat: r.cat || NO_SECTION })) }, { named: true });
+    const lk = mergedLinks(st, links);
+    const built = Catalog.build(CATALOG, { rows: list.map(r => ({ ...r, cat: r.cat || NO_SECTION })) }, { named: true, links: lk });
     if (!st.products) st.products = [];
     if (!st.reserves) st.reserves = [];
     const have = new Set(st.products.map(p => p.id)), sheetIds = new Set(built.unmatched.map(u => u.productId));
@@ -346,7 +367,13 @@ const Import = (() => {
       logMove(st, { at, productId: r.productId, kind: Stock.KINDS.reserve, qty: r.qty, entityId: r.entityId, cityId: r.cityId, doc: w.note ? `перенос: ${w.note}` : 'перенос', by: who, rid: r.id });
     }
     st.stockSheet = { at, by: who, rows: list.map(({ name, cat, ip, npp, vs, custody, transit, damaged }) => ({ name, cat, ip, npp, vs, custody, transit, damaged })) };
-    return { products: list.length, matched: list.length - built.unmatched.length, created, cells, changed, withStock, reserves: wanted.length, reservesChanged: removed + toAdd.length, skus, moves, unparsed };
+    if (Object.keys(lk).length) st.stockSheet.links = lk;
+    // Строки без пары в каталоге, которые директор ещё не разобрал («новая позиция» — разобрана): с подсказкой «похоже на…»
+    const pool = built.products.filter(p => p.inCatalog);
+    const unlinked = built.unmatched.filter(u => lk[Catalog.norm(u.name)] !== Catalog.LINK_NEW).map(u => ({ name: u.name, suggest: Catalog.suggest(u.name, pool) }));
+    const linked = list.filter(r => { const to = lk[Catalog.norm(r.name)]; return to && to !== Catalog.LINK_NEW; }).length;
+    const asNew = list.filter(r => lk[Catalog.norm(r.name)] === Catalog.LINK_NEW).length;
+    return { products: list.length, matched: list.length - built.unmatched.length, created, cells, changed, withStock, reserves: wanted.length, reservesChanged: removed + toAdd.length, skus, moves, unparsed, unlinked, linked, asNew };
   }
 
   // ——— клиенты из Битрикса ———
@@ -735,13 +762,13 @@ const Import = (() => {
   // ——— предпросмотр ———
   // Что дала бы загрузка — тем же applyStock / applyClients, но на копии нужных частей состояния: st не меняется.
   // kind — 'stock' | 'clients'.
-  function preview(kind, st, rows, by, now) {
+  function preview(kind, st, rows, by, now, links) {
     const take = keys => {
       const o = {};
       for (const k of keys) if (st[k] !== undefined) o[k] = JSON.parse(JSON.stringify(Store.plain(st[k])), Store.revive);
       return o;
     };
-    if (kind === 'stock') return applyStock({ ...take(['products', 'stock', 'aside', 'reserves', 'entities', 'cities']), moves: [] }, rows, by, now);
+    if (kind === 'stock') return applyStock({ ...take(['products', 'stock', 'aside', 'reserves', 'entities', 'cities', 'stockSheet']), moves: [] }, rows, by, now, links);
     if (kind === 'clients') return applyClients({ ...take(['clients', 'people']), feed: [] }, rows, by, now);
     throw new Error('Перенос: неизвестный вид переноса.');
   }

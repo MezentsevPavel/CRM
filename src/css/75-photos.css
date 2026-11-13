@@ -30,3 +30,29 @@
 .pph svg{width:18px;height:18px}
 .pprev{position:fixed;z-index:60;width:260px;max-width:calc(100vw - 16px);padding:6px;border:1px solid var(--line-2);border-radius:14px;background:var(--surface);box-shadow:var(--shadow);pointer-events:none;animation:fade .12s}
 .pprev img{display:block;width:100%;max-height:calc(100vh - 56px);border-radius:10px;object-fit:contain;background:var(--sunken)}
+/* карточка товара: фото слева узким блоком, «Карточка каталога» справа */
+.pcard{display:grid;grid-template-columns:minmax(0,260px) minmax(0,1fr);gap:20px 32px;align-items:start}
+.pcard-photo,.pcard-info{min-width:0}
+.pcard-info .sh,.pp-side .sh{margin:0 0 12px;line-height:1.2}
+.pcard-info .kv{gap:10px 20px}
+.pp-side{gap:0}
+.pp-side .pp-it.big{margin:0 0 10px}
+.pp-side .pp-it.big .pp-img{height:auto;aspect-ratio:1;border:1px solid var(--line);border-radius:16px;background:var(--surface-2)}
+.pp-side .pp-it.big .pp-img img{padding:6px;box-sizing:border-box}
+.pp-thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(54px,1fr));gap:8px;margin:0 0 12px}
+.pp-th{display:flex;align-items:center;justify-content:center;aspect-ratio:1;margin:0;padding:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface-2);cursor:zoom-in;transition:border-color .15s,box-shadow .15s}
+.pp-th:hover{border-color:var(--line-2)}
+.pp-th.on{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary)}
+.pp-th img{display:block;width:100%;height:100%;object-fit:cover}
+.pp-th.pp-lost{min-height:0;cursor:default;color:var(--ink-3)}
+.pp-th.pp-lost .ic{width:18px;height:18px}
+.pp-manage{border:1px solid var(--line);border-radius:14px;background:var(--surface-2)}
+.pp-manage>summary{padding:10px 14px;cursor:pointer;font-size:13px;font-weight:600;color:var(--ink-2)}
+.pp-manage[open]>summary{border-bottom:1px solid var(--line)}
+.pp-mlist{display:grid;gap:0}
+.pp-m{display:grid;gap:6px;padding:10px 14px;border-bottom:1px solid var(--line);font-size:12.5px}
+.pp-m:last-child{border-bottom:0}
+.pp-mn{overflow-wrap:anywhere;color:var(--ink-2)}
+.pp-m .pp-btns{gap:6px}
+.pp-manage .pp-foot{padding:10px 14px 14px;border-top:1px solid var(--line)}
+@media (max-width:700px){.pcard{grid-template-columns:minmax(0,1fr)}.pp-side .pp-it.big .pp-img{max-height:min(320px,70vw)}}

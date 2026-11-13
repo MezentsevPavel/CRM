@@ -167,26 +167,29 @@ test('Store.dump: мало места — данные фото товара в�
 });
 
 // ——— карточка товара ———
-test('карточка: без фото — рамка «Фото нет» и «Добавить фото»; с фото — главное крупно, ряд маленьких, у каждого три кнопки; у главного нет «Сделать главным»', () => {
+test('карточка: без фото — рамка «Фото нет» и «Добавить фото»; с фото — слева узкий блок: главное небольшим квадратом и миниатюры всех; нажатие открывает крупно; у каждого три кнопки в «Изменить фото»; у главного нет «Сделать главным»', () => {
   const { a, p } = world();
   let html = a.dProduct(p).body;
   assert.match(html, /<h4 class="sh">Фото<\/h4><div class="pp-empty">.*<b>Фото нет<\/b>/s);
   assert.match(html, /Добавить фото<input id="pp-add-in"[^>]*type="file"[^>]*multiple[^>]*accept="image\/jpeg,image\/png,image\/webp,image\/gif"/);
   assert.match(html, /capture="environment"/, 'нет кнопки камеры для телефона');
-  assert.ok(html.indexOf('Фото нет') < html.indexOf('Карточка каталога'), 'блок «Фото» ниже карточки каталога');
+  assert.ok(html.indexOf('Фото нет') < html.indexOf('Карточка каталога'), 'блок «Фото» не слева от карточки каталога');
+  assert.match(html, /<div class="pcard"><div class="pcard-photo">/);
   assert.doesNotMatch(html, /data-act="photo-(del|main|view)"/);
   a.Attach.addPhotos(p, [photo('главное.png'), photo('второе.jpg', 'image/jpeg', JPG), photo('третье.png')], 'p1', NOW);
   html = a.dProduct(p).body;
-  const block = html.slice(html.indexOf('<div class="pp">'), html.indexOf('Карточка каталога'));
+  const block = html.slice(html.indexOf('<div class="pp pp-side">'), html.indexOf('Карточка каталога'));
   assert.match(block, /Фото · 3/);
-  assert.equal((block.match(/<figure class="pp-it/g) || []).length, 3);
-  assert.equal((block.match(/<figure class="pp-it big"/g) || []).length, 1, 'крупное — одно');
-  assert.ok(block.indexOf('pp-it big') < block.indexOf('class="pp-row"'), 'главное не раньше ряда');
+  assert.equal((block.match(/<figure class="pp-it big"/g) || []).length, 1, 'главное — одно');
+  assert.equal((block.match(/class="pp-th(?: on)?"/g) || []).length, 3, 'миниатюра у каждого фото');
+  assert.equal((block.match(/class="pp-th on"/g) || []).length, 1, 'выделена одна — главная');
+  assert.ok(block.indexOf('pp-it big') < block.indexOf('class="pp-thumbs"'), 'главное не раньше ряда миниатюр');
+  assert.match(block, /<details class="pp-manage"><summary>Изменить фото<\/summary>/);
   assert.equal((block.match(/data-act="photo-del"/g) || []).length, 3, '«Удалить» у каждого');
   assert.equal((block.match(/Заменить<input/g) || []).length, 3, '«Заменить» у каждого');
   assert.equal((block.match(/data-act="photo-main"/g) || []).length, 2, '«Сделать главным» — у всех, кроме главного');
-  assert.equal((block.match(/data-act="photo-view"/g) || []).length, 3, 'нажатие на фото — просмотр');
-  assert.equal((block.match(/<img /g) || []).length, 3);
+  assert.equal((block.match(/data-act="photo-view"/g) || []).length, 4, 'нажатие на главное и на каждую миниатюру — просмотр');
+  assert.equal((block.match(/<img /g) || []).length, 4, 'главное и три миниатюры');
   assert.ok([...block.matchAll(/<img [^>]*>/g)].every(m => /alt="[^"]+"/.test(m[0]) && /loading="lazy"/.test(m[0])), 'у фото нет alt или loading="lazy"');
   assert.match(block, /<span class="pill ok sm pp-main">Главное<\/span>/);
 });
@@ -248,7 +251,7 @@ test('просмотр крупно: слой поверх карточки; з�
   assert.ok(drawer(a).includes('Тест Инвертор с фото'), 'карточка под слоем пропала');
   a.document.dispatchEvent({ type: 'keydown', key: 'Escape', target: {} });
   assert.equal(modal(a), '', 'Esc не закрыл просмотр');
-  assert.ok(drawer(a).includes('pp-it'), 'Esc закрыл и карточку');
+  assert.ok(drawer(a).includes('pp-thumbs'), 'Esc закрыл и карточку');
   a.A['photo-view']({ dataset: { pid: p.id, fid: 'нет-такого' } });
   assert.equal(modal(a), '', 'открылось несуществующее фото');
   a.A['photo-view']({ dataset: { pid: p.id, fid: p.photos[1].id } });
@@ -282,7 +285,7 @@ test('удаление: сперва подтверждение (окно с ф�
   await a.photoIdle();
   assert.deepEqual(names(p), ['c.png', 'новое.jpg'], 'замена не на том же месте');
   assert.equal(saves.length, 3, '«Заменить» — одно сохранение');
-  assert.match(drawer(a) || '', /^$|pp-it/);
+  assert.match(drawer(a) || '', /^$|pp-thumbs|pp-empty/);
 });
 
 test('добавление: несколько файлов сразу — один render и одно сохранение, порядок как выбран; не фото среди них — отказ с текстом, остальные добавлены', async () => {

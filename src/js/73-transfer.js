@@ -17,10 +17,11 @@ function trStockRead(bytes){
 // Текст CSV (из файла или из Google-таблицы) → разбор и предпросмотр
 function trStockText(text){
   const t=trUi();
+  t.links={};
   try{
     const r=Import.stockRows(Import.parseCsv(text));
     if(r.problems.length){t.stock={problems:r.problems};return}
-    t.stock={rows:r.rows,skipped:r.skipped,pv:Import.preview('stock',S,r.rows,S.me,new Date()),busy:false,err:'',done:null};
+    t.stock={rows:r.rows,skipped:r.skipped,pv:Import.preview('stock',S,r.rows,S.me,new Date(),t.links),busy:false,err:'',done:null};
   }catch(e){t.stock={problems:[trWhy(e)]}}
 }
 async function trStockSend(){
@@ -28,9 +29,9 @@ async function trStockSend(){
   if(!s||!s.rows||s.busy) return;
   s.busy=true;s.err='';trRefresh();
   try{
-    const r=await srvApi('POST','/api/import/stock',{rows:s.rows});
+    const r=await srvApi('POST','/api/import/stock',{rows:s.rows,links:trUi().links});
     if(!srvStatus(r)){
-      if(r.status===200){s.done=r.body;s.rows=null;s.pv=null}
+      if(r.status===200){s.done=r.body;s.rows=null;s.pv=null;trUi().links={}}
       else s.err=(r.body&&r.body.error)||'Остатки не загружены.';
     }
   }catch(_){s.err='Нет связи с сервером — остатки не загружены, повторите.'}
@@ -60,16 +61,62 @@ async function trSheetFetch(){
   }catch(_){t.stock={problems:['Нет связи с сервером — таблица не получена, повторите.']}}
   t.sheetBusy=false;trRefresh();
 }
+// ——— что это за модель: строки таблицы, не нашедшие пару в каталоге ———
+// Выбор директора лежит в S.ui.transfer.links {нормализованное название: id позиции | 'new'}; каждый выбор пересчитывает предпросмотр
+// тем же Import.preview и уходит на сервер вместе со строками («Загрузить»), где его запоминает st.stockSheet.links.
+const trCatalog=()=>S.products.filter(p=>p.inCatalog);
+const trLinks=()=>Object.assign({},S.stockSheet&&S.stockSheet.links,trUi().links);
+function trRecount(){
+  const s=trUi().stock;
+  if(s&&s.rows) s.pv=Import.preview('stock',S,s.rows,S.me,new Date(),trUi().links);
+  trRefresh();
+}
+function trLinkSet(key,to){
+  const t=trUi();
+  (t.links||(t.links={}))[key]=to;
+  trRecount();
+}
+const trProdName=id=>{const p=S.products.find(x=>x.id===id);return p?p.name:'нет данных: такой позиции в каталоге нет'};
+function trLinksHtml(s){
+  const pv=s.pv,list=pv.unlinked||[];
+  const lk=trLinks(),done=Object.keys(lk).filter(k=>lk[k]&&s.rows.some(r=>Catalog.norm(r.name)===k));
+  let h='';
+  if(list.length){
+    const cat=trCatalog(),sug=list.filter(u=>u.suggest);
+    h+=`<div class="tr-lk"><p class="m0"><b>Не нашли пару в каталоге: ${num(list.length)}.</b> Укажите, что это за модель: принять подсказку, найти позицию в каталоге или завести как «Новая позиция». Что оставите как есть — станет товаром «нет в каталоге». Выбор запоминается.</p>
+      ${sug.length?`<div><button type="button" class="btn sm" data-act="tr-sug-all">Принять все подсказки (${num(sug.length)})</button></div>`:''}
+      <datalist id="tr-catlist">${cat.map(p=>`<option value="${esc(p.name)}"></option>`).join('')}</datalist>
+      <ul class="tr-lk-l">${list.map(u=>{const k=Catalog.norm(u.name);return `<li><div class="tr-lk-n"><b>${esc(u.name)}</b>${u.suggest?`<small>Похоже на: ${esc(trProdName(u.suggest))}</small>`:'<small>Подсказки нет: похожей позиции в каталоге не нашлось</small>'}</div>
+        <div class="tr-lk-a">${u.suggest?`<button type="button" class="btn sm" data-act="tr-sug" data-k="${esc(k)}" data-to="${esc(u.suggest)}">Это она</button>`:''}<input class="inp sm tr-lk-in" list="tr-catlist" placeholder="Найти в каталоге…" data-on="tr-pick" data-k="${esc(k)}" aria-label="Позиция каталога для «${esc(u.name)}»" autocomplete="off"><button type="button" class="btn sm ghost" data-act="tr-new" data-k="${esc(k)}">Новая позиция</button></div></li>`}).join('')}</ul></div>`;
+  }
+  if(done.length) h+=`<details class="tr-un"><summary>Указано вами (${num(done.length)})</summary><ul class="tr-lk-d">${done.map(k=>{const r=s.rows.find(x=>Catalog.norm(x.name)===k);return `<li><span><b>${esc(r.name)}</b> → ${lk[k]==='new'?'новая позиция':esc(trProdName(lk[k]))}</span><button type="button" class="btn sm ghost" data-act="tr-unlink" data-k="${esc(k)}">Отменить</button></li>`}).join('')}</ul></details>`;
+  return h;
+}
+A['tr-sug']=el=>trLinkSet(el.dataset.k,el.dataset.to);
+A['tr-new']=el=>trLinkSet(el.dataset.k,'new');
+A['tr-unlink']=el=>trLinkSet(el.dataset.k,null);
+A['tr-sug-all']=()=>{
+  const s=trUi().stock;if(!s||!s.pv) return;
+  const t=trUi();t.links=t.links||{};
+  for(const u of s.pv.unlinked||[]) if(u.suggest) t.links[Catalog.norm(u.name)]=u.suggest;
+  trRecount();
+};
+ON.change['tr-pick']=el=>{
+  const v=String(el.value||'').trim();if(!v) return;
+  const p=trCatalog().find(x=>x.name===v)||trCatalog().find(x=>Catalog.norm(x.name)===Catalog.norm(v));
+  if(!p){toast('Такой позиции в каталоге нет: выберите из списка, который открывается в поле.','warn');return}
+  trLinkSet(el.dataset.k,p.id);
+};
 // Неразобранное: текст, который перенос не понял, с названием товара и колонкой
 const trUnparsed=list=>!list||!list.length?'':`<details class="tr-un"><summary>Что не разобралось (${num(list.length)})</summary><ul>${list.map(u=>`<li><b>${esc(u.name)}</b> · ${esc(u.column)}: «${esc(u.text)}»</li>`).join('')}</ul></details>`;
-const trStockNums=p=>`<ul class="tr-n">${trNum(p.products,'товаров в файле')}${trNum(p.matched,'склеено с каталогом')}${trNum(p.created,'новых товаров «нет в каталоге»')}${trNum(p.withStock,`товаров с остатком (клеток склада: ${num(p.cells)})`)}<li>Изменилось клеток: <b>${num(p.changed)}</b> (остаток стал другим против нынешнего)</li>${trNum(p.reserves,'резервов из колонки «Резерв»')}<li>Резервов поставлено или снято заново: <b>${num(p.reservesChanged)}</b></li>${trNum(p.unparsed.length,'неразобранных клеток и резервов')}</ul>`;
+const trStockNums=p=>`<ul class="tr-n">${trNum(p.products,'товаров в файле')}${trNum(p.matched,'склеено с каталогом')}${trNum(p.created,'новых товаров «нет в каталоге»')}${trNum(p.withStock,`товаров с остатком (клеток склада: ${num(p.cells)})`)}<li>Изменилось клеток: <b>${num(p.changed)}</b> (остаток стал другим против нынешнего)</li>${p.linked?trNum(p.linked,'строк сопоставлено с каталогом вручную'):''}${p.asNew?trNum(p.asNew,'строк заведено как «новая позиция»'):''}${trNum(p.reserves,'резервов из колонки «Резерв»')}<li>Резервов поставлено или снято заново: <b>${num(p.reservesChanged)}</b></li>${trNum(p.unparsed.length,'неразобранных клеток и резервов')}</ul>`;
 
 function trStockHtml(){
   const s=trUi().stock;
   let body='';
   if(s&&s.problems) body=s.problems.map(p=>`<p class="err">${esc(p)}</p>`).join('');
   else if(s&&s.done) body=`<p class="ok-t m0"><b>Загружено.</b> Остатки склада заменены; в журнале склада «Ввод остатков» — только по клеткам, где остаток изменился (записей: ${num(s.done.moves)}).</p>${trStockNums(s.done)}${trUnparsed(s.done.unparsed)}`;
-  else if(s&&s.rows) body=`<p class="m0">${s.from==='sheet'?'В таблице':'В файле'} найдено:</p>${trStockNums(s.pv)}${s.skipped?`<p class="hint">Строк с цифрами, но без названия: ${num(s.skipped)} — они пропущены.</p>`:''}${trUnparsed(s.pv.unparsed)}
+  else if(s&&s.rows) body=`<p class="m0">${s.from==='sheet'?'В таблице':'В файле'} найдено:</p>${trStockNums(s.pv)}${s.skipped?`<p class="hint">Строк с цифрами, но без названия: ${num(s.skipped)} — они пропущены.</p>`:''}${trUnparsed(s.pv.unparsed)}${trLinksHtml(s)}
     <form class="tr-go" data-form="tr-stock" novalidate><button type="submit" class="btn pri"${s.busy?' disabled':''}>${s.busy?'Загружаю…':'Загрузить'}</button><span class="hint">Остатки склада будут заменены этими.</span></form>${s.err?`<p class="err">${esc(s.err)}</p>`:''}`;
   return `<section class="card"><div class="card-h"><h3>Остатки склада</h3></div><div class="card-b stack-s">
     <p class="m0">Лист «Остатки» таблицы менеджеров, сохранённый как CSV (UTF-8 или Windows-1251, разделитель — запятая или точка с запятой).

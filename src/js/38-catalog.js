@@ -157,23 +157,67 @@ const Catalog = (() => {
     const rowsPerName = new Map();
     for (const r of snapshot.rows) { const k = norm(r.name); rowsPerName.set(k, (rowsPerName.get(k) || 0) + 1); }
 
+    // opts.links — что директор указал при переносе: нормализованное название строки листа → id позиции каталога (или LINK_NEW —
+    // «новая позиция», такую строку больше не предлагают сопоставить). Строки, указанные на одну позицию, складываются.
+    const links = opts.links || {}, catIds = new Set(products.map(p => p.id));
     const stock = {}, aside = {}, unmatched = [], ids = [], used = new Set(products.map(p => p.id));
+    const plus = (a, b) => (isNum(a) ? a : 0) + b;
     snapshot.rows.forEach((r, i) => {
-      const k = norm(r.name), same = byName.get(k);
+      const k = norm(r.name), same = byName.get(k), to = links[k];
       let id;
       if (same && same.length === 1 && rowsPerName.get(k) === 1) id = same[0];
+      else if (to && to !== LINK_NEW && catIds.has(to)) id = to;
       else {
         id = opts.named ? namedId(k, used) : 'sheet-' + String(i + 1).padStart(3, '0');
         products.push({ id, name: r.name, brand: null, cat: classifyLoose(sectionCat(r.cat), r.name, pool), price: null, avail: null, url: null, src: 'sheet', inCatalog: false });
         unmatched.push({ productId: id, name: r.name });
       }
       ids.push(id);
-      for (const e of ['ip', 'npp', 'vs']) if (isNum(r[e])) (stock[id] || (stock[id] = {}))[e] = { _: r[e] };
+      for (const e of ['ip', 'npp', 'vs']) if (isNum(r[e])) { const c = stock[id] || (stock[id] = {}); c[e] = { _: plus(c[e] && c[e]._, r[e]) }; }
       const a = { damaged: isNum(r.damaged) ? r.damaged : null, custody: isNum(r.custody) ? r.custody : null, transitNoShip: isNum(r.transit) ? r.transit : null };
-      if (Object.values(a).some(v => v !== null)) aside[id] = a;
+      if (Object.values(a).some(v => v !== null)) {
+        const was = aside[id];
+        aside[id] = was ? Object.fromEntries(Object.keys(a).map(x => [x, a[x] === null ? was[x] : plus(was[x], a[x])])) : a;
+      }
     });
     return { products, stock, aside, unmatched, ids };
   }
+  const LINK_NEW = 'new';
+  // Подсказка «похоже на…» для строки листа без пары: позиция каталога с тем же кодом модели. Код — слово из букв и цифр
+  // (кириллица, похожая на латиницу, читается латиницей: «ВЕ24M» = «BE24M»), без разделителей; единицы и характеристики
+  // («1500Вт», «100Ah», «IP40», «1000V», «LiFePO4», «20A») и одни цифры («12-100») кодом не считаются — по ним сходятся разные
+  // товары («VEKTOR 12-100» и «LFP 51,2-100M»). Очки — длина
+  // совпавших кодов; при равенстве — больше общих слов. Код не совпал ни с одной позицией — null. Это только подсказка:
+  // сопоставляет директор (links), сам перенос ничего не склеивает.
+  const LAT = { 'А': 'A', 'В': 'B', 'Е': 'E', 'К': 'K', 'М': 'M', 'Н': 'H', 'О': 'O', 'Р': 'P', 'С': 'C', 'Т': 'T', 'Х': 'X', 'У': 'Y' };
+  const latin = s => String(s ?? '').toUpperCase().replace(/Ё/g, 'Е').replace(/[А-Я]/g, c => LAT[c] || c);
+  const UNIT_CODE = /^(\d+([.,]\d+)?(W|BT|KW|KBT|V|B|A|AH|AЧ|KA|MA|MM|VA|BA|KBA|WH|KWH|BTЧ|ГЦ|HZ|C|P|N|X)|IP\d+|LIFEPO4|\d+P|\d+X\d+)$/;
+  function modelCodes(name) {
+    return [...new Set(latin(name).split(/[\s,;()[\]/«»"*+]+/)
+      .map(t => t.replace(/^[^A-ZА-Я0-9]+|[^A-ZА-Я0-9]+$/g, ''))
+      .filter(t => /\d/.test(t) && /[A-ZА-Я]/.test(t) && !UNIT_CODE.test(t.replace(/[-.]/g, '')))
+      .map(t => t.replace(/[^A-ZА-Я0-9]/g, ''))
+      .filter(t => t.length >= 4))];
+  }
+  const flatName = s => latin(s).replace(/[^A-ZА-Я0-9]/g, '');
+  const words = s => new Set(latin(s).split(/[^A-ZА-Я0-9]+/).filter(w => w.length >= 3 && !/^\d+$/.test(w)));
+  function suggest(name, pool) {
+    const codes = modelCodes(name);
+    if (!codes.length) return null;
+    const mine = words(name);
+    let best = null;
+    for (const p of pool) {
+      const hay = flatName(p.name + ' ' + (p.sku || ''));
+      let score = 0;
+      for (const c of codes) if (hay.includes(c)) score += c.length;
+      if (!score) continue;
+      let common = 0;
+      for (const w of words(p.name)) if (mine.has(w)) common++;
+      if (!best || score > best.score || (score === best.score && common > best.common)) best = { id: p.id, score, common };
+    }
+    return best ? best.id : null;
+  }
+
   // id товара листа по нормализованному названию; одинаковые названия различаются номером
   const NAMED_MAX = 120;
   function namedId(normName, used) {
@@ -549,7 +593,7 @@ const Catalog = (() => {
   function unpack(st) {
     if (!st || !st.catalogSnapshot) return st;
     const edits = st.productEdits || {}, removed = new Set(st.productsRemoved || []);
-    const sheet = SERVER ? build(CATALOG, { rows: (st.stockSheet && st.stockSheet.rows) || [] }, { named: true }).products.filter(p => !p.inCatalog) : [];
+    const sheet = SERVER ? build(CATALOG, { rows: (st.stockSheet && st.stockSheet.rows) || [] }, { named: true, links: (st.stockSheet && st.stockSheet.links) || {} }).products.filter(p => !p.inCatalog) : [];
     const snap = [...base().products, ...sheet].filter(p => !removed.has(p.id)).map(p => ({ ...p, ...(edits[p.id] || {}) }));
     const have = new Set(snap.map(p => p.id));
     st.products = [...snap, ...(Array.isArray(st.products) ? st.products : []).filter(p => !have.has(p.id))];
@@ -557,7 +601,7 @@ const Catalog = (() => {
     return st;
   }
 
-  return { norm, CATS, NO_CAT, SEP, SUB_NONE, topOf, STRUCT, STRUCT_PATHS, classify, classifyLoose, recat, NO_BRAND, brandRows, build, merge, isSupplier, add, cats, brands, query, sectionCat, base, pack, unpack,
+  return { norm, LINK_NEW, suggest, modelCodes, CATS, NO_CAT, SEP, SUB_NONE, topOf, STRUCT, STRUCT_PATHS, classify, classifyLoose, recat, NO_BRAND, brandRows, build, merge, isSupplier, add, cats, brands, query, sectionCat, base, pack, unpack,
     SKU_MAX, skuClean, skuOf, skuKey, bySku, label, setSku, pathOf, nodeOf, hasPath, ensure, treeFrom, syncTree, busy, catAdd, catEdit, catDelete, setCat, rows, nameProblem };
 })();
 
