@@ -499,7 +499,9 @@ td.free b{font-weight:700}
 .sell-l .btn{margin-left:auto}
 /* настройки: склады и юрлица */
 .wh-row{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
-.wh-row.city{grid-template-columns:minmax(0,1fr) minmax(0,2fr)}
+.wh-row.ent{grid-template-columns:minmax(0,1fr) auto;align-items:end}
+.wh-del{align-self:end}
+.wh-row.city{grid-template-columns:minmax(0,1fr) minmax(0,2fr) auto;align-items:end}
 .wh-add{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px}
 .wh-add .field{flex:1;min-width:180px}
 @media (max-width:560px){.wh-row.city{grid-template-columns:minmax(0,1fr)}}
@@ -3182,6 +3184,38 @@ const Stock = (() => {
   };
 
   const isNum = v => typeof v === 'number' && isFinite(v);
+  // Что мешает убрать юрлицо или город из справочника: фразы о живых ссылках ([] — можно). kind — 'entity' | 'city'.
+  // Остаток (ненулевая клетка), резервы, поставки, заявки на отправку, продавец по умолчанию в «Продаже между юрлицами».
+  // Старые записи журнала не мешают: они остаются с кодом вместо названия.
+  function usage(st, kind, id) {
+    const ent = kind === 'entity', key = ent ? 'entityId' : 'cityId', out = [];
+    let qty = 0;
+    const prods = new Set();
+    for (const pid of Object.keys(st.stock || {})) for (const e of Object.keys(st.stock[pid] || {})) for (const c of Object.keys(st.stock[pid][e] || {})) {
+      if ((ent ? e : c) !== id) continue;
+      const n = st.stock[pid][e][c];
+      if (isNum(n) && n !== 0) { qty += n; prods.add(pid); }
+    }
+    if (prods.size) out.push(`остаток ${qty} шт. по товарам: ${prods.size}`);
+    const cnt = (list, pick) => (list || []).filter(x => pick(x)).length;
+    const r = cnt(st.reserves, x => x[key] === id), sh = cnt(st.shipments, x => x[key] === id);
+    const dp = cnt(st.dispatches, x => [x.from, x.toCell, ...(x.items || []).map(i => i && i.from)].some(c => c && c[key] === id));
+    if (r) out.push(`резервов: ${r}`);
+    if (sh) out.push(`поставок: ${sh}`);
+    if (dp) out.push(`заявок на отправку: ${dp}`);
+    if (ent && st.billing && st.billing.seller && Object.values(st.billing.seller).includes(id)) out.push('назначено продавцом по умолчанию (Настройки → Склады и юрлица)');
+    return out;
+  }
+  // Убрать юрлицо или город из справочника, если на нём ничего нет. Старые нулевые клетки остаются в данных (остаток меняется только
+  // движениями — сервер не пустит иначе), экран их не показывает. → {ok, reason, name}
+  function removePlace(st, kind, id) {
+    const list = kind === 'entity' ? st.entities : st.cities, i = (list || []).findIndex(x => x.id === id);
+    if (i < 0) return { ok: false, reason: kind === 'entity' ? 'Такого юрлица уже нет.' : 'Такого города уже нет.' };
+    const why = usage(st, kind, id), name = list[i].name;
+    if (why.length) return { ok: false, reason: `${kind === 'entity' ? 'Юрлицо' : 'Город'} «${name}» убрать нельзя: на нём ${why.join('; ')}.`, name };
+    list.splice(i, 1);
+    return { ok: true, reason: '', name };
+  }
   const sum = (list, f) => list.reduce((a, x) => a + f(x), 0);
   const total = vals => { const n = vals.filter(isNum); return n.length ? sum(n, x => x) : null; };
 
@@ -3195,8 +3229,13 @@ const Stock = (() => {
   // cell(e, c) — число или null (пусто). totals: rows[e], cols[c], all — суммы по непустым клеткам, null — если все пусты.
   function grid(st, productId) {
     const data = (st.stock && st.stock[productId]) || {};
-    const entKeys = Object.keys(data);
-    const cityKeys = [...new Set(entKeys.flatMap(e => Object.keys(data[e] || {})))];
+    // Юрлицо или город, убранный из справочника (usage / removePlace), остаётся в старых клетках нулями или пустотой: такую строку и
+    // столбец не показываем. С остатком — показываем всегда (убрать из справочника такое нельзя, но данные не теряем).
+    const knownE = new Set((st.entities || []).map(x => x.id)), knownC = new Set((st.cities || []).map(x => x.id));
+    const lies = v => isNum(v) && v !== 0;
+    const entKeys = Object.keys(data).filter(e => e === ANY || knownE.has(e) || Object.values(data[e] || {}).some(lies));
+    const cityKeys = [...new Set(entKeys.flatMap(e => Object.keys(data[e] || {})))]
+      .filter(c => c === ANY || knownC.has(c) || entKeys.some(e => lies((data[e] || {})[c])));
     const order = (known, keys) => {
       const ids = known.map(x => x.id);
       return [...ids, ...keys.filter(k => k !== ANY && !ids.includes(k)), ...(keys.includes(ANY) ? [ANY] : [])];
@@ -3775,7 +3814,7 @@ const Stock = (() => {
   }
 
   return {
-    ANY, RESERVE_DAYS, KINDS, RECEIPT_DOC, NO_ENTITY, NO_CITY, HIDDEN_DEAL, HIDDEN_ID, defaultCityId, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, table, canReserve, bestCell, cells, move, reserve, unreserve, release, expired, sellMax, sell, cellText, dealRef, reserveView, docView,
+    ANY, RESERVE_DAYS, KINDS, RECEIPT_DOC, NO_ENTITY, NO_CITY, HIDDEN_DEAL, HIDDEN_ID, defaultCityId, usage, removePlace, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, table, canReserve, bestCell, cells, move, reserve, unreserve, release, expired, sellMax, sell, cellText, dealRef, reserveView, docView,
     reserveFor, extend, forText, placed, history, removed, transitBy, transitDetail, transitText, watchOf, watch, unwatch, notifyAppeared, remindExpiring, due, tick };
 })();
 
@@ -13999,6 +14038,30 @@ ON.change['city-addr']=t=>{
   toast(c.address?`Адрес склада «${c.name}» сохранён.`:`Адрес склада «${c.name}» очищен: нет данных.`);
 };
 
+// Удалить юрлицо или город из справочника: только если на нём ничего нет (Stock.usage — остаток, резервы, поставки, заявки, продавец
+// по умолчанию). Занято — тост с причиной и числами; свободно — окно с подтверждением, потом Stock.removePlace.
+// Слово директора 2026-11-13: «не могу удалить юрлицо» — кнопки удаления не было вовсе.
+const placeWhat=kind=>kind==='entity'?['Юрлицо','юрлицо']:['Город','город'];
+A['place-del']=el=>{
+  const kind=el.dataset.kind==='city'?'city':'entity',list=kind==='city'?S.cities:S.entities,item=list.find(x=>x.id===el.dataset.id);
+  if(!item) return;
+  const why=Stock.usage(S,kind,item.id);
+  if(why.length){toast(`${placeWhat(kind)[0]} «${item.name}» убрать нельзя: на нём ${why.join('; ')}. Сначала освободите его (переместите остаток, снимите резервы).`,'warn');return}
+  openModal('placeDel',kind+'|'+item.id);
+};
+MODALS.placeDel=key=>{
+  const [kind,id]=String(key).split('|'),list=kind==='city'?S.cities:S.entities,item=list.find(x=>x.id===id);
+  if(!item) return `${mHead('Удалить')}<div class="modal-b"><p class="m0">Уже удалено.</p></div>`;
+  return `<form data-form="place-del" data-kind="${esc(kind)}" data-id="${esc(id)}" novalidate>${mHead('Удалить '+placeWhat(kind)[1]+' «'+esc(item.name)+'»?')}<div class="modal-b">
+    <p class="m0">${placeWhat(kind)[0]} «${esc(item.name)}» пропадёт из справочника, из таблицы остатков и из форм. Остатка, резервов, поставок и заявок на нём нет. Старые записи журнала склада останутся — в них вместо названия будет код. Вернуть можно, добавив ${placeWhat(kind)[1]} заново.</p></div>${mFoot('Удалить')}</form>`;
+};
+FORMS['place-del']=f=>{
+  const kind=f.dataset.kind==='city'?'city':'entity',r=Stock.removePlace(S,kind,f.dataset.id);
+  closeModal();
+  if(!r.ok){toast(r.reason,'warn');render();return}
+  render();toast(`${placeWhat(kind)[0]} «${r.name}» удалено из справочника.`);
+};
+
 // «Обновить каталог из снимка»: Catalog.merge (то же, что делает шаг MIGRATIONS[21] у рабочей базы) — одно действие, один save() в render()
 A['catalog-merge']=()=>{
   if(!can('catalog')){toast('У вашей роли нет права менять каталог.','warn');return}
@@ -14039,12 +14102,12 @@ function stockSources(){
 function vWarehouses(){
   const popt=(cur,none)=>`<option value="">${esc(none)}</option>`+S.people.map(p=>`<option value="${esc(p.id)}"${p.id===cur?' selected':''}>${esc(p.name)}</option>`).join('');
   const eopt=(cur,none)=>`<option value="">${esc(none)}</option>`+S.entities.map(e=>`<option value="${esc(e.id)}"${e.id===cur?' selected':''}>${esc(e.name)}</option>`).join('');
-  const ents=S.entities.map(e=>`<div class="wh-row"><div class="field"><label for="ent-name-${esc(e.id)}">Название юрлица</label><input id="ent-name-${esc(e.id)}" class="inp" value="${esc(e.name)}" data-on="ent-name" data-id="${esc(e.id)}" autocomplete="off"></div></div>`).join('');
+  const ents=S.entities.map(e=>`<div class="wh-row ent"><div class="field"><label for="ent-name-${esc(e.id)}">Название юрлица</label><input id="ent-name-${esc(e.id)}" class="inp" value="${esc(e.name)}" data-on="ent-name" data-id="${esc(e.id)}" autocomplete="off"></div><button type="button" class="btn ghost wh-del" data-act="place-del" data-kind="entity" data-id="${esc(e.id)}" aria-label="Удалить юрлицо «${esc(e.name)}»">Удалить</button></div>`).join('');
   const bl=S.billing||{},billerSet=!!(bl.billerId&&person(bl.billerId));
   // типы менеджеров — роли со scope (b2b, b2c)
   const scopes=[...new Set(S.roles.filter(r=>r.scope).map(r=>r.scope))];
   const sellers=scopes.map(k=>`<div class="field"><label for="seller-by-${esc(k)}">Менеджер ${esc(k.toUpperCase())} продаёт от</label><select id="seller-by-${esc(k)}" class="inp" data-on="seller-by" data-scope="${esc(k)}">${eopt((bl.seller||{})[k],'не задано — выбирает в заявке')}</select></div>`).join('');
-  const cities=S.cities.map(c=>`<div class="wh-row city"><div class="field"><label for="city-name-${esc(c.id)}">Город</label><input id="city-name-${esc(c.id)}" class="inp" value="${esc(c.name)}" data-on="city-name" data-id="${esc(c.id)}" autocomplete="off"></div><div class="field"><label for="city-addr-${esc(c.id)}">Адрес склада</label><input id="city-addr-${esc(c.id)}" class="inp" value="${esc(c.address||'')}"${c.address?'':' placeholder="нет данных: адрес"'} data-on="city-addr" data-id="${esc(c.id)}" autocomplete="off"></div></div>`).join('');
+  const cities=S.cities.map(c=>`<div class="wh-row city"><div class="field"><label for="city-name-${esc(c.id)}">Город</label><input id="city-name-${esc(c.id)}" class="inp" value="${esc(c.name)}" data-on="city-name" data-id="${esc(c.id)}" autocomplete="off"></div><div class="field"><label for="city-addr-${esc(c.id)}">Адрес склада</label><input id="city-addr-${esc(c.id)}" class="inp" value="${esc(c.address||'')}"${c.address?'':' placeholder="нет данных: адрес"'} data-on="city-addr" data-id="${esc(c.id)}" autocomplete="off"></div><button type="button" class="btn ghost wh-del" data-act="place-del" data-kind="city" data-id="${esc(c.id)}" aria-label="Удалить город «${esc(c.name)}»">Удалить</button></div>`).join('');
   return `<section class="card"><div class="card-h"><h3>Юрлица</h3></div><div class="card-b stack-s">
     <p class="hint">Юрлицо — строка в таблице остатков (ИП, НПП, ВС). Переименование меняет название везде, остатки остаются на месте.</p>
     ${ents}

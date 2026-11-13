@@ -54,7 +54,9 @@ td.free b{font-weight:700}
 .sell-l .btn{margin-left:auto}
 /* настройки: склады и юрлица */
 .wh-row{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
-.wh-row.city{grid-template-columns:minmax(0,1fr) minmax(0,2fr)}
+.wh-row.ent{grid-template-columns:minmax(0,1fr) auto;align-items:end}
+.wh-del{align-self:end}
+.wh-row.city{grid-template-columns:minmax(0,1fr) minmax(0,2fr) auto;align-items:end}
 .wh-add{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px}
 .wh-add .field{flex:1;min-width:180px}
 @media (max-width:560px){.wh-row.city{grid-template-columns:minmax(0,1fr)}}

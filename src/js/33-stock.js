@@ -48,6 +48,38 @@ const Stock = (() => {
   };
 
   const isNum = v => typeof v === 'number' && isFinite(v);
+  // Что мешает убрать юрлицо или город из справочника: фразы о живых ссылках ([] — можно). kind — 'entity' | 'city'.
+  // Остаток (ненулевая клетка), резервы, поставки, заявки на отправку, продавец по умолчанию в «Продаже между юрлицами».
+  // Старые записи журнала не мешают: они остаются с кодом вместо названия.
+  function usage(st, kind, id) {
+    const ent = kind === 'entity', key = ent ? 'entityId' : 'cityId', out = [];
+    let qty = 0;
+    const prods = new Set();
+    for (const pid of Object.keys(st.stock || {})) for (const e of Object.keys(st.stock[pid] || {})) for (const c of Object.keys(st.stock[pid][e] || {})) {
+      if ((ent ? e : c) !== id) continue;
+      const n = st.stock[pid][e][c];
+      if (isNum(n) && n !== 0) { qty += n; prods.add(pid); }
+    }
+    if (prods.size) out.push(`остаток ${qty} шт. по товарам: ${prods.size}`);
+    const cnt = (list, pick) => (list || []).filter(x => pick(x)).length;
+    const r = cnt(st.reserves, x => x[key] === id), sh = cnt(st.shipments, x => x[key] === id);
+    const dp = cnt(st.dispatches, x => [x.from, x.toCell, ...(x.items || []).map(i => i && i.from)].some(c => c && c[key] === id));
+    if (r) out.push(`резервов: ${r}`);
+    if (sh) out.push(`поставок: ${sh}`);
+    if (dp) out.push(`заявок на отправку: ${dp}`);
+    if (ent && st.billing && st.billing.seller && Object.values(st.billing.seller).includes(id)) out.push('назначено продавцом по умолчанию (Настройки → Склады и юрлица)');
+    return out;
+  }
+  // Убрать юрлицо или город из справочника, если на нём ничего нет. Старые нулевые клетки остаются в данных (остаток меняется только
+  // движениями — сервер не пустит иначе), экран их не показывает. → {ok, reason, name}
+  function removePlace(st, kind, id) {
+    const list = kind === 'entity' ? st.entities : st.cities, i = (list || []).findIndex(x => x.id === id);
+    if (i < 0) return { ok: false, reason: kind === 'entity' ? 'Такого юрлица уже нет.' : 'Такого города уже нет.' };
+    const why = usage(st, kind, id), name = list[i].name;
+    if (why.length) return { ok: false, reason: `${kind === 'entity' ? 'Юрлицо' : 'Город'} «${name}» убрать нельзя: на нём ${why.join('; ')}.`, name };
+    list.splice(i, 1);
+    return { ok: true, reason: '', name };
+  }
   const sum = (list, f) => list.reduce((a, x) => a + f(x), 0);
   const total = vals => { const n = vals.filter(isNum); return n.length ? sum(n, x => x) : null; };
 
@@ -61,8 +93,13 @@ const Stock = (() => {
   // cell(e, c) — число или null (пусто). totals: rows[e], cols[c], all — суммы по непустым клеткам, null — если все пусты.
   function grid(st, productId) {
     const data = (st.stock && st.stock[productId]) || {};
-    const entKeys = Object.keys(data);
-    const cityKeys = [...new Set(entKeys.flatMap(e => Object.keys(data[e] || {})))];
+    // Юрлицо или город, убранный из справочника (usage / removePlace), остаётся в старых клетках нулями или пустотой: такую строку и
+    // столбец не показываем. С остатком — показываем всегда (убрать из справочника такое нельзя, но данные не теряем).
+    const knownE = new Set((st.entities || []).map(x => x.id)), knownC = new Set((st.cities || []).map(x => x.id));
+    const lies = v => isNum(v) && v !== 0;
+    const entKeys = Object.keys(data).filter(e => e === ANY || knownE.has(e) || Object.values(data[e] || {}).some(lies));
+    const cityKeys = [...new Set(entKeys.flatMap(e => Object.keys(data[e] || {})))]
+      .filter(c => c === ANY || knownC.has(c) || entKeys.some(e => lies((data[e] || {})[c])));
     const order = (known, keys) => {
       const ids = known.map(x => x.id);
       return [...ids, ...keys.filter(k => k !== ANY && !ids.includes(k)), ...(keys.includes(ANY) ? [ANY] : [])];
@@ -641,7 +678,7 @@ const Stock = (() => {
   }
 
   return {
-    ANY, RESERVE_DAYS, KINDS, RECEIPT_DOC, NO_ENTITY, NO_CITY, HIDDEN_DEAL, HIDDEN_ID, defaultCityId, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, table, canReserve, bestCell, cells, move, reserve, unreserve, release, expired, sellMax, sell, cellText, dealRef, reserveView, docView,
+    ANY, RESERVE_DAYS, KINDS, RECEIPT_DOC, NO_ENTITY, NO_CITY, HIDDEN_DEAL, HIDDEN_ID, defaultCityId, usage, removePlace, defaults, entityName, cityName, grid, incomingOf, freeIn, summary, table, canReserve, bestCell, cells, move, reserve, unreserve, release, expired, sellMax, sell, cellText, dealRef, reserveView, docView,
     reserveFor, extend, forText, placed, history, removed, transitBy, transitDetail, transitText, watchOf, watch, unwatch, notifyAppeared, remindExpiring, due, tick };
 })();
 
